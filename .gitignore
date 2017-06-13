@@ -1,0 +1,6 @@
+bower_components/
+public/bower_components/
+node_modules/
+.gulp-cache
+.env
+config/**/*

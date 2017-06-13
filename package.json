@@ -1,0 +1,26 @@
+{
+  "name": "neodex",
+  "version": "0.1.0",
+  "description": "Neo4j OGM for NodeJS",
+  "main": "build/index.js",
+  "scripts": {
+    "build": "babel src -d build",
+    "test": "./node_modules/.bin/mocha --compilers js:babel-register"
+  },
+  "keywords": [
+    "neo4j",
+    "graph",
+    "cypher"
+  ],
+  "author": "Adam Cowley <adam@wecommit.co>",
+  "license": "ISC",
+  "dependencies": {
+    "neo4j-driver": "^1.1.1"
+  },
+  "devDependencies": {
+    "babel": "^6.23.0",
+    "babel-cli": "^6.24.1",
+    "chai": "^3.5.0",
+    "mocha": "^3.2.0"
+  }
+}
