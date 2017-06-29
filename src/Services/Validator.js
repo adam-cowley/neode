@@ -7,7 +7,7 @@ const joi_options = {
     abortEarly:false
 };
 
-function BuildValidationSchema(model, properties) {
+function BuildValidationSchema(model) {
     const schema = model.schema();
     let output = {};
 
@@ -70,7 +70,6 @@ export default function Validator(neode, model, properties) {
         Joi.validate(properties, schema, joi_options, (err, validated) => {
             if (err) {
                 let errors = {};
-                let details = {};
 
                 err.details.forEach(e => {
                     if ( !errors[ e.path ] ) {
@@ -86,5 +85,4 @@ export default function Validator(neode, model, properties) {
             resolve(validated);
         })
     });
-
 }

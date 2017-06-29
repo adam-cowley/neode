@@ -51,7 +51,7 @@ export default class Node {
     /**
      * Update the properties of a node
      * @param  {Object} properties Updated properties
-     * @return {Node}
+     * @return {Promise}
      */
     update(properties) {
         return Update(this._neode, this, this._node, properties)
@@ -65,12 +65,14 @@ export default class Node {
     /**
      * Delete this node from the Graph
      *
-     * @return {void}
+     * @return {Promise}
      */
     delete() {
         return Delete(this._neode, this._node)
-            .then(res => {
+            .then(() => {
                 this._deleted = true;
+
+                return this;
             })
     }
 

@@ -1,6 +1,7 @@
 import neo4j from 'neo4j-driver';
 import Model from './Model';
 import Node from './Node';
+import Schema from './Schema';
 
 export default class Neode {
 
@@ -10,13 +11,34 @@ export default class Neode {
      * @param  {String} connection_string
      * @param  {String} username
      * @param  {String} password
+     * @param  {Bool}   enterprise
      * @return {Neode}
      */
-    constructor(connection_string, username, password) {
+    constructor(connection_string, username, password, enterprise = false) {
         const auth = username && password ? neo4j.auth.basic(username, password) : null;
         this.driver = new neo4j.driver(connection_string, auth);
 
         this.models = new Map();
+        this.setEnterprise(enterprise);
+        this.schema = new Schema(this);
+    }
+
+    /**
+     * Set Enterprise Mode
+     *
+     * @param {Bool} enterprise
+     */
+    setEnterprise(enterprise) {
+        this._enterprise = enterprise;
+    }
+
+    /**
+     * Are we running in enterprise mode?
+     *
+     * @return {Bool}
+     */
+    enterprise() {
+        this._enterprise
     }
 
     /**
@@ -78,6 +100,70 @@ export default class Neode {
 
                 throw err;
             });
+    }
+
+    /**
+     * Create a new Transaction
+     *
+     * @return {Transaction}
+     */
+    transaction() {
+        const session = this.driver.session();
+        const tx = session.beginTransaction();
+
+        // Create an 'end' function to commit & close the session
+        // TODO: Clean up
+        tx.end = () => {
+            tx.commit();
+            session.close();
+        };
+
+        return tx;
+    }
+
+    /**
+     * Run a batch of queries within a transaction
+     *
+     * @type {Array}
+     * @return {Promise}
+     */
+    batch(queries = []) {
+        const tx = this.transaction();
+        const output = [];
+        const errors = [];
+
+        return Promise.all(queries.map(query => {
+            const params = typeof query == 'object' ? query.params : {};
+            query = typeof query == 'object' ? query.query : query;
+
+            try {
+                return tx.run(query, params)
+                    .then(res => {
+                        output.push(res);
+                    })
+                    .catch(error => {
+                        errors.push({query, params, error});
+                    })
+            }
+            catch (error) {
+                errors.push({query, params, error});
+            }
+
+        }))
+        .then(() => {
+             if (errors.length) {
+                tx.rollback();
+
+                const error = new Error('Transaction Failed');
+                error.errors = errors;
+
+                throw error;
+            }
+
+            tx.end();
+
+            return output;
+        });
     }
 
     /**
