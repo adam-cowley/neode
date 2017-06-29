@@ -1,13 +1,9 @@
 import {assert, expect} from 'chai';
-import Neode, {Model, Node, Errors} from '../src/index';
+import {Model, Node, Errors} from '../src/index';
 import uuid from 'uuid';
 
 describe('Model.js', () => {
-    const connection_string = 'bolt://localhost';
-    const username = 'neo4j';
-    const password = 'neo'
-
-    const instance = new Neode(connection_string, username, password);
+    const instance = require('./instance');
     const schema = {
         id: 'uuid',
         name: {
@@ -23,13 +19,20 @@ describe('Model.js', () => {
             default: function() {
                 return Math.random();
             },
+            unique: true
         },
         defaulted: {
             type: 'string',
             default: 'Default',
         },
         age: 'int',
-        living: 'boolean'
+        living: 'boolean',
+
+        knows: {
+            type: 'relationship',
+            relationship: 'KNOWS',
+            direction: 'OUT'
+        }
     };
 
     let Thing, created;
@@ -74,7 +77,7 @@ describe('Model.js', () => {
 
                 expect(res.get('defaulted')).to.equal(schema.defaulted.default);
             })
-            .then(done)
+            .then(() => done())
             .catch(e => done(e));
     });
 

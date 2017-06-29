@@ -1,12 +1,42 @@
 import {assert, expect} from 'chai';
-import Neode, {Model} from '../src/index';
+import Neode, {Model} from '../../src/index';
 import neo4j from 'neo4j-driver';
 import {Driver} from 'neo4j-driver/lib/v1/driver';
 
 describe('index.js', () => {
-    const instance = require('./instance');
+
+    const connection_string = 'bolt://localhost';
+    const username = 'neo4j';
+    const password = 'neo';
+
+    const instance = new Neode(connection_string, username, password);
+
+    const label = 'SchemaThing';
+
+    instance.model(label, {
+        id: {
+            type: 'string',
+            required: true,
+            unique: true,
+        },
+        name: {
+            type: 'string',
+            required: true
+        },
+        age: {
+            type: 'number',
+            index: true
+        }
+    });
+
 
     it('should instantiate', () => {
+        const connection_string = 'bolt://localhost';
+        const username = 'neo4j';
+        const password = 'neo'
+
+        instance = new Neode(connection_string, username, password);
+
         expect(instance).to.be.an.instanceOf(Neode);
         expect(instance.driver).to.be.an.instanceOf(Driver);
     });
