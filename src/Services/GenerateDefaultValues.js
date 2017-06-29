@@ -33,6 +33,8 @@ function CleanValue(config, value) {
  */
 export default function GenerateDefaultValues(neode, model, properties) {
     const schema = model.schema();
+    let output = {};
+
 
     // Get All Config
     Object.keys(schema).forEach(key => {
@@ -44,16 +46,20 @@ export default function GenerateDefaultValues(neode, model, properties) {
                 break;
         }
 
+        if (properties[ key ]) {
+            output[ key ] = properties[ key ];
+        }
+
         // Set Default Value
-        if (config.default && !properties[ key ]) {
-            properties[ key ] = typeof config.default == 'function' ? config.default() : config.default;
+        if (config.default && !output[ key ]) {
+            output[ key ] = typeof config.default == 'function' ? config.default() : config.default;
         }
 
         // Clean Value
-        if (properties[ key ]) {
-            properties[ key ] = CleanValue(config, properties[ key ]);
+        if (output[ key ]) {
+            output[ key ] = CleanValue(config, output[ key ]);
         }
     });
 
-    return Promise.resolve(properties);
+    return Promise.resolve(output);
 }

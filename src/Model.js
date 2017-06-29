@@ -1,43 +1,8 @@
 import Create from './Services/Create';
+import DeleteAll from './Services/DeleteAll';
 import Node from './Node';
-
-
-class Property {
-    constructor(name, schema) {
-        this._name = name;
-        this._schema = schema;
-
-        // TODO: Clean Up
-        Object.keys(schema).forEach(key => {
-            this['_'+ key] = schema[key];
-        });
-
-    }
-
-    name() {
-        return this._name;
-    }
-
-    type() {
-        return this.schema.type
-    }
-
-    unique() {
-        return this._unique || false;
-    }
-
-    exists() {
-        return this._exists || false;
-    }
-
-    required() {
-        return this._exists || this._required || false;
-    }
-
-    indexed() {
-        return this._index || false;
-    }
-}
+import Relationship, {DIRECTION_BOTH} from './Relationship';
+import Property from './Property';
 
 export default class Model {
     constructor(neode, name, schema) {
@@ -46,8 +11,10 @@ export default class Model {
         this._schema = schema;
 
         this._properties = new Map;
+        this._relationships = new Map;
         this._labels = [ name ];
 
+        // TODO: Clean this up
         for (let key in schema) {
             const value = schema[ key ];
 
@@ -61,8 +28,6 @@ export default class Model {
                     break;
             }
         }
-
-        if (schema.labels) this.setLabels(schema.labels);
     }
 
     /**
@@ -124,6 +89,33 @@ export default class Model {
             .then(node => {
                 return new Node(this._neode, this, node);
             });
+    }
+
+    /**
+     * Delete all nodes for this model
+     *
+     * @return {Promise}
+     */
+    deleteAll() {
+        return DeleteAll(this._neode, this);
+    }
+
+    /**
+     * Add a new relationship
+     *
+     * @param  {String} name                Reference of Relationship
+     * @param  {String} relationship        Internal Relationship type
+     * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
+     * @param  {String|Model|null} target   Target type definition for the
+     * @param  {Object} validation          Property Validation options
+     * @return {Relationship}
+     */
+    relationship(name, relationship, direction = DIRECTION_BOTH, validation = {}) {
+        if (relationship && direction && validation) {
+            this._relationships.set(name, new Relationship(name, relationship, direction, validation));
+        }
+
+        return this._relationships.get(name);
     }
 
 

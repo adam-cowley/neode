@@ -1,17 +1,11 @@
 import {assert, expect} from 'chai';
-import Neode, {Model} from '../../src/index';
-import neo4j from 'neo4j-driver';
-import {Driver} from 'neo4j-driver/lib/v1/driver';
+import Node from '../../src/Node';
+import {ValidationError} from '../../src/ValidationError';
 
-describe('index.js', () => {
+describe('Services/Create.js', () => {
+    const instance = require('../instance');
 
-    const connection_string = 'bolt://localhost';
-    const username = 'neo4j';
-    const password = 'neo';
-
-    const instance = new Neode(connection_string, username, password);
-
-    const label = 'SchemaThing';
+    const label = 'CreateTest';
 
     instance.model(label, {
         id: {
@@ -21,58 +15,50 @@ describe('index.js', () => {
         },
         name: {
             type: 'string',
-            required: true
+            required: true,
+
         },
         age: {
             type: 'number',
-            index: true
+            index: true,
+            default: 30
         }
     });
 
-
-    it('should instantiate', () => {
-        const connection_string = 'bolt://localhost';
-        const username = 'neo4j';
-        const password = 'neo'
-
-        instance = new Neode(connection_string, username, password);
-
-        expect(instance).to.be.an.instanceOf(Neode);
-        expect(instance.driver).to.be.an.instanceOf(Driver);
+    after(done => {
+        instance.deleteAll(label)
+            .then(() => done())
+            .catch(e => done(e));
     });
 
-    it('should run cypher query', (done) => {
-        instance.cypher('MATCH (n) RETURN count(n)')
+    it('should throw a validation error when validation fails', (done) => {
+        instance.create(label, {})
             .then(res => {
-                expect(res.records).to.be.an('array');
-                expect(res.records.length).to.equal(1);
+                done(new Error('Should not be triggered'));
+            })
+            .catch(e => done())
+    });
+
+    it('should create a record with default values and ignore undefined values', (done) => {
+        const data = {
+            id: 'defaultvalues',
+            name: 'neode',
+            ignoreme: 'ignoreme'
+        };
+
+        instance.create(label, data)
+            .then(res => {
+                expect(res).to.be.an.instanceOf(Node);
+                expect(res.get('id')).to.equal(data.id);
+                expect(res.get('name')).to.equal(data.name);
+                expect(res.get('age')).to.equal(30);
+
+                expect(res.get('ignoreme')).not.to.equal(data.ignoreme);
 
                 done();
             })
-            .catch(err => {
-                done(err);
-            });
+            .catch(e => done(e))
     });
 
-    it('should handle error in syntax query', (done) => {
-        instance.cypher('MATCH (n) RETURN coutn(n)')
-            .catch(err => {
-                done();
-            });
-    });
 
-    it('should handle a batch of queries', (done) => {
-        const queries = [
-            'MATCH (n) RETURN count(n)',
-            {query: 'MATCH (n) WHERE n.name = {name} RETURN n', params: {name: 'name'}}
-        ];
-
-        instance.batch(queries)
-            .then(res => {
-                assert.isArray(res)
-                expect(res.length).to.equal(2)
-            })
-            .then(done)
-            .catch(done)
-    });
 });

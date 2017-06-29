@@ -1,9 +1,11 @@
 import {assert, expect} from 'chai';
 import {Model, Node, Errors} from '../src/index';
+import Relationship, {DIRECTION_OUT} from '../src/Relationship';
 import uuid from 'uuid';
 
 describe('Model.js', () => {
     const instance = require('./instance');
+    const label = 'ModelTest';
     const schema = {
         id: 'uuid',
         name: {
@@ -37,23 +39,44 @@ describe('Model.js', () => {
 
     let Thing, created;
 
-    after(function(done) {
-        instance.cypher('MATCH (t:Thing) DELETE t')
-            .then(done())
-            .catch(e => done(e));
-    });
+    // after(function(done) {
+    //     instance.deleteAll(label)
+    //         .then(() => done())
+    //         .catch(e => done(e));
+    // });
 
     it('should register a new model definition', () => {
-        Thing = instance.model('Thing', schema);
+        Thing = instance.model(label, schema);
 
         expect(Thing).to.be.an.instanceOf(Model);
     });
 
     it('should return model definition when no configuration is supplied', () => {
-        const Thing = instance.model('Thing');
+        const Thing = instance.model(label);
 
         expect(Thing).to.be.an.instanceOf(Model);
-        expect(Thing.name()).to.equal('Thing');
+        expect(Thing.name()).to.equal(label);
+    });
+
+    it('should define a new relationship', () => {
+        const rel = instance.model(label).relationship('knows', 'KNOWS', label, DIRECTION_OUT, {
+            since: {
+                type: 'number',
+                required: true,
+            },
+            defaulted: {
+                type: 'string',
+                default: 'default'
+            }
+        });
+
+        expect(rel).to.be.an.instanceOf(Relationship);
+    });
+
+    it('should return a relationship if no extra parameters are passed', () => {
+        const rel = instance.model(label).relationship('knows');
+
+        expect(rel).to.be.an.instanceOf(Relationship);
     });
 
     it('should create a new node with default values', (done) => {
@@ -114,6 +137,23 @@ describe('Model.js', () => {
             .then(done)
             .catch(e => done(e));
     });
+
+    it('should create a relationship', (done) => {
+        instance.model(label).create({
+            id: uuid.v4(),
+            name: 'Relation',
+            age: 88,
+            living: true
+        })
+        .then(relation => {
+            return created.relateTo(relation, 'knows');
+        })
+        .then(res => {
+            console.log(res);
+            done();
+        })
+        .catch(e => done(e));
+    })
 
     it('should delete a node', (done) => {
         const id = created.idInt();

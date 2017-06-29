@@ -2,6 +2,7 @@ import neo4j from 'neo4j-driver';
 import Model from './Model';
 import Node from './Node';
 import Schema from './Schema';
+import TransactionError from './TransactionError';
 
 export default class Neode {
 
@@ -21,6 +22,23 @@ export default class Neode {
         this.models = new Map();
         this.setEnterprise(enterprise);
         this.schema = new Schema(this);
+    }
+
+    /**
+     * @static
+     * Generate Neode instance using .env configuration
+     *
+     * @return {Neode}
+     */
+    static fromEnv() {
+        require('dotenv').config();
+
+        const connection_string = `${process.env.NEO4J_PROTOCOL}://${process.env.NEO4J_HOST}`;
+        const username = process.env.NEO4J_USERNAME;
+        const password = process.env.NEO4J_PASSWORD;
+        const enterprise = !!process.env.NEO4J_ENTERPRISE;
+
+        return new Neode(connection_string, username, password, enterprise);
     }
 
     /**
@@ -66,17 +84,27 @@ export default class Neode {
      * @return {Node}
      */
     create(model, properties) {
-        return this.get(model).create(properties);
+        return this.models.get(model).create(properties);
     }
 
     /**
      * Delete a Node from the graph
      *
      * @param  {Node} node
-     * @return {void}
+     * @return {Promise}
      */
     delete(node) {
         return node.delete();
+    }
+
+    /**
+     * Delete all node labels
+     *
+     * @param  {String} label
+     * @return {Promise}
+     */
+    deleteAll(model) {
+        return this.models.get(model).deleteAll();
     }
 
     /**
@@ -151,11 +179,10 @@ export default class Neode {
 
         }))
         .then(() => {
-             if (errors.length) {
+            if (errors.length) {
                 tx.rollback();
 
-                const error = new Error('Transaction Failed');
-                error.errors = errors;
+                const error = new TransactionError(errors);
 
                 throw error;
             }

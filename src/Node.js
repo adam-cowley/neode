@@ -76,4 +76,22 @@ export default class Node {
             })
     }
 
+    /**
+     * Relate this node to another based on the type
+     *
+     * @param  {Node}   node Node to relate to
+     * @param  {String} type Type of Relationship definition
+     * @return {Promise}
+     */
+    relateTo(node, type) {
+        const relationship = this._relationships.get(type);
+
+        if ( !relationship instanceof Relationship ) {
+            throw new Error(`Cannot find relationship with type ${type}`);
+        }
+
+
+        return RelateTo(this._neode, this, node, type)
+    }
+
 }
