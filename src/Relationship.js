@@ -1,65 +1,91 @@
-export const DIRECTION_IN = 'DIRECTION_IN';
-export const DIRECTION_OUT = 'DIRECTION_OUT';
-export const DIRECTION_BOTH = 'DIRECTION_BOTH';
 
 export default class Relationship {
 
     /**
      * Constructor
-     * @param  {String} type                Reference of Relationship
-     * @param  {String} relationship        Internal Neo4j Relationship type (ie 'KNOWS')
-     * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
-     * @param  {String|Model|null} target   Target type definition for the
-     * @param  {Object} schema              Relationship definition schema
+     *
+     * @param  {Neode}            neode         Neode Instance
+     * @param  {RelationshipType} type          Relationship Type definition
+     * @param  {Relationship}     relationship  Neo4j Relationship
+     * @param  {Node}             from          Start node for the relationship
+     * @param  {Node}             to            End node for the relationship
      * @return {Relationship}
      */
-    constructor(type, relationship, direction, target, schema = {}) {
+    constructor(neode, type, relationship, from, to) {
+        this._neode = neode;
         this._type = type;
         this._relationship = relationship;
-        this._direction = direction;
-        this._target = target;
+        this._from = from;
+        this._to = to;
+        this._type = type;
 
-        this._properties = new Map;
-
-        for (let key in schema) {
-            const value = schema[ key ];
-
-            // TODO:
-            switch ( key ) {
-                default:
-                    this._properties.set(key, new Property(key, value));
-                    break;
-            }
-        }
-
-        this._properties = properties;
+        this._deleted = false;
     }
 
     /**
-     * Get Internal Relationship Type
-     *
-     * @return {String}
-     */
-    relationship() {
-        return this._relationship;
-    }
-
-    /**
-     * Get Direction of Node
-     *
-     * @return {String}
-     */
-    direction() {
-        return this._direction;
-    }
-
-    /**
-     * Get the target node definition
+     * Relationship Type definition for this node
      *
      * @return {Model}
      */
-    target() {
-        return this._target;
+    type() {
+        return this._type;
     }
+
+    /**
+     * Get Internal Relationship ID
+     *
+     * @return {int}
+     */
+    id() {
+        return this._relationship.identity.toNumber();
+    }
+
+    /**
+     * Return Internal Relationship ID as Neo4j Integer
+     *
+     * @return {Integer}
+     */
+    idInt() {
+        return this._relationship.identity
+    }
+
+    /**
+     * Get Properties for this Relationship
+     *
+     * @return {Object}
+     */
+    properties() {
+        return this._relationship.properties;
+    }
+
+    /**
+     * Get a property for this node
+     *
+     * @param  {String} property Name of property
+     * @param  {or}     default  Default value to supply if none exists
+     * @return {mixed}
+     */
+    get(property, or = null) {
+        return this._relationship.properties[property] || or;
+    }
+
+    /**
+     * Get originating node for this relationship
+     *
+     * @return Node
+     */
+    from() {
+        return this._from;
+    }
+
+    /**
+     * Get destination node for this relationship
+     *
+     * @return Node
+     */
+    to() {
+        return this._to;
+    }
+
 
 }

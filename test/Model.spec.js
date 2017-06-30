@@ -1,6 +1,7 @@
 import {assert, expect} from 'chai';
 import {Model, Node, Errors} from '../src/index';
-import Relationship, {DIRECTION_OUT} from '../src/Relationship';
+import RelationshipType, {DIRECTION_IN} from '../src/RelationshipType';
+import Relationship from '../src/Relationship';
 import uuid from 'uuid';
 
 describe('Model.js', () => {
@@ -33,7 +34,18 @@ describe('Model.js', () => {
         knows: {
             type: 'relationship',
             relationship: 'KNOWS',
-            direction: 'OUT'
+            direction: 'OUT',
+            target: label,
+            properties: {
+                since: {
+                    type: 'number',
+                    required: true,
+                },
+                defaulted: {
+                    type: 'string',
+                    default: 'default',
+                }
+            }
         }
     };
 
@@ -59,7 +71,7 @@ describe('Model.js', () => {
     });
 
     it('should define a new relationship', () => {
-        const rel = instance.model(label).relationship('knows', 'KNOWS', label, DIRECTION_OUT, {
+        const rel = instance.model(label).relationship('known_by', 'KNOWN_BY', DIRECTION_IN, label, {
             since: {
                 type: 'number',
                 required: true,
@@ -70,13 +82,13 @@ describe('Model.js', () => {
             }
         });
 
-        expect(rel).to.be.an.instanceOf(Relationship);
+        expect(rel).to.be.an.instanceOf(RelationshipType);
     });
 
     it('should return a relationship if no extra parameters are passed', () => {
-        const rel = instance.model(label).relationship('knows');
+        const rel = instance.model(label).relationship('known_by');
 
-        expect(rel).to.be.an.instanceOf(Relationship);
+        expect(rel).to.be.an.instanceOf(RelationshipType);
     });
 
     it('should create a new node with default values', (done) => {
@@ -138,22 +150,66 @@ describe('Model.js', () => {
             .catch(e => done(e));
     });
 
-    it('should create a relationship', (done) => {
+    it('should create an outgoing relationship', (done) => {
+        let relation;
+        const properties = {
+            since: 2017
+        };
+
         instance.model(label).create({
             id: uuid.v4(),
             name: 'Relation',
             age: 88,
             living: true
         })
-        .then(relation => {
-            return created.relateTo(relation, 'knows');
+        .then(res => {
+            relation = res;
+
+            return created.relateTo(relation, 'knows', properties);
         })
         .then(res => {
-            console.log(res);
+            expect(res).to.be.an.instanceOf(Relationship);
+            expect(res.type().relationship()).to.equal('KNOWS');
+            expect(res.type().type()).to.equal('knows');
+            expect(res.from()).to.equal(created);
+            expect(res.to()).to.equal(relation);
+            expect(res.properties()).to.be.an('object');
+            expect(res.get('since')).to.equal(properties.since);
+            expect(res.get('defaulted')).to.equal(schema.knows.properties.defaulted.default);
+
             done();
         })
         .catch(e => done(e));
-    })
+    });
+
+    it('should create an incoming relationship and invert from and to properties', (done) => {
+        let relation;
+        const properties = {
+            since: 2017
+        };
+
+        instance.model(label).create({
+            id: uuid.v4(),
+            name: 'Incoming',
+            age: 100,
+            living: true
+        })
+        .then(res => {
+            relation = res;
+
+            return created.relateTo(relation, 'known_by', properties);
+        })
+        .then(res => {
+            expect(res).to.be.an.instanceOf(Relationship);
+            expect(res.type().relationship()).to.equal('KNOWN_BY');
+            expect(res.type().type()).to.equal('known_by');
+            expect(res.to()).to.equal(created);
+            expect(res.from()).to.equal(relation);
+
+            done();
+        })
+        .catch(e => done(e));
+    });
 
     it('should delete a node', (done) => {
         const id = created.idInt();

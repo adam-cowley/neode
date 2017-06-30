@@ -18,6 +18,11 @@ function CleanValue(config, value) {
         case 'integer':
             value = parseInt(value);
             break;
+
+        case 'bool':
+        case 'boolean':
+            value = !! value;
+            break;
     }
 
     return value;
@@ -34,7 +39,6 @@ function CleanValue(config, value) {
 export default function GenerateDefaultValues(neode, model, properties) {
     const schema = model.schema();
     let output = {};
-
 
     // Get All Config
     Object.keys(schema).forEach(key => {

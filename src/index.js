@@ -18,10 +18,10 @@ export default class Neode {
     constructor(connection_string, username, password, enterprise = false) {
         const auth = username && password ? neo4j.auth.basic(username, password) : null;
         this.driver = new neo4j.driver(connection_string, auth);
-
         this.models = new Map();
-        this.setEnterprise(enterprise);
         this.schema = new Schema(this);
+
+        this.setEnterprise(enterprise);
     }
 
     /**
@@ -33,10 +33,11 @@ export default class Neode {
     static fromEnv() {
         require('dotenv').config();
 
-        const connection_string = `${process.env.NEO4J_PROTOCOL}://${process.env.NEO4J_HOST}`;
+        const connection_string = `${process.env.NEO4J_PROTOCOL}://${process.env.NEO4J_HOST}:${process.env.NEO4J_PORT}`;
         const username = process.env.NEO4J_USERNAME;
         const password = process.env.NEO4J_PASSWORD;
         const enterprise = !!process.env.NEO4J_ENTERPRISE;
+
 
         return new Neode(connection_string, username, password, enterprise);
     }
@@ -105,6 +106,19 @@ export default class Neode {
      */
     deleteAll(model) {
         return this.models.get(model).deleteAll();
+    }
+
+    /**
+     * Relate two nodes based on the type
+     *
+     * @param  {Node}   from        Origin node
+     * @param  {Node}   to          Target node
+     * @param  {String} type        Type of Relationship definition
+     * @param  {Object} properties  Properties to set against the relationships
+     * @return {Promise}
+     */
+    relate(from, to, type, properties) {
+        return from.relateTo(to, type, properties);
     }
 
     /**

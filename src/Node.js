@@ -1,5 +1,7 @@
 import Update from './Services/Update';
 import Delete from './Services/Delete';
+import RelateTo from './Services/RelateTo';
+import RelationshipType from './RelationshipType';
 
 export default class Node {
 
@@ -17,6 +19,15 @@ export default class Node {
         this._node = node;
 
         this._deleted = false;
+    }
+
+    /**
+     * Model definition for this node
+     *
+     * @return {Model}
+     */
+    model() {
+        return this._model;
     }
 
     /**
@@ -79,19 +90,20 @@ export default class Node {
     /**
      * Relate this node to another based on the type
      *
-     * @param  {Node}   node Node to relate to
-     * @param  {String} type Type of Relationship definition
+     * @param  {Node}   node        Node to relate to
+     * @param  {String} type        Type of Relationship definition
+     * @param  {Object} properties  Properties to set against the relationships
      * @return {Promise}
      */
-    relateTo(node, type) {
-        const relationship = this._relationships.get(type);
+    relateTo(node, type, properties) {
+        const relationship = this.model().relationships().get(type);
 
-        if ( !relationship instanceof Relationship ) {
+        if ( !relationship instanceof RelationshipType ) {
             throw new Error(`Cannot find relationship with type ${type}`);
         }
 
 
-        return RelateTo(this._neode, this, node, type)
+        return RelateTo(this._neode, this, node, relationship, properties);
     }
 
 }

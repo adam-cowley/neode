@@ -1,7 +1,7 @@
 import Create from './Services/Create';
 import DeleteAll from './Services/DeleteAll';
 import Node from './Node';
-import Relationship, {DIRECTION_BOTH} from './Relationship';
+import RelationshipType, {DIRECTION_BOTH} from './RelationshipType';
 import Property from './Property';
 
 export default class Model {
@@ -24,7 +24,14 @@ export default class Model {
                     break;
 
                 default:
-                    this._properties.set(key, new Property(key, value));
+                    if ( value.type && value.type == 'relationship' ) {
+                        const {relationship, direction, target, properties} = value;
+
+                        this.relationships().set(key, new RelationshipType(key, relationship, direction, target, properties));
+                    }
+                    else {
+                        this._properties.set(key, new Property(key, value));
+                    }
                     break;
             }
         }
@@ -110,12 +117,21 @@ export default class Model {
      * @param  {Object} validation          Property Validation options
      * @return {Relationship}
      */
-    relationship(name, relationship, direction = DIRECTION_BOTH, validation = {}) {
+    relationship(name, relationship, direction = DIRECTION_BOTH, target, validation = {}) {
         if (relationship && direction && validation) {
-            this._relationships.set(name, new Relationship(name, relationship, direction, validation));
+            this._relationships.set(name, new RelationshipType(name, relationship, direction, target, validation));
         }
 
         return this._relationships.get(name);
+    }
+
+    /**
+     * Get all defined Relationships  for this Model
+     *
+     * @return {Map}
+     */
+    relationships() {
+        return this._relationships;
     }
 
 
