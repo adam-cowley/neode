@@ -12,7 +12,7 @@ gulp.task('tdd', function() {
             return gulp.src(file.path)
                 .pipe(mocha({
                     single: true,
-                    reporter: 'list',
+                    // reporter: 'list',
                     compilers: [
                         'js:babel-core/register'
                     ]
