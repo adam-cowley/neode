@@ -6,7 +6,7 @@ import RelationshipType from './RelationshipType';
 export default class Node {
 
     /**
-     * Constructor
+     * @constructor
      *
      * @param  {Neode} neode  Neode Instance
      * @param  {Model} model  Model definition
@@ -57,6 +57,15 @@ export default class Node {
      */
     get(property, or = null) {
         return this._node.properties[property] || or;
+    }
+
+    /**
+     * Get all properties for this node
+     *
+     * @return {Object}
+     */
+    properties() {
+        return this._node.properties;
     }
 
     /**

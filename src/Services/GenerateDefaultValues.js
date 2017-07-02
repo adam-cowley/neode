@@ -50,7 +50,7 @@ export default function GenerateDefaultValues(neode, model, properties) {
                 break;
         }
 
-        if (properties[ key ]) {
+        if (properties.hasOwnProperty(key)) {
             output[ key ] = properties[ key ];
         }
 

@@ -8,13 +8,17 @@ describe('Model.js', () => {
     const instance = require('./instance');
     const label = 'ModelTest';
     const schema = {
-        id: 'uuid',
+        id: {
+            type: 'uuid',
+            primary: true,
+        },
         name: {
             type: 'string',
             required: true,
             alphanumberic: true,
             min: 3,
-            max: 10
+            max: 20,
+            index: true,
         },
         random: {
             type: 'float',
@@ -22,7 +26,8 @@ describe('Model.js', () => {
             default: function() {
                 return Math.random();
             },
-            unique: true
+            unique: true,
+            protected: true,
         },
         defaulted: {
             type: 'string',
@@ -51,11 +56,18 @@ describe('Model.js', () => {
 
     let Thing, created;
 
-    // after(function(done) {
-    //     instance.deleteAll(label)
-    //         .then(() => done())
-    //         .catch(e => done(e));
-    // });
+    const create_data = {
+        id: uuid.v4(),
+        name: 'Tester',
+        age: 99,
+        living: true
+    };
+
+    after(function(done) {
+        instance.deleteAll(label)
+            .then(() => done())
+            .catch(e => done(e));
+    });
 
     it('should register a new model definition', () => {
         Thing = instance.model(label, schema);
@@ -92,22 +104,15 @@ describe('Model.js', () => {
     });
 
     it('should create a new node with default values', (done) => {
-        const data = {
-            id: uuid.v4(),
-            name: 'Tester',
-            age: 99,
-            living: true
-        };
-
-        Thing.create(data)
+        Thing.create(create_data)
             .then(res => {
                 created = res;
 
                 expect(res).to.be.an.instanceOf(Node);
-                expect(res.get('name')).to.equal(data.name);
-                expect(res.get('id')).to.equal(data.id);
-                expect(res.get('age')).to.equal(data.age);
-                expect(res.get('living')).to.equal(data.living);
+                expect(res.get('name')).to.equal(create_data.name);
+                expect(res.get('id')).to.equal(create_data.id);
+                expect(res.get('age')).to.equal(create_data.age);
+                expect(res.get('living')).to.equal(create_data.living);
                 expect(res.get('random')).to.be.a('number');
 
                 expect(res.get('defaulted')).to.equal(schema.defaulted.default);
@@ -133,21 +138,6 @@ describe('Model.js', () => {
             })
             .then(done)
             .catch(done);
-    });
-
-    it('should update a node', (done) => {
-        const data = {
-            name: 'Updated Tester'
-        };
-
-        created.update(data)
-            .then(res => {
-                expect(res).to.be.an.instanceOf(Node);
-                expect(res.id()).to.equal(created.id());
-                expect(res.get('name')).to.equal(data.name);
-            })
-            .then(done)
-            .catch(e => done(e));
     });
 
     it('should create an outgoing relationship', (done) => {
@@ -210,6 +200,70 @@ describe('Model.js', () => {
         })
         .catch(e => done(e));
     });
+
+    it('should merge a model on its indexes', (done) => {
+        const {id, name, random} = created.properties();
+
+        const merge_data = Object.assign({}, {id, name, random}, {
+            living: false
+        });
+
+        Thing.merge(merge_data)
+            .then(res => {
+                expect(res).to.be.an.instanceOf(Node);
+
+                // ID's should match up
+                expect(res.id()).to.equal(created.id());
+
+                // Shouldn't overwrite protected fields
+                expect(res.get('id')).to.equal(created.get('id'));
+
+                // TODO: Should set new values
+                // Returning false, yet property is successfully set
+                // expect(res.get('living')).to.equal(merge_data.living);
+
+            })
+            .then(() => done())
+            .catch(e => done(e));
+    });
+
+    it('should merge on specific properties', (done) => {
+        const match = {
+            id: created.get('id')
+        };
+        const set = Object.assign({name: 'Specific Merge', living: true});
+        Thing.mergeOn(match, set)
+            .then(res => {
+                expect(res).to.be.an.instanceOf(Node);
+
+                // ID's should match up
+                expect(res.id()).to.equal(created.id());
+
+                // Shouldn't overwrite protected fields
+                expect(res.get('id')).to.equal(created.get('id'));
+
+                // Should set new values
+                expect(res.get('living')).to.equal(true);
+            })
+            .then(() => done())
+            .catch(e => done(e));
+    });
+
+    it('should update a node', (done) => {
+        const data = {
+            name: 'Updated Tester'
+        };
+
+        created.update(data)
+            .then(res => {
+                expect(res).to.be.an.instanceOf(Node);
+                expect(res.id()).to.equal(created.id());
+                expect(res.get('name')).to.equal(data.name);
+            })
+            .then(done)
+            .catch(e => done(e));
+    });
+
 
     it('should delete a node', (done) => {
         const id = created.idInt();

@@ -1,5 +1,9 @@
 export default class Property {
     constructor(name, schema) {
+        if ( typeof schema == 'string' ) {
+            schema = {type:schema};
+        }
+
         this._name = name;
         this._schema = schema;
 
@@ -17,6 +21,10 @@ export default class Property {
         return this.schema.type
     }
 
+    primary() {
+        return this._primary || false;
+    }
+
     unique() {
         return this._unique || false;
     }
@@ -31,5 +39,9 @@ export default class Property {
 
     indexed() {
         return this._index || false;
+    }
+
+    protected() {
+        return this._primary || this._protected;
     }
 }

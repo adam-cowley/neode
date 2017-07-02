@@ -136,7 +136,6 @@ instance.model('Person').relationship('knows', 'KNOWS', 'out', 'Person', {
 ```
 
 ## Creating a Node
-Nodes can be created against
 
 ```
 instance.create(label, properties);
@@ -144,10 +143,13 @@ instance.model(label).create(properties);
 ```
 
 ```
-const adam = instance.create('Person', {
+instance.create('Person', {
     name: 'Adam'
+})
+.then(adam => {
+    console.log(adam.get('name')); // 'Adam'
 });
-console.log(adam.get('name')); // 'Adam'
+
 ```
 
 ## Merging a Node
@@ -160,6 +162,7 @@ instance.model(label).merge(properties);
 
 ```
 instance.merge('Person', {
+    person_id: 1234,
     name: 'Adam',
 });
 ```
@@ -172,25 +175,27 @@ instance.mergeOn(label, match, set);
 instance.model(label).mergeOn(match, set);
 ```
 ```
-instance.merge('Person', {person_id: 1234}, {
-    name: 'Adam',
-});
+instance.mergeOn('Person', {person_id: 1234}, {name: 'Adam'});
 ```
 
 ## TODO
-
-- Housekeeping
-  - npm run build
-  - Submit to npm
-  - Tests/Code Coverage
 
 - Node
   - Create node with properties
   - Create
   - Merge on Indexes
   - Cast Primary Key as required & unique
+  - Create Relationships On Create/Merge
+  - Delete Node dependencies (delete/deleteAll)
 
 - Relationships
   - Relationship Constraints
   - Define Dependencies
   - Delete dependencies when deleting a node
+
+- Query Builder
+
+- Housekeeping
+  - npm run build
+  - Submit to npm
+  - Tests/Code Coverage
