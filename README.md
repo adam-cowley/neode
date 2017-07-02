@@ -112,6 +112,12 @@ instance.model('Person', {
 Validation is provided by Joi.  Certain data types (float, integer, boolean) will also be type cast.
 
 - required
+- string
+  - min
+  - max
+- number
+  - min
+  - max
 
 
 ### Defining Relationships
@@ -178,13 +184,62 @@ instance.model(label).mergeOn(match, set);
 instance.mergeOn('Person', {person_id: 1234}, {name: 'Adam'});
 ```
 
+## Updating a Node
+You can update a Node instance directly by calling the `update()` method.
+
+```
+const adam = instance.create('Person', {name: 'Adam'});
+adam.update({age: 29});
+```
+
+## Creating a Relationships
+You can relate two nodes together by calling the `relateTo()` method.
+
+```
+model.relateTo(other, type, properties)
+```
+```
+const adam = instance.create('Person', {name: 'Adam'});
+const joe = instance.create('Person', {name: 'Joe'});
+
+adam.relateTo(joe, 'knows', {since: 2010})
+    .then(res => {
+        console.log(rel.from().get('name'), ' has known ', rel.to().get('name'), 'since', rel.get('since'));  // Adam has known Joe since 2010
+    });
+
+```
+
+**Note:** when creating a relationship defined as `in` (`DIRECTION_IN`), from `from()` and `to()` properties will be inversed regardless of which model the relationship is created by.
+
+## Deleting a node
+You can delete a Node instance directly by calling the `delete()` method.
+
+```
+const adam = instance.create('Person', {name: 'Adam'});
+adam.delete();
+```
+
+## Deleting a set of nodes
+TODO
+```
+
+instance.delete(label, where)
+```
+
+```
+instance.delete('Person', {living: false});
+```
+
+## Deleting all nodes of a given type
+```
+instance.deleteAll('Person');
+  .then(() => console.log('Everyone has been deleted'));
+```
+
+
 ## TODO
 
 - Node
-  - Create node with properties
-  - Create
-  - Merge on Indexes
-  - Cast Primary Key as required & unique
   - Create Relationships On Create/Merge
   - Delete Node dependencies (delete/deleteAll)
 
