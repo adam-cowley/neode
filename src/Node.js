@@ -115,4 +115,28 @@ export default class Node {
         return RelateTo(this._neode, this, node, relationship, properties);
     }
 
+    /**
+     * When converting to string, return this model's primary key
+     *
+     * @return {String}
+     */
+    toString() {
+        return this.get( this.model().primaryKey() );
+    }
+
+    /**
+     * Convert Node to Object
+     *
+     * @return {Promise}
+     */
+    toJson() {
+        const output = Object.assign({}, {'_id': this.id()}, this._node.properties);
+
+        this.model().hidden().forEach(key => {
+            delete output[ key ]
+        });
+
+        return Promise.resolve(output);
+    }
+
 }

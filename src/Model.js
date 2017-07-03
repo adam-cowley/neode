@@ -20,6 +20,7 @@ export default class Model {
 
         this._unique = [];
         this._indexed = [];
+        this._hidden = [];
 
         // TODO: Clean this up
         for (let key in schema) {
@@ -119,6 +120,11 @@ export default class Model {
             this._indexed.push(key);
         }
 
+        // Should this property be hidden during JSON conversion?
+        if ( property.hidden() ) {
+            this._hidden.push(key);
+        }
+
         return this;
     }
 
@@ -156,6 +162,16 @@ export default class Model {
      */
     primaryKey() {
         return this._primary_key;
+    }
+
+
+    /**
+     * Get array of hidden fields
+     *
+     * @return {String[]}
+     */
+    hidden() {
+        return this._hidden;
     }
 
     /**

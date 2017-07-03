@@ -44,4 +44,8 @@ export default class Property {
     protected() {
         return this._primary || this._protected;
     }
+
+    hidden() {
+        return this._hidden;
+    }
 }

@@ -28,6 +28,7 @@ describe('Model.js', () => {
             },
             unique: true,
             protected: true,
+            hidden: true,
         },
         defaulted: {
             type: 'string',
@@ -263,6 +264,31 @@ describe('Model.js', () => {
             .then(done)
             .catch(e => done(e));
     });
+
+    it('should convert to string and return the primary key', () => {
+        const str = created.toString();
+
+        expect(str).to.be.a('string');
+        expect(str).to.equal(created.get('id'));
+    });
+
+    it('should convert to JSON object and hide hidden properties', (done) => {
+        const expected = ['_id', 'id', 'name', 'living', 'defaulted', 'age'];
+        const hidden = ['random'];
+
+        created.toJson()
+            .then(json => {
+                expected.forEach(key => {
+                    expect(json).to.have.property(key);
+                });
+
+                hidden.forEach(key => {
+                    expect(json).to.not.have.property(key);
+                });
+            })
+            .then(() => done())
+            .catch(e => done(e));
+    })
 
 
     it('should delete a node', (done) => {
