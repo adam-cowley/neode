@@ -66,14 +66,32 @@ var Neode = function () {
 
 
     _createClass(Neode, [{
-        key: 'setEnterprise',
+        key: 'with',
 
+
+        /**
+         * [with description]
+         * @param  {Object} models   Map of models with their schema.  ie {Movie: {...}}
+         * @return {Neode}
+         */
+        value: function _with(models) {
+            var _this = this;
+
+            Object.keys(models).forEach(function (model) {
+                _this.model(model, models[model]);
+            });
+
+            return this;
+        }
 
         /**
          * Set Enterprise Mode
          *
          * @param {Bool} enterprise
          */
+
+    }, {
+        key: 'setEnterprise',
         value: function setEnterprise(enterprise) {
             this._enterprise = enterprise;
         }

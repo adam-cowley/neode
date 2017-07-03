@@ -11,4 +11,3 @@ function Update(neode, model, node, properties) {
         return res.records[0].get('node');
     });
 }
-module.exports = exports['default'];

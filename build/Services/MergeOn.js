@@ -75,4 +75,3 @@ function MergeOn(neode, model, merge_on, properties) {
         });
     });
 }
-module.exports = exports['default'];

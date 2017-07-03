@@ -32,4 +32,3 @@ function Create(neode, model, properties) {
         });
     });
 }
-module.exports = exports['default'];

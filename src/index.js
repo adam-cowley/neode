@@ -43,6 +43,19 @@ export default class Neode {
     }
 
     /**
+     * [with description]
+     * @param  {Object} models   Map of models with their schema.  ie {Movie: {...}}
+     * @return {Neode}
+     */
+    with(models) {
+        Object.keys(models).forEach(model => {
+            this.model(model, models[ model ]);
+        });
+
+        return this;
+    }
+
+    /**
      * Set Enterprise Mode
      *
      * @param {Bool} enterprise

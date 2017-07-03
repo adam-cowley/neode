@@ -48,6 +48,25 @@ import Neode from 'neode';
 const instance = new Neode.fromEnv();
 ```
 
+## Loading `with` Models
+
+You can use the `with()` method to load multipe models at once.
+
+```javascript
+// const neode = require('neode')
+const neode = require('../neode/build')
+    .fromEnv()
+    .with({
+        Movie: require('./models/Movie'),
+        Person: require('./models/Person')
+    });
+
+```
+
+## Load Directory
+
+TODO
+
 ## Schema
 
 Neode will install the schema created by the constraints defined in your Node definitions.

@@ -203,4 +203,3 @@ var Node = function () {
 }();
 
 exports.default = Node;
-module.exports = exports['default'];
