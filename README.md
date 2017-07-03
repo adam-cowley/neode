@@ -1,6 +1,6 @@
 # Neode
 
-Neode is a Neo4j ORM for Node JS.
+Neode is a Neo4j OGM for Node JS.
 
 - [Getting Started](#getting-started)
 - [Reading from the Graph](#reading)
