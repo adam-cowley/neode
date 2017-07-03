@@ -222,3 +222,5 @@ export {
     Model,
     Node
 };
+
+module.exports = Neode;

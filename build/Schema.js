@@ -97,3 +97,4 @@ var Schema = function () {
 }();
 
 exports.default = Schema;
+module.exports = exports['default'];

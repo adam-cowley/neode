@@ -54,3 +54,4 @@ function RelateTo(neode, from, to, relationship, properties) {
         });
     });
 }
+module.exports = exports['default'];

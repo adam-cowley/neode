@@ -332,3 +332,4 @@ var Model = function () {
 }();
 
 exports.default = Model;
+module.exports = exports['default'];

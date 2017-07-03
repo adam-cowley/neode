@@ -29,3 +29,4 @@ var ValidationError = function (_Error) {
 }(Error);
 
 exports.default = ValidationError;
+module.exports = exports['default'];

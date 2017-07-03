@@ -103,3 +103,4 @@ function Validator(neode, model, properties) {
         });
     });
 }
+module.exports = exports['default'];

@@ -286,3 +286,6 @@ var Neode = function () {
 exports.default = Neode;
 exports.Model = _Model2.default;
 exports.Node = _Node2.default;
+
+
+module.exports = Neode;

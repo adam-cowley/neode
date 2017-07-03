@@ -127,3 +127,4 @@ var Relationship = function () {
 }();
 
 exports.default = Relationship;
+module.exports = exports["default"];

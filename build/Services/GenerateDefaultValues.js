@@ -78,3 +78,4 @@ function GenerateDefaultValues(neode, model, properties) {
 
     return Promise.resolve(output);
 }
+module.exports = exports['default'];

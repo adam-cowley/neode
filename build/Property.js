@@ -78,3 +78,4 @@ var Property = function () {
 }();
 
 exports.default = Property;
+module.exports = exports['default'];

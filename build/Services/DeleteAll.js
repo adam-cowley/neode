@@ -11,3 +11,4 @@ function DeleteAll(neode, model) {
 
     return neode.cypher(query);
 }
+module.exports = exports['default'];

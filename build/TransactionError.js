@@ -28,3 +28,4 @@ var TransactionError = function (_Error) {
 }(Error);
 
 exports.default = TransactionError;
+module.exports = exports['default'];

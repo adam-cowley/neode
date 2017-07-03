@@ -9,3 +9,4 @@ function Delete(neode, node) {
 
     return neode.cypher(query, { identity: node.identity });
 }
+module.exports = exports["default"];
