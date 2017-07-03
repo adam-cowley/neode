@@ -142,6 +142,33 @@ var Neode = function () {
         }
 
         /**
+         * Merge a node based on the defined indexes
+         *
+         * @param  {Object} properties
+         * @return {Promise}
+         */
+
+    }, {
+        key: 'merge',
+        value: function merge(model, properties) {
+            return this.model(model).merge(properties);
+        }
+
+        /**
+         * Merge a node based on the supplied properties
+         *
+         * @param  {Object} match Specific properties to merge on
+         * @param  {Object} set   Properties to set
+         * @return {Promise}
+         */
+
+    }, {
+        key: 'mergeOn',
+        value: function mergeOn(model, match, set) {
+            return this.model(model).mergeOn(match, set);
+        }
+
+        /**
          * Delete a Node from the graph
          *
          * @param  {Node} node

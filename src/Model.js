@@ -214,13 +214,13 @@ export default class Model {
     /**
      * Merge a node based on the supplied properties
      *
-     * @param  {Object} merge Specific properties to merge on
+     * @param  {Object} match Specific properties to merge on
      * @param  {Object} set   Properties to set
      * @return {Promise}
      */
-    mergeOn(merge, set) {
-        const merge_on = Object.keys(merge);
-        const properties = Object.assign({}, merge, set);
+    mergeOn(match, set) {
+        const merge_on = Object.keys(match);
+        const properties = Object.assign({}, match, set);
 
         return MergeOn(this._neode, this, merge_on, properties)
             .then(node => {

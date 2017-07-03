@@ -101,6 +101,28 @@ export default class Neode {
         return this.models.get(model).create(properties);
     }
 
+
+    /**
+     * Merge a node based on the defined indexes
+     *
+     * @param  {Object} properties
+     * @return {Promise}
+     */
+    merge(model, properties) {
+        return this.model(model).merge(properties);
+    }
+
+    /**
+     * Merge a node based on the supplied properties
+     *
+     * @param  {Object} match Specific properties to merge on
+     * @param  {Object} set   Properties to set
+     * @return {Promise}
+     */
+    mergeOn(model, match, set) {
+        return this.model(model).mergeOn(match, set);
+    }
+
     /**
      * Delete a Node from the graph
      *

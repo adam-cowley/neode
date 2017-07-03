@@ -297,18 +297,18 @@ var Model = function () {
         /**
          * Merge a node based on the supplied properties
          *
-         * @param  {Object} merge Specific properties to merge on
+         * @param  {Object} match Specific properties to merge on
          * @param  {Object} set   Properties to set
          * @return {Promise}
          */
 
     }, {
         key: 'mergeOn',
-        value: function mergeOn(merge, set) {
+        value: function mergeOn(match, set) {
             var _this3 = this;
 
-            var merge_on = Object.keys(merge);
-            var properties = Object.assign({}, merge, set);
+            var merge_on = Object.keys(match);
+            var properties = Object.assign({}, match, set);
 
             return (0, _MergeOn2.default)(this._neode, this, merge_on, properties).then(function (node) {
                 return new _Node2.default(_this3._neode, _this3, node);
