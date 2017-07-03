@@ -8,6 +8,8 @@ describe('Model.js', () => {
     const instance = require('./instance');
     const label = 'ModelTest';
     const schema = {
+        labels: ['Test', 'ModelTest'],
+
         id: {
             type: 'uuid',
             primary: true,
@@ -74,6 +76,7 @@ describe('Model.js', () => {
         Thing = instance.model(label, schema);
 
         expect(Thing).to.be.an.instanceOf(Model);
+        expect(Thing.labels()).to.be.an('array');
     });
 
     it('should return model definition when no configuration is supplied', () => {

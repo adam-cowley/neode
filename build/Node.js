@@ -150,22 +150,25 @@ var Node = function () {
         /**
          * Relate this node to another based on the type
          *
-         * @param  {Node}   node        Node to relate to
-         * @param  {String} type        Type of Relationship definition
-         * @param  {Object} properties  Properties to set against the relationships
+         * @param  {Node}   node            Node to relate to
+         * @param  {String} type            Type of Relationship definition
+         * @param  {Object} properties      Properties to set against the relationships
+         * @param  {Boolean} force_create   Force the creation a new relationship? If false, the relationship will be merged
          * @return {Promise}
          */
 
     }, {
         key: 'relateTo',
         value: function relateTo(node, type, properties) {
+            var force_create = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;
+
             var relationship = this.model().relationships().get(type);
 
             if (!relationship instanceof _RelationshipType2.default) {
                 throw new Error('Cannot find relationship with type ' + type);
             }
 
-            return (0, _RelateTo2.default)(this._neode, this, node, relationship, properties);
+            return (0, _RelateTo2.default)(this._neode, this, node, relationship, properties, force_create);
         }
 
         /**

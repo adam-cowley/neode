@@ -145,10 +145,111 @@ instance.model('Person').relationship('knows', 'KNOWS', 'out', 'Person', {
     }
 });
 ```
+### Extending a Schema definition
+**TODO** You can inherit the schema of a class and extend by calling the extend method.
+
+```
+instance.extend(original, new, schema)
+```
+
+```javascript
+instance.extend('Person', 'Actor', {
+    acts_in: {
+        type: "relationship",
+        target: "Movie",
+        relationship: "ACTS_IN",
+        direction: "out",
+        properties: {
+            name: "string"
+        }
+    }
+})
+```
 
 ## Reading
 
+### Running a Cypher Query
+
+```
+instance.cypher(query, params)
+```
+
+```javascript
+instance.cypher('MATCH (p:Person {name: {name}}) RETURN p', {name: "Adam"})
+    .then(res => {
+        console.log(res.records.length);
+    })
+```
+
+### Running a Batch
+Batch queries run within their own transaction.  Transactions can be sent as either a string or an object containing `query` and `param` propertes.
+
+```
+instance.batch(queries)
+```
+
+```javascript
+instance.batch([
+    'CREATE CONSTRAINT ON (p:Person) ASSERT p.name IS UNIQUE',
+    {query: 'CREATE (p:Person {name: {name}}) RETURN p', params: {name: "Adam"}},
+    {query: 'CREATE (p:Person {name: {name}}) RETURN p', params: {name: "Joe"}},
+    {query: 'MATCH (first:Person {name: {first_name}}), (second:Person {name:{second_name}}) CREATE (first)-[:KNOWS]->(second)', params: {name: "Joe"}}
+])
+    .then(res => {
+        console.log(res.records.length);
+    })
+```
+
+
+### Get `all` Nodes
 TODO
+
+```javascript
+instance.all(label, properties)
+instance.model(label).all(properties)
+```
+
+### Get Node by Internal ID
+TODO
+```javascript
+instance.withId(label, id)
+instance.model(label).withId(id)
+```
+
+### Get Node by Primary Key
+TODO
+```javascript
+instance.find(label, id)
+instance.model(label).find(id)
+```
+
+### First by Properties
+TODO
+```javascript
+instance.first(label, properties)
+instance.first(label).first(properties)
+
+instance.first(label, key, value)
+instance.first(label).first(key, value)
+```
+
+
+### Query Builder
+TODO
+
+```javascript
+instance.all(label, [...params])
+instance.model(label).all([...params])
+```
+
+#### Conditions
+
+- Where
+- like
+
+
+
+
 
 ## Writing
 
@@ -278,6 +379,9 @@ instance.schema.drop()
   - Relationship Constraints
   - Define Dependencies
   - Delete dependencies when deleting a node
+
+- Schema
+  - Composite indexes
 
 - Query Builder
 

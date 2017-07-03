@@ -22,6 +22,8 @@ var _Validator2 = _interopRequireDefault(_Validator);
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function RelateTo(neode, from, to, relationship, properties) {
+    var force_create = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : false;
+
     return (0, _GenerateDefaultValues2.default)(neode, relationship, properties).then(function (properties) {
         return (0, _Validator2.default)(neode, relationship, properties);
     }).then(function (properties) {
@@ -43,7 +45,9 @@ function RelateTo(neode, from, to, relationship, properties) {
             }).join(', ');
         }
 
-        var query = '\n                MATCH (from), (to)\n                WHERE id(from) = {from_id}\n                AND id(to) = {to_id}\n                CREATE (from)' + direction_in + '-[rel:' + type + ']-' + direction_out + '(to)\n                ' + set + '\n                RETURN rel\n            ';
+        var mode = force_create ? 'CREATE' : 'MERGE';
+
+        var query = '\n                MATCH (from), (to)\n                WHERE id(from) = {from_id}\n                AND id(to) = {to_id}\n                ' + mode + ' (from)' + direction_in + '-[rel:' + type + ']-' + direction_out + '(to)\n                ' + set + '\n                RETURN rel\n            ';
 
         return neode.cypher(query, params).then(function (res) {
             var rel = res.records[0].get('rel');

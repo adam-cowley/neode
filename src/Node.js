@@ -99,12 +99,13 @@ export default class Node {
     /**
      * Relate this node to another based on the type
      *
-     * @param  {Node}   node        Node to relate to
-     * @param  {String} type        Type of Relationship definition
-     * @param  {Object} properties  Properties to set against the relationships
+     * @param  {Node}   node            Node to relate to
+     * @param  {String} type            Type of Relationship definition
+     * @param  {Object} properties      Properties to set against the relationships
+     * @param  {Boolean} force_create   Force the creation a new relationship? If false, the relationship will be merged
      * @return {Promise}
      */
-    relateTo(node, type, properties) {
+    relateTo(node, type, properties, force_create = false) {
         const relationship = this.model().relationships().get(type);
 
         if ( !relationship instanceof RelationshipType ) {
@@ -112,7 +113,7 @@ export default class Node {
         }
 
 
-        return RelateTo(this._neode, this, node, relationship, properties);
+        return RelateTo(this._neode, this, node, relationship, properties, force_create);
     }
 
     /**

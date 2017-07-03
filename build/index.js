@@ -201,13 +201,16 @@ var Neode = function () {
          * @param  {Node}   to          Target node
          * @param  {String} type        Type of Relationship definition
          * @param  {Object} properties  Properties to set against the relationships
+         * @param  {Boolean} force_create   Force the creation a new relationship? If false, the relationship will be merged
          * @return {Promise}
          */
 
     }, {
         key: 'relate',
         value: function relate(from, to, type, properties) {
-            return from.relateTo(to, type, properties);
+            var force_create = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : false;
+
+            return from.relateTo(to, type, properties, force_create);
         }
 
         /**

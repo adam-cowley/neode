@@ -150,10 +150,11 @@ export default class Neode {
      * @param  {Node}   to          Target node
      * @param  {String} type        Type of Relationship definition
      * @param  {Object} properties  Properties to set against the relationships
+     * @param  {Boolean} force_create   Force the creation a new relationship? If false, the relationship will be merged
      * @return {Promise}
      */
-    relate(from, to, type, properties) {
-        return from.relateTo(to, type, properties);
+    relate(from, to, type, properties, force_create = false) {
+        return from.relateTo(to, type, properties, force_create);
     }
 
     /**

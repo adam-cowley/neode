@@ -7,7 +7,7 @@ import Relationship from '../Relationship';
 import GenerateDefaultValues from './GenerateDefaultValues';
 import Validator from './Validator';
 
-export default function RelateTo(neode, from, to, relationship, properties) {
+export default function RelateTo(neode, from, to, relationship, properties, force_create = false) {
     return GenerateDefaultValues(neode, relationship, properties)
         .then(properties => Validator(neode, relationship, properties))
         .then(properties => {
@@ -29,11 +29,13 @@ export default function RelateTo(neode, from, to, relationship, properties) {
                 }).join(', ');
             }
 
+            const mode = force_create ? 'CREATE' : 'MERGE';
+
             const query = `
                 MATCH (from), (to)
                 WHERE id(from) = {from_id}
                 AND id(to) = {to_id}
-                CREATE (from)${direction_in}-[rel:${type}]-${direction_out}(to)
+                ${mode} (from)${direction_in}-[rel:${type}]-${direction_out}(to)
                 ${set}
                 RETURN rel
             `;

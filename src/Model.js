@@ -28,7 +28,7 @@ export default class Model {
 
             switch ( key ) {
                 case 'labels':
-                    this.setLabels(value);
+                    this.setLabels(...value);
                     break;
 
                 default:
