@@ -57,7 +57,7 @@ export default class Neode {
      * @return {Bool}
      */
     enterprise() {
-        this._enterprise
+        this._enterprise;
     }
 
     /**
@@ -185,7 +185,7 @@ export default class Neode {
                     })
                     .catch(error => {
                         errors.push({query, params, error});
-                    })
+                    });
             }
             catch (error) {
                 errors.push({query, params, error});

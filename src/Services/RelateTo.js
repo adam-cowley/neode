@@ -1,7 +1,6 @@
 import {
     DIRECTION_IN,
-    DIRECTION_OUT,
-    DIRECTION_BOTH
+    DIRECTION_OUT
 } from '../RelationshipType';
 import Relationship from '../Relationship';
 

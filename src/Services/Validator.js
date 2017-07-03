@@ -83,6 +83,6 @@ export default function Validator(neode, model, properties) {
             }
 
             resolve(validated);
-        })
+        });
     });
 }

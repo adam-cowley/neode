@@ -46,7 +46,7 @@ export default class Relationship {
      * @return {Integer}
      */
     idInt() {
-        return this._relationship.identity
+        return this._relationship.identity;
     }
 
     /**

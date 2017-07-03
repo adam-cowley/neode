@@ -249,6 +249,5 @@ instance.deleteAll('Person');
 - Query Builder
 
 - Housekeeping
-  - npm run build
   - Submit to npm
   - Tests/Code Coverage

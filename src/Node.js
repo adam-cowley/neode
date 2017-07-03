@@ -45,7 +45,7 @@ export default class Node {
      * @return {Integer}
      */
     idInt() {
-        return this._node.identity
+        return this._node.identity;
     }
 
     /**
@@ -93,7 +93,7 @@ export default class Node {
                 this._deleted = true;
 
                 return this;
-            })
+            });
     }
 
     /**
@@ -133,7 +133,7 @@ export default class Node {
         const output = Object.assign({}, {'_id': this.id()}, this._node.properties);
 
         this.model().hidden().forEach(key => {
-            delete output[ key ]
+            delete output[ key ];
         });
 
         return Promise.resolve(output);

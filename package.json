@@ -1,5 +1,5 @@
 {
-  "name": "neodex",
+  "name": "neode",
   "version": "0.1.0",
   "description": "Neo4j OGM for NodeJS",
   "main": "build/index.js",
@@ -10,8 +10,13 @@
   "keywords": [
     "neo4j",
     "graph",
-    "cypher"
+    "cypher",
+    "ogm"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adam-cowley/neode.git"
+  },
   "author": "Adam Cowley <adam@wecommit.co>",
   "license": "ISC",
   "dependencies": {
@@ -34,5 +39,9 @@
     "presets": [
       "es2015"
     ]
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/adam-cowley/neode/issues"
+  },
+  "homepage": "https://github.com/adam-cowley/neode#readme"
 }

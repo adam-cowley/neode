@@ -9,7 +9,7 @@ function ExistsConstraintCypher(label, property, mode = 'CREATE') {
 }
 
 function IndexCypher(label, property, mode = 'CREATE') {
-    return `${mode} INDEX ON :${label}(${property})`
+    return `${mode} INDEX ON :${label}(${property})`;
 }
 
 
@@ -31,7 +31,7 @@ function InstallSchema(neode) {
             if (property.indexed()) {
                 queries.push(IndexCypher(label, property.name()));
             }
-        })
+        });
     });
 
     return neode.batch(queries);
@@ -55,7 +55,7 @@ function DropSchema(neode) {
             if (property.indexed()) {
                 queries.push(IndexCypher(label, property.name(), 'DROP'));
             }
-        })
+        });
     });
 
     return neode.batch(queries);
