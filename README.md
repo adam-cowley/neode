@@ -2,13 +2,20 @@
 
 Neode is a Neo4j ORM for Node JS.
 
+- [Getting Started](#getting-started)
+- [Reading from the Graph](#reading)
+- [Writing to the Graph](#writing)
+- [Schema](#schema)
 
-## Installation
+
+## Getting Started
+
+### Installation
 ```javascript
 npm install --save neode
 ```
 
-## Usage
+### Usage
 ```javascript
 // index.js
 import Neode from 'neode';
@@ -16,7 +23,7 @@ import Neode from 'neode';
 const instance = new Neode('bolt://localhost:7474', 'username', 'password');
 ```
 
-### Enterprise Mode
+#### Enterprise Mode
 
 To initiate Neode in enterprise mode and enable enterprise features, provide a true variable as the fourth parameter.
 
@@ -27,7 +34,7 @@ import Neode from 'neode';
 const instance = new Neode('bolt://localhost:7474', 'username', 'password', true);
 ```
 
-### Usage with .env variables
+#### Usage with .env variables
 ```
 npm i --save dotenv
 ```
@@ -48,13 +55,12 @@ import Neode from 'neode';
 const instance = new Neode.fromEnv();
 ```
 
-## Loading `with` Models
+#### Loading `with` Models
 
 You can use the `with()` method to load multipe models at once.
 
 ```javascript
-// const neode = require('neode')
-const neode = require('../neode/build')
+const neode = require('neode')
     .fromEnv()
     .with({
         Movie: require('./models/Movie'),
@@ -63,38 +69,18 @@ const neode = require('../neode/build')
 
 ```
 
-## Load Directory
+#### Load from Directory
 
 TODO
 
-## Schema
 
-Neode will install the schema created by the constraints defined in your Node definitions.
-
-### Installing the Schema
-```javascript
-instance.schema.install()
-    .then(() => console.log('Schema installed!'))
-```
-
-**Note:** `exists` constraints will only be created when running in enterprise mode.  Attempting to create an exists constraint on Community edition will cause a `Neo.DatabaseError.Schema.ConstraintCreationFailed` to be thrown.
-
-### Dropping the schema
-Dropping the schema will remove all indexes and constraints created by Neode.  All other indexes and constraints will be left intact.
-
-```javascript
-instance.schema.drop()
-    .then(() => console.log('Schema dropped!'))
-```
-
-
-## Defining a `Node` Definition
+### Defining a `Node` Definition
 
 ```javascript
 instance.model(name, schema);
 ```
 
-### Schema Object
+#### Schema Object
 ```javascript
 instance.model('Person', {
     person_id: {
@@ -114,7 +100,7 @@ instance.model('Person', {
 });
 ```
 
-#### Property Types
+##### Property Types
 - string
 - number
   - int
@@ -126,7 +112,7 @@ instance.model('Person', {
   - target: node definition
   - properties: `schema`
 
-#### Validation
+##### Validation
 
 Validation is provided by Joi.  Certain data types (float, integer, boolean) will also be type cast.
 
@@ -139,7 +125,7 @@ Validation is provided by Joi.  Certain data types (float, integer, boolean) wil
   - max
 
 
-### Defining Relationships
+#### Defining Relationships
 
 Relationships can be created in the schema or defined retrospectively.
 
@@ -160,7 +146,13 @@ instance.model('Person').relationship('knows', 'KNOWS', 'out', 'Person', {
 });
 ```
 
-## Creating a Node
+## Reading
+
+TODO
+
+## Writing
+
+### Creating a Node
 
 ```javascript
 instance.create(label, properties);
@@ -176,7 +168,7 @@ instance.create('Person', {
 });
 ```
 
-## Merging a Node
+### Merging a Node
 Nodes are merged based on the indexes and constraints.
 
 ```javascript
@@ -202,7 +194,7 @@ instance.model(label).mergeOn(match, set);
 instance.mergeOn('Person', {person_id: 1234}, {name: 'Adam'});
 ```
 
-## Updating a Node
+### Updating a Node
 You can update a Node instance directly by calling the `update()` method.
 
 ```javascript
@@ -210,7 +202,7 @@ const adam = instance.create('Person', {name: 'Adam'});
 adam.update({age: 29});
 ```
 
-## Creating a Relationships
+### Creating a Relationships
 You can relate two nodes together by calling the `relateTo()` method.
 
 ```javascript
@@ -229,7 +221,7 @@ adam.relateTo(joe, 'knows', {since: 2010})
 
 **Note:** when creating a relationship defined as `in` (`DIRECTION_IN`), from `from()` and `to()` properties will be inversed regardless of which model the relationship is created by.
 
-## Deleting a node
+### Deleting a node
 You can delete a Node instance directly by calling the `delete()` method.
 
 ```javascript
@@ -237,7 +229,7 @@ const adam = instance.create('Person', {name: 'Adam'});
 adam.delete();
 ```
 
-## Deleting a set of nodes
+### Deleting a set of nodes
 TODO
 ```javascript
 instance.delete(label, where)
@@ -247,11 +239,33 @@ instance.delete(label, where)
 instance.delete('Person', {living: false});
 ```
 
-## Deleting all nodes of a given type
+### Deleting all nodes of a given type
 ```javascript
 instance.deleteAll('Person');
   .then(() => console.log('Everyone has been deleted'));
 ```
+
+
+## Schema
+
+Neode will install the schema created by the constraints defined in your Node definitions.
+
+#### Installing the Schema
+```javascript
+instance.schema.install()
+    .then(() => console.log('Schema installed!'))
+```
+
+**Note:** `exists` constraints will only be created when running in enterprise mode.  Attempting to create an exists constraint on Community edition will cause a `Neo.DatabaseError.Schema.ConstraintCreationFailed` to be thrown.
+
+#### Dropping the schema
+Dropping the schema will remove all indexes and constraints created by Neode.  All other indexes and constraints will be left intact.
+
+```javascript
+instance.schema.drop()
+    .then(() => console.log('Schema dropped!'))
+```
+
 
 
 ## TODO
