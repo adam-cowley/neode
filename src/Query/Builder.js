@@ -9,7 +9,9 @@ import WhereRaw from './WhereRaw';
 
 export default class Builder {
 
-    constructor() {
+    constructor(neode) {
+        this._neode = neode;
+
         this._params = {};
         this._statements = [];
         this._current;
@@ -135,14 +137,23 @@ export default class Builder {
         this.whereStatement();
         this.statement();
 
-        let query = this._statements.map(statement => {
+        this._query = this._statements.map(statement => {
             return statement.toString();
         }).join('\n');
 
         return {
-            query,
+            query: this._query ,
             params: this._params
         };
+    }
+
+    /**
+     * Execute the query
+     *
+     * @return {Promise}
+     */
+    execute() {
+        return this._neode.cypher(this._query, this._params);
     }
 
 
