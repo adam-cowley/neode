@@ -1,10 +1,11 @@
 # Neode
 
-Neode is a Neo4j OGM for Node JS.
+Neode is a Neo4j OGM for Node JS designed to take care of the CRUD boilerplate involved with setting up a neo4j project with Node.  Just install, set up your models and go.
 
 - [Getting Started](#getting-started)
 - [Reading from the Graph](#reading)
 - [Writing to the Graph](#writing)
+- [Query Builder](#query-builder)
 - [Schema](#schema)
 
 
@@ -209,11 +210,17 @@ instance.all(label, properties)
 instance.model(label).all(properties)
 ```
 
-### Get Node by Internal ID
-TODO
+### Get Node by Internal Node ID
 ```javascript
 instance.findById(label, id)
 instance.model(label).findById(id)
+```
+
+```javascript
+instance.findById('Person', 1)
+    .then(person => {
+        console.log(person.id()); // 1
+    });
 ```
 
 ### Get Node by Primary Key
@@ -224,7 +231,7 @@ instance.model(label).find(id)
 ```
 
 ### First by Properties
-TODO
+
 ```javascript
 instance.first(label, properties)
 instance.first(label).first(properties)
@@ -232,22 +239,6 @@ instance.first(label).first(properties)
 instance.first(label, key, value)
 instance.first(label).first(key, value)
 ```
-
-
-### Query Builder
-TODO
-
-```javascript
-instance.all(label, [...params])
-instance.model(label).all([...params])
-```
-
-#### Conditions
-TODO
-
-
-
-
 
 ## Writing
 
@@ -343,6 +334,42 @@ instance.delete('Person', {living: false});
 ```javascript
 instance.deleteAll('Person');
   .then(() => console.log('Everyone has been deleted'));
+```
+
+
+## Query Builder
+Neode comes bundled with a query builder.  You can create a Query Builder instance by calling the `query()` method on the Neode instance.
+
+```javascript
+const builder = instance.query();
+```
+
+For query examples, check out the [Query Builder Test suite](https://github.com/adam-cowley/neode/blob/master/test/Query/Builder.spec.js).
+
+
+### Building Cypher
+You can get the generated cypher query by calling the `build()` method.  This method will return an object containing the cypher query string and an object of params.
+
+```javascript
+const {query, params} = builder.build();
+
+instance.query(query, params)
+    .then(res => {
+        console.log(res.records.length);
+    });
+```
+
+### Executing a Query
+You can execute a query by calling the `execute()` method on the query builder.
+
+```javascript
+builder.match('this', 'Node')
+    .whereId('this', 1)
+    .build('this')
+    .execute()
+    .then(res => {
+        console.log(res.records.length);
+    });
 ```
 
 
