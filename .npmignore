@@ -1,6 +1,9 @@
 node_modules/*
 src/*
 test/*
+.babelrc
+.env
+.env.example
 .eslintrc
 .gitignore
 gulpfile.js

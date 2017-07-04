@@ -29,6 +29,10 @@ var _TransactionError = require('./TransactionError');
 
 var _TransactionError2 = _interopRequireDefault(_TransactionError);
 
+var _Builder = require('./Query/Builder');
+
+var _Builder2 = _interopRequireDefault(_Builder);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -314,6 +318,78 @@ var Neode = function () {
         value: function close() {
             this.driver.close();
         }
+
+        /**
+         * Return a new Query Builder
+         *
+         * @return {Builder}
+         */
+
+    }, {
+        key: 'query',
+        value: function query() {
+            return new _Builder2.default();
+        }
+
+        /**
+         * Get a collection of nodes`
+         *
+         * @param  {String}              label
+         * @param  {Object}              properties
+         * @param  {String|Array|Object} order
+         * @param  {Int}                 limit
+         * @param  {Int}                 skip
+         * @return {Promise}
+         */
+
+    }, {
+        key: 'all',
+        value: function all(label, properties, order, limit, skip) {
+            return this.models(label).all(properties, order, limit, skip);
+        }
+
+        /**
+         * Find a Node by it's label and primary key
+         *
+         * @param  {String} label
+         * @param  {mixed}  id
+         * @return {Promise}
+         */
+
+    }, {
+        key: 'find',
+        value: function find(label, id) {
+            return this.models(label).find(id);
+        }
+
+        /**
+         * Find a Node by it's internal node ID
+         *
+         * @param  {String} model
+         * @param  {int}    id
+         * @return {Promise}
+         */
+
+    }, {
+        key: 'findById',
+        value: function findById(label, id) {
+            return this.models(label).findById(id);
+        }
+
+        /**
+         * Find a Node by properties
+         *
+         * @param  {String} label
+         * @param  {mixed}  key     Either a string for the property name or an object of values
+         * @param  {mixed}  value   Value
+         * @return {Promise}
+         */
+
+    }, {
+        key: 'first',
+        value: function first(label, key, value) {
+            return this.models(label).first(key, value);
+        }
     }], [{
         key: 'fromEnv',
         value: function fromEnv() {
@@ -335,5 +411,4 @@ exports.default = Neode;
 exports.Model = _Model2.default;
 exports.Node = _Node2.default;
 
-
-module.exports = Neode;
+// module.exports = Neode;

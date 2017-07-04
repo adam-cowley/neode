@@ -18,7 +18,7 @@
     "type": "git",
     "url": "https://github.com/adam-cowley/neode.git"
   },
-  "author": "Adam Cowley <adam@wecommit.co>",
+  "author": "Adam Cowley <github@adamcowley.co.uk>",
   "license": "ISC",
   "dependencies": {
     "joi": "^10.6.0",

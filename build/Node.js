@@ -164,7 +164,7 @@ var Node = function () {
 
             var relationship = this.model().relationships().get(type);
 
-            if (!relationship instanceof _RelationshipType2.default) {
+            if (!(relationship instanceof _RelationshipType2.default)) {
                 throw new Error('Cannot find relationship with type ' + type);
             }
 

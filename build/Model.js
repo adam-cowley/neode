@@ -6,21 +6,9 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _Create = require('./Services/Create');
+var _Queryable2 = require('./Queryable');
 
-var _Create2 = _interopRequireDefault(_Create);
-
-var _MergeOn = require('./Services/MergeOn');
-
-var _MergeOn2 = _interopRequireDefault(_MergeOn);
-
-var _DeleteAll = require('./Services/DeleteAll');
-
-var _DeleteAll2 = _interopRequireDefault(_DeleteAll);
-
-var _Node = require('./Node');
-
-var _Node2 = _interopRequireDefault(_Node);
+var _Queryable3 = _interopRequireDefault(_Queryable2);
 
 var _RelationshipType = require('./RelationshipType');
 
@@ -36,24 +24,32 @@ function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var Model = function () {
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+var Model = function (_Queryable) {
+    _inherits(Model, _Queryable);
+
     function Model(neode, name, schema) {
         _classCallCheck(this, Model);
 
-        this._neode = neode;
-        this._name = name;
-        this._schema = schema;
+        var _this = _possibleConstructorReturn(this, (Model.__proto__ || Object.getPrototypeOf(Model)).call(this));
 
-        this._properties = new Map();
-        this._relationships = new Map();
-        this._labels = [name];
+        _this._neode = neode;
+        _this._name = name;
+        _this._schema = schema;
+
+        _this._properties = new Map();
+        _this._relationships = new Map();
+        _this._labels = [name];
 
         // Default Primary Key to {label}_id
-        this._primary_key = name.toLowerCase() + '_id';
+        _this._primary_key = name.toLowerCase() + '_id';
 
-        this._unique = [];
-        this._indexed = [];
-        this._hidden = [];
+        _this._unique = [];
+        _this._indexed = [];
+        _this._hidden = [];
 
         // TODO: Clean this up
         for (var key in schema) {
@@ -61,7 +57,7 @@ var Model = function () {
 
             switch (key) {
                 case 'labels':
-                    this.setLabels.apply(this, _toConsumableArray(value));
+                    _this.setLabels.apply(_this, _toConsumableArray(value));
                     break;
 
                 default:
@@ -72,13 +68,14 @@ var Model = function () {
                             properties = value.properties;
 
 
-                        this.relationships().set(key, new _RelationshipType2.default(key, relationship, direction, target, properties));
+                        _this.relationships().set(key, new _RelationshipType2.default(key, relationship, direction, target, properties));
                     } else {
-                        this.addProperty(key, value);
+                        _this.addProperty(key, value);
                     }
                     break;
             }
         }
+        return _this;
     }
 
     /**
@@ -249,23 +246,6 @@ var Model = function () {
         }
 
         /**
-         * Create a new instance of this Model
-         *
-         * @param  {object} properties
-         * @return {Promise}
-         */
-
-    }, {
-        key: 'create',
-        value: function create(properties) {
-            var _this = this;
-
-            return (0, _Create2.default)(this._neode, this, properties).then(function (node) {
-                return new _Node2.default(_this._neode, _this, node);
-            });
-        }
-
-        /**
          * Get defined merge fields
          *
          * @return {Array}
@@ -276,61 +256,9 @@ var Model = function () {
         value: function mergeFields() {
             return this._unique.concat(this._indexed);
         }
-
-        /**
-         * Merge a node based on the defined indexes
-         *
-         * @param  {Object} properties
-         * @return {Promise}
-         */
-
-    }, {
-        key: 'merge',
-        value: function merge(properties) {
-            var _this2 = this;
-
-            var merge_on = this.mergeFields();
-
-            return (0, _MergeOn2.default)(this._neode, this, merge_on, properties).then(function (node) {
-                return new _Node2.default(_this2._neode, _this2, node);
-            });
-        }
-
-        /**
-         * Merge a node based on the supplied properties
-         *
-         * @param  {Object} match Specific properties to merge on
-         * @param  {Object} set   Properties to set
-         * @return {Promise}
-         */
-
-    }, {
-        key: 'mergeOn',
-        value: function mergeOn(match, set) {
-            var _this3 = this;
-
-            var merge_on = Object.keys(match);
-            var properties = Object.assign({}, match, set);
-
-            return (0, _MergeOn2.default)(this._neode, this, merge_on, properties).then(function (node) {
-                return new _Node2.default(_this3._neode, _this3, node);
-            });
-        }
-
-        /**
-         * Delete all nodes for this model
-         *
-         * @return {Promise}
-         */
-
-    }, {
-        key: 'deleteAll',
-        value: function deleteAll() {
-            return (0, _DeleteAll2.default)(this._neode, this);
-        }
     }]);
 
     return Model;
-}();
+}(_Queryable3.default);
 
 exports.default = Model;
