@@ -203,15 +203,22 @@ instance.batch([
 
 
 ### Get `all` Nodes
-TODO
 
-```javascript
+```
 instance.all(label, properties)
 instance.model(label).all(properties)
 ```
 
-### Get Node by Internal Node ID
 ```javascript
+instance.all('Person', {name: 'Adam'}, {name: 'ASC', id: 'DESC'}, 1, 0)
+    .then(collection => {
+        console.log(collection.length); // 1
+        console.log(collection.get(0).get('name')); // 'Adam'
+    })
+```
+
+### Get Node by Internal Node ID
+```
 instance.findById(label, id)
 instance.model(label).findById(id)
 ```
@@ -224,21 +231,41 @@ instance.findById('Person', 1)
 ```
 
 ### Get Node by Primary Key
-TODO
-```javascript
+Neode will work out the model's primary key and query based on the supplied value.
+```
 instance.find(label, id)
 instance.model(label).find(id)
 ```
 
+```javascript
+instance.find('Person', '1234')
+    .then(res => {...});
+```
+
 ### First by Properties
 
-```javascript
-instance.first(label, properties)
-instance.first(label).first(properties)
-
+#### Using a key and value
+```
 instance.first(label, key, value)
 instance.first(label).first(key, value)
 ```
+```javascript
+instance.first('Person', 'name', 'Adam')
+    .then(adam => {...})
+```
+
+
+#### Using multiple properties
+```
+instance.first(label, properties)
+instance.first(label).first(properties)
+```
+```javascript
+instance.first('Person', {name: 'Adam', age: 29})
+    .then(adam => {...})
+```
+
+
 
 ## Writing
 
@@ -344,6 +371,13 @@ Neode comes bundled with a query builder.  You can create a Query Builder instan
 const builder = instance.query();
 ```
 
+Once you have a Builder instance, you can start to defining the query using the fluent API.
+```javascript
+builder.match('p', 'Person')
+    .where('p.name', 'Adam')
+    .return('p');
+```
+
 For query examples, check out the [Query Builder Test suite](https://github.com/adam-cowley/neode/blob/master/test/Query/Builder.spec.js).
 
 
@@ -365,7 +399,7 @@ You can execute a query by calling the `execute()` method on the query builder.
 ```javascript
 builder.match('this', 'Node')
     .whereId('this', 1)
-    .build('this')
+    .return('this')
     .execute()
     .then(res => {
         console.log(res.records.length);
@@ -374,10 +408,9 @@ builder.match('this', 'Node')
 
 
 ## Schema
-
 Neode will install the schema created by the constraints defined in your Node definitions.
 
-#### Installing the Schema
+### Installing the Schema
 ```javascript
 instance.schema.install()
     .then(() => console.log('Schema installed!'))
@@ -385,7 +418,7 @@ instance.schema.install()
 
 **Note:** `exists` constraints will only be created when running in enterprise mode.  Attempting to create an exists constraint on Community edition will cause a `Neo.DatabaseError.Schema.ConstraintCreationFailed` to be thrown.
 
-#### Dropping the schema
+### Dropping the schema
 Dropping the schema will remove all indexes and constraints created by Neode.  All other indexes and constraints will be left intact.
 
 ```javascript
@@ -399,6 +432,7 @@ instance.schema.drop()
 - Node
   - Create Relationships On Create/Merge
   - Delete Node dependencies (delete/deleteAll)
+  - Extend Definitions
 
 - Relationships
   - Relationship Constraints
@@ -409,6 +443,14 @@ instance.schema.drop()
   - Composite indexes
 
 - Query Builder
+  - Eager Loading
+  - More where clauses
+  - 'with' segment
+  - CREATE
+  - SET
+  - DELETE
+  - Match Relationship
+  - Match path
 
 - Housekeeping
   - Submit to npm
