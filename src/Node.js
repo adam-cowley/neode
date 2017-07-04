@@ -108,7 +108,7 @@ export default class Node {
     relateTo(node, type, properties, force_create = false) {
         const relationship = this.model().relationships().get(type);
 
-        if ( !relationship instanceof RelationshipType ) {
+        if ( !(relationship instanceof RelationshipType) ) {
             throw new Error(`Cannot find relationship with type ${type}`);
         }
 

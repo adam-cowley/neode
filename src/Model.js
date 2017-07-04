@@ -1,12 +1,12 @@
-import Create from './Services/Create';
-import MergeOn from './Services/MergeOn';
-import DeleteAll from './Services/DeleteAll';
-import Node from './Node';
+import Queryable from './Queryable';
+
 import RelationshipType, {DIRECTION_BOTH} from './RelationshipType';
 import Property from './Property';
 
-export default class Model {
+export default class Model extends Queryable {
     constructor(neode, name, schema) {
+        super();
+
         this._neode = neode;
         this._name = name;
         this._schema = schema;
@@ -175,19 +175,6 @@ export default class Model {
     }
 
     /**
-     * Create a new instance of this Model
-     *
-     * @param  {object} properties
-     * @return {Promise}
-     */
-    create(properties) {
-        return Create(this._neode, this, properties)
-            .then(node => {
-                return new Node(this._neode, this, node);
-            });
-    }
-
-    /**
      * Get defined merge fields
      *
      * @return {Array}
@@ -195,49 +182,4 @@ export default class Model {
     mergeFields() {
         return this._unique.concat(this._indexed);
     }
-
-    /**
-     * Merge a node based on the defined indexes
-     *
-     * @param  {Object} properties
-     * @return {Promise}
-     */
-    merge(properties) {
-        const merge_on = this.mergeFields();
-
-        return MergeOn(this._neode, this, merge_on, properties)
-            .then(node => {
-                return new Node(this._neode, this, node);
-            });
-    }
-
-    /**
-     * Merge a node based on the supplied properties
-     *
-     * @param  {Object} match Specific properties to merge on
-     * @param  {Object} set   Properties to set
-     * @return {Promise}
-     */
-    mergeOn(match, set) {
-        const merge_on = Object.keys(match);
-        const properties = Object.assign({}, match, set);
-
-        return MergeOn(this._neode, this, merge_on, properties)
-            .then(node => {
-                return new Node(this._neode, this, node);
-            });
-    }
-
-    /**
-     * Delete all nodes for this model
-     *
-     * @return {Promise}
-     */
-    deleteAll() {
-        return DeleteAll(this._neode, this);
-    }
-
-
-
-
 }

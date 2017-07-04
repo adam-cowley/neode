@@ -3,6 +3,7 @@ import Model from './Model';
 import Node from './Node';
 import Schema from './Schema';
 import TransactionError from './TransactionError';
+import Builder from './Query/Builder';
 
 export default class Neode {
 
@@ -226,21 +227,20 @@ export default class Neode {
             catch (error) {
                 errors.push({query, params, error});
             }
-
         }))
-        .then(() => {
-            if (errors.length) {
-                tx.rollback();
+            .then(() => {
+                if (errors.length) {
+                    tx.rollback();
 
-                const error = new TransactionError(errors);
+                    const error = new TransactionError(errors);
 
-                throw error;
-            }
+                    throw error;
+                }
 
-            tx.end();
+                tx.end();
 
-            return output;
-        });
+                return output;
+            });
     }
 
     /**
@@ -252,6 +252,60 @@ export default class Neode {
         this.driver.close();
     }
 
+    /**
+     * Return a new Query Builder
+     *
+     * @return {Builder}
+     */
+    query() {
+        return new Builder;
+    }
+
+    /**
+     * Get all nodes of a label filtered by
+     *
+     * @param  {String} label
+     * @param  {Object} properties
+     * @return {Promise}
+     */
+    all(label, properties) {
+        throw new Error('TODO');
+    }
+
+    /**
+     * Find a Node by it's label and primary key
+     *
+     * @param  {String} label
+     * @param  {mixed}  id
+     * @return {Promise}
+     */
+    find(label, id) {
+        throw new Error('TODO');
+    }
+
+    /**
+     * Find a Node by it's internal node ID
+     *
+     * @param  {String} model
+     * @param  {int}    id
+     * @return {Promise}
+     */
+    findById(model, id) {
+        return this.models(model).findById(id);
+    }
+
+    /**
+     * Find a Node by properties
+     *
+     * @param  {String} label
+     * @param  {mixed}  key     Either a string for the property name or an object of values
+     * @param  {mixed}  value   Value
+     * @return {Promise}
+     */
+    first(label, key, value) {
+        return this.models(label).first(key, value);
+    }
+
 }
 
 export {
@@ -259,4 +313,4 @@ export {
     Node
 };
 
-module.exports = Neode;
+// module.exports = Neode;

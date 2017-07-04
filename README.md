@@ -212,8 +212,8 @@ instance.model(label).all(properties)
 ### Get Node by Internal ID
 TODO
 ```javascript
-instance.withId(label, id)
-instance.model(label).withId(id)
+instance.findById(label, id)
+instance.model(label).findById(id)
 ```
 
 ### Get Node by Primary Key
@@ -243,9 +243,7 @@ instance.model(label).all([...params])
 ```
 
 #### Conditions
-
-- Where
-- like
+TODO
 
 
 
@@ -254,7 +252,6 @@ instance.model(label).all([...params])
 ## Writing
 
 ### Creating a Node
-
 ```javascript
 instance.create(label, properties);
 instance.model(label).create(properties);
@@ -299,8 +296,8 @@ instance.mergeOn('Person', {person_id: 1234}, {name: 'Adam'});
 You can update a Node instance directly by calling the `update()` method.
 
 ```javascript
-const adam = instance.create('Person', {name: 'Adam'});
-adam.update({age: 29});
+instance.create('Person', {name: 'Adam'})
+    .then(adam => adam.update({age: 29}));
 ```
 
 ### Creating a Relationships
@@ -310,14 +307,16 @@ You can relate two nodes together by calling the `relateTo()` method.
 model.relateTo(other, type, properties)
 ```
 ```javascript
-const adam = instance.create('Person', {name: 'Adam'});
-const joe = instance.create('Person', {name: 'Joe'});
-
-adam.relateTo(joe, 'knows', {since: 2010})
-    .then(res => {
-        console.log(rel.from().get('name'), ' has known ', rel.to().get('name'), 'since', rel.get('since'));  // Adam has known Joe since 2010
-    });
-
+Promise.all([
+    instance.create('Person', {name: 'Adam'}),
+    instance.create('Person', {name: 'Joe'})
+])
+.then(([adam, joe]) => {
+    adam.relateTo(joe, 'knows', {since: 2010})
+        .then(res => {
+            console.log(rel.from().get('name'), ' has known ', rel.to().get('name'), 'since', rel.get('since'));  // Adam has known Joe since 2010
+        });
+});
 ```
 
 **Note:** when creating a relationship defined as `in` (`DIRECTION_IN`), from `from()` and `to()` properties will be inversed regardless of which model the relationship is created by.
@@ -326,8 +325,8 @@ adam.relateTo(joe, 'knows', {since: 2010})
 You can delete a Node instance directly by calling the `delete()` method.
 
 ```javascript
-const adam = instance.create('Person', {name: 'Adam'});
-adam.delete();
+instance.create('Person', {name: 'Adam'})
+  .then(adam => adam.delete());
 ```
 
 ### Deleting a set of nodes
@@ -366,7 +365,6 @@ Dropping the schema will remove all indexes and constraints created by Neode.  A
 instance.schema.drop()
     .then(() => console.log('Schema dropped!'))
 ```
-
 
 
 ## TODO

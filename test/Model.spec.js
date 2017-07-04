@@ -291,8 +291,7 @@ describe('Model.js', () => {
             })
             .then(() => done())
             .catch(e => done(e));
-    })
-
+    });
 
     it('should delete a node', (done) => {
         const id = created.idInt();

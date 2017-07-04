@@ -5,7 +5,8 @@
   "main": "build/index.js",
   "scripts": {
     "build": "babel src -d build",
-    "test": "./node_modules/.bin/mocha --compilers js:babel-register"
+    "test": "./node_modules/.bin/mocha --compilers js:babel-register",
+    "lint": "./node_modules/.bin/eslint src/"
   },
   "keywords": [
     "neo4j",
@@ -33,6 +34,7 @@
     "chai": "^3.5.0",
     "clear": "0.0.1",
     "dotenv": "^4.0.0",
+    "eslint": "^4.1.1",
     "gulp": "^3.9.1",
     "gulp-istanbul": "^1.1.2",
     "gulp-mocha": "^4.3.1",
