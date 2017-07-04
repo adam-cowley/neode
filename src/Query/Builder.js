@@ -5,6 +5,7 @@ import WhereStatement from './WhereStatement';
 import Where, {OPERATOR_EQUALS} from './Where';
 import WhereId from './WhereId';
 import WhereRaw from './WhereRaw';
+import WithStatement from './WithStatement';
 
 
 export default class Builder {
@@ -65,6 +66,21 @@ export default class Builder {
     }
 
     /**
+     * Add a 'with' statement to the query
+     *
+     * @param  {...String} args Variables/aliases to return
+     * @return {Builder}
+     */
+    with(...args) {
+        this.whereStatement('WHERE');
+        this.statement();
+
+        this._statements.push(new WithStatement(...args));
+
+        return this;
+    }
+
+    /**
      * Create a new WhereSegment
      * @param  {...mixed} args
      * @return {Builder}
@@ -120,29 +136,58 @@ export default class Builder {
     }
 
     /**
+     * Set Return fields
+     *
+     * @param  {...mixed} args
+     * @return {Builder}
+     */
+    return(...args) {
+        this._current.return(...args);
+
+        return this;
+    }
+
+    /**
+     * Set Record Limit
+     *
+     * @param  {Int} limit
+     * @return {Builder}
+     */
+    limit(limit) {
+        this._current.limit(limit);
+
+        return this;
+    }
+
+    /**
+     * Set Records to Skip
+     *
+     * @param  {Int} skip
+     * @return {Builder}
+     */
+    skip(skip) {
+        this._current.skip(skip);
+
+        return this;
+    }
+
+    /**
      * Build the Query
      *
      * @param  {...String} output References to output
-     * @return {[type]}           [description]
+     * @return {Object}           Object containing `query` and `params` property
      */
-    build(...output) {
-        if (output.length) {
-            // TODO: Aliases?
-            this._current.return(output.map(field => {
-                return new Return(field);
-            }));
-        }
-
+    build() {
         // Append Statement to Statements
         this.whereStatement();
         this.statement();
 
-        this._query = this._statements.map(statement => {
+        const query = this._statements.map(statement => {
             return statement.toString();
         }).join('\n');
 
         return {
-            query: this._query ,
+            query,
             params: this._params
         };
     }
@@ -153,7 +198,9 @@ export default class Builder {
      * @return {Promise}
      */
     execute() {
-        return this._neode.cypher(this._query, this._params);
+        const {query, params} = this.build();
+
+        return this._neode.cypher(query, params);
     }
 
 

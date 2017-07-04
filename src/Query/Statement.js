@@ -17,12 +17,22 @@ export default class Statement {
         return this;
     }
 
-    return(values) {
-        this._return = values;
+    limit(limit) {
+        this._limit = limit;
+    }
+
+    skip(skip) {
+        this._skip = skip;
+    }
+
+    return(...values) {
+        this._return = this._return.concat(values);
+
+        return this;
     }
 
     toString() {
-        let output = [];
+        const output = [];
 
         if (this._match.length) {
             output.push('MATCH');
@@ -44,6 +54,14 @@ export default class Statement {
             output.push(this._return.map(output => {
                 return output.toString();
             }));
+        }
+
+        if ( this._skip ) {
+            output.push(`SKIP ${this._skip}`);
+        }
+
+        if ( this._limit ) {
+            output.push(`LIMIT ${this._limit}`);
         }
 
         return output.join('\n');

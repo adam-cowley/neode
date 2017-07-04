@@ -268,7 +268,7 @@ export default class Neode {
      * @param  {Object} properties
      * @return {Promise}
      */
-    all(label, properties) {
+    all(label, properties, order, limit, skip) {
         throw new Error('TODO');
     }
 
@@ -280,7 +280,7 @@ export default class Neode {
      * @return {Promise}
      */
     find(label, id) {
-        throw new Error('TODO');
+        return this.models(model).find(id);
     }
 
     /**

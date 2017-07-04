@@ -36,7 +36,8 @@ describe('Query/Builder.js', () => {
         const {query, params} = builder
             .match('this', model)
             .whereId('this', 1)
-            .build('this');
+            .return('this')
+            .build();
 
         const expected = [
             'MATCH',
@@ -59,7 +60,8 @@ describe('Query/Builder.js', () => {
             .whereId('this', 1)
             .match('that', model)
             .whereId('that', 2)
-            .build('this', 'that');
+            .return('this', 'that')
+            .build();
 
         const expected = [
             'MATCH',
@@ -84,7 +86,8 @@ describe('Query/Builder.js', () => {
         const {query, params} = builder
             .match('this', model)
             .where('this.property', 'that')
-            .build('this');
+            .return('this')
+            .build();
 
         const expected = [
             'MATCH',
@@ -106,7 +109,8 @@ describe('Query/Builder.js', () => {
             .match('this', model)
             .where('this.property', 'that')
             .where('this.other_property', 'not that')
-            .build('this');
+            .return('this')
+            .build();
 
         const expected = [
             'MATCH',
@@ -121,14 +125,15 @@ describe('Query/Builder.js', () => {
         expect(params).to.deep.equal(expected_params);
     });
 
-    it('should handle an `or` query', () => {
+    it('should build an `or` query', () => {
         const builder = new Builder();
 
         const {query, params} = builder
             .match('this', model)
             .where('this.property', 'that')
             .or('this.other_property', 'not that')
-            .build('this');
+            .return('this')
+            .build();
 
         const expected = [
             'MATCH',
@@ -138,6 +143,63 @@ describe('Query/Builder.js', () => {
             'this'
         ].join('\n');
         const expected_params = {where_this_property: 'that', where_this_other_property: 'not that'};
+
+        expect(query).to.equal(expected);
+        expect(params).to.deep.equal(expected_params);
+    });
+
+    it('should build a query with skip and limit', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .where('this.property', 'that')
+            .return('this')
+            .skip(1)
+            .limit(1)
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)',
+            'WHERE (this.property = {where_this_property}) ',
+            'RETURN',
+            'this',
+            'SKIP 1',
+            'LIMIT 1'
+        ].join('\n');
+        const expected_params = {where_this_property: 'that'};
+
+        expect(query).to.equal(expected);
+        expect(params).to.deep.equal(expected_params);
+    });
+
+    it('should build a query with a with statement', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .whereId('this', 1)
+            .with('this')
+            .match('that', model)
+            .whereId('that', 2)
+            .return('this', 'that')
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)',
+            'WHERE (id(this) = {where_id_this}) ',
+            'WITH this',
+            '',
+            'MATCH',
+            '(that:QueryBuilderTest)',
+            'WHERE (id(that) = {where_id_that}) ',
+            'RETURN',
+            'this,that'
+        ].join('\n');
+
+        const expected_params = {where_id_this: 1, where_id_that: 2};
 
         expect(query).to.equal(expected);
         expect(params).to.deep.equal(expected_params);
