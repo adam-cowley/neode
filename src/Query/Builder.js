@@ -1,4 +1,5 @@
 import Match from './Match';
+import Order from './Order';
 import Return from './Return';
 import Statement from './Statement';
 import WhereStatement from './WhereStatement';
@@ -98,13 +99,32 @@ export default class Builder {
      * @return {Builder}         [description]
      */
     where(...args) {
+        if (!args.length || !args[0]) return this;
+
         // If 2 character length, it should be straight forward where
         if (args.length == 2) {
             args = [args[0], OPERATOR_EQUALS, args[1]];
         }
 
         // If only one argument, treat it as a single string
-        if ( args.length == 1 ) {
+        if ( args.length == 1) {
+            const [arg] = args;
+
+            if (Array.isArray(arg)) {
+                arg.forEach(inner => {
+                    this.where(...inner);
+                });
+            }
+            else if (typeof arg == 'object') {
+                Object.keys(arg).forEach(key => {
+                    this.where(key, arg[key]);
+                });
+            }
+            else {
+                this._where.append(new WhereRaw(args[0]));
+            }
+        }
+        else if ( args.length == 1 ) {
             this._where.append(new WhereRaw(args[0]));
         }
         else {
@@ -167,6 +187,49 @@ export default class Builder {
      */
     skip(skip) {
         this._current.skip(skip);
+
+        return this;
+    }
+
+    /**
+     * Add an order by statement
+     *
+     * @param  {...String|object} args  Order by statements
+     * @return {Builder}
+     */
+    orderBy(...args) {
+        let order_by;
+
+        if (args.length == 2) {
+            // Assume orderBy(what, how)
+            order_by = new Order(args[0], args[1]);
+
+        }
+        else if (Array.isArray(args[0])) {
+            // Handle array of where's
+            args[0].forEach(arg => {
+                this.orderBy(arg);
+            });
+        }
+        // TODO: Ugly, stop supporting this
+        else if (typeof args[0] == 'object' && args[0].field) {
+            // Assume orderBy(args[0].field, args[0].order)
+            order_by = new Order(args[0].field, args[0].order);
+        }
+        else if (typeof args[0] == 'object') {
+            // Assume {key: order}
+            Object.keys(args[0]).forEach(key => {
+                this.orderBy(key, args[0][key]);
+            });
+        }
+        else if (args[0]) {
+            // Assume orderBy(what, 'ASC')
+            order_by = new Order(args[0]);
+        }
+
+        if (order_by) {
+            this._current.order(order_by);
+        }
 
         return this;
     }

@@ -262,14 +262,17 @@ export default class Neode {
     }
 
     /**
-     * Get all nodes of a label filtered by
+     * Get a collection of nodes`
      *
-     * @param  {String} label
-     * @param  {Object} properties
+     * @param  {String}              label
+     * @param  {Object}              properties
+     * @param  {String|Array|Object} order
+     * @param  {Int}                 limit
+     * @param  {Int}                 skip
      * @return {Promise}
      */
     all(label, properties, order, limit, skip) {
-        throw new Error('TODO');
+        return this.models(label).all(properties, order, limit, skip);
     }
 
     /**
@@ -280,7 +283,7 @@ export default class Neode {
      * @return {Promise}
      */
     find(label, id) {
-        return this.models(model).find(id);
+        return this.models(label).find(id);
     }
 
     /**
@@ -290,8 +293,8 @@ export default class Neode {
      * @param  {int}    id
      * @return {Promise}
      */
-    findById(model, id) {
-        return this.models(model).findById(id);
+    findById(label, id) {
+        return this.models(label).findById(id);
     }
 
     /**

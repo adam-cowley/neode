@@ -205,4 +205,150 @@ describe('Query/Builder.js', () => {
         expect(params).to.deep.equal(expected_params);
     });
 
+    it('should build a query with an order statement', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .where('this.property', 'that')
+            .return('this')
+            .orderBy('this.property', 'ASC')
+            .skip(20)
+            .limit(10)
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)',
+            'WHERE (this.property = {where_this_property}) ',
+            'RETURN',
+            'this',
+            'ORDER BY',
+            'this.property ASC',
+            'SKIP 20',
+            'LIMIT 10'
+        ].join('\n');
+        const expected_params = {where_this_property: 'that'};
+
+        expect(query).to.equal(expected);
+        expect(params).to.deep.equal(expected_params);
+    })
+
+    it('should build a query with multiple order statements', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .where('this.property', 'that')
+            .return('this')
+            .orderBy('this.property', 'ASC')
+            .orderBy('this.other', 'DESC')
+            .skip(20)
+            .limit(10)
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)',
+            'WHERE (this.property = {where_this_property}) ',
+            'RETURN',
+            'this',
+            'ORDER BY',
+            'this.property ASC,this.other DESC',
+            'SKIP 20',
+            'LIMIT 10'
+        ].join('\n');
+        const expected_params = {where_this_property: 'that'};
+
+        expect(query).to.equal(expected);
+        expect(params).to.deep.equal(expected_params);
+    });
+
+    it('should build a query with an array of string order statements', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .where('this.property', 'that')
+            .return('this')
+            .orderBy(['this.property', 'this.other'])
+            .skip(20)
+            .limit(10)
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)',
+            'WHERE (this.property = {where_this_property}) ',
+            'RETURN',
+            'this',
+            'ORDER BY',
+            'this.property,this.other',
+            'SKIP 20',
+            'LIMIT 10'
+        ].join('\n');
+        const expected_params = {where_this_property: 'that'};
+
+        expect(query).to.equal(expected);
+        expect(params).to.deep.equal(expected_params);
+    });
+
+    it('should build a query with an order object', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .where('this.property', 'that')
+            .return('this')
+            .orderBy({'this.property': 'DESC'})
+            .skip(20)
+            .limit(10)
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)',
+            'WHERE (this.property = {where_this_property}) ',
+            'RETURN',
+            'this',
+            'ORDER BY',
+            'this.property DESC',
+            'SKIP 20',
+            'LIMIT 10'
+        ].join('\n');
+        const expected_params = {where_this_property: 'that'};
+
+        expect(query).to.equal(expected);
+        expect(params).to.deep.equal(expected_params);
+    });
+
+    it('should build a query with an array of order object', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .where('this.property', 'that')
+            .return('this')
+            .orderBy([{field: 'this.property', order: 'ASC'}, {field: 'this.that', order: 'DESC'}])
+            .skip(20)
+            .limit(10)
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)',
+            'WHERE (this.property = {where_this_property}) ',
+            'RETURN',
+            'this',
+            'ORDER BY',
+            'this.property ASC,this.that DESC',
+            'SKIP 20',
+            'LIMIT 10'
+        ].join('\n');
+        const expected_params = {where_this_property: 'that'};
+
+        expect(query).to.equal(expected);
+        expect(params).to.deep.equal(expected_params);
+    });
+
 });

@@ -1,5 +1,6 @@
 import {assert, expect} from 'chai';
 import Node from '../src/Node';
+import NodeCollection from '../src/NodeCollection';
 
 describe('Queryable.js', () => {
     const instance = require('./instance');
@@ -35,6 +36,85 @@ describe('Queryable.js', () => {
             .catch(e => done(e));
     });
 
+    describe('::all', () => {
+        let first;
+
+        it('should return a Collection of Nodes', (done) => {
+            model.all()
+                .then(res => {
+                    expect(res).to.be.an.instanceOf(NodeCollection);
+                    expect(res.length).to.equal(3);
+
+                    expect(res.get(0)).to.be.an.instanceOf(Node);
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+
+        it('should apply parameters', (done) => {
+            model.all({name: 'Created 1'})
+                .then(res => {
+                    expect(res.length).to.equal(1);
+                    expect(res.get(0)).to.be.an.instanceOf(Node);
+
+                    expect(res.get(0).get('name')).to.equal('Created 1');
+                })
+                .then(() => done())
+                .catch(e => done(e));
+
+        });
+
+        it('should apply an order', (done) => {
+            model.all({}, 'name')
+                .then(res => {
+                    const original = created.map(node => node.get('name')).sort();
+                    const results = res.map(node => node.get('name'));
+
+                    expect(original).to.deep.equal(results);
+                })
+                .then(() => done())
+                .catch(e => done(e));
+
+        });
+
+        it('should handle object/apply a reverse order', (done) => {
+            model.all({}, {name:'desc'})
+                .then(res => {
+                    const original = created.map(node => node.get('name')).sort().reverse();
+                    const results = res.map(node => node.get('name'));
+
+                    expect(original).to.deep.equal(results);
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+
+        it('should apply a limit value', (done) => {
+            const limit = 2;
+            model.all({}, {name:'asc'}, limit)
+                .then(res => {
+                    expect(res.length).to.equal(limit);
+
+                    first = res.get(0);
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+
+        it('should apply a skip value', (done) => {
+            const limit = 1;
+            const skip = 1;
+            model.all({}, {name:'asc'}, limit, skip)
+                .then(res => {
+                    expect(res.length).to.equal(limit);
+
+                    expect(res.get(0).get('id')).to.not.equal(first.get('id'));
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+    });
+
     describe('::find', () => {
         it('should find by primary key', (done) => {
             Promise.all(created.map(node => {
@@ -52,7 +132,7 @@ describe('Queryable.js', () => {
             .then(() => done())
             .catch(e => done(e));
         });
-    })
+    });
 
     describe('::findById', () => {
         it('should find by Node ID', (done) => {

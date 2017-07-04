@@ -2,6 +2,7 @@ import Create from './Services/Create';
 import MergeOn from './Services/MergeOn';
 import DeleteAll from './Services/DeleteAll';
 import Builder from './Query/Builder';
+import NodeCollection from './NodeCollection';
 
 import Node from './Node';
 
@@ -59,6 +60,58 @@ export default class Queryable {
      */
     deleteAll() {
         return DeleteAll(this._neode, this);
+    }
+
+    /**
+     * Get a collection of nodes`for this label
+     *
+     * @param  {Object}              properties
+     * @param  {String|Array|Object} order
+     * @param  {Int}                 limit
+     * @param  {Int}                 skip
+     * @return {Promise}
+     */
+    all(properties, order, limit, skip) {
+        // Prefix key on Properties
+        if (properties) {
+            Object.keys(properties).forEach(key => {
+                properties[ `this.${key}` ] = properties[ key ];
+
+                delete properties[ key ];
+            });
+        }
+
+        // Prefix key on Order
+        if (typeof order == 'string') {
+            order = `this.${order}`;
+        }
+        else if (Array.isArray(order)) {
+
+        }
+        else if (typeof order == 'object') {
+            Object.keys(order).forEach(key => {
+                order[ `this.${key}` ] = order[ key ];
+
+                delete order[ key ];
+            })
+        }
+
+        return (new Builder(this._neode))
+            .match('this', this)
+            .where(properties)
+            .return('this')
+            .orderBy(order)
+            .skip(skip)
+            .limit(limit)
+            .execute()
+            .then(res => {
+                return res.records.map(row => {
+                    return new Node(this._neode, this, row.get('this'));
+                });
+            })
+            .then(nodes => {
+                return new NodeCollection(this._neode, nodes);
+            });
     }
 
     /**

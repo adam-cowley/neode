@@ -2,6 +2,7 @@ export default class Statement {
     constructor() {
         this._match = [];
         this._where = [];
+        this._order = [];
         this._return = [];
     }
 
@@ -23,6 +24,10 @@ export default class Statement {
 
     skip(skip) {
         this._skip = skip;
+    }
+
+    order(order) {
+        this._order.push(order);
     }
 
     return(...values) {
@@ -52,6 +57,14 @@ export default class Statement {
             output.push('RETURN');
 
             output.push(this._return.map(output => {
+                return output.toString();
+            }));
+        }
+
+        if (this._order.length) {
+            output.push('ORDER BY');
+
+            output.push(this._order.map(output => {
                 return output.toString();
             }));
         }
