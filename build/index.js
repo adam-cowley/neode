@@ -344,7 +344,7 @@ var Neode = function () {
     }, {
         key: 'all',
         value: function all(label, properties, order, limit, skip) {
-            return this.models(label).all(properties, order, limit, skip);
+            return this.models.get(label).all(properties, order, limit, skip);
         }
 
         /**
@@ -358,7 +358,7 @@ var Neode = function () {
     }, {
         key: 'find',
         value: function find(label, id) {
-            return this.models(label).find(id);
+            return this.models.get(label).find(id);
         }
 
         /**
@@ -372,7 +372,7 @@ var Neode = function () {
     }, {
         key: 'findById',
         value: function findById(label, id) {
-            return this.models(label).findById(id);
+            return this.models.get(label).findById(id);
         }
 
         /**
@@ -387,7 +387,7 @@ var Neode = function () {
     }, {
         key: 'first',
         value: function first(label, key, value) {
-            return this.models(label).first(key, value);
+            return this.models.get(label).first(key, value);
         }
     }], [{
         key: 'fromEnv',

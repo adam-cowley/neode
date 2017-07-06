@@ -272,7 +272,7 @@ export default class Neode {
      * @return {Promise}
      */
     all(label, properties, order, limit, skip) {
-        return this.models(label).all(properties, order, limit, skip);
+        return this.models.get(label).all(properties, order, limit, skip);
     }
 
     /**
@@ -283,7 +283,7 @@ export default class Neode {
      * @return {Promise}
      */
     find(label, id) {
-        return this.models(label).find(id);
+        return this.models.get(label).find(id);
     }
 
     /**
@@ -294,7 +294,7 @@ export default class Neode {
      * @return {Promise}
      */
     findById(label, id) {
-        return this.models(label).findById(id);
+        return this.models.get(label).findById(id);
     }
 
     /**
@@ -306,7 +306,7 @@ export default class Neode {
      * @return {Promise}
      */
     first(label, key, value) {
-        return this.models(label).first(key, value);
+        return this.models.get(label).first(key, value);
     }
 
 }
