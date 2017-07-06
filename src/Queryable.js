@@ -95,7 +95,7 @@ export default class Queryable {
                 order[ `${alias}.${key}` ] = order[ key ];
 
                 delete order[ key ];
-            })
+            });
         }
 
         return (new Builder(this._neode))
@@ -178,7 +178,7 @@ export default class Queryable {
      */
     hydrate(res, alias) {
         const nodes = res.records.map(row => {
-            return new Node(this._neode, this, row.get('this'));
+            return new Node(this._neode, this, row.get(alias));
         });
 
         return new NodeCollection(this._neode, nodes);
@@ -200,7 +200,5 @@ export default class Queryable {
 
         return new Node(this._neode, this, node);
     }
-
-
 
 }

@@ -1,6 +1,5 @@
 import neo4j from 'neo4j-driver';
 import Model from './Model';
-import Node from './Node';
 import Schema from './Schema';
 import TransactionError from './TransactionError';
 import Builder from './Query/Builder';
@@ -71,7 +70,7 @@ export default class Neode {
      * @return {Bool}
      */
     enterprise() {
-        this._enterprise;
+        return this._enterprise;
     }
 
     /**

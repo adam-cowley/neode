@@ -57,7 +57,7 @@ export default class NodeCollection {
     toJson() {
         return Promise.all(this._values.map(value => {
             return value.toJson();
-        }))
+        }));
     }
 
 }
