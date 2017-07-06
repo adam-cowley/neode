@@ -311,9 +311,4 @@ export default class Neode {
 
 }
 
-export {
-    Model,
-    Node
-};
-
-// module.exports = Neode;
+module.exports = Neode;

@@ -1,5 +1,6 @@
 import {assert, expect} from 'chai';
-import {Model, Node, Errors} from '../src/index';
+import Model from '../src/Model';
+import Node from '../src/Node';
 import RelationshipType, {DIRECTION_IN} from '../src/RelationshipType';
 import Relationship from '../src/Relationship';
 import uuid from 'uuid';
