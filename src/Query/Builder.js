@@ -7,6 +7,7 @@ import Where, {OPERATOR_EQUALS} from './Where';
 import WhereId from './WhereId';
 import WhereRaw from './WhereRaw';
 import WithStatement from './WithStatement';
+import neo4j from 'neo4j-driver';
 
 
 export default class Builder {
@@ -148,7 +149,7 @@ export default class Builder {
     whereId(alias, value) {
         const param = `where_id_${alias}`;
 
-        this._params[ param ] = value;
+        this._params[ param ] = neo4j.int(value);
 
         this._where.append(new WhereId(alias, param));
 
