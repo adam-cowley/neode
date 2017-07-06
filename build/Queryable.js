@@ -126,10 +126,12 @@ var Queryable = function () {
         value: function all(properties, order, limit, skip) {
             var _this4 = this;
 
+            var alias = 'this';
+
             // Prefix key on Properties
             if (properties) {
                 Object.keys(properties).forEach(function (key) {
-                    properties['this.' + key] = properties[key];
+                    properties[alias + '.' + key] = properties[key];
 
                     delete properties[key];
                 });
@@ -137,21 +139,17 @@ var Queryable = function () {
 
             // Prefix key on Order
             if (typeof order == 'string') {
-                order = 'this.' + order;
+                order = alias + '.' + order;
             } else if (Array.isArray(order)) {} else if ((typeof order === 'undefined' ? 'undefined' : _typeof(order)) == 'object') {
                 Object.keys(order).forEach(function (key) {
-                    order['this.' + key] = order[key];
+                    order[alias + '.' + key] = order[key];
 
                     delete order[key];
                 });
             }
 
-            return new _Builder2.default(this._neode).match('this', this).where(properties).return('this').orderBy(order).skip(skip).limit(limit).execute().then(function (res) {
-                return res.records.map(function (row) {
-                    return new _Node2.default(_this4._neode, _this4, row.get('this'));
-                });
-            }).then(function (nodes) {
-                return new _NodeCollection2.default(_this4._neode, nodes);
+            return new _Builder2.default(this._neode).match(alias, this).where(properties).return(alias).orderBy(order).skip(skip).limit(limit).execute().then(function (res) {
+                return _this4.hydrate(res, alias);
             });
         }
 
@@ -183,10 +181,10 @@ var Queryable = function () {
         value: function findById(id) {
             var _this5 = this;
 
-            return new _Builder2.default(this._neode).match('this', this).whereId('this', id).return('this').limit(1).execute().then(function (res) {
-                var node = res.records[0].get('this');
+            var alias = 'this';
 
-                return new _Node2.default(_this5._neode, _this5, node);
+            return new _Builder2.default(this._neode).match(alias, this).whereId(alias, id).return(alias).limit(1).execute().then(function (res) {
+                return _this5.hydrateFirst(res, alias);
             });
         }
 
@@ -218,10 +216,48 @@ var Queryable = function () {
             }
 
             return builder.return(alias).limit(1).execute().then(function (res) {
-                var node = res.records[0].get(alias);
-
-                return new _Node2.default(_this6._neode, _this6, node);
+                return _this6.hydrateFirst(res, alias);
             });
+        }
+
+        /**
+         * Hydrate a set of nodes and return a NodeCollection
+         *
+         * @param  {Object} res    Neo4j result set
+         * @param  {String} alias  Alias of node to pluck
+         * @return {NodeCollection}
+         */
+
+    }, {
+        key: 'hydrate',
+        value: function hydrate(res, alias) {
+            var _this7 = this;
+
+            var nodes = res.records.map(function (row) {
+                return new _Node2.default(_this7._neode, _this7, row.get('this'));
+            });
+
+            return new _NodeCollection2.default(this._neode, nodes);
+        }
+
+        /**
+         * Hydrate the first record in a result set
+         *
+         * @param  {Object} res    Neo4j Result
+         * @param  {String} alias  Alias of Node to pluck
+         * @return {Node}
+         */
+
+    }, {
+        key: 'hydrateFirst',
+        value: function hydrateFirst(res, alias) {
+            if (!res.records.length) {
+                return false;
+            }
+
+            var node = res.records[0].get(alias);
+
+            return new _Node2.default(this._neode, this, node);
         }
     }]);
 

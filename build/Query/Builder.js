@@ -46,6 +46,10 @@ var _WithStatement = require('./WithStatement');
 
 var _WithStatement2 = _interopRequireDefault(_WithStatement);
 
+var _neo4jDriver = require('neo4j-driver');
+
+var _neo4jDriver2 = _interopRequireDefault(_neo4jDriver);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } else { return Array.from(arr); } }
@@ -227,7 +231,7 @@ var Builder = function () {
         value: function whereId(alias, value) {
             var param = 'where_id_' + alias;
 
-            this._params[param] = value;
+            this._params[param] = _neo4jDriver2.default.int(value);
 
             this._where.append(new _WhereId2.default(alias, param));
 

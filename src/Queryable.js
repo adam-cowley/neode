@@ -72,10 +72,12 @@ export default class Queryable {
      * @return {Promise}
      */
     all(properties, order, limit, skip) {
+        const alias = 'this';
+
         // Prefix key on Properties
         if (properties) {
             Object.keys(properties).forEach(key => {
-                properties[ `this.${key}` ] = properties[ key ];
+                properties[ `${alias}.${key}` ] = properties[ key ];
 
                 delete properties[ key ];
             });
@@ -83,35 +85,28 @@ export default class Queryable {
 
         // Prefix key on Order
         if (typeof order == 'string') {
-            order = `this.${order}`;
+            order = `${alias}.${order}`;
         }
         else if (Array.isArray(order)) {
 
         }
         else if (typeof order == 'object') {
             Object.keys(order).forEach(key => {
-                order[ `this.${key}` ] = order[ key ];
+                order[ `${alias}.${key}` ] = order[ key ];
 
                 delete order[ key ];
             })
         }
 
         return (new Builder(this._neode))
-            .match('this', this)
+            .match(alias, this)
             .where(properties)
-            .return('this')
+            .return(alias)
             .orderBy(order)
             .skip(skip)
             .limit(limit)
             .execute()
-            .then(res => {
-                return res.records.map(row => {
-                    return new Node(this._neode, this, row.get('this'));
-                });
-            })
-            .then(nodes => {
-                return new NodeCollection(this._neode, nodes);
-            });
+            .then(res => this.hydrate(res, alias));
     }
 
     /**
@@ -134,17 +129,15 @@ export default class Queryable {
      * @return {Promise}
      */
     findById(id) {
+        const alias = 'this';
+
         return (new Builder(this._neode))
-            .match('this', this)
-            .whereId('this', id)
-            .return('this')
+            .match(alias, this)
+            .whereId(alias, id)
+            .return(alias)
             .limit(1)
             .execute()
-            .then(res => {
-                const node = res.records[0].get('this');
-
-                return new Node(this._neode, this, node);
-            });
+            .then(res => this.hydrateFirst(res, alias));
     }
 
     /**
@@ -173,11 +166,39 @@ export default class Queryable {
         return builder.return(alias)
             .limit(1)
             .execute()
-            .then(res => {
-                const node = res.records[0].get(alias);
+            .then(res => this.hydrateFirst(res, alias));
+    }
 
-                return new Node(this._neode, this, node);
-            });
+    /**
+     * Hydrate a set of nodes and return a NodeCollection
+     *
+     * @param  {Object} res    Neo4j result set
+     * @param  {String} alias  Alias of node to pluck
+     * @return {NodeCollection}
+     */
+    hydrate(res, alias) {
+        const nodes = res.records.map(row => {
+            return new Node(this._neode, this, row.get('this'));
+        });
+
+        return new NodeCollection(this._neode, nodes);
+    }
+
+    /**
+     * Hydrate the first record in a result set
+     *
+     * @param  {Object} res    Neo4j Result
+     * @param  {String} alias  Alias of Node to pluck
+     * @return {Node}
+     */
+    hydrateFirst(res, alias) {
+        if (!res.records.length) {
+            return false;
+        }
+
+        const node = res.records[0].get(alias);
+
+        return new Node(this._neode, this, node);
     }
 
 
