@@ -1,8 +1,6 @@
 var gulp = require('gulp'),
     mocha = require('gulp-mocha'),
-    clear = require('clear'),
-    istanbul = require('gulp-istanbul'),
-    isparta = require('isparta');
+    clear = require('clear');
 
 gulp.task('tdd', function() {
     return gulp.watch(['test/**/*.spec.js'])
@@ -20,15 +18,7 @@ gulp.task('tdd', function() {
         });
 });
 
-gulp.task('pre-test', function() {
-    return gulp.src(['src/**.js'])
-        .pipe(istanbul({
-            instrumenter: isparta.Instrumenter
-        }))
-        .pipe(istanbul.hookRequire());
-});
-
-gulp.task('tests', ['pre-test'], function() {
+gulp.task('tests', function() {
     clear();
 
     return gulp.src(['test/**/*.spec.js'])
@@ -37,6 +27,4 @@ gulp.task('tests', ['pre-test'], function() {
                 'js:babel-core/register'
             ]
         }))
-        .pipe(istanbul.writeReports())
-        .pipe(istanbul.enforceThresholds({thresholds: {global: 90}}));
 });

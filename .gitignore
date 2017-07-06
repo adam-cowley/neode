@@ -1,6 +1,8 @@
 bower_components/
 public/bower_components/
 node_modules/
+coverage/
 .gulp-cache
 .env
+.nyc_output
 config/**/*

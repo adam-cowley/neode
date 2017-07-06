@@ -1,6 +1,7 @@
 node_modules/*
 src/*
 test/*
+coverage/*
 .babelrc
 .env
 .env.example
