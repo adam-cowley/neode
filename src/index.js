@@ -181,6 +181,15 @@ export default class Neode {
     }
 
     /**
+     * Create a new Session in the Neo4j Driver.
+     *
+     * @return {Session}
+     */
+    session() {
+        return this.driver.session();
+    }
+
+    /**
      * Create a new Transaction
      *
      * @return {Transaction}

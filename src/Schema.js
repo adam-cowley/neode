@@ -12,6 +12,24 @@ function IndexCypher(label, property, mode = 'CREATE') {
     return `${mode} INDEX ON :${label}(${property})`;
 }
 
+function runAsync(session, queries, resolve, reject) {
+    const next = queries.pop();
+
+    return session.run(next)
+        .then(() => {
+            // If there is another query, let's run it
+            if (queries.length) {
+                return runAsync(session, queries, resolve, reject);
+            }
+
+            // Close Session and resolve
+            session.close();
+            resolve();
+        })
+        .catch(e => {
+            reject(e);
+        });
+}
 
 function InstallSchema(neode) {
     const queries = [];
@@ -34,7 +52,12 @@ function InstallSchema(neode) {
         });
     });
 
-    return neode.batch(queries);
+
+    const session = neode.session();
+
+    return new Promise((resolve, reject) => {
+        runAsync(session, queries, resolve, reject);
+    });
 }
 
 function DropSchema(neode) {
@@ -58,7 +81,11 @@ function DropSchema(neode) {
         });
     });
 
-    return neode.batch(queries);
+    const session = neode.session();
+
+    return new Promise((resolve, reject) => {
+        runAsync(session, queries, resolve, reject);
+    });
 }
 
 export default class Schema {

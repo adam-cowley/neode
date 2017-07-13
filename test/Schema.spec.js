@@ -98,8 +98,8 @@ describe('Schema.js', () => {
 
                 expect(actual).to.include(expected);
             })
-            .then(done)
-            .catch(done)
+            .then(() => done())
+            .catch(e => done(e))
     });
 
     it('should drop the schema', (done) => {
@@ -167,7 +167,8 @@ describe('Schema.js', () => {
 
                 expect(actual).to.not.include(unexpected);
             })
-            .then(done)
-            .catch(done)
+            .then(() => done())
+            .catch(e => done(e))
     });
+
 });
