@@ -1,6 +1,6 @@
 {
   "name": "neode",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Neo4j OGM for NodeJS",
   "main": "build/index.js",
   "scripts": {
