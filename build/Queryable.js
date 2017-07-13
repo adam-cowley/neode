@@ -234,7 +234,7 @@ var Queryable = function () {
             var _this7 = this;
 
             var nodes = res.records.map(function (row) {
-                return new _Node2.default(_this7._neode, _this7, row.get('this'));
+                return new _Node2.default(_this7._neode, _this7, row.get(alias));
             });
 
             return new _NodeCollection2.default(this._neode, nodes);

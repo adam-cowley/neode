@@ -16,10 +16,6 @@ var _Model = require('./Model');
 
 var _Model2 = _interopRequireDefault(_Model);
 
-var _Node = require('./Node');
-
-var _Node2 = _interopRequireDefault(_Node);
-
 var _Schema = require('./Schema');
 
 var _Schema2 = _interopRequireDefault(_Schema);
@@ -108,7 +104,7 @@ var Neode = function () {
     }, {
         key: 'enterprise',
         value: function enterprise() {
-            this._enterprise;
+            return this._enterprise;
         }
 
         /**
@@ -238,6 +234,18 @@ var Neode = function () {
 
                 throw err;
             });
+        }
+
+        /**
+         * Create a new Session in the Neo4j Driver.
+         *
+         * @return {Session}
+         */
+
+    }, {
+        key: 'session',
+        value: function session() {
+            return this.driver.session();
         }
 
         /**

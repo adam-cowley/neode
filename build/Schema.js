@@ -26,6 +26,23 @@ function IndexCypher(label, property) {
     return mode + ' INDEX ON :' + label + '(' + property + ')';
 }
 
+function runAsync(session, queries, resolve, reject) {
+    var next = queries.pop();
+
+    return session.run(next).then(function () {
+        // If there is another query, let's run it
+        if (queries.length) {
+            return runAsync(session, queries, resolve, reject);
+        }
+
+        // Close Session and resolve
+        session.close();
+        resolve();
+    }).catch(function (e) {
+        reject(e);
+    });
+}
+
 function InstallSchema(neode) {
     var queries = [];
 
@@ -47,7 +64,11 @@ function InstallSchema(neode) {
         });
     });
 
-    return neode.batch(queries);
+    var session = neode.session();
+
+    return new Promise(function (resolve, reject) {
+        runAsync(session, queries, resolve, reject);
+    });
 }
 
 function DropSchema(neode) {
@@ -71,7 +92,11 @@ function DropSchema(neode) {
         });
     });
 
-    return neode.batch(queries);
+    var session = neode.session();
+
+    return new Promise(function (resolve, reject) {
+        runAsync(session, queries, resolve, reject);
+    });
 }
 
 var Schema = function () {

@@ -4,10 +4,11 @@
   "description": "Neo4j OGM for NodeJS",
   "main": "build/index.js",
   "scripts": {
-    "build": "babel src -d build",
+    "build": "./node_modules/.bin/babel src -d build",
     "test": "./node_modules/.bin/mocha --compilers js:babel-register",
     "lint": "./node_modules/.bin/eslint src/",
-    "coverage": "./node_modules/.bin/nyc --reporter=html npm test"
+    "coverage": "./node_modules/.bin/nyc --reporter=html npm test",
+    "tdd": "./node_modules/.bin/gulp tdd"
   },
   "keywords": [
     "neo4j",
