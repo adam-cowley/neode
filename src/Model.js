@@ -5,9 +5,8 @@ import Property from './Property';
 
 export default class Model extends Queryable {
     constructor(neode, name, schema) {
-        super();
+        super(neode);
 
-        this._neode = neode;
         this._name = name;
         this._schema = schema;
 
@@ -28,7 +27,7 @@ export default class Model extends Queryable {
 
             switch ( key ) {
                 case 'labels':
-                    this.setLabels(...value);
+                    this.setLabels(value);
                     break;
 
                 default:

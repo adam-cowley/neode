@@ -1,12 +1,19 @@
-import Create from './Services/Create';
-import MergeOn from './Services/MergeOn';
-import DeleteAll from './Services/DeleteAll';
 import Builder from './Query/Builder';
-import NodeCollection from './NodeCollection';
-
+import Create from './Services/Create';
+import DeleteAll from './Services/DeleteAll';
+import MergeOn from './Services/MergeOn';
 import Node from './Node';
 
 export default class Queryable {
+
+    /**
+     * @constructor
+     *
+     * @param Neode neode
+     */
+    constructor(neode) {
+        this._neode = neode;
+    }
 
     /**
      * Create a new instance of this Model
@@ -63,7 +70,7 @@ export default class Queryable {
     }
 
     /**
-     * Get a collection of nodes`for this label
+     * Get a collection of nodes for this label
      *
      * @param  {Object}              properties
      * @param  {String|Array|Object} order
@@ -87,9 +94,6 @@ export default class Queryable {
         if (typeof order == 'string') {
             order = `${alias}.${order}`;
         }
-        else if (Array.isArray(order)) {
-
-        }
         else if (typeof order == 'object') {
             Object.keys(order).forEach(key => {
                 order[ `${alias}.${key}` ] = order[ key ];
@@ -106,7 +110,7 @@ export default class Queryable {
             .skip(skip)
             .limit(limit)
             .execute()
-            .then(res => this.hydrate(res, alias));
+            .then(res => this._neode.hydrate(res, alias));
     }
 
     /**
@@ -137,7 +141,7 @@ export default class Queryable {
             .return(alias)
             .limit(1)
             .execute()
-            .then(res => this.hydrateFirst(res, alias));
+            .then(res => this._neode.hydrateFirst(res, alias));
     }
 
     /**
@@ -166,39 +170,7 @@ export default class Queryable {
         return builder.return(alias)
             .limit(1)
             .execute()
-            .then(res => this.hydrateFirst(res, alias));
-    }
-
-    /**
-     * Hydrate a set of nodes and return a NodeCollection
-     *
-     * @param  {Object} res    Neo4j result set
-     * @param  {String} alias  Alias of node to pluck
-     * @return {NodeCollection}
-     */
-    hydrate(res, alias) {
-        const nodes = res.records.map(row => {
-            return new Node(this._neode, this, row.get(alias));
-        });
-
-        return new NodeCollection(this._neode, nodes);
-    }
-
-    /**
-     * Hydrate the first record in a result set
-     *
-     * @param  {Object} res    Neo4j Result
-     * @param  {String} alias  Alias of Node to pluck
-     * @return {Node}
-     */
-    hydrateFirst(res, alias) {
-        if (!res.records.length) {
-            return false;
-        }
-
-        const node = res.records[0].get(alias);
-
-        return new Node(this._neode, this, node);
+            .then(res => this._neode.hydrateFirst(res, alias));
     }
 
 }

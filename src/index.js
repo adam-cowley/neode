@@ -1,4 +1,5 @@
 import neo4j from 'neo4j-driver';
+import Factory from './Factory';
 import Model from './Model';
 import Schema from './Schema';
 import TransactionError from './TransactionError';
@@ -20,6 +21,7 @@ export default class Neode {
         this.driver = new neo4j.driver(connection_string, auth);
         this.models = new Map();
         this.schema = new Schema(this);
+        this.factory = new Factory(this);
 
         this.setEnterprise(enterprise);
     }
@@ -315,6 +317,29 @@ export default class Neode {
      */
     first(label, key, value) {
         return this.models.get(label).first(key, value);
+    }
+
+    /**
+     * Hydrate a set of nodes and return a NodeCollection
+     *
+     * @param  {Object}          res            Neo4j result set
+     * @param  {String}          alias          Alias of node to pluck
+     * @param  {Definition|null} definition     Force Definition
+     * @return {NodeCollection}
+     */
+    hydrate(res, alias, definition) {
+        return this.factory.hydrate(res, alias, definition);
+    }
+
+    /**
+     * Hydrate the first record in a result set
+     *
+     * @param  {Object} res    Neo4j Result
+     * @param  {String} alias  Alias of Node to pluck
+     * @return {Node}
+     */
+    hydrateFirst(res, alias, definition) {
+        return this.factory.hydrateFirst(res, alias, definition);
     }
 
 }
