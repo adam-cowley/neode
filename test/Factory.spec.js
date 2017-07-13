@@ -1,5 +1,6 @@
 import {assert, expect} from 'chai';
 import Node from '../src/Node';
+import NodeCollection from '../src/NodeCollection';
 
 describe('Factory.js', () => {
     const instance = require('./instance');
@@ -13,6 +14,23 @@ describe('Factory.js', () => {
     };
 
     const definition = instance.model(label, schema);
+    let node;
+
+    before(done => {
+        instance.create(label, {name: "Test"})
+            .then(res => {
+                node = res._node;
+
+                done();
+            })
+            .catch(e => done(e));
+    });
+
+    after(done => {
+        instance.deleteAll(label)
+            .then(() => done())
+            .catch(e => done(e));
+    });
 
     describe('::getDefinition', () => {
         it('should identify a label', () => {
@@ -27,24 +45,6 @@ describe('Factory.js', () => {
     });
 
     describe('::make', () => {
-        let node;
-
-        before(done => {
-            instance.create(label, {name: "Test"})
-                .then(res => {
-                    node = res._node;
-
-                    done();
-                })
-                .catch(e => done(e));
-        });
-
-        after(done => {
-            instance.deleteAll(label)
-                .then(() => done())
-                .catch(e => done(e));
-        });
-
         it('should return a Node object', () => {
             const output = instance.factory.make(node);
 
@@ -52,6 +52,18 @@ describe('Factory.js', () => {
             expect(output._node).to.equal(node);
             expect(output.model()).to.equal(definition);
         });     
+    });
+
+    describe('::hydrateAll', () => {
+        it('should hydrate an array of nodes into a NodeCollection', () => {
+            const output = instance.factory.hydrateAll([node]);
+
+            expect(output.length).to.equal(1);
+            expect(output).to.be.an.instanceOf(NodeCollection);
+            expect(output.first()).to.be.an.instanceOf(Node);
+            expect(output.first().idInt()).to.equal(node.identity);
+            expect(output.first().model()).to.equal(definition);
+        });
     });
 
 });

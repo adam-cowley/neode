@@ -68,6 +68,19 @@ export default class Factory {
     }
 
     /**
+     * Convert an array of Nodes into a collection
+     * 
+     * @param  {Array}
+     * @param  {Definition|null}
+     * @return {NodeCollection}
+     */
+    hydrateAll(nodes, definition) {
+        nodes = nodes.map(node => this.make(node, definition));
+
+        return new NodeCollection(this._neode, nodes);
+    }
+
+    /**
      * Hydrate the first record in a result set
      *
      * @param  {Object} res    Neo4j Result

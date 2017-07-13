@@ -31,6 +31,15 @@ export default class NodeCollection {
     }
 
     /**
+     * Get the first Node in the Collection
+     * 
+     * @return {Node}
+     */
+    first() {
+        return this._values[0];
+    }
+
+    /**
      * Map a function to all values
      *
      * @param  {Function} fn
