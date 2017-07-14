@@ -72,8 +72,23 @@ const neode = require('neode')
 
 #### Load from Directory
 
-TODO
+You can load a directory of models by calling the `withDirectory()` method. 
 
+```javascript
+// models/Person.js
+module.exports = {
+  id: {
+    type: 'uuid',
+    primary: true
+  },
+  name: 'string'
+}
+```
+
+```javascript
+// index.js
+instance.withDirectory(__dirname+'/models');
+```
 
 ### Defining a `Node` Definition
 

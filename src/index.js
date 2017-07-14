@@ -1,3 +1,4 @@
+import fs from 'fs';
 import neo4j from 'neo4j-driver';
 import Factory from './Factory';
 import Model from './Model';
@@ -45,13 +46,34 @@ export default class Neode {
     }
 
     /**
-     * [with description]
+     * Define multiple models
+     * 
      * @param  {Object} models   Map of models with their schema.  ie {Movie: {...}}
      * @return {Neode}
      */
     with(models) {
         Object.keys(models).forEach(model => {
             this.model(model, models[ model ]);
+        });
+
+        return this;
+    }
+
+    /**
+     * Scan a directory for Models
+     * 
+     * @param  {String} directory   Directory to scan
+     * @return {Neode}
+     */
+    withDirectory(directory) {
+        const files = fs.readdirSync(directory);
+
+        files.forEach(file => {
+            const model = file.replace('.js', '');
+            const path = directory +'/'+ file;
+            const schema = require(path);
+
+            return this.model(model, schema);
         });
 
         return this;

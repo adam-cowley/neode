@@ -3,6 +3,7 @@ import Neode from '../src/index';
 import Model from '../src/Model';
 import Node from '../src/Node';
 import NodeCollection from '../src/NodeCollection';
+import Property from '../src/Property';
 import Builder from '../src/Query/Builder';
 import neo4j from 'neo4j-driver';
 import {Driver} from 'neo4j-driver/lib/v1/driver';
@@ -41,7 +42,17 @@ describe('index.js', () => {
 
         expect(output).to.equal(instance);
         expect(output.model('WithTest')).to.be.an.instanceOf(Model);
-    })
+    });
+
+    it('should load modules from a directory', () => {
+        const output = instance.withDirectory(__dirname + '/fixtures');
+        const properties = require('./fixtures/ScanDirTest');
+
+        expect(output).to.equal(instance);
+        expect(output.model('ScanDirTest')).to.be.an.instanceOf(Model);
+        expect(output.model('ScanDirTest').properties().get('id')).to.be.an.instanceOf(Property);
+        expect(output.model('ScanDirTest').properties().get('name')).to.be.an.instanceOf(Property);
+    });
 
     it('should run cypher query', (done) => {
         instance.cypher('MATCH (n) RETURN count(n)')
