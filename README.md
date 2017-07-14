@@ -208,7 +208,6 @@ instance.batch(queries)
 
 ```javascript
 instance.batch([
-    'CREATE CONSTRAINT ON (p:Person) ASSERT p.name IS UNIQUE',
     {query: 'CREATE (p:Person {name: {name}}) RETURN p', params: {name: "Adam"}},
     {query: 'CREATE (p:Person {name: {name}}) RETURN p', params: {name: "Joe"}},
     {query: 'MATCH (first:Person {name: {first_name}}), (second:Person {name:{second_name}}) CREATE (first)-[:KNOWS]->(second)', params: {name: "Joe"}}
