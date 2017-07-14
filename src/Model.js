@@ -163,7 +163,6 @@ export default class Model extends Queryable {
         return this._primary_key;
     }
 
-
     /**
      * Get array of hidden fields
      *

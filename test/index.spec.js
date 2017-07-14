@@ -89,12 +89,41 @@ describe('index.js', () => {
                 .then(done)
                 .catch(done)
         });
+    });
 
+    describe('::model', () => {
         it('should register a new model', () => {
             const model = instance.model(label, schema);
 
             expect(model).to.be.an.instanceOf(Model);
             expect(model.name()).to.equal(label);
+        });
+    });
+
+    describe('::extend', () => {
+        it('should extend a model with new properties', () => {
+            const extended_label = 'ExtendedTest';
+            const using = {
+                extended_id: {
+                    primary: true
+                },
+                somethingelse: 'string'
+            };
+
+            const model = instance.extend(label, extended_label, using);
+
+            expect(model).to.be.an.instanceOf(Model);
+            expect(model.name()).to.equal(extended_label);
+            expect(model.labels()).to.contain(label, extended_label);
+
+            expect(model.primaryKey()).to.equal('extended_id');
+
+            const newprop = model.properties().get('somethingelse');
+
+            expect(newprop).to.be.an.instanceOf(Property);
+            expect(newprop.type()).to.equal('string');
+
+            expect(instance.model(extended_label)).to.equal(model);
         });
     });
 

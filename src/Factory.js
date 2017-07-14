@@ -32,19 +32,7 @@ export default class Factory {
      * @return {Definition}
      */
     getDefinition(labels) {
-        if ( !Array.isArray(labels) ) {
-            labels = [ labels ];
-        }
-
-        for (let entry of this._neode.models) {
-            const [ name, definition ] = entry; // eslint-disable-line no-unused-vars
-
-            if ( definition.labels().join(':') == labels.join(':') ) {
-                return definition;
-            }
-        }
-
-        return false;
+        return this._neode.models.getByLabels(labels);
     }
 
     /**

@@ -18,7 +18,7 @@ export default class Property {
     }
 
     type() {
-        return this.schema.type;
+        return this._schema.type;
     }
 
     primary() {

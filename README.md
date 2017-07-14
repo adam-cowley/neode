@@ -90,7 +90,9 @@ module.exports = {
 instance.withDirectory(__dirname+'/models');
 ```
 
-### Defining a `Node` Definition
+### Defining a Node Definition
+
+Neode revolves around the notion of node definitions, or `Model`s.  To interact with the graph, you will need to define a node, identified by a `name` and with a `schema` of properties.
 
 ```javascript
 instance.model(name, schema);
@@ -162,7 +164,7 @@ instance.model('Person').relationship('knows', 'KNOWS', 'out', 'Person', {
 });
 ```
 ### Extending a Schema definition
-**TODO** You can inherit the schema of a class and extend by calling the extend method.
+You can inherit the schema of a class and extend by calling the extend method.
 
 ```
 instance.extend(original, new, schema)
@@ -460,7 +462,6 @@ instance.schema.drop()
 - Query Builder
   - Eager Loading
   - More where clauses
-  - 'with' segment
   - CREATE
   - SET
   - DELETE
@@ -468,5 +469,4 @@ instance.schema.drop()
   - Match path
 
 - Housekeeping
-  - Submit to npm
   - Tests/Code Coverage

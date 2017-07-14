@@ -1,0 +1,90 @@
+import Model from './Model';
+
+export default class ModelMap {
+
+    /**
+     * @constuctor
+     *
+     * @param {Neode} neode 
+     */
+    constructor(neode) {
+        this._neode = neode;
+        this.models = new Map();
+    }
+
+    /**
+     * Getter
+     * 
+     * @param  {String}
+     * @return {Model|false}
+     */
+    get(key) {
+        return this.models.get(key);
+    }
+
+    /**
+     * Setter
+     * 
+     * @param  {String} key
+     * @param  {Model}  value
+     * @return {ModelMap}
+     */
+    set(key, value) {
+        this.models.set(key, value);
+
+        return this;
+    }
+
+    /**
+     * Get the definition for an array labels
+     * 
+     * @param  {Array} labels
+     * @return {Definition}
+     */
+    getByLabels(labels) {
+        if ( !Array.isArray(labels) ) {
+            labels = [ labels ];
+        }
+
+        for (let entry of this.models) {
+            const [ name, definition ] = entry; // eslint-disable-line no-unused-vars
+
+            if ( definition.labels().join(':') == labels.join(':') ) {
+                return definition;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Extend a model with extra configuration
+     * 
+     * @param  {String} name   Original Model to clone
+     * @param  {String} as     New Model name
+     * @param  {Object} using  Schema changes
+     * @return {Model}
+     */
+    extend(name, as, using) {
+        // Get Original Model
+        const original = this.models.get(name);
+
+        // Add new Labels
+        const labels = original.labels();
+        labels.push(name)
+        labels.sort();
+
+        // Merge Schema
+        const schema = Object.assign({}, original.schema(), using);
+
+        // Create and set
+        const model = new Model(this._neode, as, schema);
+
+        model.setLabels(...labels);
+
+        this.models.set(as, model);
+
+        return model;
+    }
+    
+}

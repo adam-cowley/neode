@@ -2,6 +2,7 @@ import fs from 'fs';
 import neo4j from 'neo4j-driver';
 import Factory from './Factory';
 import Model from './Model';
+import ModelMap from './ModelMap';
 import Schema from './Schema';
 import TransactionError from './TransactionError';
 import Builder from './Query/Builder';
@@ -20,7 +21,7 @@ export default class Neode {
     constructor(connection_string, username, password, enterprise = false) {
         const auth = username && password ? neo4j.auth.basic(username, password) : null;
         this.driver = new neo4j.driver(connection_string, auth);
-        this.models = new Map();
+        this.models = new ModelMap(this);
         this.schema = new Schema(this);
         this.factory = new Factory(this);
 
@@ -113,6 +114,17 @@ export default class Neode {
         return this.models.get(name);
     }
 
+    /**
+     * Extend a model with extra configuration
+     * 
+     * @param  {String} name   Original Model to clone
+     * @param  {String} as     New Model name
+     * @param  {Object} using  Schema changes
+     * @return {Model}
+     */
+    extend(model, as, using) {
+        return this.models.extend(model, as, using);
+    }
 
     /**
      * Create a new Node of a type
@@ -124,7 +136,6 @@ export default class Neode {
     create(model, properties) {
         return this.models.get(model).create(properties);
     }
-
 
     /**
      * Merge a node based on the defined indexes
