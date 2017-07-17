@@ -45,6 +45,18 @@ var NodeCollection = function () {
         }
 
         /**
+         * Get the first Node in the Collection
+         * 
+         * @return {Node}
+         */
+
+    }, {
+        key: "first",
+        value: function first() {
+            return this._values[0];
+        }
+
+        /**
          * Map a function to all values
          *
          * @param  {Function} fn

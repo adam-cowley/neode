@@ -52,12 +52,7 @@ function InstallSchema(neode) {
         });
     });
 
-
-    const session = neode.session();
-
-    return new Promise((resolve, reject) => {
-        runAsync(session, queries, resolve, reject);
-    });
+    return neode.batch(queries);
 }
 
 function DropSchema(neode) {

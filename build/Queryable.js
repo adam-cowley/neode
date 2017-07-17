@@ -8,25 +8,21 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
+var _Builder = require('./Query/Builder');
+
+var _Builder2 = _interopRequireDefault(_Builder);
+
 var _Create = require('./Services/Create');
 
 var _Create2 = _interopRequireDefault(_Create);
-
-var _MergeOn = require('./Services/MergeOn');
-
-var _MergeOn2 = _interopRequireDefault(_MergeOn);
 
 var _DeleteAll = require('./Services/DeleteAll');
 
 var _DeleteAll2 = _interopRequireDefault(_DeleteAll);
 
-var _Builder = require('./Query/Builder');
+var _MergeOn = require('./Services/MergeOn');
 
-var _Builder2 = _interopRequireDefault(_Builder);
-
-var _NodeCollection = require('./NodeCollection');
-
-var _NodeCollection2 = _interopRequireDefault(_NodeCollection);
+var _MergeOn2 = _interopRequireDefault(_MergeOn);
 
 var _Node = require('./Node');
 
@@ -37,20 +33,28 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 var Queryable = function () {
-    function Queryable() {
+
+    /**
+     * @constructor
+     *
+     * @param Neode neode
+     */
+    function Queryable(neode) {
         _classCallCheck(this, Queryable);
+
+        this._neode = neode;
     }
+
+    /**
+     * Create a new instance of this Model
+     *
+     * @param  {object} properties
+     * @return {Promise}
+     */
+
 
     _createClass(Queryable, [{
         key: 'create',
-
-
-        /**
-         * Create a new instance of this Model
-         *
-         * @param  {object} properties
-         * @return {Promise}
-         */
         value: function create(properties) {
             var _this = this;
 
@@ -112,7 +116,7 @@ var Queryable = function () {
         }
 
         /**
-         * Get a collection of nodes`for this label
+         * Get a collection of nodes for this label
          *
          * @param  {Object}              properties
          * @param  {String|Array|Object} order
@@ -140,7 +144,7 @@ var Queryable = function () {
             // Prefix key on Order
             if (typeof order == 'string') {
                 order = alias + '.' + order;
-            } else if (Array.isArray(order)) {} else if ((typeof order === 'undefined' ? 'undefined' : _typeof(order)) == 'object') {
+            } else if ((typeof order === 'undefined' ? 'undefined' : _typeof(order)) == 'object') {
                 Object.keys(order).forEach(function (key) {
                     order[alias + '.' + key] = order[key];
 
@@ -149,7 +153,7 @@ var Queryable = function () {
             }
 
             return new _Builder2.default(this._neode).match(alias, this).where(properties).return(alias).orderBy(order).skip(skip).limit(limit).execute().then(function (res) {
-                return _this4.hydrate(res, alias);
+                return _this4._neode.hydrate(res, alias);
             });
         }
 
@@ -184,7 +188,7 @@ var Queryable = function () {
             var alias = 'this';
 
             return new _Builder2.default(this._neode).match(alias, this).whereId(alias, id).return(alias).limit(1).execute().then(function (res) {
-                return _this5.hydrateFirst(res, alias);
+                return _this5._neode.hydrateFirst(res, alias);
             });
         }
 
@@ -216,48 +220,8 @@ var Queryable = function () {
             }
 
             return builder.return(alias).limit(1).execute().then(function (res) {
-                return _this6.hydrateFirst(res, alias);
+                return _this6._neode.hydrateFirst(res, alias);
             });
-        }
-
-        /**
-         * Hydrate a set of nodes and return a NodeCollection
-         *
-         * @param  {Object} res    Neo4j result set
-         * @param  {String} alias  Alias of node to pluck
-         * @return {NodeCollection}
-         */
-
-    }, {
-        key: 'hydrate',
-        value: function hydrate(res, alias) {
-            var _this7 = this;
-
-            var nodes = res.records.map(function (row) {
-                return new _Node2.default(_this7._neode, _this7, row.get(alias));
-            });
-
-            return new _NodeCollection2.default(this._neode, nodes);
-        }
-
-        /**
-         * Hydrate the first record in a result set
-         *
-         * @param  {Object} res    Neo4j Result
-         * @param  {String} alias  Alias of Node to pluck
-         * @return {Node}
-         */
-
-    }, {
-        key: 'hydrateFirst',
-        value: function hydrateFirst(res, alias) {
-            if (!res.records.length) {
-                return false;
-            }
-
-            var node = res.records[0].get(alias);
-
-            return new _Node2.default(this._neode, this, node);
         }
     }]);
 

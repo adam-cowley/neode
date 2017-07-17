@@ -27,7 +27,7 @@ export default class Model extends Queryable {
 
             switch ( key ) {
                 case 'labels':
-                    this.setLabels(value);
+                    this.setLabels(...value);
                     break;
 
                 default:

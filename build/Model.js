@@ -34,9 +34,8 @@ var Model = function (_Queryable) {
     function Model(neode, name, schema) {
         _classCallCheck(this, Model);
 
-        var _this = _possibleConstructorReturn(this, (Model.__proto__ || Object.getPrototypeOf(Model)).call(this));
+        var _this = _possibleConstructorReturn(this, (Model.__proto__ || Object.getPrototypeOf(Model)).call(this, neode));
 
-        _this._neode = neode;
         _this._name = name;
         _this._schema = schema;
 

@@ -35,7 +35,7 @@ var Property = function () {
     }, {
         key: 'type',
         value: function type() {
-            return this.schema.type;
+            return this._schema.type;
         }
     }, {
         key: 'primary',

@@ -36,6 +36,16 @@ export default class ModelMap {
     }
 
     /**
+     * Run a forEach function on the models
+     * 
+     * @param  {Function}
+     * @return {void}
+     */
+    forEach(fn) {
+        return this.models.forEach(fn);
+    }
+
+    /**
      * Get the definition for an array labels
      * 
      * @param  {Array} labels
@@ -71,7 +81,7 @@ export default class ModelMap {
 
         // Add new Labels
         const labels = original.labels();
-        labels.push(name)
+        labels.push(name);
         labels.sort();
 
         // Merge Schema

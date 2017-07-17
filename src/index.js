@@ -235,9 +235,11 @@ export default class Neode {
 
         // Create an 'end' function to commit & close the session
         // TODO: Clean up
-        tx.end = () => {
-            tx.commit();
-            session.close();
+        tx.success = () => {
+            return tx.commit()
+                .then(() => {
+                    session.close()
+                });
         };
 
         return tx;
@@ -271,19 +273,20 @@ export default class Neode {
                 errors.push({query, params, error});
             }
         }))
-            .then(() => {
-                if (errors.length) {
-                    tx.rollback();
+        .then(() => {
+            if (errors.length) {
+                tx.rollback();
 
-                    const error = new TransactionError(errors);
+                const error = new TransactionError(errors);
 
-                    throw error;
-                }
+                throw error;
+            }
 
-                tx.end();
-
-                return output;
-            });
+            return tx.success()
+                .then(() => {
+                    return output;
+                });
+        });
     }
 
     /**

@@ -8,13 +8,25 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
+var _fs = require('fs');
+
+var _fs2 = _interopRequireDefault(_fs);
+
 var _neo4jDriver = require('neo4j-driver');
 
 var _neo4jDriver2 = _interopRequireDefault(_neo4jDriver);
 
+var _Factory = require('./Factory');
+
+var _Factory2 = _interopRequireDefault(_Factory);
+
 var _Model = require('./Model');
 
 var _Model2 = _interopRequireDefault(_Model);
+
+var _ModelMap = require('./ModelMap');
+
+var _ModelMap2 = _interopRequireDefault(_ModelMap);
 
 var _Schema = require('./Schema');
 
@@ -50,8 +62,9 @@ var Neode = function () {
 
         var auth = username && password ? _neo4jDriver2.default.auth.basic(username, password) : null;
         this.driver = new _neo4jDriver2.default.driver(connection_string, auth);
-        this.models = new Map();
+        this.models = new _ModelMap2.default(this);
         this.schema = new _Schema2.default(this);
+        this.factory = new _Factory2.default(this);
 
         this.setEnterprise(enterprise);
     }
@@ -69,7 +82,8 @@ var Neode = function () {
 
 
         /**
-         * [with description]
+         * Define multiple models
+         * 
          * @param  {Object} models   Map of models with their schema.  ie {Movie: {...}}
          * @return {Neode}
          */
@@ -78,6 +92,31 @@ var Neode = function () {
 
             Object.keys(models).forEach(function (model) {
                 _this.model(model, models[model]);
+            });
+
+            return this;
+        }
+
+        /**
+         * Scan a directory for Models
+         * 
+         * @param  {String} directory   Directory to scan
+         * @return {Neode}
+         */
+
+    }, {
+        key: 'withDirectory',
+        value: function withDirectory(directory) {
+            var _this2 = this;
+
+            var files = _fs2.default.readdirSync(directory);
+
+            files.forEach(function (file) {
+                var model = file.replace('.js', '');
+                var path = directory + '/' + file;
+                var schema = require(path);
+
+                return _this2.model(model, schema);
             });
 
             return this;
@@ -124,6 +163,21 @@ var Neode = function () {
             }
 
             return this.models.get(name);
+        }
+
+        /**
+         * Extend a model with extra configuration
+         * 
+         * @param  {String} name   Original Model to clone
+         * @param  {String} as     New Model name
+         * @param  {Object} using  Schema changes
+         * @return {Model}
+         */
+
+    }, {
+        key: 'extend',
+        value: function extend(model, as, using) {
+            return this.models.extend(model, as, using);
         }
 
         /**
@@ -262,9 +316,10 @@ var Neode = function () {
 
             // Create an 'end' function to commit & close the session
             // TODO: Clean up
-            tx.end = function () {
-                tx.commit();
-                session.close();
+            tx.success = function () {
+                return tx.commit().then(function () {
+                    session.close();
+                });
             };
 
             return tx;
@@ -308,9 +363,9 @@ var Neode = function () {
                     throw error;
                 }
 
-                tx.end();
-
-                return output;
+                return tx.success().then(function () {
+                    return output;
+                });
             });
         }
 
@@ -396,6 +451,35 @@ var Neode = function () {
         key: 'first',
         value: function first(label, key, value) {
             return this.models.get(label).first(key, value);
+        }
+
+        /**
+         * Hydrate a set of nodes and return a NodeCollection
+         *
+         * @param  {Object}          res            Neo4j result set
+         * @param  {String}          alias          Alias of node to pluck
+         * @param  {Definition|null} definition     Force Definition
+         * @return {NodeCollection}
+         */
+
+    }, {
+        key: 'hydrate',
+        value: function hydrate(res, alias, definition) {
+            return this.factory.hydrate(res, alias, definition);
+        }
+
+        /**
+         * Hydrate the first record in a result set
+         *
+         * @param  {Object} res    Neo4j Result
+         * @param  {String} alias  Alias of Node to pluck
+         * @return {Node}
+         */
+
+    }, {
+        key: 'hydrateFirst',
+        value: function hydrateFirst(res, alias, definition) {
+            return this.factory.hydrateFirst(res, alias, definition);
         }
     }], [{
         key: 'fromEnv',
