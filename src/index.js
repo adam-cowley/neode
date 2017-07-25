@@ -48,7 +48,7 @@ export default class Neode {
 
     /**
      * Define multiple models
-     * 
+     *
      * @param  {Object} models   Map of models with their schema.  ie {Movie: {...}}
      * @return {Neode}
      */
@@ -62,7 +62,7 @@ export default class Neode {
 
     /**
      * Scan a directory for Models
-     * 
+     *
      * @param  {String} directory   Directory to scan
      * @return {Neode}
      */
@@ -116,7 +116,7 @@ export default class Neode {
 
     /**
      * Extend a model with extra configuration
-     * 
+     *
      * @param  {String} name   Original Model to clone
      * @param  {String} as     New Model name
      * @param  {Object} using  Schema changes
@@ -238,7 +238,7 @@ export default class Neode {
         tx.success = () => {
             return tx.commit()
                 .then(() => {
-                    session.close()
+                    session.close();
                 });
         };
 
@@ -273,20 +273,20 @@ export default class Neode {
                 errors.push({query, params, error});
             }
         }))
-        .then(() => {
-            if (errors.length) {
-                tx.rollback();
+            .then(() => {
+                if (errors.length) {
+                    tx.rollback();
 
-                const error = new TransactionError(errors);
+                    const error = new TransactionError(errors);
 
-                throw error;
-            }
+                    throw error;
+                }
 
-            return tx.success()
-                .then(() => {
-                    return output;
-                });
-        });
+                return tx.success()
+                    .then(() => {
+                        return output;
+                    });
+            });
     }
 
     /**

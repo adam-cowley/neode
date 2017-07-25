@@ -35,7 +35,7 @@ describe('Factory.js', () => {
     describe('::getDefinition', () => {
         it('should identify a label', () => {
             const output = instance.factory.getDefinition([label]);
-            expect(definition).to.equal(output);
+            expect(definition.name()).to.equal(output.name());
         });
 
         it('should return false when definition not found', () => {
@@ -50,8 +50,8 @@ describe('Factory.js', () => {
 
             expect(output).to.be.an.instanceOf(Node);
             expect(output._node).to.equal(node);
-            expect(output.model()).to.equal(definition);
-        });     
+            expect(output.model().name()).to.equal(definition.name());
+        });
     });
 
     describe('::hydrateAll', () => {
@@ -62,7 +62,7 @@ describe('Factory.js', () => {
             expect(output).to.be.an.instanceOf(NodeCollection);
             expect(output.first()).to.be.an.instanceOf(Node);
             expect(output.first().idInt()).to.equal(node.identity);
-            expect(output.first().model()).to.equal(definition);
+            expect(output.first().model().name()).to.equal(definition.name());
         });
     });
 

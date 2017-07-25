@@ -83,7 +83,7 @@ var Neode = function () {
 
         /**
          * Define multiple models
-         * 
+         *
          * @param  {Object} models   Map of models with their schema.  ie {Movie: {...}}
          * @return {Neode}
          */
@@ -99,7 +99,7 @@ var Neode = function () {
 
         /**
          * Scan a directory for Models
-         * 
+         *
          * @param  {String} directory   Directory to scan
          * @return {Neode}
          */
@@ -167,7 +167,7 @@ var Neode = function () {
 
         /**
          * Extend a model with extra configuration
-         * 
+         *
          * @param  {String} name   Original Model to clone
          * @param  {String} as     New Model name
          * @param  {Object} using  Schema changes
