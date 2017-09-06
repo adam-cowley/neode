@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", {
     value: true
 });
-exports.DIRECTION_BOTH = exports.DIRECTION_OUT = exports.DIRECTION_IN = undefined;
+exports.ALT_DIRECTION_OUT = exports.ALT_DIRECTION_IN = exports.DIRECTION_BOTH = exports.DIRECTION_OUT = exports.DIRECTION_IN = undefined;
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
@@ -19,8 +19,8 @@ var DIRECTION_IN = exports.DIRECTION_IN = 'DIRECTION_IN';
 var DIRECTION_OUT = exports.DIRECTION_OUT = 'DIRECTION_OUT';
 var DIRECTION_BOTH = exports.DIRECTION_BOTH = 'DIRECTION_BOTH';
 
-var ALT_DIRECTION_IN = 'IN';
-var ALT_DIRECTION_OUT = 'OUT';
+var ALT_DIRECTION_IN = exports.ALT_DIRECTION_IN = 'IN';
+var ALT_DIRECTION_OUT = exports.ALT_DIRECTION_OUT = 'OUT';
 
 var RelationshipType = function () {
 
@@ -31,10 +31,14 @@ var RelationshipType = function () {
      * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
      * @param  {String|Model|null} target   Target type definition for the
      * @param  {Object} schema              Relationship definition schema
+     * @param  {Bool} eager                 Should this relationship be eager loaded?
+     * @param  {Bool|String} cascade        Cascade delete policy for this relationship
      * @return {Relationship}
      */
     function RelationshipType(type, relationship, direction, target) {
         var schema = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : {};
+        var eager = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : false;
+        var cascade = arguments.length > 6 && arguments[6] !== undefined ? arguments[6] : false;
 
         _classCallCheck(this, RelationshipType);
 
@@ -44,6 +48,9 @@ var RelationshipType = function () {
 
         this._target = target;
         this._schema = schema;
+
+        this._eager = eager;
+        this._cascade = cascade;
 
         this._properties = new Map();
 
@@ -150,6 +157,30 @@ var RelationshipType = function () {
         key: 'schema',
         value: function schema() {
             return this._schema;
+        }
+
+        /**
+         * Should this relationship be eagerly loaded?
+         *
+         * @return {bool}
+         */
+
+    }, {
+        key: 'schema',
+        value: function schema() {
+            return this._eager;
+        }
+
+        /**
+         * Cascade policy for this relationship type
+         *
+         * @return {String}
+         */
+
+    }, {
+        key: 'cascade',
+        value: function cascade() {
+            return this._cascade;
         }
     }]);
 

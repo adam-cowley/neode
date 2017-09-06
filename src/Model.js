@@ -32,9 +32,9 @@ export default class Model extends Queryable {
 
                 default:
                     if ( value.type && value.type == 'relationship' ) {
-                        const {relationship, direction, target, properties} = value;
+                        const {relationship, direction, target, properties, eager, cascade} = value;
 
-                        this.relationships().set(key, new RelationshipType(key, relationship, direction, target, properties));
+                        this.relationship(key, relationship, direction, target, schema, eager, cascade);
                     }
                     else {
                         this.addProperty(key, value);
@@ -134,12 +134,14 @@ export default class Model extends Queryable {
      * @param  {String} relationship        Internal Relationship type
      * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
      * @param  {String|Model|null} target   Target type definition for the
-     * @param  {Object} validation          Property Validation options
+     * @param  {Object} schema              Property Schema
+     * @param  {Bool} eager                 Should this relationship be eager loaded?
+     * @param  {Bool|String} cascade        Cascade delete policy for this relationship
      * @return {Relationship}
      */
-    relationship(name, relationship, direction = DIRECTION_BOTH, target, validation = {}) {
+    relationship(name, relationship, direction = DIRECTION_BOTH, target, schema = {}, eager = false, cascade = false) {
         if (relationship && direction && validation) {
-            this._relationships.set(name, new RelationshipType(name, relationship, direction, target, validation));
+            this._relationships.set(name, new RelationshipType(name, relationship, direction, target, schema, eager, cascade));
         }
 
         return this._relationships.get(name);
@@ -152,6 +154,17 @@ export default class Model extends Queryable {
      */
     relationships() {
         return this._relationships;
+    }
+
+    /**
+     * Get relationships defined as Eager relationships
+     *
+     * @return {Array}
+     */
+    eager() {
+        return Array.from(this._relationships).map(([key, value]) => {
+            return value._eager ? value : null;
+        }).filter(a => !!a);
     }
 
     /**

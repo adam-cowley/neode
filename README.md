@@ -72,7 +72,7 @@ const neode = require('neode')
 
 #### Load from Directory
 
-You can load a directory of models by calling the `withDirectory()` method. 
+You can load a directory of models by calling the `withDirectory()` method.
 
 ```javascript
 // models/Person.js
@@ -163,6 +163,35 @@ instance.model('Person').relationship('knows', 'KNOWS', 'out', 'Person', {
     }
 });
 ```
+
+#### Eager Loading
+
+You can eager load relationships in a `findAll()` call by setting the `eager` property inside the relationship schema to `true`.
+
+```javascript
+{
+    acts_in: {
+        type: "relationship",
+        target: "Movie",
+        relationship: "ACTS_IN",
+        direction: "out",
+        properties: {
+            name: "string"
+        },
+        eager: true // <-- eager load this relationship
+    }
+}
+```
+
+Eager loaded relationships can be retrieved by using the `get()` method.  A `NodeCollection` instance will be returned.
+
+```
+const person = person.find({name: "Tom Hanks"})
+const movies = person.get('acts_in');
+const first = movies.first();
+```
+
+
 ### Extending a Schema definition
 You can inherit the schema of a class and extend by calling the extend method.
 
@@ -459,7 +488,6 @@ instance.schema.drop()
   - Composite indexes
 
 - Query Builder
-  - Eager Loading
   - More where clauses
   - CREATE
   - SET

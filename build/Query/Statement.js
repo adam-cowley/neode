@@ -6,12 +6,23 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
+var _Relationship = require('./Relationship');
+
+var _Relationship2 = _interopRequireDefault(_Relationship);
+
+var _RelationshipType = require('../RelationshipType');
+
+var _RelationshipType2 = _interopRequireDefault(_RelationshipType);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 var Statement = function () {
-    function Statement() {
+    function Statement(prefix) {
         _classCallCheck(this, Statement);
 
+        this._prefix = prefix || 'MATCH';
         this._match = [];
         this._where = [];
         this._order = [];
@@ -59,16 +70,30 @@ var Statement = function () {
             return this;
         }
     }, {
+        key: 'relationship',
+        value: function relationship(_relationship, direction, alias, traversals) {
+            if (_relationship instanceof _RelationshipType2.default) {
+                var rel = _relationship;
+
+                _relationship = rel.relationship();
+                direction = rel.direction();
+            }
+
+            this._match.push(new _Relationship2.default(_relationship, direction, alias, traversals));
+
+            return this;
+        }
+    }, {
         key: 'toString',
         value: function toString() {
             var output = [];
 
             if (this._match.length) {
-                output.push('MATCH');
+                output.push(this._prefix);
 
                 output.push(this._match.map(function (statement) {
                     return statement.toString();
-                }));
+                }).join(''));
             }
 
             if (this._where.length) {

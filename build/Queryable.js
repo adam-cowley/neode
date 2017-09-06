@@ -20,6 +20,10 @@ var _DeleteAll = require('./Services/DeleteAll');
 
 var _DeleteAll2 = _interopRequireDefault(_DeleteAll);
 
+var _FindAll = require('./Services/FindAll');
+
+var _FindAll2 = _interopRequireDefault(_FindAll);
+
 var _MergeOn = require('./Services/MergeOn');
 
 var _MergeOn2 = _interopRequireDefault(_MergeOn);
@@ -128,33 +132,7 @@ var Queryable = function () {
     }, {
         key: 'all',
         value: function all(properties, order, limit, skip) {
-            var _this4 = this;
-
-            var alias = 'this';
-
-            // Prefix key on Properties
-            if (properties) {
-                Object.keys(properties).forEach(function (key) {
-                    properties[alias + '.' + key] = properties[key];
-
-                    delete properties[key];
-                });
-            }
-
-            // Prefix key on Order
-            if (typeof order == 'string') {
-                order = alias + '.' + order;
-            } else if ((typeof order === 'undefined' ? 'undefined' : _typeof(order)) == 'object') {
-                Object.keys(order).forEach(function (key) {
-                    order[alias + '.' + key] = order[key];
-
-                    delete order[key];
-                });
-            }
-
-            return new _Builder2.default(this._neode).match(alias, this).where(properties).return(alias).orderBy(order).skip(skip).limit(limit).execute().then(function (res) {
-                return _this4._neode.hydrate(res, alias);
-            });
+            return (0, _FindAll2.default)(this._neode, this, properties, order, limit, skip);
         }
 
         /**
@@ -183,12 +161,12 @@ var Queryable = function () {
     }, {
         key: 'findById',
         value: function findById(id) {
-            var _this5 = this;
+            var _this4 = this;
 
             var alias = 'this';
 
             return new _Builder2.default(this._neode).match(alias, this).whereId(alias, id).return(alias).limit(1).execute().then(function (res) {
-                return _this5._neode.hydrateFirst(res, alias);
+                return _this4._neode.hydrateFirst(res, alias);
             });
         }
 
@@ -204,7 +182,7 @@ var Queryable = function () {
     }, {
         key: 'first',
         value: function first(key, value) {
-            var _this6 = this;
+            var _this5 = this;
 
             var alias = 'this';
             var builder = new _Builder2.default(this._neode);
@@ -220,7 +198,7 @@ var Queryable = function () {
             }
 
             return builder.return(alias).limit(1).execute().then(function (res) {
-                return _this6._neode.hydrateFirst(res, alias);
+                return _this5._neode.hydrateFirst(res, alias);
             });
         }
     }]);

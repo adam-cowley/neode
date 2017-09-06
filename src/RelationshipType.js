@@ -4,8 +4,8 @@ export const DIRECTION_IN = 'DIRECTION_IN';
 export const DIRECTION_OUT = 'DIRECTION_OUT';
 export const DIRECTION_BOTH = 'DIRECTION_BOTH';
 
-const ALT_DIRECTION_IN = 'IN';
-const ALT_DIRECTION_OUT = 'OUT';
+export const ALT_DIRECTION_IN = 'IN';
+export const ALT_DIRECTION_OUT = 'OUT';
 
 export default class RelationshipType {
 
@@ -16,15 +16,20 @@ export default class RelationshipType {
      * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
      * @param  {String|Model|null} target   Target type definition for the
      * @param  {Object} schema              Relationship definition schema
+     * @param  {Bool} eager                 Should this relationship be eager loaded?
+     * @param  {Bool|String} cascade        Cascade delete policy for this relationship
      * @return {Relationship}
      */
-    constructor(type, relationship, direction, target, schema = {}) {
+    constructor(type, relationship, direction, target, schema = {}, eager = false, cascade = false) {
         this._type = type;
         this._relationship = relationship;
         this.setDirection(direction);
 
         this._target = target;
         this._schema = schema;
+
+        this._eager = eager;
+        this._cascade = cascade;
 
         this._properties = new Map;
 
@@ -113,6 +118,24 @@ export default class RelationshipType {
      */
     schema() {
         return this._schema;
+    }
+
+    /**
+     * Should this relationship be eagerly loaded?
+     *
+     * @return {bool}
+     */
+    schema() {
+        return this._eager;
+    }
+
+    /**
+     * Cascade policy for this relationship type
+     *
+     * @return {String}
+     */
+    cascade() {
+        return this._cascade;
     }
 
 }

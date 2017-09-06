@@ -1,6 +1,7 @@
 import Builder from './Query/Builder';
 import Create from './Services/Create';
 import DeleteAll from './Services/DeleteAll';
+import FindAll from './Services/FindAll';
 import MergeOn from './Services/MergeOn';
 import Node from './Node';
 
@@ -79,38 +80,7 @@ export default class Queryable {
      * @return {Promise}
      */
     all(properties, order, limit, skip) {
-        const alias = 'this';
-
-        // Prefix key on Properties
-        if (properties) {
-            Object.keys(properties).forEach(key => {
-                properties[ `${alias}.${key}` ] = properties[ key ];
-
-                delete properties[ key ];
-            });
-        }
-
-        // Prefix key on Order
-        if (typeof order == 'string') {
-            order = `${alias}.${order}`;
-        }
-        else if (typeof order == 'object') {
-            Object.keys(order).forEach(key => {
-                order[ `${alias}.${key}` ] = order[ key ];
-
-                delete order[ key ];
-            });
-        }
-
-        return (new Builder(this._neode))
-            .match(alias, this)
-            .where(properties)
-            .return(alias)
-            .orderBy(order)
-            .skip(skip)
-            .limit(limit)
-            .execute()
-            .then(res => this._neode.hydrate(res, alias));
+        return FindAll(this._neode, this, properties, order, limit, skip);
     }
 
     /**

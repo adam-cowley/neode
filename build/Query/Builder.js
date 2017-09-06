@@ -75,12 +75,12 @@ var Builder = function () {
 
     _createClass(Builder, [{
         key: 'statement',
-        value: function statement() {
+        value: function statement(prefix) {
             if (this._current) {
                 this._statements.push(this._current);
             }
 
-            this._current = new _Statement2.default();
+            this._current = new _Statement2.default(prefix);
 
             return this;
         }
@@ -116,6 +116,16 @@ var Builder = function () {
         value: function match(alias, model) {
             this.whereStatement('WHERE');
             this.statement();
+
+            this._current.match(new _Match2.default(alias, model));
+
+            return this;
+        }
+    }, {
+        key: 'optionalMatch',
+        value: function optionalMatch(alias, model) {
+            this.whereStatement('WHERE');
+            this.statement('OPTIONAL MATCH');
 
             this._current.match(new _Match2.default(alias, model));
 
@@ -327,6 +337,53 @@ var Builder = function () {
             if (order_by) {
                 this._current.order(order_by);
             }
+
+            return this;
+        }
+
+        /**
+         * Add a relationship to the query
+         *
+         * @param  {String|RelationshipType} relationship  Relationship name or RelationshipType object
+         * @param  {String}                  direction     Direction of relationship DIRECTION_IN, DIRECTION_OUT
+         * @param  {String|null}             alias         Relationship alias
+         * @param  {Int|String}              traversals    Number of traversals (1, "1..2", "0..2", "..3")
+         * @return {Builder}
+         */
+
+    }, {
+        key: 'relationship',
+        value: function relationship(_relationship, direction, alias, traversals) {
+            this._current.relationship(_relationship, direction, alias, traversals);
+
+            return this;
+        }
+
+        /**
+         * Complete a relationship
+         * @param  {String} alias Alias
+         * @param  {Model} model  Model definition
+         * @return {Builder}
+         */
+
+    }, {
+        key: 'to',
+        value: function to(alias, model) {
+            this._current.match(new _Match2.default(alias, model));
+
+            return this;
+        }
+
+        /**
+         * Complete the relationship statement to point to anything
+         *
+         * @return {Builder
+         */
+
+    }, {
+        key: 'toAnything',
+        value: function toAnything() {
+            this._current.toAnything();
 
             return this;
         }

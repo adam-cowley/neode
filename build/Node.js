@@ -22,6 +22,10 @@ var _RelationshipType = require('./RelationshipType');
 
 var _RelationshipType2 = _interopRequireDefault(_RelationshipType);
 
+var _NodeCollection = require('./NodeCollection');
+
+var _NodeCollection2 = _interopRequireDefault(_NodeCollection);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -34,14 +38,17 @@ var Node = function () {
      * @param  {Neode} neode  Neode Instance
      * @param  {Model} model  Model definition
      * @param  {node}  node   Node Onject from neo4j-driver
+     * @param  {Map)   eager  Eagerly loaded values
      * @return {Node}
      */
-    function Node(neode, model, node) {
+    function Node(neode, model, node, eager) {
         _classCallCheck(this, Node);
 
         this._neode = neode;
         this._model = model;
         this._node = node;
+
+        this._eager = eager || new Map();
 
         this._deleted = false;
     }
@@ -96,7 +103,16 @@ var Node = function () {
         value: function get(property) {
             var or = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : null;
 
-            return this._node.properties[property] || or;
+            // If property is set, return that
+            if (this._node.properties.hasOwnProperty(property)) {
+                return this._node.properties[property];
+            }
+            // If property has been set in eager, return that
+            else if (this._eager.has(property)) {
+                    return this._eager.get(property);
+                }
+
+            return or;
         }
 
         /**

@@ -1,11 +1,13 @@
 import Node from './Node';
 import NodeCollection from './NodeCollection';
 
+export const eager = '__eager_';
+
 export default class Factory {
 
     /**
      * @constuctor
-     * 
+     *
      * @param Neode neode
      */
     constructor(neode) {
@@ -13,8 +15,8 @@ export default class Factory {
     }
 
     /**
-     * Turn a result node into a 
-     * 
+     * Turn a result node into a
+     *
      * @param  {Object} node    Neo4j Node
      * @return {Node|false}
      */
@@ -27,7 +29,7 @@ export default class Factory {
 
     /**
      * Get the definition for a set of labels
-     * 
+     *
      * @param  {Array} labels
      * @return {Definition}
      */
@@ -45,11 +47,25 @@ export default class Factory {
      */
     hydrate(res, alias, definition) {
         const nodes = res.records.map(row => {
+            const loaded = new Map;
             const node = row.get(alias);
+
+            // Hydrate Eager
+            row.keys.forEach(key => {
+                if (key.substr(0, eager.length) == eager) {
+                    const cleaned_key = key.substr(eager.length);
+
+                    const collection = new NodeCollection(this._neode, row.get(key).map(node => {
+                        return this.make(node);
+                    }));
+
+                    loaded.set(cleaned_key, collection);
+                }
+            })
 
             definition = definition || this.getDefinition(node.labels);
 
-            return new Node(this._neode, definition, node);
+            return new Node(this._neode, definition, node, loaded);
         });
 
         return new NodeCollection(this._neode, nodes);
@@ -57,7 +73,7 @@ export default class Factory {
 
     /**
      * Convert an array of Nodes into a collection
-     * 
+     *
      * @param  {Array}
      * @param  {Definition|null}
      * @return {NodeCollection}

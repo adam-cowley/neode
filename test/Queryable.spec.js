@@ -10,7 +10,13 @@ describe('Queryable.js', () => {
             type: 'uuid',
             primary: true,
         },
-        name: 'string'
+        name: 'string',
+        children: {
+            type: 'relationship',
+            relationship: 'HAS_CHILD',
+            direction: 'OUT',
+            eager: true
+        }
     };
 
     const model = instance.model(label, schema);
@@ -19,12 +25,15 @@ describe('Queryable.js', () => {
 
     before(done => {
         Promise.all([
-            model.create({name: 'Created 1'}),
-            model.create({name: 'Created 2'}),
-            model.create({name: 'Created 3'}),
+            model.mergeOn({name: 'Created 1'}),
+            model.mergeOn({name: 'Created 2'}),
+            model.mergeOn({name: 'Created 3'}),
         ])
         .then(res => {
             created = res;
+        })
+        .then(() => {
+            return created[0].relateTo(created[1], 'children');
         })
         .then(() => done())
         .catch(e => done(e));
@@ -61,7 +70,6 @@ describe('Queryable.js', () => {
                 })
                 .then(() => done())
                 .catch(e => done(e));
-
         });
 
         it('should apply an order', (done) => {
@@ -74,7 +82,6 @@ describe('Queryable.js', () => {
                 })
                 .then(() => done())
                 .catch(e => done(e));
-
         });
 
         it('should handle object/apply a reverse order', (done) => {
@@ -112,6 +119,20 @@ describe('Queryable.js', () => {
                 })
                 .then(() => done())
                 .catch(e => done(e));
+        });
+
+        it('should load eager relationships', (done) => {
+            model.all({name: 'Created 1'})
+                .then(res => {
+                    const children = res.get(0).get('children');
+
+                    expect(children).to.be.an.instanceOf(NodeCollection);
+                    expect(children.length).to.equal(1);
+                    expect(children.first().get('name')).to.equal(created[1].get('name'));
+                })
+                .then(() => done())
+                .catch(e => done(e));
+
         });
     });
 

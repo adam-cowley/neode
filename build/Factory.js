@@ -3,6 +3,7 @@
 Object.defineProperty(exports, "__esModule", {
     value: true
 });
+exports.eager = undefined;
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
@@ -18,11 +19,13 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
+var eager = exports.eager = '__eager_';
+
 var Factory = function () {
 
     /**
      * @constuctor
-     * 
+     *
      * @param Neode neode
      */
     function Factory(neode) {
@@ -32,8 +35,8 @@ var Factory = function () {
     }
 
     /**
-     * Turn a result node into a 
-     * 
+     * Turn a result node into a
+     *
      * @param  {Object} node    Neo4j Node
      * @return {Node|false}
      */
@@ -50,7 +53,7 @@ var Factory = function () {
 
         /**
          * Get the definition for a set of labels
-         * 
+         *
          * @param  {Array} labels
          * @return {Definition}
          */
@@ -76,11 +79,25 @@ var Factory = function () {
             var _this = this;
 
             var nodes = res.records.map(function (row) {
+                var loaded = new Map();
                 var node = row.get(alias);
+
+                // Hydrate Eager
+                row.keys.forEach(function (key) {
+                    if (key.substr(0, eager.length) == eager) {
+                        var cleaned_key = key.substr(eager.length);
+
+                        var collection = new _NodeCollection2.default(_this._neode, row.get(key).map(function (node) {
+                            return _this.make(node);
+                        }));
+
+                        loaded.set(cleaned_key, collection);
+                    }
+                });
 
                 definition = definition || _this.getDefinition(node.labels);
 
-                return new _Node2.default(_this._neode, definition, node);
+                return new _Node2.default(_this._neode, definition, node, loaded);
             });
 
             return new _NodeCollection2.default(this._neode, nodes);
@@ -88,7 +105,7 @@ var Factory = function () {
 
         /**
          * Convert an array of Nodes into a collection
-         * 
+         *
          * @param  {Array}
          * @param  {Definition|null}
          * @return {NodeCollection}

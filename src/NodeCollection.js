@@ -32,7 +32,7 @@ export default class NodeCollection {
 
     /**
      * Get the first Node in the Collection
-     * 
+     *
      * @return {Node}
      */
     first() {

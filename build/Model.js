@@ -4,6 +4,8 @@ Object.defineProperty(exports, "__esModule", {
     value: true
 });
 
+var _slicedToArray = function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i["return"]) _i["return"](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError("Invalid attempt to destructure non-iterable instance"); } }; }();
+
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
 var _Queryable2 = require('./Queryable');
@@ -64,10 +66,12 @@ var Model = function (_Queryable) {
                         var relationship = value.relationship,
                             direction = value.direction,
                             target = value.target,
-                            properties = value.properties;
+                            properties = value.properties,
+                            eager = value.eager,
+                            cascade = value.cascade;
 
 
-                        _this.relationships().set(key, new _RelationshipType2.default(key, relationship, direction, target, properties));
+                        _this.relationship(key, relationship, direction, target, schema, eager, cascade);
                     } else {
                         _this.addProperty(key, value);
                     }
@@ -190,7 +194,9 @@ var Model = function (_Queryable) {
          * @param  {String} relationship        Internal Relationship type
          * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
          * @param  {String|Model|null} target   Target type definition for the
-         * @param  {Object} validation          Property Validation options
+         * @param  {Object} schema              Property Schema
+         * @param  {Bool} eager                 Should this relationship be eager loaded?
+         * @param  {Bool|String} cascade        Cascade delete policy for this relationship
          * @return {Relationship}
          */
 
@@ -199,10 +205,12 @@ var Model = function (_Queryable) {
         value: function relationship(name, _relationship) {
             var direction = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : _RelationshipType.DIRECTION_BOTH;
             var target = arguments[3];
-            var validation = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : {};
+            var schema = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : {};
+            var eager = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : false;
+            var cascade = arguments.length > 6 && arguments[6] !== undefined ? arguments[6] : false;
 
             if (_relationship && direction && validation) {
-                this._relationships.set(name, new _RelationshipType2.default(name, _relationship, direction, target, validation));
+                this._relationships.set(name, new _RelationshipType2.default(name, _relationship, direction, target, schema, eager, cascade));
             }
 
             return this._relationships.get(name);
@@ -218,6 +226,26 @@ var Model = function (_Queryable) {
         key: 'relationships',
         value: function relationships() {
             return this._relationships;
+        }
+
+        /**
+         * Get relationships defined as Eager relationships
+         *
+         * @return {Array}
+         */
+
+    }, {
+        key: 'eager',
+        value: function eager() {
+            return Array.from(this._relationships).map(function (_ref) {
+                var _ref2 = _slicedToArray(_ref, 2),
+                    key = _ref2[0],
+                    value = _ref2[1];
+
+                return value._eager ? value : null;
+            }).filter(function (a) {
+                return !!a;
+            });
         }
 
         /**

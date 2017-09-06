@@ -46,7 +46,7 @@ var NodeCollection = function () {
 
         /**
          * Get the first Node in the Collection
-         * 
+         *
          * @return {Node}
          */
 

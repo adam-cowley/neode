@@ -2,6 +2,7 @@ import Update from './Services/Update';
 import Delete from './Services/Delete';
 import RelateTo from './Services/RelateTo';
 import RelationshipType from './RelationshipType';
+import NodeCollection from './NodeCollection';
 
 export default class Node {
 
@@ -11,12 +12,15 @@ export default class Node {
      * @param  {Neode} neode  Neode Instance
      * @param  {Model} model  Model definition
      * @param  {node}  node   Node Onject from neo4j-driver
+     * @param  {Map)   eager  Eagerly loaded values
      * @return {Node}
      */
-    constructor(neode, model, node) {
+    constructor(neode, model, node, eager) {
         this._neode = neode;
         this._model = model;
         this._node = node;
+
+        this._eager = eager || new Map;
 
         this._deleted = false;
     }
@@ -56,7 +60,16 @@ export default class Node {
      * @return {mixed}
      */
     get(property, or = null) {
-        return this._node.properties[property] || or;
+        // If property is set, return that
+        if ( this._node.properties.hasOwnProperty(property) ) {
+            return this._node.properties[property];
+        }
+        // If property has been set in eager, return that
+        else if ( this._eager.has(property) ) {
+            return this._eager.get(property);
+        }
+
+        return or;
     }
 
     /**
