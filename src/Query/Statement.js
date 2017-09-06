@@ -7,6 +7,7 @@ export default class Statement {
         this._match = [];
         this._where = [];
         this._order = [];
+        this._delete = [];
         this._return = [];
     }
 
@@ -32,6 +33,12 @@ export default class Statement {
 
     order(order) {
         this._order.push(order);
+    }
+
+    delete(...values) {
+        this._delete = this._delete.concat(values);
+
+        return this;
     }
 
     return(...values) {
@@ -68,6 +75,14 @@ export default class Statement {
             output.push(this._where.map(statement => {
                 return statement.toString();
             }).join(''));
+        }
+
+        if (this._delete.length) {
+            output.push('DELETE');
+
+            output.push(this._delete.map(output => {
+                return output.toString();
+            }));
         }
 
         if (this._return.length) {

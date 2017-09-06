@@ -506,6 +506,28 @@ describe('Query/Builder.js', () => {
         expect(query).to.equal(expected);
     });
 
+    it('should build a delete query', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .delete('this')
+            .return('this')
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)',
+            '',
+            'DELETE',
+            'this',
+            'RETURN',
+            'this'
+        ].join('\n');
+
+        expect(query).to.equal(expected);
+    });
+
 
 
 });

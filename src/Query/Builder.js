@@ -166,6 +166,18 @@ export default class Builder {
     }
 
     /**
+     * Set Delete fields
+     *
+     * @param  {...mixed} args
+     * @return {Builder}
+     */
+    delete(...args) {
+        this._current.delete(...args);
+
+        return this;
+    }
+
+    /**
      * Set Return fields
      *
      * @param  {...mixed} args
