@@ -1,5 +1,9 @@
+import Relationship from './Relationship';
+import RelationshipType from '../RelationshipType';
+
 export default class Statement {
-    constructor() {
+    constructor(prefix) {
+        this._prefix = prefix || 'MATCH';
         this._match = [];
         this._where = [];
         this._order = [];
@@ -36,15 +40,28 @@ export default class Statement {
         return this;
     }
 
+    relationship(relationship, direction, alias, traversals) {
+        if ( relationship instanceof RelationshipType ) {
+            const rel = relationship;
+
+            relationship = rel.relationship();
+            direction = rel.direction();
+        }
+
+        this._match.push(new Relationship(relationship, direction, alias, traversals));
+
+        return this;
+    }
+
     toString() {
         const output = [];
 
         if (this._match.length) {
-            output.push('MATCH');
+            output.push(this._prefix);
 
             output.push(this._match.map(statement => {
                 return statement.toString();
-            }));
+            }).join(''));
         }
 
         if (this._where.length) {

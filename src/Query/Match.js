@@ -1,3 +1,5 @@
+import Model from '../Model';
+
 export default class Match {
     constructor(alias, model) {
         this._alias = alias;
@@ -5,8 +7,10 @@ export default class Match {
     }
 
     toString() {
-        const labels = typeof this._model == 'string' ? this._model : this._model.labels().join(':');
+        const model = this._model instanceof Model ? ':' + this._model.labels().join(':') : '';
 
-        return `(${this._alias}:${labels})`;
+        // const labels = typeof this._model == 'string' ? this._model : this._model.labels().join(':');
+
+        return `(${this._alias}${model})`;
     }
 }

@@ -1,5 +1,7 @@
 import {assert, expect} from 'chai';
 import Builder from '../../src/Query/Builder';
+import Integer from 'neo4j-driver/lib/v1/integer';
+import RelationshipType from '../../src/RelationshipType';
 
 describe('Query/Builder.js', () => {
     const instance = require('../instance');
@@ -46,7 +48,7 @@ describe('Query/Builder.js', () => {
             'RETURN',
             'this'
         ].join('\n');
-        const expected_params = {where_id_this: 1};
+        const expected_params = {where_id_this: new Integer(1)};
 
         expect(query).to.equal(expected);
         expect(params).to.deep.equal(expected_params);
@@ -74,7 +76,7 @@ describe('Query/Builder.js', () => {
             'this,that'
         ].join('\n');
 
-        const expected_params = {where_id_this: 1, where_id_that: 2};
+        const expected_params = {where_id_this: new Integer(1), where_id_that: new Integer(2)};
 
         expect(query).to.equal(expected);
         expect(params).to.deep.equal(expected_params);
@@ -199,7 +201,7 @@ describe('Query/Builder.js', () => {
             'this,that'
         ].join('\n');
 
-        const expected_params = {where_id_this: 1, where_id_that: 2};
+        const expected_params = {where_id_this: new Integer(1), where_id_that: new Integer(2)};
 
         expect(query).to.equal(expected);
         expect(params).to.deep.equal(expected_params);
@@ -350,5 +352,160 @@ describe('Query/Builder.js', () => {
         expect(query).to.equal(expected);
         expect(params).to.deep.equal(expected_params);
     });
+
+    it('should build a query with a relationship type', () => {
+        const builder = new Builder();
+
+        const rel = new RelationshipType('test', 'REL_TO', 'OUT');
+
+        const {query, params} = builder
+            .match('this', model)
+            .relationship(rel)
+            .to('that', model)
+            .return('this', 'rel', 'that')
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)-[:`REL_TO`]->(that:QueryBuilderTest)',
+            '',
+            'RETURN',
+            'this,rel,that'
+        ].join('\n');
+
+        expect(query).to.equal(expected);
+    });
+
+    it('should build a query with an outwards relationship', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .relationship('REL_TO', 'out')
+            .to('that', model)
+            .return('this', 'rel', 'that')
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)-[:`REL_TO`]->(that:QueryBuilderTest)',
+            '',
+            'RETURN',
+            'this,rel,that'
+        ].join('\n');
+
+        expect(query).to.equal(expected);
+    });
+
+    it('should build a query with an inwards relationship', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .relationship('REL_TO', 'in')
+            .to('that', model)
+            .return('this', 'rel', 'that')
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)<-[:`REL_TO`]-(that:QueryBuilderTest)',
+            '',
+            'RETURN',
+            'this,rel,that'
+        ].join('\n');
+
+        expect(query).to.equal(expected);
+    });
+
+    it('should build a query with an outwards relationship with alias', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .relationship('REL_TO', 'out', 'rel')
+            .to('that', model)
+            .return('this', 'rel', 'that')
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)-[rel:`REL_TO`]->(that:QueryBuilderTest)',
+            '',
+            'RETURN',
+            'this,rel,that'
+        ].join('\n');
+
+        expect(query).to.equal(expected);
+    });
+
+    it('should build a query with an outwards relationship with alias but no type', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .relationship(false, 'out', 'rel')
+            .to('that', model)
+            .return('this', 'rel', 'that')
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)-[rel]->(that:QueryBuilderTest)',
+            '',
+            'RETURN',
+            'this,rel,that'
+        ].join('\n');
+
+        expect(query).to.equal(expected);
+    });
+
+    it('should build a query with an outwards relationship with alias and traversal', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .relationship('REL_TO', 'out', 'rel', '1..3')
+            .to('that', model)
+            .return('this', 'rel', 'that')
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)-[rel:`REL_TO`*1..3]->(that:QueryBuilderTest)',
+            '',
+            'RETURN',
+            'this,rel,that'
+        ].join('\n');
+
+        expect(query).to.equal(expected);
+    });
+
+    it('should build a query with an optional match', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .optionalMatch('this')
+            .relationship('REL_TO', 'out')
+            .to('that', model)
+            .return('this', 'rel', 'that')
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)',
+            '',
+            'OPTIONAL MATCH',
+            '(this)-[:`REL_TO`]->(that:QueryBuilderTest)',
+            '',
+            'RETURN',
+            'this,rel,that'
+        ].join('\n');
+
+        expect(query).to.equal(expected);
+    });
+
+
 
 });

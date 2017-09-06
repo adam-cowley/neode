@@ -26,12 +26,12 @@ export default class Builder {
      *
      * @return {Builder}
      */
-    statement() {
+    statement(prefix) {
         if (this._current) {
             this._statements.push(this._current);
         }
 
-        this._current = new Statement();
+        this._current = new Statement(prefix);
 
         return this;
     }
@@ -61,6 +61,15 @@ export default class Builder {
     match(alias, model) {
         this.whereStatement('WHERE');
         this.statement();
+
+        this._current.match(new Match(alias, model));
+
+        return this;
+    }
+
+    optionalMatch(alias, model) {
+        this.whereStatement('WHERE');
+        this.statement('OPTIONAL MATCH');
 
         this._current.match(new Match(alias, model));
 
@@ -231,6 +240,44 @@ export default class Builder {
         if (order_by) {
             this._current.order(order_by);
         }
+
+        return this;
+    }
+
+    /**
+     * Add a relationship to the query
+     *
+     * @param  {String|RelationshipType} relationship  Relationship name or RelationshipType object
+     * @param  {String}                  direction     Direction of relationship DIRECTION_IN, DIRECTION_OUT
+     * @param  {String|null}             alias         Relationship alias
+     * @param  {Int|String}              traversals    Number of traversals (1, "1..2", "0..2", "..3")
+     * @return {Builder}
+     */
+    relationship(relationship, direction, alias, traversals) {
+        this._current.relationship(relationship, direction, alias, traversals);
+
+        return this;
+    }
+
+    /**
+     * Complete a relationship
+     * @param  {String} alias Alias
+     * @param  {Model} model  Model definition
+     * @return {Builder}
+     */
+    to(alias, model) {
+        this._current.match(new Match(alias, model));
+
+        return this;
+    }
+
+    /**
+     * Complete the relationship statement to point to anything
+     *
+     * @return {Builder
+     */
+    toAnything() {
+        this._current.toAnything();
 
         return this;
     }
