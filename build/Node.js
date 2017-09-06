@@ -22,10 +22,6 @@ var _RelationshipType = require('./RelationshipType');
 
 var _RelationshipType2 = _interopRequireDefault(_RelationshipType);
 
-var _NodeCollection = require('./NodeCollection');
-
-var _NodeCollection2 = _interopRequireDefault(_NodeCollection);
-
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }

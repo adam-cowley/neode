@@ -71,7 +71,7 @@ var Model = function (_Queryable) {
                             cascade = value.cascade;
 
 
-                        _this.relationship(key, relationship, direction, target, schema, eager, cascade);
+                        _this.relationship(key, relationship, direction, target, properties, eager, cascade);
                     } else {
                         _this.addProperty(key, value);
                     }
@@ -209,7 +209,7 @@ var Model = function (_Queryable) {
             var eager = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : false;
             var cascade = arguments.length > 6 && arguments[6] !== undefined ? arguments[6] : false;
 
-            if (_relationship && direction && validation) {
+            if (_relationship && direction && schema) {
                 this._relationships.set(name, new _RelationshipType2.default(name, _relationship, direction, target, schema, eager, cascade));
             }
 
@@ -242,6 +242,7 @@ var Model = function (_Queryable) {
                     key = _ref2[0],
                     value = _ref2[1];
 
+                // eslint-disable-line  no-unused-vars
                 return value._eager ? value : null;
             }).filter(function (a) {
                 return !!a;

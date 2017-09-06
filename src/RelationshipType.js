@@ -125,7 +125,7 @@ export default class RelationshipType {
      *
      * @return {bool}
      */
-    schema() {
+    eager() {
         return this._eager;
     }
 

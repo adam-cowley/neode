@@ -34,7 +34,7 @@ export default class Model extends Queryable {
                     if ( value.type && value.type == 'relationship' ) {
                         const {relationship, direction, target, properties, eager, cascade} = value;
 
-                        this.relationship(key, relationship, direction, target, schema, eager, cascade);
+                        this.relationship(key, relationship, direction, target, properties, eager, cascade);
                     }
                     else {
                         this.addProperty(key, value);
@@ -140,7 +140,7 @@ export default class Model extends Queryable {
      * @return {Relationship}
      */
     relationship(name, relationship, direction = DIRECTION_BOTH, target, schema = {}, eager = false, cascade = false) {
-        if (relationship && direction && validation) {
+        if (relationship && direction && schema) {
             this._relationships.set(name, new RelationshipType(name, relationship, direction, target, schema, eager, cascade));
         }
 
@@ -162,7 +162,7 @@ export default class Model extends Queryable {
      * @return {Array}
      */
     eager() {
-        return Array.from(this._relationships).map(([key, value]) => {
+        return Array.from(this._relationships).map(([key, value]) => { // eslint-disable-line  no-unused-vars
             return value._eager ? value : null;
         }).filter(a => !!a);
     }

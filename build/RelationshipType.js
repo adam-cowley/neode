@@ -166,8 +166,8 @@ var RelationshipType = function () {
          */
 
     }, {
-        key: 'schema',
-        value: function schema() {
+        key: 'eager',
+        value: function eager() {
             return this._eager;
         }
 

@@ -61,7 +61,7 @@ export default class Factory {
 
                     loaded.set(cleaned_key, collection);
                 }
-            })
+            });
 
             definition = definition || this.getDefinition(node.labels);
 

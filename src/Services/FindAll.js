@@ -38,10 +38,10 @@ export default function FindAll(neode, model, properties, order, limit, skip) {
 
         builder.optionalMatch(alias)
             .relationship(relationship.relationship(), relationship.direction())
-            .to(key, relationship.target())
+            .to(key, relationship.target());
 
         output.push(`COLLECT(${key}) as ${key}`);
-    })
+    });
 
     // Complete Query
     builder.orderBy(order)

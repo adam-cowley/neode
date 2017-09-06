@@ -2,7 +2,6 @@ import Update from './Services/Update';
 import Delete from './Services/Delete';
 import RelateTo from './Services/RelateTo';
 import RelationshipType from './RelationshipType';
-import NodeCollection from './NodeCollection';
 
 export default class Node {
 
