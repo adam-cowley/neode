@@ -152,7 +152,7 @@ var Node = function () {
         value: function _delete() {
             var _this2 = this;
 
-            return (0, _Delete2.default)(this._neode, this._node).then(function () {
+            return (0, _Delete2.default)(this._neode, this._node, this._model).then(function () {
                 _this2._deleted = true;
 
                 return _this2;
@@ -171,7 +171,8 @@ var Node = function () {
 
     }, {
         key: 'relateTo',
-        value: function relateTo(node, type, properties) {
+        value: function relateTo(node, type) {
+            var properties = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
             var force_create = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;
 
             var relationship = this.model().relationships().get(type);

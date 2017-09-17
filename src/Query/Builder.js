@@ -178,6 +178,18 @@ export default class Builder {
     }
 
     /**
+     * Set Detach Delete fields
+     *
+     * @param  {...mixed} args
+     * @return {Builder}
+     */
+    detachDelete(...args) {
+        this._current.detachDelete(...args);
+
+        return this;
+    }
+
+    /**
      * Set Return fields
      *
      * @param  {...mixed} args

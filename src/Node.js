@@ -100,7 +100,7 @@ export default class Node {
      * @return {Promise}
      */
     delete() {
-        return Delete(this._neode, this._node)
+        return Delete(this._neode, this._node, this._model)
             .then(() => {
                 this._deleted = true;
 
@@ -117,13 +117,12 @@ export default class Node {
      * @param  {Boolean} force_create   Force the creation a new relationship? If false, the relationship will be merged
      * @return {Promise}
      */
-    relateTo(node, type, properties, force_create = false) {
+    relateTo(node, type, properties = {}, force_create = false) {
         const relationship = this.model().relationships().get(type);
 
         if ( !(relationship instanceof RelationshipType) ) {
             throw new Error(`Cannot find relationship with type ${type}`);
         }
-
 
         return RelateTo(this._neode, this, node, relationship, properties, force_create);
     }

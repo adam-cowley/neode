@@ -7,6 +7,7 @@ export default class Statement {
         this._match = [];
         this._where = [];
         this._order = [];
+        this._detach_delete = [];
         this._delete = [];
         this._return = [];
     }
@@ -37,6 +38,12 @@ export default class Statement {
 
     delete(...values) {
         this._delete = this._delete.concat(values);
+
+        return this;
+    }
+
+    detachDelete(...values) {
+        this._detach_delete = this._detach_delete.concat(values);
 
         return this;
     }
@@ -81,6 +88,14 @@ export default class Statement {
             output.push('DELETE');
 
             output.push(this._delete.map(output => {
+                return output.toString();
+            }));
+        }
+
+        if (this._detach_delete.length) {
+            output.push('DETACH DELETE');
+
+            output.push(this._detach_delete.map(output => {
                 return output.toString();
             }));
         }

@@ -45,6 +45,8 @@ describe('Model.js', () => {
             relationship: 'KNOWS',
             direction: 'OUT',
             target: label,
+            eager: true,
+            cascade: 'delete',
             properties: {
                 since: {
                     type: 'number',
@@ -306,5 +308,39 @@ describe('Model.js', () => {
             })
             .then(done)
             .catch(e => done(e));
+    });
+
+    it('should cascade delete a node', (done) => {
+        Promise.all([
+            Thing.create({id: uuid.v4(), 'name': "Parent"}),
+            Thing.create({id: uuid.v4(), 'name': "Child"}),
+        ])
+        .then(res => {
+            const [parent, child] = res;
+            return parent.relateTo(child, 'knows', {since: 2017})
+                .then(() => {
+                    return res;
+                });
+        })
+        .then(res => {
+            const [parent, child] = res;
+            return parent.delete()
+                .then(() => {
+                    return res;
+                });
+        })
+        .then(res => {
+            const [parent, child] = res;
+
+            return instance.cypher('MATCH (n) WHERE id(n) IN [{parent}, {child}] RETURN count(n) AS count', {parent:parent.idInt(), child:child.idInt()})
+                .then(res => {
+                    expect(res.records.length).to.equal(1);
+                    expect(res.records[0].get('count').toNumber()).to.equal(0);
+
+                })
+
+        })
+        .then(done)
+        .catch(e => done(e))
     });
 });

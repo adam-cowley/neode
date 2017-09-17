@@ -2,6 +2,8 @@ import Builder from './Query/Builder';
 import Create from './Services/Create';
 import DeleteAll from './Services/DeleteAll';
 import FindAll from './Services/FindAll';
+import FindById from './Services/FindById';
+import First from './Services/First';
 import MergeOn from './Services/MergeOn';
 import Node from './Node';
 
@@ -103,15 +105,7 @@ export default class Queryable {
      * @return {Promise}
      */
     findById(id) {
-        const alias = 'this';
-
-        return (new Builder(this._neode))
-            .match(alias, this)
-            .whereId(alias, id)
-            .return(alias)
-            .limit(1)
-            .execute()
-            .then(res => this._neode.hydrateFirst(res, alias));
+        return FindById(this._neode, this, id);
     }
 
     /**
@@ -123,24 +117,7 @@ export default class Queryable {
      * @return {Promise}
      */
     first(key, value) {
-        const alias = 'this';
-        const builder = new Builder(this._neode);
-
-        builder.match(alias, this);
-
-        if (typeof key == 'object') {
-            Object.keys(key).map(property => {
-                builder.where(`${alias}.${property}`, key[ property ]);
-            });
-        }
-        else {
-            builder.where(`${alias}.${key}`, value);
-        }
-
-        return builder.return(alias)
-            .limit(1)
-            .execute()
-            .then(res => this._neode.hydrateFirst(res, alias));
+        return First(this._neode, this, key, value);
     }
 
 }

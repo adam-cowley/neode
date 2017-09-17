@@ -247,6 +247,40 @@ var Builder = function () {
         }
 
         /**
+         * Set Delete fields
+         *
+         * @param  {...mixed} args
+         * @return {Builder}
+         */
+
+    }, {
+        key: 'delete',
+        value: function _delete() {
+            var _current;
+
+            (_current = this._current).delete.apply(_current, arguments);
+
+            return this;
+        }
+
+        /**
+         * Set Detach Delete fields
+         *
+         * @param  {...mixed} args
+         * @return {Builder}
+         */
+
+    }, {
+        key: 'detachDelete',
+        value: function detachDelete() {
+            var _current2;
+
+            (_current2 = this._current).detachDelete.apply(_current2, arguments);
+
+            return this;
+        }
+
+        /**
          * Set Return fields
          *
          * @param  {...mixed} args
@@ -256,9 +290,9 @@ var Builder = function () {
     }, {
         key: 'return',
         value: function _return() {
-            var _current;
+            var _current3;
 
-            (_current = this._current).return.apply(_current, arguments);
+            (_current3 = this._current).return.apply(_current3, arguments);
 
             return this;
         }

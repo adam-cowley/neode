@@ -148,6 +148,17 @@ describe('Queryable.js', () => {
                     expect(node).to.be.an.instanceOf(Node);
                     expect(node.id()).to.equal(created[ index ].id());
                     expect(node.get('id')).to.equal(created[ index ].get('id'));
+
+                    const children = node.get('children');
+                    expect(children).to.be.an.instanceOf(NodeCollection);
+
+                    if ( node.get('id') == created[0].get('id') ) {
+                        expect(children.length).to.equal(1);
+                        expect(children.first().get('id')).to.equal( created[1].get('id') );
+                    }
+                    else {
+                        expect(children.length).to.equal(0);
+                    }
                 }))
             })
             .then(() => done())
@@ -167,6 +178,17 @@ describe('Queryable.js', () => {
                     expect(node).to.be.an.instanceOf(Node);
                     expect(node.id()).to.equal(created[ index ].id());
                     expect(node.get('id')).to.equal(created[ index ].get('id'));
+
+                    const children = node.get('children');
+                    expect(children).to.be.an.instanceOf(NodeCollection);
+
+                    if ( node.get('id') == created[0].get('id') ) {
+                        expect(children.length).to.equal(1);
+                        expect(children.first().get('id')).to.equal( created[1].get('id') );
+                    }
+                    else {
+                        expect(children.length).to.equal(0);
+                    }
                 }))
             })
             .then(() => done())
@@ -186,6 +208,17 @@ describe('Queryable.js', () => {
                     expect(node).to.be.an.instanceOf(Node);
                     expect(node.id()).to.equal(created[ index ].id());
                     expect(node.get('id')).to.equal(created[ index ].get('id'));
+
+                    const children = node.get('children');
+                    expect(children).to.be.an.instanceOf(NodeCollection);
+
+                    if ( node.get('id') == created[0].get('id') ) {
+                        expect(children.length).to.equal(1);
+                        expect(children.first().get('id')).to.equal( created[1].get('id') );
+                    }
+                    else {
+                        expect(children.length).to.equal(0);
+                    }
                 }))
             })
             .then(() => done())

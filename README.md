@@ -392,6 +392,35 @@ instance.create('Person', {name: 'Adam'})
   .then(adam => adam.delete());
 ```
 
+#### Cascade Deletion
+While deleting a Node with the `delete()` method, you can delete any dependant nodes or relationships.  For example, when deleting a Movie you may also want to remove any reviews but keep the actors.
+
+You cna do this by setting the `cascade` property of a relationship to `"delete"` or `"detach"`.  `"delete"` will remove the node and relationship by performing a `DETACH DELETE`, while `"detach"` will simply remove the relationship, leaving the node in the graph.
+
+```javascript
+// Movie.js
+module.exports = {
+  // ...
+  ratings: {
+    type: 'relationship',
+    'relationship': 'RATED',
+    direction: 'IN',
+    target: 'User',
+    'cascade': 'delete'
+  },
+  actors: {
+    type: 'relationship',
+    'relationship': 'ACTS_IN',
+    direction: 'IN',
+    target: 'Actor',
+    'cascade': 'detach'
+  }
+};
+```
+
+**Note**: Attempting to delete a Node without first removing any relationships will result in an error.
+
+
 ### Deleting a set of nodes
 TODO
 ```javascript

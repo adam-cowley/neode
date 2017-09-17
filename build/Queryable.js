@@ -4,8 +4,6 @@ Object.defineProperty(exports, "__esModule", {
     value: true
 });
 
-var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
-
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
 var _Builder = require('./Query/Builder');
@@ -23,6 +21,14 @@ var _DeleteAll2 = _interopRequireDefault(_DeleteAll);
 var _FindAll = require('./Services/FindAll');
 
 var _FindAll2 = _interopRequireDefault(_FindAll);
+
+var _FindById = require('./Services/FindById');
+
+var _FindById2 = _interopRequireDefault(_FindById);
+
+var _First = require('./Services/First');
+
+var _First2 = _interopRequireDefault(_First);
 
 var _MergeOn = require('./Services/MergeOn');
 
@@ -161,13 +167,7 @@ var Queryable = function () {
     }, {
         key: 'findById',
         value: function findById(id) {
-            var _this4 = this;
-
-            var alias = 'this';
-
-            return new _Builder2.default(this._neode).match(alias, this).whereId(alias, id).return(alias).limit(1).execute().then(function (res) {
-                return _this4._neode.hydrateFirst(res, alias);
-            });
+            return (0, _FindById2.default)(this._neode, this, id);
         }
 
         /**
@@ -182,24 +182,7 @@ var Queryable = function () {
     }, {
         key: 'first',
         value: function first(key, value) {
-            var _this5 = this;
-
-            var alias = 'this';
-            var builder = new _Builder2.default(this._neode);
-
-            builder.match(alias, this);
-
-            if ((typeof key === 'undefined' ? 'undefined' : _typeof(key)) == 'object') {
-                Object.keys(key).map(function (property) {
-                    builder.where(alias + '.' + property, key[property]);
-                });
-            } else {
-                builder.where(alias + '.' + key, value);
-            }
-
-            return builder.return(alias).limit(1).execute().then(function (res) {
-                return _this5._neode.hydrateFirst(res, alias);
-            });
+            return (0, _First2.default)(this._neode, this, key, value);
         }
     }]);
 

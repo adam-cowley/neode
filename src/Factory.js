@@ -47,21 +47,8 @@ export default class Factory {
      */
     hydrate(res, alias, definition) {
         const nodes = res.records.map(row => {
-            const loaded = new Map;
             const node = row.get(alias);
-
-            // Hydrate Eager
-            row.keys.forEach(key => {
-                if (key.substr(0, eager.length) == eager) {
-                    const cleaned_key = key.substr(eager.length);
-
-                    const collection = new NodeCollection(this._neode, row.get(key).map(node => {
-                        return this.make(node);
-                    }));
-
-                    loaded.set(cleaned_key, collection);
-                }
-            });
+            const loaded = this.hydrateEager(row);
 
             definition = definition || this.getDefinition(node.labels);
 
@@ -69,6 +56,31 @@ export default class Factory {
         });
 
         return new NodeCollection(this._neode, nodes);
+    }
+
+    /**
+     * Find all eagerly loaded nodes and add to a NodeCollection
+     *
+     * @param   row  Neo4j result row
+     * @return {Map[String, NodeCollection]}
+     */
+    hydrateEager(row) {
+        const loaded = new Map;
+
+        // Hydrate Eager
+        row.keys.forEach(key => {
+            if (key.substr(0, eager.length) == eager) {
+                const cleaned_key = key.substr(eager.length);
+
+                const collection = new NodeCollection(this._neode, row.get(key).map(node => {
+                    return this.make(node);
+                }));
+
+                loaded.set(cleaned_key, collection);
+            }
+        });
+
+        return loaded;
     }
 
     /**
@@ -96,10 +108,13 @@ export default class Factory {
             return false;
         }
 
-        const node = res.records[0].get(alias);
+        const row = res.records[0];
+
+        const node = row.get(alias);
+        const loaded = this.hydrateEager(row);
 
         definition = definition || this.getDefinition(node.labels);
 
-        return new Node(this._neode, definition, node);
+        return new Node(this._neode, definition, node, loaded);
     }
 }

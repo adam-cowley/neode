@@ -26,6 +26,8 @@ var Statement = function () {
         this._match = [];
         this._where = [];
         this._order = [];
+        this._detach_delete = [];
+        this._delete = [];
         this._return = [];
     }
 
@@ -59,10 +61,32 @@ var Statement = function () {
             this._order.push(_order);
         }
     }, {
-        key: 'return',
-        value: function _return() {
+        key: 'delete',
+        value: function _delete() {
             for (var _len = arguments.length, values = Array(_len), _key = 0; _key < _len; _key++) {
                 values[_key] = arguments[_key];
+            }
+
+            this._delete = this._delete.concat(values);
+
+            return this;
+        }
+    }, {
+        key: 'detachDelete',
+        value: function detachDelete() {
+            for (var _len2 = arguments.length, values = Array(_len2), _key2 = 0; _key2 < _len2; _key2++) {
+                values[_key2] = arguments[_key2];
+            }
+
+            this._detach_delete = this._detach_delete.concat(values);
+
+            return this;
+        }
+    }, {
+        key: 'return',
+        value: function _return() {
+            for (var _len3 = arguments.length, values = Array(_len3), _key3 = 0; _key3 < _len3; _key3++) {
+                values[_key3] = arguments[_key3];
             }
 
             this._return = this._return.concat(values);
@@ -100,6 +124,22 @@ var Statement = function () {
                 output.push(this._where.map(function (statement) {
                     return statement.toString();
                 }).join(''));
+            }
+
+            if (this._delete.length) {
+                output.push('DELETE');
+
+                output.push(this._delete.map(function (output) {
+                    return output.toString();
+                }));
+            }
+
+            if (this._detach_delete.length) {
+                output.push('DETACH DELETE');
+
+                output.push(this._detach_delete.map(function (output) {
+                    return output.toString();
+                }));
             }
 
             if (this._return.length) {

@@ -79,21 +79,8 @@ var Factory = function () {
             var _this = this;
 
             var nodes = res.records.map(function (row) {
-                var loaded = new Map();
                 var node = row.get(alias);
-
-                // Hydrate Eager
-                row.keys.forEach(function (key) {
-                    if (key.substr(0, eager.length) == eager) {
-                        var cleaned_key = key.substr(eager.length);
-
-                        var collection = new _NodeCollection2.default(_this._neode, row.get(key).map(function (node) {
-                            return _this.make(node);
-                        }));
-
-                        loaded.set(cleaned_key, collection);
-                    }
-                });
+                var loaded = _this.hydrateEager(row);
 
                 definition = definition || _this.getDefinition(node.labels);
 
@@ -101,6 +88,36 @@ var Factory = function () {
             });
 
             return new _NodeCollection2.default(this._neode, nodes);
+        }
+
+        /**
+         * Find all eagerly loaded nodes and add to a NodeCollection
+         *
+         * @param   row  Neo4j result row
+         * @return {Map[String, NodeCollection]}
+         */
+
+    }, {
+        key: 'hydrateEager',
+        value: function hydrateEager(row) {
+            var _this2 = this;
+
+            var loaded = new Map();
+
+            // Hydrate Eager
+            row.keys.forEach(function (key) {
+                if (key.substr(0, eager.length) == eager) {
+                    var cleaned_key = key.substr(eager.length);
+
+                    var collection = new _NodeCollection2.default(_this2._neode, row.get(key).map(function (node) {
+                        return _this2.make(node);
+                    }));
+
+                    loaded.set(cleaned_key, collection);
+                }
+            });
+
+            return loaded;
         }
 
         /**
@@ -114,10 +131,10 @@ var Factory = function () {
     }, {
         key: 'hydrateAll',
         value: function hydrateAll(nodes, definition) {
-            var _this2 = this;
+            var _this3 = this;
 
             nodes = nodes.map(function (node) {
-                return _this2.make(node, definition);
+                return _this3.make(node, definition);
             });
 
             return new _NodeCollection2.default(this._neode, nodes);
@@ -138,11 +155,14 @@ var Factory = function () {
                 return false;
             }
 
-            var node = res.records[0].get(alias);
+            var row = res.records[0];
+
+            var node = row.get(alias);
+            var loaded = this.hydrateEager(row);
 
             definition = definition || this.getDefinition(node.labels);
 
-            return new _Node2.default(this._neode, definition, node);
+            return new _Node2.default(this._neode, definition, node, loaded);
         }
     }]);
 
