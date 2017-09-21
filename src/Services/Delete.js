@@ -1,4 +1,4 @@
-import Builder from '../Query/Builder';
+import Builder, {mode} from '../Query/Builder';
 import {eager} from '../Factory';
 
 export default function Delete(neode, node, model) {
@@ -42,5 +42,5 @@ export default function Delete(neode, node, model) {
         builder.detachDelete(detach_delete);
     }
 
-    return builder.execute();
+    return builder.execute(mode.WRITE);
 }

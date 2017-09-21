@@ -40,7 +40,7 @@ export default function RelateTo(neode, from, to, relationship, properties, forc
                 RETURN rel
             `;
 
-            return neode.cypher(query, params)
+            return neode.writeCypher(query, params)
                 .then(res => {
                     const rel = res.records[0].get('rel');
                     const hydrate_from = relationship.direction() == DIRECTION_IN ? to : from;

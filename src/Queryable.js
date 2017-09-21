@@ -1,4 +1,3 @@
-import Builder from './Query/Builder';
 import Create from './Services/Create';
 import DeleteAll from './Services/DeleteAll';
 import FindAll from './Services/FindAll';

@@ -6,7 +6,6 @@ import ModelMap from './ModelMap';
 import Schema from './Schema';
 import TransactionError from './TransactionError';
 import Builder from './Query/Builder';
-
 export default class Neode {
 
     /**
@@ -193,26 +192,64 @@ export default class Neode {
     }
 
     /**
+     * Run an explicitly defined Read query
+     *
+     * @param  {String} query
+     * @param  {Object} params
+     * @return {Promise}
+     */
+    readCypher(query, params) {
+        const session = this.readSession();
+
+        return this.cypher(query, params, session)
+    }
+
+    /**
+     * Run an explicitly defined Write query
+     *
+     * @param  {String} query
+     * @param  {Object} params
+     * @return {Promise}
+     */
+    writeCypher(query, params) {
+        const session = this.writeSession();
+
+        return this.cypher(query, params, session)
+    }
+
+    /**
      * Run a Cypher query
      *
      * @param  {String} query
      * @param  {Object} params
      * @return {Promise}
      */
-    cypher(query, params) {
-        const session = this.driver.session();
+    cypher(query, params, session = false) {
+        // If single run, open a new session
+        const single = !session;
+        if ( single ) {
+            session = this.session();
+        }
 
         return session.run(query, params)
             .then(res => {
-                session.close();
+                if ( single ) {
+                    session.close();
+                }
 
                 return res;
             })
             .catch(err => {
-                session.close();
+                if ( single ) {
+                    session.close();
+                }
 
                 throw err;
             });
+    }
+
+    readCypher() {
+
     }
 
     /**
@@ -222,6 +259,24 @@ export default class Neode {
      */
     session() {
         return this.driver.session();
+    }
+
+    /**
+     * Create an explicit Read Session
+     *
+     * @return {Session}
+     */
+    readSession() {
+        return this.driver.readSession();
+    }
+
+    /**
+     * Create an explicit Write Session
+     *
+     * @return {Session}
+     */
+    writeSession() {
+        return this.session();
     }
 
     /**

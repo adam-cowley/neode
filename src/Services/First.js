@@ -1,4 +1,4 @@
-import Builder from '../Query/Builder';
+import Builder, {mode} from '../Query/Builder';
 import { eager } from '../Factory';
 
 export default function Find(neode, model, key, value) {
@@ -31,7 +31,7 @@ export default function Find(neode, model, key, value) {
 
     return builder.return(output)
         .limit(1)
-        .execute()
+        .execute(mode.READ)
         .then(res => neode.hydrateFirst(res, alias, model));
 
 

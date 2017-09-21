@@ -7,6 +7,7 @@ import Property from '../src/Property';
 import Builder from '../src/Query/Builder';
 import neo4j from 'neo4j-driver';
 import {Driver} from 'neo4j-driver/lib/v1/driver';
+import {session as nativesession} from 'neo4j-driver/lib/v1/session';
 
 describe('index.js', () => {
     const instance = require('./instance');
@@ -238,6 +239,25 @@ describe('index.js', () => {
             instance.first(label, 'key', 'value')
                 .then(() => done())
                 .catch(e => done(e));
+        });
+    });
+
+    describe('::cypher', () => {
+        it('should execute a function as part of a session', (done) => {
+            const session = instance.session();
+
+            instance.cypher('MATCH (n) RETURN COUNT(n)', {}, session)
+                .then(res => {
+                    expect(session._open).to.equal(true);
+
+                    session.close();
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+
+        it('should execute a function as part of a transaction', (done) => {
+done();
         });
     });
 

@@ -503,15 +503,15 @@ instance.schema.drop()
 
 ## TODO
 
-- Node
-  - Create Relationships On Create/Merge
-  - Delete Node dependencies (delete/deleteAll)
-  - Extend Definitions
+- 3.3
+  - Routing policies and countries for CC
+  - Set pool size
+  - Read & Write sessions/transactions
+  - Encryption
 
 - Relationships
   - Relationship Constraints
-  - Define Dependencies
-  - Delete dependencies when deleting a node
+  - Delete dependencies when deleting a node beyond the first degree
 
 - Schema
   - Composite indexes

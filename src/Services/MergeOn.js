@@ -7,6 +7,7 @@ export default function MergeOn(neode, model, merge_on, properties) {
     return GenerateDefaultValues(neode, model, properties)
         .then(properties => Validator(neode, model, properties))
         .then(properties => {
+            const tx = neode.transaction();
             const match = [];
 
             let params = {
@@ -103,8 +104,10 @@ export default function MergeOn(neode, model, merge_on, properties) {
             // Output
             query.push(`RETURN ${output.join()}`);
 
-            return neode.cypher(query.join(' '), params)
+            return neode.writeCypher(query.join(' '), params)
                 .then(res => {
+                    tx.success();
+
                     return res.records[0].get(origin);
                 });
         });

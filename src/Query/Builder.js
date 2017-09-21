@@ -9,6 +9,11 @@ import WhereRaw from './WhereRaw';
 import WithStatement from './WithStatement';
 import neo4j from 'neo4j-driver';
 
+export const mode = {
+    READ: "READ",
+    WRITE: "WRITE"
+};
+
 
 export default class Builder {
 
@@ -332,10 +337,19 @@ export default class Builder {
      *
      * @return {Promise}
      */
-    execute() {
+    execute(mode = "WRITE") {
         const {query, params} = this.build();
 
-        return this._neode.cypher(query, params);
+        switch (mode) {
+            case mode.READ:
+                return this._neode.readCypher(query, params);
+
+            case mode.WRITE:
+                return this._neode.writeCypher(query, params);
+
+            default:
+                return this._neode.cypher(query, params);
+        }
     }
 
 

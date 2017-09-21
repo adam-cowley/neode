@@ -7,6 +7,8 @@ export default function Create(neode, model, properties) {
     return GenerateDefaultValues(neode, model, properties)
         .then(properties => Validator(neode, model, properties))
         .then(properties => {
+            const tx = neode.transaction();
+
             // Check we have properties
             if (Object.keys(properties).length == 0) {
                 throw new Error('There are no properties set for this Node');
@@ -71,8 +73,10 @@ export default function Create(neode, model, properties) {
 
             query.push(`RETURN ${output.join(', ')}`);
 
-            return neode.cypher(query.join(' '), params)
+            return neode.writeCypher(query.join(' '), params, tx)
                 .then(res => {
+                    tx.success();
+
                     return res.records[0].get(origin);
                 });
         });
