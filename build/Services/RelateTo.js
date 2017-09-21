@@ -49,7 +49,7 @@ function RelateTo(neode, from, to, relationship, properties) {
 
         var query = '\n                MATCH (from), (to)\n                WHERE id(from) = {from_id}\n                AND id(to) = {to_id}\n                ' + mode + ' (from)' + direction_in + '-[rel:' + type + ']-' + direction_out + '(to)\n                ' + set + '\n                RETURN rel\n            ';
 
-        return neode.cypher(query, params).then(function (res) {
+        return neode.writeCypher(query, params).then(function (res) {
             var rel = res.records[0].get('rel');
             var hydrate_from = relationship.direction() == _RelationshipType.DIRECTION_IN ? to : from;
             var hydrate_to = relationship.direction() == _RelationshipType.DIRECTION_IN ? from : to;

@@ -3,6 +3,7 @@
 Object.defineProperty(exports, "__esModule", {
     value: true
 });
+exports.mode = undefined;
 
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
 
@@ -53,6 +54,11 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } else { return Array.from(arr); } }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var mode = exports.mode = {
+    READ: "READ",
+    WRITE: "WRITE"
+};
 
 var Builder = function () {
     function Builder(neode) {
@@ -455,11 +461,22 @@ var Builder = function () {
     }, {
         key: 'execute',
         value: function execute() {
+            var mode = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : "WRITE";
+
             var _build = this.build(),
                 query = _build.query,
                 params = _build.params;
 
-            return this._neode.cypher(query, params);
+            switch (mode) {
+                case mode.READ:
+                    return this._neode.readCypher(query, params);
+
+                case mode.WRITE:
+                    return this._neode.writeCypher(query, params);
+
+                default:
+                    return this._neode.cypher(query, params);
+            }
         }
     }]);
 

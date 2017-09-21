@@ -59,7 +59,7 @@ function FindAll(neode, model, properties, order, limit, skip) {
     // Complete Query
     (_builder$orderBy$skip = builder.orderBy(order).skip(skip).limit(limit)).return.apply(_builder$orderBy$skip, output);
 
-    return builder.execute().then(function (res) {
+    return builder.execute(_Builder.mode.READ).then(function (res) {
         return neode.hydrate(res, alias);
     });
 }

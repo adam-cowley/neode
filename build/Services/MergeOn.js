@@ -25,6 +25,7 @@ function MergeOn(neode, model, merge_on, properties) {
     return (0, _GenerateDefaultValues2.default)(neode, model, properties).then(function (properties) {
         return (0, _Validator2.default)(neode, model, properties);
     }).then(function (properties) {
+        var tx = neode.transaction();
         var match = [];
 
         var params = {
@@ -118,7 +119,9 @@ function MergeOn(neode, model, merge_on, properties) {
         // Output
         query.push('RETURN ' + output.join());
 
-        return neode.cypher(query.join(' '), params).then(function (res) {
+        return neode.writeCypher(query.join(' '), params).then(function (res) {
+            tx.success();
+
             return res.records[0].get(origin);
         });
     });

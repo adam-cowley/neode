@@ -267,6 +267,38 @@ var Neode = function () {
         }
 
         /**
+         * Run an explicitly defined Read query
+         *
+         * @param  {String} query
+         * @param  {Object} params
+         * @return {Promise}
+         */
+
+    }, {
+        key: 'readCypher',
+        value: function readCypher(query, params) {
+            var session = this.readSession();
+
+            return this.cypher(query, params, session);
+        }
+
+        /**
+         * Run an explicitly defined Write query
+         *
+         * @param  {String} query
+         * @param  {Object} params
+         * @return {Promise}
+         */
+
+    }, {
+        key: 'writeCypher',
+        value: function writeCypher(query, params) {
+            var session = this.writeSession();
+
+            return this.cypher(query, params, session);
+        }
+
+        /**
          * Run a Cypher query
          *
          * @param  {String} query
@@ -277,18 +309,31 @@ var Neode = function () {
     }, {
         key: 'cypher',
         value: function cypher(query, params) {
-            var session = this.driver.session();
+            var session = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : false;
+
+            // If single run, open a new session
+            var single = !session;
+            if (single) {
+                session = this.session();
+            }
 
             return session.run(query, params).then(function (res) {
-                session.close();
+                if (single) {
+                    session.close();
+                }
 
                 return res;
             }).catch(function (err) {
-                session.close();
+                if (single) {
+                    session.close();
+                }
 
                 throw err;
             });
         }
+    }, {
+        key: 'readCypher',
+        value: function readCypher() {}
 
         /**
          * Create a new Session in the Neo4j Driver.
@@ -300,6 +345,30 @@ var Neode = function () {
         key: 'session',
         value: function session() {
             return this.driver.session();
+        }
+
+        /**
+         * Create an explicit Read Session
+         *
+         * @return {Session}
+         */
+
+    }, {
+        key: 'readSession',
+        value: function readSession() {
+            return this.driver.readSession();
+        }
+
+        /**
+         * Create an explicit Write Session
+         *
+         * @return {Session}
+         */
+
+    }, {
+        key: 'writeSession',
+        value: function writeSession() {
+            return this.session();
         }
 
         /**

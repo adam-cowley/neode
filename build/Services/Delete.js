@@ -50,5 +50,5 @@ function Delete(neode, node, model) {
         builder.detachDelete(detach_delete);
     }
 
-    return builder.execute();
+    return builder.execute(_Builder.mode.WRITE);
 }

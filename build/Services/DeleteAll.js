@@ -9,5 +9,5 @@ exports.default = DeleteAll;
 function DeleteAll(neode, model) {
     var query = 'MATCH (node:' + model.labels().join(':') + ') DETACH DELETE node';
 
-    return neode.cypher(query);
+    return neode.writeCypher(query);
 }

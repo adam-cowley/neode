@@ -7,7 +7,7 @@ exports.default = Update;
 function Update(neode, model, node, properties) {
     var query = 'MATCH (node) WHERE id(node) = {identity} SET node += {properties} RETURN node';
 
-    return neode.cypher(query, { identity: node.identity, properties: properties }).then(function (res) {
+    return neode.writeCypher(query, { identity: node.identity, properties: properties }).then(function (res) {
         return res.records[0].get('node');
     });
 }

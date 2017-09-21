@@ -25,6 +25,8 @@ function Create(neode, model, properties) {
     return (0, _GenerateDefaultValues2.default)(neode, model, properties).then(function (properties) {
         return (0, _Validator2.default)(neode, model, properties);
     }).then(function (properties) {
+        var tx = neode.transaction();
+
         // Check we have properties
         if (Object.keys(properties).length == 0) {
             throw new Error('There are no properties set for this Node');
@@ -87,7 +89,9 @@ function Create(neode, model, properties) {
 
         query.push('RETURN ' + output.join(', '));
 
-        return neode.cypher(query.join(' '), params).then(function (res) {
+        return neode.writeCypher(query.join(' '), params, tx).then(function (res) {
+            tx.success();
+
             return res.records[0].get(origin);
         });
     });

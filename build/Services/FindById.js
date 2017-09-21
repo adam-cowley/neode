@@ -30,7 +30,7 @@ function Find(neode, model, id) {
         output.push('COLLECT(' + key + ') as ' + key);
     });
 
-    return builder.return(output).limit(1).execute().then(function (res) {
+    return builder.return(output).limit(1).execute(_Builder.mode.READ).then(function (res) {
         return neode.hydrateFirst(res, alias, model);
     });
 
