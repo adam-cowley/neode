@@ -144,6 +144,13 @@ export default class Node {
     toJson() {
         const output = Object.assign({}, {'_id': this.id()}, this._node.properties);
 
+        // Convert properties
+        Object.keys(output).forEach(key => {
+            if (output[key].toNumber) {
+                output[key] = output[key].toNumber();
+            }
+        });
+
         this.model().hidden().forEach(key => {
             delete output[ key ];
         });

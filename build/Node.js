@@ -207,6 +207,13 @@ var Node = function () {
         value: function toJson() {
             var output = Object.assign({}, { '_id': this.id() }, this._node.properties);
 
+            // Convert properties
+            Object.keys(output).forEach(function (key) {
+                if (output[key].toNumber) {
+                    output[key] = output[key].toNumber();
+                }
+            });
+
             this.model().hidden().forEach(function (key) {
                 delete output[key];
             });
