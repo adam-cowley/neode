@@ -20,7 +20,7 @@ var NodeCollection = function () {
         _classCallCheck(this, NodeCollection);
 
         this._neode = neode;
-        this._values = values;
+        this._values = values || [];
     }
 
     /**

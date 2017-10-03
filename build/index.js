@@ -331,9 +331,6 @@ var Neode = function () {
                 throw err;
             });
         }
-    }, {
-        key: 'readCypher',
-        value: function readCypher() {}
 
         /**
          * Create a new Session in the Neo4j Driver.

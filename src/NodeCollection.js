@@ -8,7 +8,7 @@ export default class NodeCollection {
      */
     constructor(neode, values) {
         this._neode = neode;
-        this._values = values;
+        this._values = values || [];
     }
 
     /**

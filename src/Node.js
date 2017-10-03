@@ -155,7 +155,21 @@ export default class Node {
             delete output[ key ];
         });
 
-        return Promise.resolve(output);
+        const eager = Array.from(this._eager.keys());
+
+        return Promise.all(eager.map(key => {
+            return this._eager.get(key).toJson()
+                .then(value => {
+                    return {key, value};
+                });
+        }))
+            .then(res => {
+                res.forEach(({key, value}) => {
+                    output[key] = value;
+                });
+
+                return output;
+            });
     }
 
 }

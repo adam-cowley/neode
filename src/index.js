@@ -201,7 +201,7 @@ export default class Neode {
     readCypher(query, params) {
         const session = this.readSession();
 
-        return this.cypher(query, params, session)
+        return this.cypher(query, params, session);
     }
 
     /**
@@ -214,7 +214,7 @@ export default class Neode {
     writeCypher(query, params) {
         const session = this.writeSession();
 
-        return this.cypher(query, params, session)
+        return this.cypher(query, params, session);
     }
 
     /**
@@ -246,10 +246,6 @@ export default class Neode {
 
                 throw err;
             });
-    }
-
-    readCypher() {
-
     }
 
     /**

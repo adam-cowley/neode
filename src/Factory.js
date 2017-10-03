@@ -66,7 +66,6 @@ export default class Factory {
      */
     hydrateEager(row) {
         const loaded = new Map;
-
         // Hydrate Eager
         row.keys.forEach(key => {
             if (key.substr(0, eager.length) == eager) {

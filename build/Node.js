@@ -205,6 +205,8 @@ var Node = function () {
     }, {
         key: 'toJson',
         value: function toJson() {
+            var _this3 = this;
+
             var output = Object.assign({}, { '_id': this.id() }, this._node.properties);
 
             // Convert properties
@@ -218,7 +220,22 @@ var Node = function () {
                 delete output[key];
             });
 
-            return Promise.resolve(output);
+            var eager = Array.from(this._eager.keys());
+
+            return Promise.all(eager.map(function (key) {
+                return _this3._eager.get(key).toJson().then(function (value) {
+                    return { key: key, value: value };
+                });
+            })).then(function (res) {
+                res.forEach(function (_ref) {
+                    var key = _ref.key,
+                        value = _ref.value;
+
+                    output[key] = value;
+                });
+
+                return output;
+            });
         }
     }]);
 

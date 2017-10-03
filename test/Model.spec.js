@@ -281,7 +281,7 @@ describe('Model.js', () => {
     it('should convert to JSON object and hide hidden properties', (done) => {
         const expected = ['_id', 'id', 'name', 'living', 'defaulted', 'age'];
         const hidden = ['random'];
-
+console.log(created._eager)
         created.toJson()
             .then(json => {
                 expected.forEach(key => {
