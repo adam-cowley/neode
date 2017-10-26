@@ -25,7 +25,7 @@ function CleanValue(config, value) {
             break;
 
         case 'timestamp':
-            value = value instanceof Date ? Date.getTime() : value;
+            value = value instanceof Date ? value.getTime() : value;
             break;
     }
 
