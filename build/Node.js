@@ -216,7 +216,9 @@ var Node = function () {
                 }
             });
 
-            this.model().hidden().forEach(function (key) {
+            // TODO: Check that model exists.
+            // Fall back to a generic model?
+            this.model() && this.model().hidden().forEach(function (key) {
                 delete output[key];
             });
 

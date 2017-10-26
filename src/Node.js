@@ -151,7 +151,9 @@ export default class Node {
             }
         });
 
-        this.model().hidden().forEach(key => {
+        // TODO: Check that model exists.
+        // Fall back to a generic model?
+        this.model() && this.model().hidden().forEach(key => {
             delete output[ key ];
         });
 

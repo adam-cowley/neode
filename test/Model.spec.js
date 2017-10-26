@@ -234,6 +234,26 @@ describe('Model.js', () => {
             .catch(e => done(e));
     });
 
+    it('should not try to overwrite primary keys', (done) => {
+        let id, name, random;
+
+        Thing.create({name: "name"})
+            .then(thing => {
+                id = created.get('id');
+                name = created.get('name');
+                random = created.get('random');
+
+                return Thing.merge({name, random})
+            })
+            .then(merged => {
+                expect(merged.get('id')).to.equal(id);
+                expect(merged.get('name')).to.equal(name);
+                expect(merged.get('random')).to.equal(random);
+            })
+            .then(() => done())
+            .catch(e => done(e));
+    });
+
     it('should merge on specific properties', (done) => {
         const match = {
             id: created.get('id')
@@ -281,7 +301,7 @@ describe('Model.js', () => {
     it('should convert to JSON object and hide hidden properties', (done) => {
         const expected = ['_id', 'id', 'name', 'living', 'defaulted', 'age'];
         const hidden = ['random'];
-console.log(created._eager)
+
         created.toJson()
             .then(json => {
                 expected.forEach(key => {

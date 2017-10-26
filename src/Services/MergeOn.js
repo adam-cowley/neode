@@ -10,6 +10,8 @@ export default function MergeOn(neode, model, merge_on, properties) {
             const tx = neode.transaction();
             const match = [];
 
+            const primary_key = model.primaryKey();
+
             let params = {
                 __set: {},
                 __on_match_set: {},
@@ -28,11 +30,17 @@ export default function MergeOn(neode, model, merge_on, properties) {
 
             // Get Match Properties
             merge_on.forEach(key => {
-                if ( properties.hasOwnProperty( key ) ) {
+                if ( properties.hasOwnProperty( key ) && (key !== primary_key) ) {
                     match.push(`${key}: {match_${key}}`);
+
                     params[ `match_${key}`] = properties[ key ];
                 }
             });
+
+            if ( match.length == 0 && properties.hasOwnProperty(primary_key) ) {
+                match.push(`${primary_key}: {match_${primary_key}}`);
+                params[ `match_${primary_key}`] = properties[ primary_key ];
+            }
 
             // Throw error if no merge fields are present
             if ( !match.length ) {
@@ -49,7 +57,7 @@ export default function MergeOn(neode, model, merge_on, properties) {
                 const value = properties[ key ];
 
                 // Only set protected properties on creation
-                if ( property.protected() ) {
+                if ( property.protected() || property.primary() ) {
                     params.__on_create_set[ key ] = value;
                 }
                 else {
