@@ -23,6 +23,10 @@ function CleanValue(config, value) {
         case 'boolean':
             value = !! value;
             break;
+
+        case 'timestamp':
+            value = value instanceof Date ? Date.getTime() : value;
+            break;
     }
 
     return value;
