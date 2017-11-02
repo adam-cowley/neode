@@ -21,7 +21,7 @@ npm install --save neode
 // index.js
 import Neode from 'neode';
 
-const instance = new Neode('bolt://localhost:7474', 'username', 'password');
+const instance = new Neode('bolt://localhost:7687', 'username', 'password');
 ```
 
 #### Enterprise Mode
@@ -32,7 +32,7 @@ To initiate Neode in enterprise mode and enable enterprise features, provide a t
 // index.js
 import Neode from 'neode';
 
-const instance = new Neode('bolt://localhost:7474', 'username', 'password', true);
+const instance = new Neode('bolt://localhost:7687', 'username', 'password', true);
 ```
 
 #### Usage with .env variables
