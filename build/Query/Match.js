@@ -25,9 +25,7 @@ var Match = function () {
     _createClass(Match, [{
         key: 'toString',
         value: function toString() {
-            var model = this._model instanceof _Model2.default ? ':' + this._model.labels().join(':') : '';
-
-            // const labels = typeof this._model == 'string' ? this._model : this._model.labels().join(':');
+            var model = this._model instanceof _Model2.default ? ':' + this._model.labels().join(':') : ':' + this._model;
 
             return '(' + this._alias + model + ')';
         }

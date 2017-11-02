@@ -7,9 +7,7 @@ export default class Match {
     }
 
     toString() {
-        const model = this._model instanceof Model ? ':' + this._model.labels().join(':') : '';
-
-        // const labels = typeof this._model == 'string' ? this._model : this._model.labels().join(':');
+        const model = this._model instanceof Model ? ':' + this._model.labels().join(':') : `:${this._model}`;
 
         return `(${this._alias}${model})`;
     }
