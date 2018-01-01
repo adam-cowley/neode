@@ -42,7 +42,7 @@ function CleanValue(config, value) {
  */
 export default function GenerateDefaultValues(neode, model, properties) {
     const schema = model.schema();
-    let output = {};
+    const output = {};
 
     // Get All Config
     Object.keys(schema).forEach(key => {
@@ -59,7 +59,7 @@ export default function GenerateDefaultValues(neode, model, properties) {
         }
 
         // Set Default Value
-        if (config.default && !output[ key ]) {
+        else if (config.default) {
             output[ key ] = typeof config.default == 'function' ? config.default() : config.default;
         }
 

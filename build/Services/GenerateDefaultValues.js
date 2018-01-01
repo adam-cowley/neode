@@ -70,9 +70,9 @@ function GenerateDefaultValues(neode, model, properties) {
         }
 
         // Set Default Value
-        if (config.default && !output[key]) {
-            output[key] = typeof config.default == 'function' ? config.default() : config.default;
-        }
+        else if (config.default) {
+                output[key] = typeof config.default == 'function' ? config.default() : config.default;
+            }
 
         // Clean Value
         if (output[key]) {

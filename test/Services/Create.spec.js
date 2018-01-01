@@ -43,7 +43,7 @@ describe('Services/Create.js', () => {
         const data = {
             id: 'defaultvalues',
             name: 'neode',
-            ignoreme: 'ignoreme'
+            ignoreme: 'ignoreme',
         };
 
         instance.create(label, data)
@@ -52,6 +52,27 @@ describe('Services/Create.js', () => {
                 expect(res.get('id')).to.equal(data.id);
                 expect(res.get('name')).to.equal(data.name);
                 expect(res.get('age')).to.equal(30);
+
+                expect(res.get('ignoreme')).not.to.equal(data.ignoreme);
+
+                done();
+            })
+            .catch(e => done(e))
+    });
+
+    it('should treat 0 as a number', (done) => {
+        const data = {
+            id: 'treat0',
+            name: 'neode',
+            age: 0,
+        };
+
+        instance.create(label, data)
+            .then(res => {
+                expect(res).to.be.an.instanceOf(Node);
+                expect(res.get('id')).to.equal(data.id);
+                expect(res.get('name')).to.equal(data.name);
+                expect(res.get('age')).to.equal(data.age);
 
                 expect(res.get('ignoreme')).not.to.equal(data.ignoreme);
 
