@@ -41,7 +41,6 @@ export default class Neode {
         const password = process.env.NEO4J_PASSWORD;
         const enterprise = !!process.env.NEO4J_ENTERPRISE;
 
-
         return new Neode(connection_string, username, password, enterprise);
     }
 

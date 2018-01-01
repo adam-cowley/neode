@@ -69,11 +69,11 @@ describe('Model.js', () => {
         living: true
     };
 
-    after(function(done) {
-        instance.deleteAll(label)
-            .then(() => done())
-            .catch(e => done(e));
-    });
+    // after(function(done) {
+    //     instance.deleteAll(label)
+    //         .then(() => done())
+    //         .catch(e => done(e));
+    // });
 
     it('should register a new model definition', () => {
         Thing = instance.model(label, schema);
@@ -163,6 +163,38 @@ describe('Model.js', () => {
             relation = res;
 
             return created.relateTo(relation, 'knows', properties);
+        })
+        .then(res => {
+            expect(res).to.be.an.instanceOf(Relationship);
+            expect(res.type().relationship()).to.equal('KNOWS');
+            expect(res.type().type()).to.equal('knows');
+            expect(res.from()).to.equal(created);
+            expect(res.to()).to.equal(relation);
+            expect(res.properties()).to.be.an('object');
+            expect(res.get('since')).to.equal(properties.since);
+            expect(res.get('defaulted')).to.equal(schema.knows.properties.defaulted.default);
+
+            done();
+        })
+        .catch(e => done(e));
+    });
+
+    it('should force create an outgoing relationship', (done) => {
+        let relation;
+        const properties = {
+            since: 0
+        };
+
+        instance.model(label).create({
+            id: uuid.v4(),
+            name: 'Relation',
+            age: 88,
+            living: true
+        })
+        .then(res => {
+            relation = res;
+
+            return created.relateTo(relation, 'knows', properties, true);
         })
         .then(res => {
             expect(res).to.be.an.instanceOf(Relationship);
@@ -350,7 +382,7 @@ describe('Model.js', () => {
                 });
         })
         .then(res => {
-            const [parent, child] = res;
+            const [ parent, child ] = res;
 
             return instance.cypher('MATCH (n) WHERE id(n) IN [{parent}, {child}] RETURN count(n) AS count', {parent:parent.idInt(), child:child.idInt()})
                 .then(res => {

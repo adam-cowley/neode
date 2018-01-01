@@ -66,7 +66,7 @@ export default class Relationship {
      * @return {mixed}
      */
     get(property, or = null) {
-        return this._relationship.properties[property] || or;
+        return this._relationship.properties.hasOwnProperty(property) ? this._relationship.properties[property] : or;
     }
 
     /**

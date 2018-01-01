@@ -95,7 +95,7 @@ var Relationship = function () {
         value: function get(property) {
             var or = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : null;
 
-            return this._relationship.properties[property] || or;
+            return this._relationship.properties.hasOwnProperty(property) ? this._relationship.properties[property] : or;
         }
 
         /**

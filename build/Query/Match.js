@@ -15,7 +15,9 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 var Match = function () {
-    function Match(alias, model) {
+    function Match(alias) {
+        var model = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
+
         _classCallCheck(this, Match);
 
         this._alias = alias;
@@ -25,9 +27,15 @@ var Match = function () {
     _createClass(Match, [{
         key: 'toString',
         value: function toString() {
-            var model = this._model instanceof _Model2.default ? ':' + this._model.labels().join(':') : ':' + this._model;
+            var model = '';
 
-            return '(' + this._alias + model + ')';
+            if (this._model instanceof _Model2.default) {
+                model = ':' + this._model.labels().join(':');
+            } else if (this._model instanceof String) {
+                model = ':' + this._model;
+            }
+
+            return '(' + this._alias + (model ? model : '') + ')';
         }
     }]);
 
