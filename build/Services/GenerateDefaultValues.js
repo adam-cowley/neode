@@ -9,6 +9,10 @@ var _uuid = require('uuid');
 
 var _uuid2 = _interopRequireDefault(_uuid);
 
+var _ValidationError = require('../ValidationError');
+
+var _ValidationError2 = _interopRequireDefault(_ValidationError);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 /**
@@ -54,6 +58,10 @@ function CleanValue(config, value) {
 function GenerateDefaultValues(neode, model, properties) {
     var schema = model.schema();
     var output = {};
+
+    if (!properties instanceof Object) {
+        throw new _ValidationError2.default('`properties` must be an object.', properties);
+    }
 
     // Get All Config
     Object.keys(schema).forEach(function (key) {
