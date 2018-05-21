@@ -5,7 +5,7 @@ export default class ModelMap {
     /**
      * @constuctor
      *
-     * @param {Neode} neode 
+     * @param {Neode} neode
      */
     constructor(neode) {
         this._neode = neode;
@@ -14,7 +14,7 @@ export default class ModelMap {
 
     /**
      * Getter
-     * 
+     *
      * @param  {String}
      * @return {Model|false}
      */
@@ -24,7 +24,7 @@ export default class ModelMap {
 
     /**
      * Setter
-     * 
+     *
      * @param  {String} key
      * @param  {Model}  value
      * @return {ModelMap}
@@ -37,7 +37,7 @@ export default class ModelMap {
 
     /**
      * Run a forEach function on the models
-     * 
+     *
      * @param  {Function}
      * @return {void}
      */
@@ -47,7 +47,7 @@ export default class ModelMap {
 
     /**
      * Get the definition for an array labels
-     * 
+     *
      * @param  {Array} labels
      * @return {Definition}
      */
@@ -69,7 +69,7 @@ export default class ModelMap {
 
     /**
      * Extend a model with extra configuration
-     * 
+     *
      * @param  {String} name   Original Model to clone
      * @param  {String} as     New Model name
      * @param  {Object} using  Schema changes
@@ -80,8 +80,8 @@ export default class ModelMap {
         const original = this.models.get(name);
 
         // Add new Labels
-        const labels = original.labels();
-        labels.push(name);
+        const labels = original.labels().slice(0);
+        labels.push(as);
         labels.sort();
 
         // Merge Schema
@@ -96,5 +96,5 @@ export default class ModelMap {
 
         return model;
     }
-    
+
 }

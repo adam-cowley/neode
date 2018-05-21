@@ -23,7 +23,7 @@ var ModelMap = function () {
     /**
      * @constuctor
      *
-     * @param {Neode} neode 
+     * @param {Neode} neode
      */
     function ModelMap(neode) {
         _classCallCheck(this, ModelMap);
@@ -34,7 +34,7 @@ var ModelMap = function () {
 
     /**
      * Getter
-     * 
+     *
      * @param  {String}
      * @return {Model|false}
      */
@@ -48,7 +48,7 @@ var ModelMap = function () {
 
         /**
          * Setter
-         * 
+         *
          * @param  {String} key
          * @param  {Model}  value
          * @return {ModelMap}
@@ -64,7 +64,7 @@ var ModelMap = function () {
 
         /**
          * Run a forEach function on the models
-         * 
+         *
          * @param  {Function}
          * @return {void}
          */
@@ -77,7 +77,7 @@ var ModelMap = function () {
 
         /**
          * Get the definition for an array labels
-         * 
+         *
          * @param  {Array} labels
          * @return {Definition}
          */
@@ -125,7 +125,7 @@ var ModelMap = function () {
 
         /**
          * Extend a model with extra configuration
-         * 
+         *
          * @param  {String} name   Original Model to clone
          * @param  {String} as     New Model name
          * @param  {Object} using  Schema changes
@@ -139,8 +139,8 @@ var ModelMap = function () {
             var original = this.models.get(name);
 
             // Add new Labels
-            var labels = original.labels();
-            labels.push(name);
+            var labels = original.labels().slice(0);
+            labels.push(as);
             labels.sort();
 
             // Merge Schema
