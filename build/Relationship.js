@@ -36,7 +36,7 @@ var Relationship = function () {
     /**
      * Relationship Type definition for this node
      *
-     * @return {Model}
+     * @return {RelationshipType}
      */
 
 
