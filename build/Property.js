@@ -72,6 +72,11 @@ var Property = function () {
         value: function hidden() {
             return this._hidden;
         }
+    }, {
+        key: 'readonly',
+        value: function readonly() {
+            return this._readonly || false;
+        }
     }]);
 
     return Property;

@@ -51,6 +51,7 @@ var Model = function (_Queryable) {
         _this._unique = [];
         _this._indexed = [];
         _this._hidden = [];
+        _this._readonly = [];
 
         // TODO: Clean this up
         for (var key in schema) {
@@ -182,6 +183,11 @@ var Model = function (_Queryable) {
             // Should this property be hidden during JSON conversion?
             if (property.hidden()) {
                 this._hidden.push(key);
+            }
+
+            // Is this property only to be read and never written to DB (e.g. auto-generated UUIDs)?
+            if (property.readonly()) {
+                this._readonly.push(key);
             }
 
             return this;

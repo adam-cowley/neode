@@ -20,6 +20,7 @@ export default class Model extends Queryable {
         this._unique = [];
         this._indexed = [];
         this._hidden = [];
+        this._readonly = [];
 
         // TODO: Clean this up
         for (let key in schema) {
@@ -122,6 +123,11 @@ export default class Model extends Queryable {
         // Should this property be hidden during JSON conversion?
         if ( property.hidden() ) {
             this._hidden.push(key);
+        }
+
+        // Is this property only to be read and never written to DB (e.g. auto-generated UUIDs)?
+        if ( property.readonly() ) {
+            this._readonly.push(key);
         }
 
         return this;

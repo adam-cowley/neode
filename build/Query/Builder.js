@@ -417,7 +417,7 @@ var Builder = function () {
         /**
          * Complete the relationship statement to point to anything
          *
-         * @return {Builder
+         * @return {Builder}
          */
 
     }, {
