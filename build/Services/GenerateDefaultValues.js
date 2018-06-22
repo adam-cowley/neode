@@ -59,7 +59,7 @@ function GenerateDefaultValues(neode, model, properties) {
     var schema = model.schema();
     var output = {};
 
-    if (!properties instanceof Object) {
+    if (!(properties instanceof Object)) {
         throw new _ValidationError2.default('`properties` must be an object.', properties);
     }
 
