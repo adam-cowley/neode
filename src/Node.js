@@ -1,3 +1,4 @@
+import {v1 as neo4j} from 'neo4j-driver';
 import Update from './Services/Update';
 import Delete from './Services/Delete';
 import RelateTo from './Services/RelateTo';
@@ -11,7 +12,7 @@ export default class Node {
      * @param  {Neode} neode  Neode Instance
      * @param  {Model} model  Model definition
      * @param  {node}  node   Node Onject from neo4j-driver
-     * @param  {Map)   eager  Eagerly loaded values
+     * @param  {Map}   eager  Eagerly loaded values
      * @return {Node}
      */
     constructor(neode, model, node, eager) {
@@ -148,6 +149,29 @@ export default class Node {
         Object.keys(output).forEach(key => {
             if (output[key].toNumber) {
                 output[key] = output[key].toNumber();
+            }
+            else if (neo4j.temporal.isDateTime(output[key])) {
+                output[key] = new Date(output[key].toString());
+            }
+            else if (neo4j.spatial.isPoint(output[key])) {
+                switch (output[key].srid.toString()) {
+                    // SRID values: @https://neo4j.com/docs/developer-manual/current/cypher/functions/spatial/
+                    case '4326': // WGS 84 2D
+                        output[key] = {longitude: output[key].x, latitude: output[key].y};
+                        break;
+
+                    case '4979': // WGS 84 3D
+                        output[key] = {longitude: output[key].x, latitude: output[key].y, height: output[key].z};
+                        break;
+
+                    case '7203': // Cartesian 2D
+                        output[key] = {x: output[key].x, y: output[key].y};
+                        break;
+
+                    case '9157': // Cartesian 3D
+                        output[key] = {x: output[key].x, y: output[key].y, z: output[key].z};
+                        break;
+                }
             }
         });
 

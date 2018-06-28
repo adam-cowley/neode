@@ -270,7 +270,7 @@ declare namespace Neode {
 
   type PropertyType = string | number | boolean;
 
-  type PropertyTypes = 'uuid' | 'number' | 'string' | 'boolean';
+  type PropertyTypes = 'uuid' | 'number' | 'string' | 'boolean' | 'DateTime' | 'Point';
 
   type Direction = 'direction_in' | 'direction_out' | 'direction_both' | 'in' | 'out';
 

@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
+var _neo4jDriver = require('neo4j-driver');
+
 var _Update = require('./Services/Update');
 
 var _Update2 = _interopRequireDefault(_Update);
@@ -34,7 +36,7 @@ var Node = function () {
      * @param  {Neode} neode  Neode Instance
      * @param  {Model} model  Model definition
      * @param  {node}  node   Node Onject from neo4j-driver
-     * @param  {Map)   eager  Eagerly loaded values
+     * @param  {Map}   eager  Eagerly loaded values
      * @return {Node}
      */
     function Node(neode, model, node, eager) {
@@ -213,6 +215,31 @@ var Node = function () {
             Object.keys(output).forEach(function (key) {
                 if (output[key].toNumber) {
                     output[key] = output[key].toNumber();
+                } else if (_neo4jDriver.v1.temporal.isDateTime(output[key])) {
+                    output[key] = new Date(output[key].toString());
+                } else if (_neo4jDriver.v1.spatial.isPoint(output[key])) {
+                    switch (output[key].srid.toString()) {
+                        // SRID values: @https://neo4j.com/docs/developer-manual/current/cypher/functions/spatial/
+                        case '4326':
+                            // WGS 84 2D
+                            output[key] = { longitude: output[key].x, latitude: output[key].y };
+                            break;
+
+                        case '4979':
+                            // WGS 84 3D
+                            output[key] = { longitude: output[key].x, latitude: output[key].y, height: output[key].z };
+                            break;
+
+                        case '7203':
+                            // Cartesian 2D
+                            output[key] = { x: output[key].x, y: output[key].y };
+                            break;
+
+                        case '9157':
+                            // Cartesian 3D
+                            output[key] = { x: output[key].x, y: output[key].y, z: output[key].z };
+                            break;
+                    }
                 }
             });
 
