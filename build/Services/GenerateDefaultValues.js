@@ -53,7 +53,7 @@ function CleanValue(config, value) {
 
         case 'Point':
             // SRID values: @https://neo4j.com/docs/developer-manual/current/cypher/functions/spatial/
-            if (value.longitude) {
+            if (isNaN(value.x)) {
                 // WGS 84
                 if (isNaN(value.height)) {
                     value = new _neo4jDriver.v1.types.Point(4326, // WGS 84 2D

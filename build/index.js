@@ -456,7 +456,7 @@ var Neode = function () {
     }, {
         key: 'query',
         value: function query() {
-            return new _Builder2.default();
+            return new _Builder2.default(this);
         }
 
         /**
