@@ -293,6 +293,7 @@ declare namespace Neode {
       eager?:     boolean,
       default?:   any,
       direction:  Direction,
+      cascade?:   'detach' | 'delete';
       properties?: {
           [index: string]: PropertyTypes
       }
@@ -469,6 +470,13 @@ declare namespace Neode {
     constructor(neode: Neode);
 
     /**
+     * Return a new Query Builder
+     *
+     * @return {Builder}
+     */
+    query(): Builder;
+
+    /**
      * Create a new node
      *
      * @param  {object} properties
@@ -536,6 +544,20 @@ declare namespace Neode {
      * @return {Promise}
      */
     first(key: string | object, value: string | number): Promise<Node<T>>;
+
+    /**
+     * Get a collection of nodes within a certain distance belonging to this label
+     *
+     * @param  {Object}              properties
+     * @param  {String}              location_property
+     * @param  {Object}              point
+     * @param  {Int}                 distance
+     * @param  {String|Array|Object} order
+     * @param  {Int}                 limit
+     * @param  {Int}                 skip
+     * @return {Promise}
+     */
+    withinDistance(location_property: string, point: {x: number, y: number, z?: number} | {latitude: number, longitude: number, height?: number}, distance: number, properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number): Promise<NodeCollection>;
   }
 
   class Model<T> extends Queryable<T> {
@@ -861,7 +883,7 @@ declare namespace Neode {
      * @param  {Boolean} force_create   Force the creation a new relationship? If false, the relationship will be merged
      * @return {Promise}
      */
-    relateTo(node: Node<T>, type: string, properties ?: object, force_create ?: boolean): Promise<Relationship>;
+    relateTo(node: Node<any>, type: string, properties ?: object, force_create ?: boolean): Promise<Relationship>;
 
     /**
      * When converting to string, return this model's primary key
