@@ -354,7 +354,7 @@ export default class Neode {
      * @return {Builder}
      */
     query() {
-        return new Builder;
+        return new Builder(this);
     }
 
     /**
