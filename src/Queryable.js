@@ -1,7 +1,9 @@
+import Builder from './Query/Builder';
 import Create from './Services/Create';
 import DeleteAll from './Services/DeleteAll';
 import FindAll from './Services/FindAll';
 import FindById from './Services/FindById';
+import FindWithinDistance from './Services/FindWithinDistance';
 import First from './Services/First';
 import MergeOn from './Services/MergeOn';
 import Node from './Node';
@@ -15,6 +17,15 @@ export default class Queryable {
      */
     constructor(neode) {
         this._neode = neode;
+    }
+
+    /**
+     * Return a new Query Builder
+     *
+     * @return {Builder}
+     */
+    query() {
+        return new Builder(this._neode);
     }
 
     /**
@@ -117,6 +128,22 @@ export default class Queryable {
      */
     first(key, value) {
         return First(this._neode, this, key, value);
+    }
+
+    /**
+     * Get a collection of nodes within a certain distance belonging to this label
+     *
+     * @param  {Object}              properties
+     * @param  {String}              location_property
+     * @param  {Object}              point
+     * @param  {Int}                 distance
+     * @param  {String|Array|Object} order
+     * @param  {Int}                 limit
+     * @param  {Int}                 skip
+     * @return {Promise}
+     */
+    withinDistance(location_property, point, distance, properties, order, limit, skip) {
+        return FindWithinDistance(this._neode, this, location_property, point, distance, properties, order, limit, skip);
     }
 
 }
