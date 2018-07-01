@@ -6,6 +6,10 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
+var _Builder = require('./Query/Builder');
+
+var _Builder2 = _interopRequireDefault(_Builder);
+
 var _Create = require('./Services/Create');
 
 var _Create2 = _interopRequireDefault(_Create);
@@ -21,6 +25,10 @@ var _FindAll2 = _interopRequireDefault(_FindAll);
 var _FindById = require('./Services/FindById');
 
 var _FindById2 = _interopRequireDefault(_FindById);
+
+var _FindWithinDistance = require('./Services/FindWithinDistance');
+
+var _FindWithinDistance2 = _interopRequireDefault(_FindWithinDistance);
 
 var _First = require('./Services/First');
 
@@ -52,14 +60,26 @@ var Queryable = function () {
     }
 
     /**
-     * Create a new instance of this Model
+     * Return a new Query Builder
      *
-     * @param  {object} properties
-     * @return {Promise}
+     * @return {Builder}
      */
 
 
     _createClass(Queryable, [{
+        key: 'query',
+        value: function query() {
+            return new _Builder2.default(this._neode);
+        }
+
+        /**
+         * Create a new instance of this Model
+         *
+         * @param  {object} properties
+         * @return {Promise}
+         */
+
+    }, {
         key: 'create',
         value: function create(properties) {
             var _this = this;
@@ -179,6 +199,25 @@ var Queryable = function () {
         key: 'first',
         value: function first(key, value) {
             return (0, _First2.default)(this._neode, this, key, value);
+        }
+
+        /**
+         * Get a collection of nodes within a certain distance belonging to this label
+         *
+         * @param  {Object}              properties
+         * @param  {String}              location_property
+         * @param  {Object}              point
+         * @param  {Int}                 distance
+         * @param  {String|Array|Object} order
+         * @param  {Int}                 limit
+         * @param  {Int}                 skip
+         * @return {Promise}
+         */
+
+    }, {
+        key: 'withinDistance',
+        value: function withinDistance(location_property, point, distance, properties, order, limit, skip) {
+            return (0, _FindWithinDistance2.default)(this._neode, this, location_property, point, distance, properties, order, limit, skip);
         }
     }]);
 
