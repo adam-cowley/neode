@@ -48,4 +48,8 @@ export default class Property {
     hidden() {
         return this._hidden;
     }
+
+    readonly() {
+        return this._readonly || false;
+    }
 }

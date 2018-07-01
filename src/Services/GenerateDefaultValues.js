@@ -1,4 +1,5 @@
 import uuid from 'uuid';
+import {v1 as neo4j} from 'neo4j-driver';
 import ValidationError from '../ValidationError';
 
 /**
@@ -28,6 +29,58 @@ function CleanValue(config, value) {
         case 'timestamp':
             value = value instanceof Date ? value.getTime() : value;
             break;
+
+        case 'DateTime':
+            value = value instanceof Date ?
+                new neo4j.types.DateTime(
+                    value.getFullYear(),
+                    value.getMonth() + 1,
+                    value.getDate(),
+                    value.getHours(),
+                    value.getMinutes(),
+                    value.getSeconds(),
+                    value.getMilliseconds() * 1000000,  // nanoseconds
+                    value.getTimezoneOffset() * 60      // seconds
+                ) : value;
+            break;
+
+        case 'Point':
+            // SRID values: @https://neo4j.com/docs/developer-manual/current/cypher/functions/spatial/
+            if (value.longitude) { // WGS 84
+                if (isNaN(value.height)) {
+                    value = new neo4j.types.Point(
+                        4326, // WGS 84 2D
+                        value.longitude,
+                        value.latitude
+                    );
+                }
+                else {
+                    value = new neo4j.types.Point(
+                        4979, // WGS 84 3D
+                        value.longitude,
+                        value.latitude,
+                        value.height
+                    );
+                }
+            }
+            else {
+                if (isNaN(value.z)) {
+                    value = new neo4j.types.Point(
+                        7203, // Cartesian 2D
+                        value.x,
+                        value.y
+                    );
+                }
+                else {
+                    value = new neo4j.types.Point(
+                        9157, // Cartesian 3D
+                        value.x,
+                        value.y,
+                        value.z
+                    );
+                }
+            }
+            break;
     }
 
     return value;
@@ -45,7 +98,7 @@ export default function GenerateDefaultValues(neode, model, properties) {
     const schema = model.schema();
     const output = {};
 
-    if ( !properties instanceof Object ) {
+    if ( !(properties instanceof Object )) {
         throw new ValidationError('`properties` must be an object.', properties);
     }
 

@@ -303,7 +303,7 @@ export default class Builder {
     /**
      * Complete the relationship statement to point to anything
      *
-     * @return {Builder
+     * @return {Builder}
      */
     toAnything() {
         this._current.toAnything();

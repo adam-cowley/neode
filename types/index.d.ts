@@ -1,6 +1,9 @@
 import {v1 as neo4j} from 'neo4j-driver';
 
 declare class Neode {
+
+  schema: Neode.Schema;
+
   /**
    * Constructor
    *
@@ -211,7 +214,7 @@ declare class Neode {
    * @param  {Int}                 skip
    * @return {Promise}
    */
-  all(label: string, properties: object, order: string | Array<any> | object, limit: number, skip: number): Promise<Neode.NodeCollection>;
+  all(label: string, properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number): Promise<Neode.NodeCollection>;
 
   /**
    * Find a Node by it's label and primary key
@@ -268,7 +271,7 @@ declare namespace Neode {
 
   type PropertyType = string | number | boolean;
 
-  type PropertyTypes = 'uuid' | 'number' | 'string';
+  type PropertyTypes = 'uuid' | 'number' | 'string' | 'boolean' | 'DateTime' | 'Point';
 
   type Direction = 'direction_in' | 'direction_out' | 'direction_both' | 'in' | 'out';
 
@@ -287,6 +290,7 @@ declare namespace Neode {
       target:     string,
       relationship: string,
       required?:  boolean,
+      eager?:     boolean,
       default?:   any,
       direction:  Direction,
       properties?: {
@@ -505,7 +509,7 @@ declare namespace Neode {
      * @param  {Int}                 skip
      * @return {Promise}
      */
-    all(properties: Object, order: string | Array<any> | Object, limit: number, skip: number): Promise<NodeCollection>;
+    all(properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number): Promise<NodeCollection>;
 
     /**
      * Find a Node by its Primary Key
@@ -630,6 +634,20 @@ declare namespace Neode {
      * @return {Array}
      */
     mergeFields(): Array<string>;
+  }
+
+  class Schema {
+
+    /**
+     * Neode will install the schema created by the constraints defined in your Node definitions.
+     */
+    install(): void;
+
+    /**
+     * Dropping the schema will remove all indexes and constraints created by Neode.
+     * All other indexes and constraints will be left intact.
+     */
+    drop(): void;
   }
 
   class RelationshipType {
@@ -875,7 +893,7 @@ declare namespace Neode {
      *
      * @return {Int}
      */
-    length(): number;
+    length: number;
 
     /**
      * Get a value by it's index

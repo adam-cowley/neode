@@ -25,7 +25,7 @@ export default class Relationship {
     /**
      * Relationship Type definition for this node
      *
-     * @return {Model}
+     * @return {RelationshipType}
      */
     type() {
         return this._type;

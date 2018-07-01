@@ -60,7 +60,7 @@ export default function MergeOn(neode, model, merge_on, properties) {
                 if ( property.protected() || property.primary() ) {
                     params.__on_create_set[ key ] = value;
                 }
-                else {
+                else if ( !property.readonly() ) {
                     params.__set[ key ] = value;
                 }
             });
