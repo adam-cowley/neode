@@ -94,7 +94,7 @@ function CleanValue(config, value) {
  * @param  {Object} properties
  * @return {Promise}
  */
-export default function GenerateDefaultValues(neode, model, properties) {
+export default function ToRowMap(neode, model, properties) {
     const schema = model.schema();
     const output = {};
 

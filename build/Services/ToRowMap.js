@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", {
     value: true
 });
-exports.default = GenerateDefaultValues;
+exports.default = ToRowMap;
 
 var _uuid = require('uuid');
 
@@ -85,7 +85,7 @@ function CleanValue(config, value) {
  * @param  {Object} properties
  * @return {Promise}
  */
-function GenerateDefaultValues(neode, model, properties) {
+function ToRowMap(neode, model, properties) {
     var schema = model.schema();
     var output = {};
 

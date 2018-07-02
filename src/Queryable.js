@@ -6,6 +6,7 @@ import FindById from './Services/FindById';
 import FindWithinDistance from './Services/FindWithinDistance';
 import First from './Services/First';
 import MergeOn from './Services/MergeOn';
+import ToRowMap from './Services/ToRowMap';
 import Node from './Node';
 
 export default class Queryable {
@@ -144,6 +145,16 @@ export default class Queryable {
      */
     withinDistance(location_property, point, distance, properties, order, limit, skip) {
         return FindWithinDistance(this._neode, this, location_property, point, distance, properties, order, limit, skip);
+    }
+
+    /**
+     * Converts properties into a RowMap which can be used later in UNWIND
+     *
+     * @param  {object} properties
+     * @return {Promise}
+     */
+    toRowMap(properties) {
+        return ToRowMap(this._neode, this, properties);
     }
 
 }

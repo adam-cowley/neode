@@ -38,6 +38,10 @@ var _MergeOn = require('./Services/MergeOn');
 
 var _MergeOn2 = _interopRequireDefault(_MergeOn);
 
+var _ToRowMap = require('./Services/ToRowMap');
+
+var _ToRowMap2 = _interopRequireDefault(_ToRowMap);
+
 var _Node = require('./Node');
 
 var _Node2 = _interopRequireDefault(_Node);
@@ -218,6 +222,19 @@ var Queryable = function () {
         key: 'withinDistance',
         value: function withinDistance(location_property, point, distance, properties, order, limit, skip) {
             return (0, _FindWithinDistance2.default)(this._neode, this, location_property, point, distance, properties, order, limit, skip);
+        }
+
+        /**
+         * Converts properties into a RowMap which can be used later in UNWIND
+         *
+         * @param  {object} properties
+         * @return {Promise}
+         */
+
+    }, {
+        key: 'toRowMap',
+        value: function toRowMap(properties) {
+            return (0, _ToRowMap2.default)(this._neode, this, properties);
         }
     }]);
 
