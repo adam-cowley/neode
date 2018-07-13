@@ -12,6 +12,10 @@ var _fs = require('fs');
 
 var _fs2 = _interopRequireDefault(_fs);
 
+var _path = require('path');
+
+var _path2 = _interopRequireDefault(_path);
+
 var _neo4jDriver = require('neo4j-driver');
 
 var _neo4jDriver2 = _interopRequireDefault(_neo4jDriver);
@@ -111,7 +115,9 @@ var Neode = function () {
 
             var files = _fs2.default.readdirSync(directory);
 
-            files.forEach(function (file) {
+            files.filter(function (file) {
+                return _path2.default.extname(file).toLowerCase() === '.js';
+            }).forEach(function (file) {
                 var model = file.replace('.js', '');
                 var path = directory + '/' + file;
                 var schema = require(path);
