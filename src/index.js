@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 import neo4j from 'neo4j-driver';
 import Factory from './Factory';
 import Model from './Model';
@@ -67,13 +68,14 @@ export default class Neode {
     withDirectory(directory) {
         const files = fs.readdirSync(directory);
 
-        files.forEach(file => {
-            const model = file.replace('.js', '');
-            const path = directory +'/'+ file;
-            const schema = require(path);
+        files.filter(file => path.extname(file).toLowerCase() === '.js')
+            .forEach(file => {
+                const model = file.replace('.js', '');
+                const path = directory +'/'+ file;
+                const schema = require(path);
 
-            return this.model(model, schema);
-        });
+                return this.model(model, schema);
+            });
 
         return this;
     }
