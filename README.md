@@ -56,6 +56,24 @@ import Neode from 'neode';
 const instance = new Neode.fromEnv();
 ```
 
+#### Additional Driver Config
+
+Additional driver configuration can be passed as the fifth parameter in the constructor, or defined in .env:
+
+```
+NEO4J_ENCRYPTED=ENCRYPTION_ON                   # ENCRYPTION_ON or ENCRYPTION_OFF
+NEO4J_TRUST=TRUST_SIGNED_CERTIFICATES           # TRUST_ALL_CERTIFICATES, TRUST_ON_FIRST_USE, TRUST_SIGNED_CERTIFICATES, TRUST_CUSTOM_CA_SIGNED_CERTIFICATES, TRUST_SYSTEM_CA_SIGNED_CERTIFICATES
+NEO4J_TRUSTED_CERTIFICATES=/path/to/cert.pem
+NEO4J_KNOWN_HOSTS=127.0.0.1
+NEO4J_MAX_CONNECTION_POOLSIZE=100
+NEO4J_MAX_TRANSACTION_RETRY_TIME=5000
+NEO4J_LOAD_BALANCING_STRATEGY=least_connected   # least_connected or round_robin
+NEO4J_MAX_CONNECTION_LIFETIME=36000
+NEO4J_CONNECTION_TIMEOUT=36000
+NEO4J_DISABLE_LOSSLESS_INTEGERS=false
+```
+
+
 #### Loading `with` Models
 
 You can use the `with()` method to load multipe models at once.
