@@ -7,6 +7,7 @@ import ModelMap from './ModelMap';
 import Schema from './Schema';
 import TransactionError from './TransactionError';
 import Builder from './Query/Builder';
+
 export default class Neode {
 
     /**
@@ -16,11 +17,12 @@ export default class Neode {
      * @param  {String} username
      * @param  {String} password
      * @param  {Bool}   enterprise
+     * @param  {Object} config
      * @return {Neode}
      */
-    constructor(connection_string, username, password, enterprise = false) {
+    constructor(connection_string, username, password, enterprise = false, config = {}) {
         const auth = username && password ? neo4j.auth.basic(username, password) : null;
-        this.driver = new neo4j.driver(connection_string, auth);
+        this.driver = new neo4j.driver(connection_string, auth, config);
         this.models = new ModelMap(this);
         this.schema = new Schema(this);
         this.factory = new Factory(this);
@@ -42,7 +44,43 @@ export default class Neode {
         const password = process.env.NEO4J_PASSWORD;
         const enterprise = !!process.env.NEO4J_ENTERPRISE;
 
-        return new Neode(connection_string, username, password, enterprise);
+
+        // Build additional config
+        const config = {};
+
+        const settings = {
+            NEO4J_ENCRYPTED: 'encrypted',
+            NEO4J_TRUST: 'trust',
+            NEO4J_TRUSTED_CERTIFICATES: 'trustedCertificates',
+            NEO4J_KNOWN_HOSTS: 'knownHosts',
+
+
+            NEO4J_MAX_CONNECTION_POOLSIZE: 'maxConnectionPoolSize',
+            NEO4J_MAX_TRANSACTION_RETRY_TIME: 'maxTransactionRetryTime',
+            NEO4J_LOAD_BALANCING_STRATEGY: 'loadBalancingStrategy',
+            NEO4J_MAX_CONNECTION_LIFETIME: 'maxConnectionLifetime',
+            NEO4J_CONNECTION_TIMEOUT: 'connectionTimeout',
+            NEO4J_DISABLE_LOSSLESS_INTEGERS: 'disableLosslessIntegers',
+            NEO4J_LOGGING_LEVEL: 'logging',
+        };
+
+        Object.keys(settings).forEach(setting => {
+            if ( process.env.hasOwnProperty(setting) ) {
+                const key = settings[ setting ];
+                let value = process.env[ setting ];
+
+                if ( key == "trustedCertificates" ) {
+                    value = value.split(',');
+                }
+                else if ( key == "disableLosslessIntegers" ) {
+                    value = !!value;
+                }
+
+                config[ key ] = value;
+            }
+        })
+
+        return new Neode(connection_string, username, password, enterprise, config);
     }
 
     /**

@@ -57,15 +57,17 @@ var Neode = function () {
      * @param  {String} username
      * @param  {String} password
      * @param  {Bool}   enterprise
+     * @param  {Object} config
      * @return {Neode}
      */
     function Neode(connection_string, username, password) {
         var enterprise = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;
+        var config = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : {};
 
         _classCallCheck(this, Neode);
 
         var auth = username && password ? _neo4jDriver2.default.auth.basic(username, password) : null;
-        this.driver = new _neo4jDriver2.default.driver(connection_string, auth);
+        this.driver = new _neo4jDriver2.default.driver(connection_string, auth, config);
         this.models = new _ModelMap2.default(this);
         this.schema = new _Schema2.default(this);
         this.factory = new _Factory2.default(this);
@@ -563,7 +565,40 @@ var Neode = function () {
             var password = process.env.NEO4J_PASSWORD;
             var enterprise = !!process.env.NEO4J_ENTERPRISE;
 
-            return new Neode(connection_string, username, password, enterprise);
+            // Build additional config
+            var config = {};
+
+            var settings = {
+                NEO4J_ENCRYPTED: 'encrypted',
+                NEO4J_TRUST: 'trust',
+                NEO4J_TRUSTED_CERTIFICATES: 'trustedCertificates',
+                NEO4J_KNOWN_HOSTS: 'knownHosts',
+
+                NEO4J_MAX_CONNECTION_POOLSIZE: 'maxConnectionPoolSize',
+                NEO4J_MAX_TRANSACTION_RETRY_TIME: 'maxTransactionRetryTime',
+                NEO4J_LOAD_BALANCING_STRATEGY: 'loadBalancingStrategy',
+                NEO4J_MAX_CONNECTION_LIFETIME: 'maxConnectionLifetime',
+                NEO4J_CONNECTION_TIMEOUT: 'connectionTimeout',
+                NEO4J_DISABLE_LOSSLESS_INTEGERS: 'disableLosslessIntegers',
+                NEO4J_LOGGING_LEVEL: 'logging'
+            };
+
+            Object.keys(settings).forEach(function (setting) {
+                if (process.env.hasOwnProperty(setting)) {
+                    var key = setings[setting];
+                    var value = process.env[setting];
+
+                    if (key == "trustedCertificates") {
+                        value = value.split(',');
+                    } else if (key == "disableLosslessIntegers") {
+                        value = !!value;
+                    }
+
+                    config[key] = value;
+                }
+            });
+
+            return new Neode(connection_string, username, password, enterprise, config);
         }
     }]);
 
