@@ -19,6 +19,8 @@ var _Validator2 = _interopRequireDefault(_Validator);
 
 var _RelationshipType = require('../RelationshipType');
 
+var _EagerUtils = require('../Query/EagerUtils');
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function MergeOn(neode, model, merge_on, properties) {
@@ -125,12 +127,10 @@ function MergeOn(neode, model, merge_on, properties) {
         });
 
         // Output
-        query.push('RETURN ' + output.join());
+        query.push('RETURN ' + (0, _EagerUtils.eagerNode)(neode, 1, origin, model));
 
         return neode.writeCypher(query.join(' '), params).then(function (res) {
-            tx.success();
-
-            return res.records[0].get(origin);
+            return neode.hydrateFirst(res, origin, model);
         });
     });
 }

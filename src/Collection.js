@@ -1,4 +1,4 @@
-export default class NodeCollection {
+export default class Collection {
 
     /**
      * @constructor

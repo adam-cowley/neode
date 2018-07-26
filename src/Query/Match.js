@@ -7,15 +7,16 @@ export default class Match {
     }
 
     toString() {
+        const alias = this._alias || ''; 
         let model = '';
 
         if ( this._model instanceof Model ) {
             model = `:${this._model.labels().join(':')}`;
         }
-        else if ( this._model instanceof String ) {
+        else if ( typeof this._model == 'string' ) {
             model = `:${this._model}`;
         }
-
-        return `(${this._alias}${model ? model : ''})`;
+        
+        return `(${alias}${model ? model : ''})`;
     }
 }

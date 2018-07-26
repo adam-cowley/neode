@@ -20,25 +20,13 @@ export default class Queryable {
     }
 
     /**
-     * Return a new Query Builder
-     *
-     * @return {Builder}
-     */
-    query() {
-        return new Builder(this._neode);
-    }
-
-    /**
      * Create a new instance of this Model
      *
      * @param  {object} properties
      * @return {Promise}
      */
     create(properties) {
-        return Create(this._neode, this, properties)
-            .then(node => {
-                return new Node(this._neode, this, node);
-            });
+        return Create(this._neode, this, properties);
     }
 
     /**
@@ -50,10 +38,7 @@ export default class Queryable {
     merge(properties) {
         const merge_on = this.mergeFields();
 
-        return MergeOn(this._neode, this, merge_on, properties)
-            .then(node => {
-                return new Node(this._neode, this, node);
-            });
+        return MergeOn(this._neode, this, merge_on, properties);
     }
 
     /**
@@ -67,10 +52,7 @@ export default class Queryable {
         const merge_on = Object.keys(match);
         const properties = Object.assign({}, match, set);
 
-        return MergeOn(this._neode, this, merge_on, properties)
-            .then(node => {
-                return new Node(this._neode, this, node);
-            });
+        return MergeOn(this._neode, this, merge_on, properties);
     }
 
     /**

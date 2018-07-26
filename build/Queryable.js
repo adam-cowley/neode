@@ -60,33 +60,17 @@ var Queryable = function () {
     }
 
     /**
-     * Return a new Query Builder
+     * Create a new instance of this Model
      *
-     * @return {Builder}
+     * @param  {object} properties
+     * @return {Promise}
      */
 
 
     _createClass(Queryable, [{
-        key: 'query',
-        value: function query() {
-            return new _Builder2.default(this._neode);
-        }
-
-        /**
-         * Create a new instance of this Model
-         *
-         * @param  {object} properties
-         * @return {Promise}
-         */
-
-    }, {
         key: 'create',
         value: function create(properties) {
-            var _this = this;
-
-            return (0, _Create2.default)(this._neode, this, properties).then(function (node) {
-                return new _Node2.default(_this._neode, _this, node);
-            });
+            return (0, _Create2.default)(this._neode, this, properties);
         }
 
         /**
@@ -99,13 +83,9 @@ var Queryable = function () {
     }, {
         key: 'merge',
         value: function merge(properties) {
-            var _this2 = this;
-
             var merge_on = this.mergeFields();
 
-            return (0, _MergeOn2.default)(this._neode, this, merge_on, properties).then(function (node) {
-                return new _Node2.default(_this2._neode, _this2, node);
-            });
+            return (0, _MergeOn2.default)(this._neode, this, merge_on, properties);
         }
 
         /**
@@ -119,14 +99,10 @@ var Queryable = function () {
     }, {
         key: 'mergeOn',
         value: function mergeOn(match, set) {
-            var _this3 = this;
-
             var merge_on = Object.keys(match);
             var properties = Object.assign({}, match, set);
 
-            return (0, _MergeOn2.default)(this._neode, this, merge_on, properties).then(function (node) {
-                return new _Node2.default(_this3._neode, _this3, node);
-            });
+            return (0, _MergeOn2.default)(this._neode, this, merge_on, properties);
         }
 
         /**

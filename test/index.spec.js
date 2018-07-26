@@ -2,15 +2,16 @@ import {assert, expect} from 'chai';
 import Neode from '../src/index';
 import Model from '../src/Model';
 import Node from '../src/Node';
-import NodeCollection from '../src/NodeCollection';
+import Collection from '../src/Collection';
 import Property from '../src/Property';
 import Builder from '../src/Query/Builder';
 import neo4j from 'neo4j-driver';
 import {Driver} from 'neo4j-driver/lib/v1/driver';
 import {session as nativesession} from 'neo4j-driver/lib/v1/session';
+import Relationship from '../src/Relationship';
+import TransactionError, { ERROR_TRANSACTION_FAILED } from '../src/TransactionError';
 
 describe('index.js', () => {
-    const instance = require('./instance');
     const label = 'IndexTest';
     const schema = {
         name: {type: 'string', primary: true},
@@ -18,9 +19,22 @@ describe('index.js', () => {
         relate_test: {
             type: 'relationship',
             relationship: 'RELATE_TEST',
-            direction: 'OUT'
-        }
+            direction: 'OUT',
+            properties: {
+                test: 'boolean',
+            },
+        },
     };
+    let instance;
+
+    before(() => instance = require('./instance')() );
+
+    after(done => {
+        instance.cypher(`MATCH (n:${label}) DETACH DELETE n`)
+            .then(() => instance.close())
+            .then(() => done());
+    });
+
 
     it('should instantiate', () => {
         expect(instance).to.be.an.instanceOf(Neode);
@@ -68,6 +82,19 @@ describe('index.js', () => {
             });
     });
 
+    it('should run a cypher read query', (done) => {
+        instance.readCypher('MATCH (n) RETURN count(n)')
+            .then(res => {
+                expect(res.records).to.be.an('array');
+                expect(res.records.length).to.equal(1);
+
+                done();
+            })
+            .catch(err => {
+                done(err);
+            });
+    });
+
     it('should handle error in syntax query', (done) => {
         instance.cypher('MATCH (n) RETURN coutn(n)')
             .catch(err => {
@@ -89,6 +116,24 @@ describe('index.js', () => {
                 })
                 .then(done)
                 .catch(done)
+        });
+
+        it('should throw a transaction error on error', done => {
+            instance.batch([
+                'MATCH (a) RETURN b',
+                'RETURN x'
+            ])
+                .then(() => {
+                    done( new Error('No TransactionError thrown') );
+                })
+                .catch(e => {
+                    expect(e).to.be.an.instanceOf(Error);
+                    expect(e.message).to.equal(ERROR_TRANSACTION_FAILED);
+                    expect(e.errors.length).to.equal(2);
+
+                    done();
+                })
+
         });
     });
 
@@ -131,10 +176,20 @@ describe('index.js', () => {
     describe('::create', () => {
         it('should create a new model', (done) => {
             const create_data = {name: 'Test'};
+
             instance.create(label, create_data)
                 .then(res => {
                     expect(res).to.be.an.instanceOf(Node);
                     expect(res.get('name')).to.equal(create_data.name);
+
+                    expect( res.properties() ).to.deep.equal(create_data);
+
+                    expect( res.get('unknown', 'default') ).to.equal('default');
+
+                    return res.toJson();
+                })
+                .then(json => {
+                    expect(json.name).to.equal(create_data.name);
                 })
                 .then(() => done())
                 .catch(e => done(e));
@@ -144,10 +199,19 @@ describe('index.js', () => {
     describe('::merge', () => {
         it('should merge a model', (done) => {
             const create_data = {name: 'Test'};
-            instance.merge(label, create_data)
-                .then(res => {
-                    expect(res).to.be.an.instanceOf(Node);
-                    expect(res.get('name')).to.equal(create_data.name);
+
+            Promise.all([
+                instance.merge(label, create_data),
+                instance.merge(label, create_data),
+            ])
+                .then(([ first, second ]) => {
+                    expect(first).to.be.an.instanceOf(Node);
+                    expect(first.get('name')).to.equal(create_data.name);
+
+                    expect(second).to.be.an.instanceOf(Node);
+                    expect(second.get('name')).to.equal(create_data.name);
+
+                    expect(first.id()).to.equal(second.id());
                 })
                 .then(() => done())
                 .catch(e => done(e));
@@ -158,11 +222,21 @@ describe('index.js', () => {
         it('should merge a model on specific properties', (done) => {
             const match = {name: 'Test'};
             const set = {setme: 'set'};
-            instance.mergeOn(label, match, set)
-                .then(res => {
-                    expect(res).to.be.an.instanceOf(Node);
-                    expect(res.get('name')).to.equal(match.name);
-                    expect(res.get('setme')).to.equal(set.setme);
+
+            Promise.all([
+                instance.mergeOn(label, match, set),
+                instance.mergeOn(label, match, set),
+            ])
+                .then(([ first, second ]) => {
+                    expect(first).to.be.an.instanceOf(Node);
+                    expect(first.get('name')).to.equal(match.name);
+                    expect(first.get('setme')).to.equal(set.setme);
+
+                    expect(second).to.be.an.instanceOf(Node);
+                    expect(second.get('name')).to.equal(match.name);
+                    expect(second.get('setme')).to.equal(set.setme);
+
+                    expect(first.id()).to.equal(second.id());
                 })
                 .then(() => done())
                 .catch(e => done(e));
@@ -181,16 +255,108 @@ describe('index.js', () => {
 
     describe('::relateTo', () => {
         it('should relate two nodes', (done) => {
+            const props = { test: true };
             Promise.all([
                 instance.create(label, {name: 'From'}),
                 instance.create(label, {name: 'To'}),
             ])
             .then(([from, to]) => {
-                return instance.relate(from, to, 'relate_test')
+                return instance.relate(from, to, 'relate_test', props)
+                    .then(rel => {
+                        expect(rel).to.be.instanceof(Relationship);
+                        expect(rel.get('test')).to.equal( props.test );
+
+                        return rel;
+                    })
+                    .then(rel => {
+                        expect( rel.properties() ).to.deep.equal(props);
+
+                        return rel;
+                    });
+            })
+            .then(rel => {
+                return instance.cypher(
+                    'MATCH (start)-[rel]->(end) WHERE id(start) = {start} AND id(rel) = {rel} AND id(end) = {end} RETURN count(*) as count',
+                    {
+                        start: rel.startNode().identity(),
+                        rel: rel.identity(),
+                        end: rel.endNode().identity(),
+                    }
+                )
+                    .then(res => {
+                        expect( res.records[0].get('count').toNumber() ).to.equal(1);
+                    });
             })
             .then(() => done())
             .catch(e => done(e));
-        })
+        });
+
+        it('should create a second relationship when forced', (done) => {
+            const props = { test: true };
+            Promise.all([
+                instance.create(label, {name: 'From'}),
+                instance.create(label, {name: 'To'}),
+            ])
+            .then(([from, to]) => {
+                return instance.relate(from, to, 'relate_test', props)
+                    .then(rel => {
+                        expect(rel).to.be.instanceof(Relationship);
+                        expect(rel.get('test')).to.equal( props.test );
+
+                        return rel;
+                    })
+                    .then(rel => {
+                        expect( rel.properties() ).to.deep.equal(props);
+
+                        return rel;
+                    });
+            })
+            .then(rel => {
+                return instance.relate(rel.startNode(), rel.endNode(), 'relate_test', props, true)
+                    .then(rel => {
+                        expect(rel).to.be.instanceof(Relationship);
+                        expect(rel.get('test')).to.equal( props.test );
+
+                        return rel;
+                    })
+                    .then(rel => {
+                        expect( rel.properties() ).to.deep.equal(props);
+
+                        return rel;
+                    });
+            })
+            .then(rel => {
+                return instance.cypher(
+                    `MATCH (start)-[:${ rel.type() }]->(end) WHERE id(start) = {start} AND id(end) = {end} RETURN count(*) as count`,
+                    {
+                        start: rel.startNode().identity(),
+                        rel: rel.identity(),
+                        end: rel.endNode().identity(),
+                    }
+                )
+                    .then(res => {
+                        expect( res.records[0].get('count').toNumber() ).to.equal(2);
+                    });
+            })
+            .then(() => done())
+            .catch(e => done(e));
+        });
+
+        it('should throw an error for an unknown relationship type', done => {
+            Promise.all([
+                instance.create(label, {name: 'From'}),
+                instance.create(label, {name: 'To'}),
+            ])
+            .then(([from, to]) => {
+                return instance.relate(from, to, 'unknown')
+                    .then(rel => {
+                        assert(false, 'Error should be thrown on unknown relationship type');
+                    })
+                    .catch(e => {
+                        done();
+                    });
+            })
+        });
     });
 
     describe('::query', () => {
@@ -211,7 +377,7 @@ describe('index.js', () => {
         it('should return a collection of nodes', (done) => {
             instance.all(label, {}, {}, 1, 0)
                 .then(res => {
-                    expect(res).to.be.an.instanceOf(NodeCollection);
+                    expect(res).to.be.an.instanceOf(Collection);
                 })
                 .then(() => done())
                 .catch(e => done(e));
@@ -220,15 +386,31 @@ describe('index.js', () => {
 
     describe('::find', () => {
         it('should find a label by its primary key', (done) => {
-            instance.find(label, 1)
+            const create_data = {name: 'FindTest'};
+            instance.create(label, create_data)
+                .then(res => {
+                    return instance.find(label, create_data.name)
+                        .then(found => {
+                            expect(found.id()).to.equal(res.id());
+                        })
+                        .then(() => res.delete())
+                })
                 .then(() => done())
                 .catch(e => done(e));
         });
     });
 
     describe('::findById', () => {
-        it('should find a label by its primary key', (done) => {
-            instance.findById(label, 1)
+        it('should find a label by its internal ID', (done) => {
+            const create_data = {name: 'FindByIdTest'};
+            instance.create(label, create_data)
+                .then(res => {
+                    return instance.findById(label, res.id())
+                        .then(found => {
+                            expect(found.id()).to.equal(res.id());
+                        })
+                        .then(() => res.delete())
+                })
                 .then(() => done())
                 .catch(e => done(e));
         });
@@ -236,7 +418,19 @@ describe('index.js', () => {
 
     describe('::first', () => {
         it('should find a label by a property', (done) => {
-            instance.first(label, 'key', 'value')
+            const key = 'name';
+            const value = 'FirstTest';
+
+            
+            instance.create(label, { [key] : value })
+                .then(res => {
+                    return instance.first(label, key, value)
+                        .then(found => {
+                            expect(found).to.be.instanceOf(Node);
+
+                            expect(found.id()).to.equal(res.id());
+                        });
+                })
                 .then(() => done())
                 .catch(e => done(e));
         });
@@ -256,9 +450,9 @@ describe('index.js', () => {
                 .catch(e => done(e));
         });
 
-        it('should execute a function as part of a transaction', (done) => {
-done();
-        });
+        // it('should execute a function as part of a transaction', (done) => {
+        //     done();
+        // });
     });
 
 });

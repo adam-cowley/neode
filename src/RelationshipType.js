@@ -11,16 +11,19 @@ export default class RelationshipType {
 
     /**
      * Constructor
-     * @param  {String} type                Reference of Relationship
+     * @param  {String} name                The name given to the relationship
+     * @param  {String} type                Type of Relationship (relationship, relationships, node, nodes)
      * @param  {String} relationship        Internal Neo4j Relationship type (ie 'KNOWS')
      * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
-     * @param  {String|Model|null} target   Target type definition for the
+     * @param  {String|Model|null} target   Target type definition for the Relationship
      * @param  {Object} schema              Relationship definition schema
      * @param  {Bool} eager                 Should this relationship be eager loaded?
      * @param  {Bool|String} cascade        Cascade delete policy for this relationship
+     * @param  {String} node_alias          Alias to give to the node in the pattern comprehension
      * @return {Relationship}
      */
-    constructor(type, relationship, direction, target, schema = {}, eager = false, cascade = false) {
+    constructor(name, type, relationship, direction, target, schema = {}, eager = false, cascade = false, node_alias = 'node') {
+        this._name = name;
         this._type = type;
         this._relationship = relationship;
         this.setDirection(direction);
@@ -30,6 +33,7 @@ export default class RelationshipType {
 
         this._eager = eager;
         this._cascade = cascade;
+        this._node_alias = node_alias;
 
         this._properties = new Map;
 
@@ -43,6 +47,15 @@ export default class RelationshipType {
                     break;
             }
         }
+    }
+
+    /**
+     * Name
+     *
+     * @return {String}
+     */
+    name() {
+        return this._name;
     }
 
     /**
@@ -69,23 +82,16 @@ export default class RelationshipType {
      * @return {RelationshipType}
      */
     setDirection(direction) {
-        switch (direction.toUpperCase()) {
-            case DIRECTION_IN:
-            case DIRECTION_OUT:
-                break;
+        direction = direction.toUpperCase();
 
-            case ALT_DIRECTION_IN:
-                direction = DIRECTION_IN;
-                break;
-
-
-            case ALT_DIRECTION_OUT:
-                direction = DIRECTION_OUT;
-                break;
-
-            default:
-                direction = DIRECTION_OUT;
-                break;
+        if ( direction == ALT_DIRECTION_IN ) {
+            direction = DIRECTION_IN;
+        }
+        else if ( direction == ALT_DIRECTION_OUT ) {
+            direction = DIRECTION_OUT;
+        }
+        else if ( [ DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH ].indexOf(direction) == -1 ) {
+            direction = DIRECTION_OUT;
         }
 
         this._direction = direction;
@@ -136,6 +142,24 @@ export default class RelationshipType {
      */
     cascade() {
         return this._cascade;
+    }
+
+    /** 
+     * Get Properties defined for this relationship
+     * 
+     * @return Map
+     */
+    properties() {
+        return this._properties;
+    }
+
+    /** 
+     * Get the alias given to the node
+     * 
+     * @return {String}
+     */
+    nodeAlias() {
+        return this._node_alias;
     }
 
 }

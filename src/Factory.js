@@ -1,7 +1,9 @@
+import Collection from './Collection';
 import Node from './Node';
-import NodeCollection from './NodeCollection';
+import Relationship from './Relationship';
 
-export const eager = '__eager_';
+import { EAGER_ID, EAGER_LABELS, EAGER_TYPE, } from './Query/EagerUtils';
+import { DIRECTION_IN, } from './RelationshipType';
 
 export default class Factory {
 
@@ -15,87 +17,6 @@ export default class Factory {
     }
 
     /**
-     * Turn a result node into a
-     *
-     * @param  {Object} node    Neo4j Node
-     * @return {Node|false}
-     */
-    make(node) {
-        const labels = node.labels;
-        const definition = this.getDefinition(labels);
-
-        return new Node(this._neode, definition, node);
-    }
-
-    /**
-     * Get the definition for a set of labels
-     *
-     * @param  {Array} labels
-     * @return {Definition}
-     */
-    getDefinition(labels) {
-        return this._neode.models.getByLabels(labels);
-    }
-
-    /**
-     * Hydrate a set of nodes and return a NodeCollection
-     *
-     * @param  {Object}          res            Neo4j result set
-     * @param  {String}          alias          Alias of node to pluck
-     * @param  {Definition|null} definition     Force Definition
-     * @return {NodeCollection}
-     */
-    hydrate(res, alias, definition) {
-        const nodes = res.records.map(row => {
-            const node = row.get(alias);
-            const loaded = this.hydrateEager(row);
-
-            definition = definition || this.getDefinition(node.labels);
-
-            return new Node(this._neode, definition, node, loaded);
-        });
-
-        return new NodeCollection(this._neode, nodes);
-    }
-
-    /**
-     * Find all eagerly loaded nodes and add to a NodeCollection
-     *
-     * @param   row  Neo4j result row
-     * @return {Map[String, NodeCollection]}
-     */
-    hydrateEager(row) {
-        const loaded = new Map;
-        // Hydrate Eager
-        row.keys.forEach(key => {
-            if (key.substr(0, eager.length) == eager) {
-                const cleaned_key = key.substr(eager.length);
-
-                const collection = new NodeCollection(this._neode, row.get(key).map(node => {
-                    return this.make(node);
-                }));
-
-                loaded.set(cleaned_key, collection);
-            }
-        });
-
-        return loaded;
-    }
-
-    /**
-     * Convert an array of Nodes into a collection
-     *
-     * @param  {Array}
-     * @param  {Definition|null}
-     * @return {NodeCollection}
-     */
-    hydrateAll(nodes, definition) {
-        nodes = nodes.map(node => this.make(node, definition));
-
-        return new NodeCollection(this._neode, nodes);
-    }
-
-    /**
      * Hydrate the first record in a result set
      *
      * @param  {Object} res    Neo4j Result
@@ -103,17 +24,141 @@ export default class Factory {
      * @return {Node}
      */
     hydrateFirst(res, alias, definition) {
-        if (!res.records.length) {
+        if ( !res || !res.records.length ) {
             return false;
         }
 
-        const row = res.records[0];
-
-        const node = row.get(alias);
-        const loaded = this.hydrateEager(row);
-
-        definition = definition || this.getDefinition(node.labels);
-
-        return new Node(this._neode, definition, node, loaded);
+        return this.hydrateNode( res.records[0].get(alias), definition );
     }
+
+    /**
+     * Hydrate a set of nodes and return a Collection
+     *
+     * @param  {Object}          res            Neo4j result set
+     * @param  {String}          alias          Alias of node to pluck
+     * @param  {Definition|null} definition     Force Definition
+     * @return {Collection}
+     */
+
+    hydrate(res, alias, definition) {
+        if ( !res ) {
+            return false;
+        }
+
+        const nodes = res.records.map( row => this.hydrateNode(row.get(alias), definition) );
+
+        return new Collection(this._neode, nodes);
+    }
+
+    /**
+     * Get the definition by a set of labels
+     *
+     * @param  {Array} labels
+     * @return {Model}
+     */
+    getDefinition(labels) {
+        return this._neode.models.getByLabels(labels);
+    }
+
+    /**
+     * Take a result object and convert it into a Model
+     * 
+     * @param {Object}      record 
+     * @param {Model|null}  definition
+     * @return {Node}
+     */
+    hydrateNode(record, definition) {
+        // Get Internals
+        const identity = record[ EAGER_ID ];
+        const labels = record[ EAGER_LABELS ];
+        
+        // Get Definition from 
+        if ( !definition ) {
+            definition = this.getDefinition(labels);
+        }
+
+        // Get Properties
+        const properties = new Map;
+
+        definition.properties().forEach((value, key) => {
+            if ( record.hasOwnProperty(key) ) {
+                properties.set(key, record[ key ]);
+            }
+        });
+
+        // Create Node Instance
+        const node = new Node(this._neode, definition, identity, labels, properties);
+
+        // Add eagerly loaded props
+        definition.eager().forEach(eager => {
+            const name = eager.name();
+
+            if ( !record[ name ] ) {
+                return;
+            }
+
+            switch ( eager.type() ) {
+                case 'node':
+                    node.setEager(name, this.hydrateNode(record[ name ]) );
+                    break;
+
+                case 'nodes':
+                    const nodes = record[ name ].map(value => this.hydrateNode(value))
+
+                    node.setEager( name, new Collection(this._neode, nodes) );
+                    break;
+
+                case 'relationship':
+                    node.setEager( name, this.hydrateRelationship(eager, record[ name ], node) );
+                    break;
+
+                case 'relationships':
+                    const relationships = record[ name ].map(value => this.hydrateRelationship(eager, value, node));
+
+                    node.setEager( name, new Collection(this._neode, relationships) );
+                    break;
+            }
+        });
+
+        return node;
+    }
+
+    /**
+     * Take a result object and convert it into a Relationship
+     * 
+     * @param  {RelationshipType}  definition  Relationship type
+     * @param  {Object}            record      Record object
+     * @param  {Node}              this_node   'This' node in the current  context
+     * @return {Relationship}
+     */
+    hydrateRelationship(definition, record, this_node) {
+        // Get Internals
+        const identity = record[ EAGER_ID ];
+        const type = record[ EAGER_TYPE ];
+
+        // Get Definition from 
+        // const definition = this.getDefinition(labels);
+
+        // Get Properties
+        const properties = new Map;
+
+        definition.properties().forEach((value, key) => {
+            if ( record.hasOwnProperty(key) ) {
+                properties.set(key, record[ key ]);
+            }
+        });
+
+        // Start & End Nodes
+        const other_node = this.hydrateNode( record[ definition.nodeAlias() ] );
+
+        // Calculate Start & End Nodes
+        const start_node = definition.direction() == DIRECTION_IN
+            ? other_node: this_node;
+            
+        const end_node = definition.direction() == DIRECTION_IN
+            ? this_node : other_node;
+
+        return new Relationship(this._neode, definition, identity, type, properties, start_node, end_node);
+    }
+
 }

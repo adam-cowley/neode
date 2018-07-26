@@ -32,8 +32,8 @@ function RelateTo(neode, from, to, relationship, properties) {
         var type = relationship.relationship();
 
         var params = {
-            from_id: from.idInt(),
-            to_id: to.idInt()
+            from_id: from.identity(),
+            to_id: to.identity()
         };
         var set = '';
 
@@ -54,7 +54,13 @@ function RelateTo(neode, from, to, relationship, properties) {
             var hydrate_from = relationship.direction() == _RelationshipType.DIRECTION_IN ? to : from;
             var hydrate_to = relationship.direction() == _RelationshipType.DIRECTION_IN ? from : to;
 
-            return new _Relationship2.default(neode, relationship, rel, hydrate_from, hydrate_to);
+            var properties = new Map();
+
+            Object.keys(rel.properties).forEach(function (key) {
+                properties.set(key, rel.properties[key]);
+            });
+
+            return new _Relationship2.default(neode, relationship, rel.identity, rel.type, properties, hydrate_from, hydrate_to);
         });
     });
 }

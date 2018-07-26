@@ -27,15 +27,16 @@ var Match = function () {
     _createClass(Match, [{
         key: 'toString',
         value: function toString() {
+            var alias = this._alias || '';
             var model = '';
 
             if (this._model instanceof _Model2.default) {
                 model = ':' + this._model.labels().join(':');
-            } else if (this._model instanceof String) {
+            } else if (typeof this._model == 'string') {
                 model = ':' + this._model;
             }
 
-            return '(' + this._alias + (model ? model : '') + ')';
+            return '(' + alias + (model ? model : '') + ')';
         }
     }]);
 

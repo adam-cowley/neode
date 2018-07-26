@@ -1,7 +1,8 @@
 import GenerateDefaultValues from './GenerateDefaultValues';
 import Node from '../Node';
 import Validator from './Validator';
-import {DIRECTION_IN, DIRECTION_OUT} from '../RelationshipType';
+import { DIRECTION_IN, DIRECTION_OUT } from '../RelationshipType';
+import { eagerNode } from '../Query/EagerUtils';
 
 export default function MergeOn(neode, model, merge_on, properties) {
     return GenerateDefaultValues(neode, model, properties)
@@ -110,13 +111,9 @@ export default function MergeOn(neode, model, merge_on, properties) {
             });
 
             // Output
-            query.push(`RETURN ${output.join()}`);
+            query.push(`RETURN ${ eagerNode(neode, 1, origin, model) }`);
 
             return neode.writeCypher(query.join(' '), params)
-                .then(res => {
-                    tx.success();
-
-                    return res.records[0].get(origin);
-                });
+                .then(res => neode.hydrateFirst(res, origin, model));
         });
 }

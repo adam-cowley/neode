@@ -1,3 +1,5 @@
 import Neode from '../src/index';
 
-module.exports = Neode.fromEnv();
+module.exports = function() {
+    return Neode.fromEnv();
+}

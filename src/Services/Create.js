@@ -1,14 +1,13 @@
 import GenerateDefaultValues from './GenerateDefaultValues';
 import Node from '../Node';
 import Validator from './Validator';
-import {DIRECTION_IN, DIRECTION_OUT} from '../RelationshipType';
+import { DIRECTION_IN, DIRECTION_OUT } from '../RelationshipType';
+import { eagerNode } from '../Query/EagerUtils';
 
 export default function Create(neode, model, properties) {
     return GenerateDefaultValues(neode, model, properties)
         .then(properties => Validator(neode, model, properties))
         .then(properties => {
-            const tx = neode.transaction();
-
             // Check we have properties
             if (Object.keys(properties).length == 0) {
                 throw new Error('There are no properties set for this Node');
@@ -38,6 +37,8 @@ export default function Create(neode, model, properties) {
             // Start Query
             const query = [];
             query.push(`CREATE (${origin}:${labels} {__set})`);
+
+            // TODO: Rewrite
 
             // Merge relationships
             model.relationships().forEach((relationship, key) => {
@@ -71,13 +72,9 @@ export default function Create(neode, model, properties) {
                 }
             });
 
-            query.push(`RETURN ${output.join(', ')}`);
+            query.push(`RETURN ${ eagerNode(neode, 1, origin, model) }`);
 
-            return neode.writeCypher(query.join(' '), params, tx)
-                .then(res => {
-                    tx.success();
-
-                    return res.records[0].get(origin);
-                });
+            return neode.writeCypher(query.join(' '), params)
+                .then(res => neode.hydrateFirst(res, origin, model));
         });
 }

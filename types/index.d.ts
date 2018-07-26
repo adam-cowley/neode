@@ -357,7 +357,7 @@ declare namespace Neode {
      * Add a where condition to the current statement.
      *
      * @param  {...mixed} args Argumenta
-     * @return {Builder}         [description]
+     * @return {Builder}         
      */
     where(...args: Array<string>): Builder;
 
@@ -366,7 +366,7 @@ declare namespace Neode {
      *
      * @param  {String} alias
      * @param  {Int}    value
-     * @return {Builder}       [description]
+     * @return {Builder}       
      */
     whereId(alias: string, value: number): Builder;
 

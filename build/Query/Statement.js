@@ -110,10 +110,12 @@ var Statement = function () {
     }, {
         key: 'toString',
         value: function toString() {
+            var includePrefix = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : true;
+
             var output = [];
 
             if (this._match.length) {
-                output.push(this._prefix);
+                if (includePrefix) output.push(this._prefix);
 
                 output.push(this._match.map(function (statement) {
                     return statement.toString();

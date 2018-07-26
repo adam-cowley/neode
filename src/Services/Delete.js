@@ -1,14 +1,14 @@
 import Builder, {mode} from '../Query/Builder';
 import {eager} from '../Factory';
 
-export default function Delete(neode, node, model) {
+export default function Delete(neode, identity, model) {
     const alias = 'this';
     const to_delete = [];
     const detach_delete = [alias];
 
     const builder = (new Builder(neode))
         .match(alias, model)
-        .whereId(alias, node.identity);
+        .whereId(alias, identity);
 
     // Cascade delete to relationships
     model.eager().forEach(relationship => {

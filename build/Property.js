@@ -8,6 +8,11 @@ var _createClass = function () { function defineProperties(target, props) { for 
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
+/**
+ *  Container holding information for a property.
+ * 
+ * TODO: Schema validation to enforce correct data types
+ */
 var Property = function () {
     function Property(name, schema) {
         var _this = this;

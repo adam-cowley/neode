@@ -1,11 +1,42 @@
 import Joi from 'joi';
-import Model from '../Model';
+import Node from '../Node';
 import ValidationError from '../ValidationError';
 
 const joi_options = {
     allowUnknown:true,
     abortEarly:false
 };
+
+const ignore = ['type', 'default'];
+const booleans = [
+    'optional',
+    'forbidden',
+    'strip',
+    'positive',
+    'negative',
+    'port',
+    'integer',
+    'iso',
+    'isoDate',
+    'insensitive',
+    'required',
+    'truncate',
+    'creditCard',
+    'alphanum',
+    'token',
+    'hex',
+    'hostname',
+    'lowercase',
+    'uppercase',
+];
+const booleanOrOptions = [
+    'email',
+    'ip',
+    'uri',
+    'base64',
+    'normalize',
+    'hex'
+];
 
 function BuildValidationSchema(model) {
     const schema = model.schema();
@@ -14,26 +45,38 @@ function BuildValidationSchema(model) {
     Object.keys(schema).forEach(key => {
         const config = typeof schema[ key ] == 'string' ? {type: schema[ key ]} : schema[ key ];
 
-        // Remove Default
-        // delete config.type;
-        // delete config.default;
-
         let validation = false;
 
         switch (config.type) {
             case 'node':
-                validation = Joi.object().type(Model);
+                validation = Joi.object().type(Node);
                 break;
 
             case 'uuid':
-                validation = Joi.string();
+                validation = Joi.string().guid({ version: 'uuidv4' });
                 break;
 
-            //  TODO: Support more types
             case 'string':
             case 'number':
             case 'boolean':
                 validation = Joi[ config.type ]();
+                break;
+
+            case 'date':
+            case 'datetime':
+            case 'time':
+            case 'localdate':
+            case 'localtime':
+                validation = Joi.date();
+                break;
+
+            case 'int':
+            case 'integer':
+                validation = Joi.number().integer();
+                break;
+
+            case 'float':
+                validation = Joi.number();
                 break;
 
             default:
@@ -42,10 +85,38 @@ function BuildValidationSchema(model) {
         }
 
         // Apply additional Validation
-        const ignore = ['type', 'default'];
         Object.keys(config).forEach(validator => {
-            if (ignore.indexOf(validator) == -1 && validation[validator]) {
-                validation = validation[validator](config[validator]);
+            const options = config[validator];
+
+            if ( validator == 'regex' ) {
+                if ( options instanceof RegExp ) {
+                    validation = validation.regex(options);
+                }
+                else {
+                    const pattern = options.pattern;
+                    delete options.pattern;
+
+                    validation = validation.regex(pattern, options);
+                }
+            }
+            else if ( validator == 'replace' ) {
+                validation = validation.replace(options.pattern, options.replace);
+            }
+            else if ( booleanOrOptions.indexOf(validator) > -1 ) {
+                if ( typeof options == 'object' ) {
+                    validation = validation[ validator ](options);
+                }
+                else if ( options ) {
+                    validation = validation[ validator ]();
+                }
+            }
+            else if ( booleans.indexOf(validator) > -1 ) {
+                if ( options === true ) {
+                    validation = validation[ validator ](options);
+                }
+            }
+            else if (ignore.indexOf(validator) == -1 && validation[validator]) {
+                validation = validation[validator](options);
             }
         });
 

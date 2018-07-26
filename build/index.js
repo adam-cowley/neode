@@ -271,6 +271,7 @@ var Neode = function () {
         value: function relate(from, to, type, properties) {
             var force_create = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : false;
 
+            console.log('force?', force_create);
             return from.relateTo(to, type, properties, force_create);
         }
 
@@ -349,7 +350,7 @@ var Neode = function () {
     }, {
         key: 'session',
         value: function session() {
-            return this.driver.session();
+            return this.readSession();
         }
 
         /**
@@ -361,7 +362,7 @@ var Neode = function () {
     }, {
         key: 'readSession',
         value: function readSession() {
-            return this.driver.readSession();
+            return this.driver.session(_neo4jDriver2.default.READ);
         }
 
         /**
@@ -373,7 +374,7 @@ var Neode = function () {
     }, {
         key: 'writeSession',
         value: function writeSession() {
-            return this.session();
+            return this.session(_neo4jDriver2.default.WRITE);
         }
 
         /**
@@ -408,9 +409,7 @@ var Neode = function () {
 
     }, {
         key: 'batch',
-        value: function batch() {
-            var queries = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : [];
-
+        value: function batch(queries) {
             var tx = this.transaction();
             var output = [];
             var errors = [];
@@ -528,12 +527,12 @@ var Neode = function () {
         }
 
         /**
-         * Hydrate a set of nodes and return a NodeCollection
+         * Hydrate a set of nodes and return a Collection
          *
          * @param  {Object}          res            Neo4j result set
          * @param  {String}          alias          Alias of node to pluck
          * @param  {Definition|null} definition     Force Definition
-         * @return {NodeCollection}
+         * @return {Collection}
          */
 
     }, {
@@ -585,7 +584,7 @@ var Neode = function () {
 
             Object.keys(settings).forEach(function (setting) {
                 if (process.env.hasOwnProperty(setting)) {
-                    var key = setings[setting];
+                    var key = settings[setting];
                     var value = process.env[setting];
 
                     if (key == "trustedCertificates") {

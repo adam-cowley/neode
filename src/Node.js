@@ -1,24 +1,35 @@
-import {v1 as neo4j} from 'neo4j-driver';
+import { v1 as neo4j } from 'neo4j-driver';
+import Entity from './Entity';
 import Update from './Services/Update';
 import Delete from './Services/Delete';
 import RelateTo from './Services/RelateTo';
 import RelationshipType from './RelationshipType';
 
-export default class Node {
+
+/** 
+ * Node Container
+ */
+export default class Node extends Entity {
 
     /**
      * @constructor
      *
-     * @param  {Neode} neode  Neode Instance
-     * @param  {Model} model  Model definition
-     * @param  {node}  node   Node Onject from neo4j-driver
-     * @param  {Map}   eager  Eagerly loaded values
+     * @param  {Neode}   neode        Neode Instance
+     * @param  {Model}   model        Model definition
+     * @param  {Integer} identity     Internal Node ID
+     * @param  {Array}   labels       Node labels
+     * @param  {Object}  properties   Property Map
+     * @param  {Map}     eager        Eagerly loaded values
      * @return {Node}
      */
-    constructor(neode, model, node, eager) {
+    constructor(neode, model, identity, labels, properties, eager) {
+        super();
+
         this._neode = neode;
         this._model = model;
-        this._node = node;
+        this._identity = identity;
+        this._labels = labels;
+        this._properties = properties || new Map;
 
         this._eager = eager || new Map;
 
@@ -26,73 +37,25 @@ export default class Node {
     }
 
     /**
-     * Model definition for this node
+     * Get Labels
      *
-     * @return {Model}
+     * @return {Array}
      */
-    model() {
-        return this._model;
+    labels() {
+        return this._labels;
     }
 
     /**
-     * Get Internal Node ID
-     *
-     * @return {int}
+     * Set an eager value on the fly
+     * 
+     * @param  {String} key 
+     * @param  {Mixed}  value 
+     * @return {Node}
      */
-    id() {
-        return this._node.identity.toNumber();
-    }
+    setEager(key, value) {
+        this._eager.set(key, value);
 
-    /**
-     * Return Internal Node ID as Neo4j Integer
-     *
-     * @return {Integer}
-     */
-    idInt() {
-        return this._node.identity;
-    }
-
-    /**
-     * Get a property for this node
-     *
-     * @param  {String} property Name of property
-     * @param  {or}     default  Default value to supply if none exists
-     * @return {mixed}
-     */
-    get(property, or = null) {
-        // If property is set, return that
-        if ( this._node.properties.hasOwnProperty(property) ) {
-            return this._node.properties[property];
-        }
-        // If property has been set in eager, return that
-        else if ( this._eager.has(property) ) {
-            return this._eager.get(property);
-        }
-
-        return or;
-    }
-
-    /**
-     * Get all properties for this node
-     *
-     * @return {Object}
-     */
-    properties() {
-        return this._node.properties;
-    }
-
-    /**
-     * Update the properties of a node
-     * @param  {Object} properties Updated properties
-     * @return {Promise}
-     */
-    update(properties) {
-        return Update(this._neode, this, this._node, properties)
-            .then(node => {
-                this._node = node;
-
-                return this;
-            });
+        return this;
     }
 
     /**
@@ -101,7 +64,7 @@ export default class Node {
      * @return {Promise}
      */
     delete() {
-        return Delete(this._neode, this._node, this._model)
+        return Delete(this._neode, this._identity, this._model)
             .then(() => {
                 this._deleted = true;
 
@@ -119,83 +82,57 @@ export default class Node {
      * @return {Promise}
      */
     relateTo(node, type, properties = {}, force_create = false) {
-        const relationship = this.model().relationships().get(type);
+        const relationship = this._model.relationships().get(type);
 
         if ( !(relationship instanceof RelationshipType) ) {
-            throw new Error(`Cannot find relationship with type ${type}`);
+            return Promise.reject( new Error(`Cannot find relationship with type ${type}`) );
         }
 
         return RelateTo(this._neode, this, node, relationship, properties, force_create);
     }
 
     /**
-     * When converting to string, return this model's primary key
-     *
-     * @return {String}
-     */
-    toString() {
-        return this.get( this.model().primaryKey() );
-    }
-
-    /**
-     * Convert Node to Object
+     * Convert Node to a JSON friendly Object
      *
      * @return {Promise}
      */
     toJson() {
-        const output = Object.assign({}, {'_id': this.id()}, this._node.properties);
+        const output = {
+            _id: this.id(),
+            _labels: this.labels(),
+        }
 
-        // Convert properties
-        Object.keys(output).forEach(key => {
-            if (output[key].toNumber) {
-                output[key] = output[key].toNumber();
+        // Properties
+        this._model.properties().forEach((property, key) => {
+            if ( property.hidden() ) {
+                return;
             }
-            else if (neo4j.temporal.isDateTime(output[key])) {
-                output[key] = new Date(output[key].toString());
-            }
-            else if (neo4j.spatial.isPoint(output[key])) {
-                switch (output[key].srid.toString()) {
-                    // SRID values: @https://neo4j.com/docs/developer-manual/current/cypher/functions/spatial/
-                    case '4326': // WGS 84 2D
-                        output[key] = {longitude: output[key].x, latitude: output[key].y};
-                        break;
 
-                    case '4979': // WGS 84 3D
-                        output[key] = {longitude: output[key].x, latitude: output[key].y, height: output[key].z};
-                        break;
-
-                    case '7203': // Cartesian 2D
-                        output[key] = {x: output[key].x, y: output[key].y};
-                        break;
-
-                    case '9157': // Cartesian 3D
-                        output[key] = {x: output[key].x, y: output[key].y, z: output[key].z};
-                        break;
-                }
+            if ( this._properties.has(key) ) {
+                output[ key ] = this.valueToJson(property, this._properties.get( key ));
             }
         });
 
-        // TODO: Check that model exists.
-        // Fall back to a generic model?
-        this.model() && this.model().hidden().forEach(key => {
-            delete output[ key ];
-        });
+        // Eager Promises
+        return Promise.all( this._model.eager().map((rel) => {
+            const key = rel.name();
 
-        const eager = Array.from(this._eager.keys());
+            if ( this._eager.has( rel.name() ) ) {
+                // Call internal toJson function on either a Node or NodeCollection
+                return this._eager.get( rel.name() ).toJson()
+                    .then(value => {
+                        return { key, value }
+                    });
+            }
+        }) )
+            // Remove Empty 
+            .then(eager => eager.filter( e => !!e ))
 
-        return Promise.all(eager.map(key => {
-            return this._eager.get(key).toJson()
-                .then(value => {
-                    return {key, value};
-                });
-        }))
-            .then(res => {
-                res.forEach(({key, value}) => {
-                    output[key] = value;
-                });
-
+            // Assign to Output
+            .then(eager => {
+                eager.forEach(({ key, value }) => output[ key ] = value)
+                
                 return output;
             });
     }
-
 }

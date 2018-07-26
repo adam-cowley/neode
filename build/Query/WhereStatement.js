@@ -21,8 +21,9 @@ var WhereStatement = function () {
     }
 
     /**
-     * [setConnector description]
-     * @param {[type]} connector [description]
+     * Set the Connector string for chaining statements (AND, OR)
+     * 
+     * @param {String} connector 
      */
 
 

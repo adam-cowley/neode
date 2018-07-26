@@ -13,12 +13,12 @@ var _Factory = require('../Factory');
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-function Delete(neode, node, model) {
+function Delete(neode, identity, model) {
     var alias = 'this';
     var to_delete = [];
     var detach_delete = [alias];
 
-    var builder = new _Builder2.default(neode).match(alias, model).whereId(alias, node.identity);
+    var builder = new _Builder2.default(neode).match(alias, model).whereId(alias, identity);
 
     // Cascade delete to relationships
     model.eager().forEach(function (relationship) {

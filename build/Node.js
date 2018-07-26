@@ -8,6 +8,10 @@ var _createClass = function () { function defineProperties(target, props) { for 
 
 var _neo4jDriver = require('neo4j-driver');
 
+var _Entity2 = require('./Entity');
+
+var _Entity3 = _interopRequireDefault(_Entity2);
+
 var _Update = require('./Services/Update');
 
 var _Update2 = _interopRequireDefault(_Update);
@@ -28,119 +32,71 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var Node = function () {
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+/** 
+ * Node Container
+ */
+var Node = function (_Entity) {
+    _inherits(Node, _Entity);
 
     /**
      * @constructor
      *
-     * @param  {Neode} neode  Neode Instance
-     * @param  {Model} model  Model definition
-     * @param  {node}  node   Node Onject from neo4j-driver
-     * @param  {Map}   eager  Eagerly loaded values
+     * @param  {Neode}   neode        Neode Instance
+     * @param  {Model}   model        Model definition
+     * @param  {Integer} identity     Internal Node ID
+     * @param  {Array}   labels       Node labels
+     * @param  {Object}  properties   Property Map
+     * @param  {Map}     eager        Eagerly loaded values
      * @return {Node}
      */
-    function Node(neode, model, node, eager) {
+    function Node(neode, model, identity, labels, properties, eager) {
         _classCallCheck(this, Node);
 
-        this._neode = neode;
-        this._model = model;
-        this._node = node;
+        var _this = _possibleConstructorReturn(this, (Node.__proto__ || Object.getPrototypeOf(Node)).call(this));
 
-        this._eager = eager || new Map();
+        _this._neode = neode;
+        _this._model = model;
+        _this._identity = identity;
+        _this._labels = labels;
+        _this._properties = properties || new Map();
 
-        this._deleted = false;
+        _this._eager = eager || new Map();
+
+        _this._deleted = false;
+        return _this;
     }
 
     /**
-     * Model definition for this node
+     * Get Labels
      *
-     * @return {Model}
+     * @return {Array}
      */
 
 
     _createClass(Node, [{
-        key: 'model',
-        value: function model() {
-            return this._model;
+        key: 'labels',
+        value: function labels() {
+            return this._labels;
         }
 
         /**
-         * Get Internal Node ID
-         *
-         * @return {int}
+         * Set an eager value on the fly
+         * 
+         * @param  {String} key 
+         * @param  {Mixed}  value 
+         * @return {Node}
          */
 
     }, {
-        key: 'id',
-        value: function id() {
-            return this._node.identity.toNumber();
-        }
+        key: 'setEager',
+        value: function setEager(key, value) {
+            this._eager.set(key, value);
 
-        /**
-         * Return Internal Node ID as Neo4j Integer
-         *
-         * @return {Integer}
-         */
-
-    }, {
-        key: 'idInt',
-        value: function idInt() {
-            return this._node.identity;
-        }
-
-        /**
-         * Get a property for this node
-         *
-         * @param  {String} property Name of property
-         * @param  {or}     default  Default value to supply if none exists
-         * @return {mixed}
-         */
-
-    }, {
-        key: 'get',
-        value: function get(property) {
-            var or = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : null;
-
-            // If property is set, return that
-            if (this._node.properties.hasOwnProperty(property)) {
-                return this._node.properties[property];
-            }
-            // If property has been set in eager, return that
-            else if (this._eager.has(property)) {
-                    return this._eager.get(property);
-                }
-
-            return or;
-        }
-
-        /**
-         * Get all properties for this node
-         *
-         * @return {Object}
-         */
-
-    }, {
-        key: 'properties',
-        value: function properties() {
-            return this._node.properties;
-        }
-
-        /**
-         * Update the properties of a node
-         * @param  {Object} properties Updated properties
-         * @return {Promise}
-         */
-
-    }, {
-        key: 'update',
-        value: function update(properties) {
-            var _this = this;
-
-            return (0, _Update2.default)(this._neode, this, this._node, properties).then(function (node) {
-                _this._node = node;
-
-                return _this;
-            });
+            return this;
         }
 
         /**
@@ -154,7 +110,7 @@ var Node = function () {
         value: function _delete() {
             var _this2 = this;
 
-            return (0, _Delete2.default)(this._neode, this._node, this._model).then(function () {
+            return (0, _Delete2.default)(this._neode, this._identity, this._model).then(function () {
                 _this2._deleted = true;
 
                 return _this2;
@@ -177,29 +133,17 @@ var Node = function () {
             var properties = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
             var force_create = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;
 
-            var relationship = this.model().relationships().get(type);
+            var relationship = this._model.relationships().get(type);
 
             if (!(relationship instanceof _RelationshipType2.default)) {
-                throw new Error('Cannot find relationship with type ' + type);
+                return Promise.reject(new Error('Cannot find relationship with type ' + type));
             }
 
             return (0, _RelateTo2.default)(this._neode, this, node, relationship, properties, force_create);
         }
 
         /**
-         * When converting to string, return this model's primary key
-         *
-         * @return {String}
-         */
-
-    }, {
-        key: 'toString',
-        value: function toString() {
-            return this.get(this.model().primaryKey());
-        }
-
-        /**
-         * Convert Node to Object
+         * Convert Node to a JSON friendly Object
          *
          * @return {Promise}
          */
@@ -209,58 +153,45 @@ var Node = function () {
         value: function toJson() {
             var _this3 = this;
 
-            var output = Object.assign({}, { '_id': this.id() }, this._node.properties);
+            var output = {
+                _id: this.id(),
+                _labels: this.labels()
 
-            // Convert properties
-            Object.keys(output).forEach(function (key) {
-                if (output[key].toNumber) {
-                    output[key] = output[key].toNumber();
-                } else if (_neo4jDriver.v1.temporal.isDateTime(output[key])) {
-                    output[key] = new Date(output[key].toString());
-                } else if (_neo4jDriver.v1.spatial.isPoint(output[key])) {
-                    switch (output[key].srid.toString()) {
-                        // SRID values: @https://neo4j.com/docs/developer-manual/current/cypher/functions/spatial/
-                        case '4326':
-                            // WGS 84 2D
-                            output[key] = { longitude: output[key].x, latitude: output[key].y };
-                            break;
+                // Properties
+            };this._model.properties().forEach(function (property, key) {
+                if (property.hidden()) {
+                    return;
+                }
 
-                        case '4979':
-                            // WGS 84 3D
-                            output[key] = { longitude: output[key].x, latitude: output[key].y, height: output[key].z };
-                            break;
-
-                        case '7203':
-                            // Cartesian 2D
-                            output[key] = { x: output[key].x, y: output[key].y };
-                            break;
-
-                        case '9157':
-                            // Cartesian 3D
-                            output[key] = { x: output[key].x, y: output[key].y, z: output[key].z };
-                            break;
-                    }
+                if (_this3._properties.has(key)) {
+                    output[key] = _this3.valueToJson(property, _this3._properties.get(key));
                 }
             });
 
-            // TODO: Check that model exists.
-            // Fall back to a generic model?
-            this.model() && this.model().hidden().forEach(function (key) {
-                delete output[key];
-            });
+            // Eager Promises
+            return Promise.all(this._model.eager().map(function (rel) {
+                var key = rel.name();
 
-            var eager = Array.from(this._eager.keys());
-
-            return Promise.all(eager.map(function (key) {
-                return _this3._eager.get(key).toJson().then(function (value) {
-                    return { key: key, value: value };
+                if (_this3._eager.has(rel.name())) {
+                    // Call internal toJson function on either a Node or NodeCollection
+                    return _this3._eager.get(rel.name()).toJson().then(function (value) {
+                        return { key: key, value: value };
+                    });
+                }
+            }))
+            // Remove Empty 
+            .then(function (eager) {
+                return eager.filter(function (e) {
+                    return !!e;
                 });
-            })).then(function (res) {
-                res.forEach(function (_ref) {
+            })
+
+            // Assign to Output
+            .then(function (eager) {
+                eager.forEach(function (_ref) {
                     var key = _ref.key,
                         value = _ref.value;
-
-                    output[key] = value;
+                    return output[key] = value;
                 });
 
                 return output;
@@ -269,6 +200,6 @@ var Node = function () {
     }]);
 
     return Node;
-}();
+}(_Entity3.default);
 
 exports.default = Node;

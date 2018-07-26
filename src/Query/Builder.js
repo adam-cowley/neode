@@ -59,9 +59,9 @@ export default class Builder {
     /**
      * Match a Node by a definition
      *
-     * @param  {String} alias      Alias in query
-     * @param  {Model}  model      Model definition
-     * @return {Builder}           Builder
+     * @param  {String} alias           Alias in query
+     * @param  {Model|String}  model    Model definition
+     * @return {Builder}                Builder
      */
     match(alias, model) {
         this.whereStatement('WHERE');
@@ -110,8 +110,8 @@ export default class Builder {
     /**
      * Add a where condition to the current statement.
      *
-     * @param  {...mixed} args Argumenta
-     * @return {Builder}         [description]
+     * @param  {...mixed} args Arguments
+     * @return {Builder}         
      */
     where(...args) {
         if (!args.length || !args[0]) return this;
@@ -139,9 +139,6 @@ export default class Builder {
                 this._where.append(new WhereRaw(args[0]));
             }
         }
-        else if ( args.length == 1 ) {
-            this._where.append(new WhereRaw(args[0]));
-        }
         else {
             const [left, operator, value] = args;
             const right = `where_${left}`.replace(/([^a-z0-9_]+)/i, '_');
@@ -158,7 +155,7 @@ export default class Builder {
      *
      * @param  {String} alias
      * @param  {Int}    value
-     * @return {Builder}       [description]
+     * @return {Builder}       
      */
     whereId(alias, value) {
         const param = `where_id_${alias}`;
@@ -166,6 +163,18 @@ export default class Builder {
         this._params[ param ] = neo4j.int(value);
 
         this._where.append(new WhereId(alias, param));
+
+        return this;
+    }
+
+    /**
+     * Add a raw where clause
+     *
+     * @param  {String} clause
+     * @return {Builder}       
+     */
+    whereRaw(clause) {
+        this._where.append(new WhereRaw(clause));
 
         return this;
     }
@@ -306,9 +315,23 @@ export default class Builder {
      * @return {Builder}
      */
     toAnything() {
-        this._current.toAnything();
+        this._current.match(new Match());
 
         return this;
+    }
+
+    /** 
+     * Build the pattern without any keywords
+     * 
+     * @return {String}
+     */
+    pattern() {
+        this.whereStatement();
+        this.statement();
+
+        return this._statements.map(statement => {
+            return statement.toString(false);
+        }).join('\n');
     }
 
     /**
@@ -335,15 +358,13 @@ export default class Builder {
     /**
      * Execute the query
      *
+     * @param  {String}  query_mode
      * @return {Promise}
      */
-    execute(mode = "WRITE") {
+    execute(query_mode = mode.WRITE) {
         const {query, params} = this.build();
 
-        switch (mode) {
-            case mode.READ:
-                return this._neode.readCypher(query, params);
-
+        switch (query_mode) {
             case mode.WRITE:
                 return this._neode.writeCypher(query, params);
 

@@ -44,7 +44,6 @@ export default class Neode {
         const password = process.env.NEO4J_PASSWORD;
         const enterprise = !!process.env.NEO4J_ENTERPRISE;
 
-
         // Build additional config
         const config = {};
 
@@ -53,7 +52,6 @@ export default class Neode {
             NEO4J_TRUST: 'trust',
             NEO4J_TRUSTED_CERTIFICATES: 'trustedCertificates',
             NEO4J_KNOWN_HOSTS: 'knownHosts',
-
 
             NEO4J_MAX_CONNECTION_POOLSIZE: 'maxConnectionPoolSize',
             NEO4J_MAX_TRANSACTION_RETRY_TIME: 'maxTransactionRetryTime',
@@ -227,6 +225,7 @@ export default class Neode {
      * @return {Promise}
      */
     relate(from, to, type, properties, force_create = false) {
+        console.log('force?', force_create)
         return from.relateTo(to, type, properties, force_create);
     }
 
@@ -293,7 +292,7 @@ export default class Neode {
      * @return {Session}
      */
     session() {
-        return this.driver.session();
+        return this.readSession();
     }
 
     /**
@@ -302,7 +301,7 @@ export default class Neode {
      * @return {Session}
      */
     readSession() {
-        return this.driver.readSession();
+        return this.driver.session(neo4j.READ);
     }
 
     /**
@@ -311,7 +310,7 @@ export default class Neode {
      * @return {Session}
      */
     writeSession() {
-        return this.session();
+        return this.session(neo4j.WRITE);
     }
 
     /**
@@ -341,7 +340,7 @@ export default class Neode {
      * @type {Array}
      * @return {Promise}
      */
-    batch(queries = []) {
+    batch(queries) {
         const tx = this.transaction();
         const output = [];
         const errors = [];
@@ -446,12 +445,12 @@ export default class Neode {
     }
 
     /**
-     * Hydrate a set of nodes and return a NodeCollection
+     * Hydrate a set of nodes and return a Collection
      *
      * @param  {Object}          res            Neo4j result set
      * @param  {String}          alias          Alias of node to pluck
      * @param  {Definition|null} definition     Force Definition
-     * @return {NodeCollection}
+     * @return {Collection}
      */
     hydrate(res, alias, definition) {
         return this.factory.hydrate(res, alias, definition);

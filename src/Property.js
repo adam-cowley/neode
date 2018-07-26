@@ -1,3 +1,8 @@
+/**
+ *  Container holding information for a property.
+ * 
+ * TODO: Schema validation to enforce correct data types
+ */
 export default class Property {
     constructor(name, schema) {
         if ( typeof schema == 'string' ) {

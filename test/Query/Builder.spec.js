@@ -1,30 +1,38 @@
 import {assert, expect} from 'chai';
-import Builder from '../../src/Query/Builder';
+import Builder, { mode } from '../../src/Query/Builder';
+import WhereStatement from '../../src/Query/WhereStatement';
 import Integer from 'neo4j-driver/lib/v1/integer';
 import RelationshipType from '../../src/RelationshipType';
 
 describe('Query/Builder.js', () => {
-    const instance = require('../instance');
+    let instance;
+    let model;
 
     const label = 'QueryBuilderTest';
 
-    const model = instance.model(label, {
-        id: {
-            type: 'string',
-            required: true,
-            unique: true,
-        },
-        name: {
-            type: 'string',
-            required: true,
+    before(() => {
+        instance = require('../instance')();
 
-        },
-        age: {
-            type: 'number',
-            index: true,
-            default: 30
-        }
+        model = instance.model(label, {
+            id: {
+                type: 'string',
+                required: true,
+                unique: true,
+            },
+            name: {
+                type: 'string',
+                required: true,
+    
+            },
+            age: {
+                type: 'number',
+                index: true,
+                default: 30
+            }
+        });
     });
+
+    after(() => instance.close());
 
     it('should return new query builder from Neode instance', () => {
         const query = instance.query();
@@ -82,7 +90,7 @@ describe('Query/Builder.js', () => {
         expect(params).to.deep.equal(expected_params);
     });
 
-    it('should build a query with a where clause', () => {
+    it('should build a query with a where clause using labels from a model', () => {
         const builder = new Builder();
 
         const {query, params} = builder
@@ -103,6 +111,38 @@ describe('Query/Builder.js', () => {
         expect(query).to.equal(expected);
         expect(params).to.deep.equal(expected_params);
     });
+
+    it('should build a query with a where clause using a label as a string', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', 'QueryBuilderTest')
+            .where('this.property', 'that')
+            .return('this')
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)',
+            'WHERE (this.property = {where_this_property}) ',
+            'RETURN',
+            'this'
+        ].join('\n');
+        const expected_params = {where_this_property: 'that'};
+
+        expect(query).to.equal(expected);
+        expect(params).to.deep.equal(expected_params);
+    });
+
+    it('should build a query with a whereRaw clause', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .whereRaw('this.property >= datetime()')
+            .return('this')
+            .build();
+    })
 
     it('should build a query with two where clauses', () => {
         const builder = new Builder();
@@ -125,6 +165,76 @@ describe('Query/Builder.js', () => {
 
         expect(query).to.equal(expected);
         expect(params).to.deep.equal(expected_params);
+    });
+
+    it('should accept an array of where clauses', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .where([ 
+                ['this.property', 'that' ],
+                ['this.other_property', 'not that']
+            ])
+            .return('this')
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)',
+            'WHERE (this.property = {where_this_property} AND this.other_property = {where_this_other_property}) ',
+            'RETURN',
+            'this'
+        ].join('\n');
+        const expected_params = {where_this_property: 'that', where_this_other_property: 'not that'};
+
+        expect(query).to.equal(expected);
+        expect(params).to.deep.equal(expected_params);
+    });
+
+    it('should accept an object of where clauses', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .where({
+                'this.property': 'that',
+                'this.other_property': 'not that'
+            })
+            .return('this')
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)',
+            'WHERE (this.property = {where_this_property} AND this.other_property = {where_this_other_property}) ',
+            'RETURN',
+            'this'
+        ].join('\n');
+        const expected_params = {where_this_property: 'that', where_this_other_property: 'not that'};
+
+        expect(query).to.equal(expected);
+        expect(params).to.deep.equal(expected_params);
+    });
+
+    it('should accept a raw where clause', () => {
+        const builder = new Builder();
+
+        const {query, params} = builder
+            .match('this', model)
+            .where('this.property = "that"')
+            .return('this')
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)',
+            'WHERE (this.property = "that") ',
+            'RETURN',
+            'this'
+        ].join('\n');
+
+        expect(query).to.equal(expected);
     });
 
     it('should build an `or` query', () => {
@@ -355,8 +465,7 @@ describe('Query/Builder.js', () => {
 
     it('should build a query with a relationship type', () => {
         const builder = new Builder();
-
-        const rel = new RelationshipType('test', 'REL_TO', 'OUT');
+        const rel = new RelationshipType('test', 'relationships', 'REL_TO', 'OUT');
 
         const {query, params} = builder
             .match('this', model)
@@ -368,6 +477,28 @@ describe('Query/Builder.js', () => {
         const expected = [
             'MATCH',
             '(this:QueryBuilderTest)-[:`REL_TO`]->(that:QueryBuilderTest)',
+            '',
+            'RETURN',
+            'this,rel,that'
+        ].join('\n');
+
+        expect(query).to.equal(expected);
+    });
+
+    it('should build a query with a relationship to anything', () => {
+        const builder = new Builder();
+        const rel = new RelationshipType('test', 'relationships', 'REL_TO', 'OUT');
+
+        const {query, params} = builder
+            .match('this', model)
+            .relationship(rel)
+            .toAnything()
+            .return('this', 'rel', 'that')
+            .build();
+
+        const expected = [
+            'MATCH',
+            '(this:QueryBuilderTest)-[:`REL_TO`]->()',
             '',
             'RETURN',
             'this,rel,that'
@@ -547,6 +678,54 @@ describe('Query/Builder.js', () => {
         expect(query).to.equal(expected);
     });
 
+    it('should execute a query in read mode by default', done => {
+        ( new Builder(instance) )
+            .match('n')
+            .return('count(n) as count')
+            .execute()
+            .then(res => {
+                expect( res.records ).to.be.an('array');
+                expect( res.records.length ).to.equal(1);
+            })
+            .then(() => done())
+            .catch(e => done(e));
+    });
 
+    it('should execute a query in write mode', done => {
+        ( new Builder(instance) )
+            .match('n')
+            .return('count(n) as count')
+            .execute(mode.READ)
+            .then(res => {
+                expect( res.records ).to.be.an('array');
+                expect( res.records.length ).to.equal(1);
+            })
+            .then(() => done())
+            .catch(e => done(e));
+    });
+
+    it('should execute a query in write mode', done => {
+        ( new Builder(instance) )
+            .match('n')
+            .return('count(n) as count')
+            .execute(mode.WRITE)
+            .then(res => {
+                expect( res.records ).to.be.an('array');
+                expect( res.records.length ).to.equal(1);
+            })
+            .then(() => done())
+            .catch(e => done(e));
+    });
+
+
+    describe('WhereStatement', done => {
+        it('should use a specific connector', () => {
+            const statement = new WhereStatement();
+            statement.setConnector('OR')
+
+            expect(statement._connector).to.equal('OR');
+
+        });
+    });
 
 });

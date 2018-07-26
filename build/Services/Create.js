@@ -19,14 +19,14 @@ var _Validator2 = _interopRequireDefault(_Validator);
 
 var _RelationshipType = require('../RelationshipType');
 
+var _EagerUtils = require('../Query/EagerUtils');
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function Create(neode, model, properties) {
     return (0, _GenerateDefaultValues2.default)(neode, model, properties).then(function (properties) {
         return (0, _Validator2.default)(neode, model, properties);
     }).then(function (properties) {
-        var tx = neode.transaction();
-
         // Check we have properties
         if (Object.keys(properties).length == 0) {
             throw new Error('There are no properties set for this Node');
@@ -56,6 +56,8 @@ function Create(neode, model, properties) {
         // Start Query
         var query = [];
         query.push('CREATE (' + origin + ':' + labels + ' {__set})');
+
+        // TODO: Rewrite
 
         // Merge relationships
         model.relationships().forEach(function (relationship, key) {
@@ -87,12 +89,10 @@ function Create(neode, model, properties) {
             }
         });
 
-        query.push('RETURN ' + output.join(', '));
+        query.push('RETURN ' + (0, _EagerUtils.eagerNode)(neode, 1, origin, model));
 
-        return neode.writeCypher(query.join(' '), params, tx).then(function (res) {
-            tx.success();
-
-            return res.records[0].get(origin);
+        return neode.writeCypher(query.join(' '), params).then(function (res) {
+            return neode.hydrateFirst(res, origin, model);
         });
     });
 }

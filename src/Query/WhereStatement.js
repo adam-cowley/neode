@@ -10,8 +10,9 @@ export default class WhereStatement {
     }
 
     /**
-     * [setConnector description]
-     * @param {[type]} connector [description]
+     * Set the Connector string for chaining statements (AND, OR)
+     * 
+     * @param {String} connector 
      */
     setConnector(connector) {
         this._connector = connector;

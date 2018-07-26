@@ -1,4 +1,4 @@
-const ERROR_VALIDATION = 'ERROR_VALIDATION';
+export const ERROR_VALIDATION = 'ERROR_VALIDATION';
 
 export default class ValidationError extends Error {
     constructor(details, input) {

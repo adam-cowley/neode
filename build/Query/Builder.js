@@ -112,9 +112,9 @@ var Builder = function () {
         /**
          * Match a Node by a definition
          *
-         * @param  {String} alias      Alias in query
-         * @param  {Model}  model      Model definition
-         * @return {Builder}           Builder
+         * @param  {String} alias           Alias in query
+         * @param  {Model|String}  model    Model definition
+         * @return {Builder}                Builder
          */
 
     }, {
@@ -177,8 +177,8 @@ var Builder = function () {
         /**
          * Add a where condition to the current statement.
          *
-         * @param  {...mixed} args Argumenta
-         * @return {Builder}         [description]
+         * @param  {...mixed} args Arguments
+         * @return {Builder}         
          */
 
     }, {
@@ -214,8 +214,6 @@ var Builder = function () {
                 } else {
                     this._where.append(new _WhereRaw2.default(args[0]));
                 }
-            } else if (args.length == 1) {
-                this._where.append(new _WhereRaw2.default(args[0]));
             } else {
                 var _args3 = args,
                     _args4 = _slicedToArray(_args3, 3),
@@ -237,7 +235,7 @@ var Builder = function () {
          *
          * @param  {String} alias
          * @param  {Int}    value
-         * @return {Builder}       [description]
+         * @return {Builder}       
          */
 
     }, {
@@ -248,6 +246,21 @@ var Builder = function () {
             this._params[param] = _neo4jDriver2.default.int(value);
 
             this._where.append(new _WhereId2.default(alias, param));
+
+            return this;
+        }
+
+        /**
+         * Add a raw where clause
+         *
+         * @param  {String} clause
+         * @return {Builder}       
+         */
+
+    }, {
+        key: 'whereRaw',
+        value: function whereRaw(clause) {
+            this._where.append(new _WhereRaw2.default(clause));
 
             return this;
         }
@@ -423,9 +436,26 @@ var Builder = function () {
     }, {
         key: 'toAnything',
         value: function toAnything() {
-            this._current.toAnything();
+            this._current.match(new _Match2.default());
 
             return this;
+        }
+
+        /** 
+         * Build the pattern without any keywords
+         * 
+         * @return {String}
+         */
+
+    }, {
+        key: 'pattern',
+        value: function pattern() {
+            this.whereStatement();
+            this.statement();
+
+            return this._statements.map(function (statement) {
+                return statement.toString(false);
+            }).join('\n');
         }
 
         /**
@@ -455,22 +485,20 @@ var Builder = function () {
         /**
          * Execute the query
          *
+         * @param  {String}  query_mode
          * @return {Promise}
          */
 
     }, {
         key: 'execute',
         value: function execute() {
-            var mode = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : "WRITE";
+            var query_mode = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : mode.WRITE;
 
             var _build = this.build(),
                 query = _build.query,
                 params = _build.params;
 
-            switch (mode) {
-                case mode.READ:
-                    return this._neode.readCypher(query, params);
-
+            switch (query_mode) {
                 case mode.WRITE:
                     return this._neode.writeCypher(query, params);
 
