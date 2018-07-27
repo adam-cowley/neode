@@ -225,7 +225,6 @@ export default class Neode {
      * @return {Promise}
      */
     relate(from, to, type, properties, force_create = false) {
-        console.log('force?', force_create)
         return from.relateTo(to, type, properties, force_create);
     }
 

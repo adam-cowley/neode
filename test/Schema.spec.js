@@ -74,10 +74,10 @@ describe('Schema.js', () => {
 
                 // Assertions
                 expect(id_unique).to.equal(true);
-                expect(id_exists).to.equal(true);
-
+                
                 // Enterprise?
                 if (instance.enterprise()) {
+                    expect(id_exists).to.equal(true);
                     expect(name_exists).to.equal(true);
                 }
             })

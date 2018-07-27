@@ -363,7 +363,6 @@ describe('Services/Validator.js', () => {
 
                 Validator(instance, model, { number: 5 })
                     .then(res => {
-                        console.log(res)
                         assert(false, 'Should fail validation')
                     })
                     .catch(e => {
@@ -514,7 +513,6 @@ describe('Services/Validator.js', () => {
 
                 Validator(instance, model, { regex: 20 })
                     .then(res => {
-                        console.log(res)
                         assert(false, 'Should fail validation')
                     })
                     .catch(e => {
@@ -536,7 +534,6 @@ describe('Services/Validator.js', () => {
 
                 Validator(instance, model, { regex: 20 })
                     .then(res => {
-                        console.log(res)
                         assert(false, 'Should fail validation')
                     })
                     .catch(e => {
