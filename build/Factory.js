@@ -18,11 +18,15 @@ var _Relationship = require('./Relationship');
 
 var _Relationship2 = _interopRequireDefault(_Relationship);
 
+var _neo4jDriver = require('neo4j-driver');
+
 var _EagerUtils = require('./Query/EagerUtils');
 
 var _RelationshipType = require('./RelationshipType');
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
@@ -108,6 +112,13 @@ var Factory = function () {
         key: 'hydrateNode',
         value: function hydrateNode(record, definition) {
             var _this2 = this;
+
+            // Is there no better way to check this?!
+            if (_neo4jDriver.v1.isInt(record.identity) && Array.isArray(record.labels)) {
+                var _Object$assign;
+
+                record = Object.assign({}, record.properties, (_Object$assign = {}, _defineProperty(_Object$assign, _EagerUtils.EAGER_ID, record.identity), _defineProperty(_Object$assign, _EagerUtils.EAGER_LABELS, record.labels), _Object$assign));
+            }
 
             // Get Internals
             var identity = record[_EagerUtils.EAGER_ID];

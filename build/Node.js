@@ -70,14 +70,26 @@ var Node = function (_Entity) {
         return _this;
     }
 
-    /**
-     * Get Labels
-     *
-     * @return {Array}
+    /** 
+     * Get the Model for this Node
+     * 
+     * @return {Model}
      */
 
 
     _createClass(Node, [{
+        key: 'model',
+        value: function model() {
+            return this._model;
+        }
+
+        /**
+         * Get Labels
+         *
+         * @return {Array}
+         */
+
+    }, {
         key: 'labels',
         value: function labels() {
             return this._labels;
