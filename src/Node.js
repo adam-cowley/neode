@@ -36,6 +36,15 @@ export default class Node extends Entity {
         this._deleted = false;
     }
 
+    /** 
+     * Get the Model for this Node
+     * 
+     * @return {Model}
+     */
+    model() {
+        return this._model;
+    }
+
     /**
      * Get Labels
      *

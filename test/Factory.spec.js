@@ -286,7 +286,28 @@ describe('Factory.js', () => {
                 .then(() => done())
                 .catch(e => done(e))
     
-            });
+        });
+
+        it('should convert and hydrate a native node', done => {
+            instance.cypher(`CREATE (t:AnotherFactoryTest { id: 8 }) RETURN t`)
+                .then(res => {
+                    return factory.hydrate(res, 't')
+                })
+                .then(output => {
+                    expect( output ).to.be.an.instanceOf(Collection);
+                    expect( output.length ).to.equal(1);
+
+                    const first = output.first();
+
+                    expect( first ).to.be.an.instanceOf(Node);
+                    expect( first.model() ).be.an.instanceOf(Model);
+                    expect( first.model().name() ).to.equal('AnotherFactoryTest');
+                    expect( first.get('id').toNumber() ).to.equal(8);
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        })
+
 
     });
         

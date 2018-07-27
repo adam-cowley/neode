@@ -1,6 +1,7 @@
 import Collection from './Collection';
 import Node from './Node';
 import Relationship from './Relationship';
+import { v1 as neo4j } from 'neo4j-driver';
 
 import { EAGER_ID, EAGER_LABELS, EAGER_TYPE, } from './Query/EagerUtils';
 import { DIRECTION_IN, } from './RelationshipType';
@@ -68,6 +69,14 @@ export default class Factory {
      * @return {Node}
      */
     hydrateNode(record, definition) {
+        // Is there no better way to check this?!
+        if ( neo4j.isInt( record.identity ) && Array.isArray( record.labels ) ) {
+            record = Object.assign({}, record.properties, {
+                [EAGER_ID]: record.identity,
+                [EAGER_LABELS]: record.labels,
+            });
+        }
+
         // Get Internals
         const identity = record[ EAGER_ID ];
         const labels = record[ EAGER_LABELS ];
