@@ -102,7 +102,11 @@ describe('Schema.js', () => {
                 expect(actual).to.include(expected);
             })
             .then(() => done())
-            .catch(e => done(e))
+            .catch(e => {
+                console.log(e);
+                console.log(e.errors);
+                done(e)
+            })
     });
 
     it('should drop the schema', (done) => {
