@@ -42,7 +42,7 @@ export default class Neode {
         const connection_string = `${process.env.NEO4J_PROTOCOL}://${process.env.NEO4J_HOST}:${process.env.NEO4J_PORT}`;
         const username = process.env.NEO4J_USERNAME;
         const password = process.env.NEO4J_PASSWORD;
-        const enterprise = !!process.env.NEO4J_ENTERPRISE;
+        const enterprise = process.env.NEO4J_ENTERPRISE === 'true';
 
         // Build additional config
         const config = {};
