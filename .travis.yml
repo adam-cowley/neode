@@ -6,3 +6,9 @@ node_js:
 
 script:
   - "npm run test"
+
+services:
+  - neo4j
+
+before_script:
+  - neo4j-admin set-initial-password TravisCI
