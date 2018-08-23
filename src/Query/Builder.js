@@ -2,6 +2,7 @@ import Match from './Match';
 import Order from './Order';
 // import Return from './Return';
 import Statement from './Statement';
+import Property from './Property';
 import WhereStatement from './WhereStatement';
 import Where, {OPERATOR_EQUALS} from './Where';
 import WhereId from './WhereId';
@@ -24,6 +25,7 @@ export default class Builder {
         this._statements = [];
         this._current;
         this._where;
+        this._set_count = 0;
     }
 
     /**
@@ -61,13 +63,14 @@ export default class Builder {
      *
      * @param  {String} alias           Alias in query
      * @param  {Model|String}  model    Model definition
+     * @param  {Object|null}   properties   Inline Properties
      * @return {Builder}                Builder
      */
-    match(alias, model) {
+    match(alias, model, properties) {
         this.whereStatement('WHERE');
         this.statement();
 
-        this._current.match(new Match(alias, model));
+        this._current.match( new Match(alias, model, this._convertPropertyMap( alias, properties ) ) );
 
         return this;
     }
@@ -204,6 +207,96 @@ export default class Builder {
     }
 
     /**
+     * Start a Create Statement by alias/definition
+     *
+     * @param  {String} alias               Alias in query
+     * @param  {Model|String}  model        Model definition
+     * @param  {Object|null}   properties   Inline Properties
+     * @return {Builder}                    Builder
+     */
+    create(alias, model, properties) {
+        this.whereStatement('WHERE');
+        this.statement('CREATE');
+
+        this._current.match( new Match(alias, model, this._convertPropertyMap( alias, properties ) ) );
+
+        return this;
+    }
+
+    /**
+     * Convert a map of properties into an Array of 
+     * 
+     * @param {Object|null} properties 
+     */
+    _convertPropertyMap(alias, properties) {
+        if ( properties ) {
+            return Object.keys(properties).map(key => {
+                const property_alias = `${alias}_${key}`;
+
+                this._params[ property_alias ] = properties[ key ];
+
+                return new Property( key, property_alias );
+            });
+        }
+
+        return [];
+    }
+
+    /**
+     * Start a Merge Statement by alias/definition
+     *
+     * @param  {String}        alias        Alias in query
+     * @param  {Model|String}  model        Model definition
+     * @param  {Object|null}   properties   Inline Properties
+     * @return {Builder}                    Builder
+     */
+    merge(alias, model, properties) {
+        this.whereStatement('WHERE');
+        this.statement('MERGE');
+
+        this._current.match( new Match(alias, model, this._convertPropertyMap( alias, properties ) ) );
+
+        return this;
+    }
+
+    /**
+     * Set a property
+     * 
+     * @param {String|Object} property   Property in {alias}.{property} format
+     * @param {Mixed}         value      Value
+     */
+    set(property, value) {
+        // Support a map of properties
+        if ( !value && property instanceof Object ) {
+            Object.keys(property).forEach(key => {
+                this.set(key, property[ key ])
+            });
+        }
+        else {
+            const alias = `set_${this._set_count}`;
+            this._params[ alias ] = value;
+
+            this._set_count++;
+
+            this._current.set(property, alias);
+        }
+
+        return this;
+    }
+
+    /**
+     * Remove properties or labels in {alias}.{property} 
+     * or {alias}:{Label} format
+     * 
+     * @param {[String]} items 
+     */
+    remove(...items) {
+        this._current.remove(items);
+
+        return this;
+    }
+
+    /**
      * Set Return fields
      *
      * @param  {...mixed} args
@@ -299,12 +392,13 @@ export default class Builder {
 
     /**
      * Complete a relationship
-     * @param  {String} alias Alias
-     * @param  {Model} model  Model definition
+     * @param  {String} alias       Alias
+     * @param  {Model}  model       Model definition
+     * @param  {Object} properties  Properties
      * @return {Builder}
      */
-    to(alias, model) {
-        this._current.match(new Match(alias, model));
+    to(alias, model, properties) {
+        this._current.match( new Match(alias, model, this._convertPropertyMap(properties) ) );
 
         return this;
     }
@@ -372,7 +466,5 @@ export default class Builder {
                 return this._neode.cypher(query, params);
         }
     }
-
-
 
 }

@@ -57,4 +57,8 @@ export default class Property {
     readonly() {
         return this._readonly || false;
     }
+
+    convertToInteger() {
+        return this._type == 'int' || this._type == 'integer';
+    }
 }

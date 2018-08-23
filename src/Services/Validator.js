@@ -48,8 +48,14 @@ function BuildValidationSchema(model) {
         let validation = false;
 
         switch (config.type) {
+            // TODO: Recursive creation, validate nodes and relationships
             case 'node':
-                validation = Joi.object().type(Node);
+                validation = Joi.alternatives([
+                    Joi.object().type(Node),
+                    Joi.string(),
+                    Joi.number(),
+                    Joi.object(),
+                ]);
                 break;
 
             case 'uuid':
@@ -128,6 +134,8 @@ function BuildValidationSchema(model) {
 
 /**
  * Run Validation
+ * 
+ * TODO: Recursive Validation
  *
  * @param  {Neode} neode
  * @param  {Model} model

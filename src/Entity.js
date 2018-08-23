@@ -41,6 +41,21 @@ export function valueToJson(property, value) {
    return value;
 }
 
+/**
+ * Convert a property into a cypher value
+ * 
+ * @param {Property} property 
+ * @param {Mixed}    value 
+ * @return {Mixed}
+ */
+export function valueToCypher(property, value) {
+    if ( property.convertToInteger() ) {
+        value = neo4j.int(value);
+    }
+
+    return value;
+}
+
 export default class Entity {
 
     /**
@@ -93,7 +108,7 @@ export default class Entity {
             return this._properties.get(property);
         }
         // If property has been set in eager, return that
-        else if ( this._eager.has(property) ) {
+        else if ( this._eager && this._eager.has(property) ) {
             return this._eager.get(property);
         }
 

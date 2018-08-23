@@ -3,15 +3,7 @@ import {v1 as neo4j} from 'neo4j-driver';
 import ValidationError from '../ValidationError';
 import CleanValue from './CleanValue';
 
-/**
- * Generate default values where no values are not currently set.
- *
- * @param  {Neode}  neode
- * @param  {Model}  model
- * @param  {Object} properties
- * @return {Promise}
- */
-export default function GenerateDefaultValues(neode, model, properties) {
+function GenerateDefaultValuesAsync(neode, model, properties) {
     const schema = model.schema();
     const output = {};
 
@@ -44,5 +36,23 @@ export default function GenerateDefaultValues(neode, model, properties) {
         }
     });
 
+    return output;
+}
+
+/**
+ * Generate default values where no values are not currently set.
+ *
+ * @param  {Neode}  neode
+ * @param  {Model}  model
+ * @param  {Object} properties
+ * @return {Promise}
+ */
+function GenerateDefaultValues(neode, model, properties) {
+    const output = GenerateDefaultValuesAsync(neode, model, properties);
+
     return Promise.resolve(output);
 }
+
+GenerateDefaultValues.async = GenerateDefaultValuesAsync;
+
+export default GenerateDefaultValues;
