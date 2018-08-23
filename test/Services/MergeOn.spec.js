@@ -97,7 +97,7 @@ describe('Services/MergeOn.js', () => {
 
     describe('::MergeOn', () => {
         describe('Properties', () => {
-            it('should throw an error when no merge fields are present',done => {
+            it('should throw an error when no merge fields are present', done => {
                 MergeOn(instance, model, merge_on, {})
                     .then(() => {
                         assert(false, 'Error should be thrown');
@@ -140,15 +140,18 @@ describe('Services/MergeOn.js', () => {
             }).timeout(TIMEOUT);
 
             it('should not attempt to overwrite a primary key ', done => {
-                Promise.all([
-                    MergeOn(instance, model, merge_on, { name: 'Merge Me' }),
-                    MergeOn(instance, model, merge_on, { name: 'Merge Me' }),
-                ])
-                .then(( [first, second] ) => {
-                    expect( first.id() ).to.equal( second.id() );
-                })
-                .then(() => done())
-                .catch(e => done(e));
+                const name = 'Keep my primary key';
+
+                MergeOn(instance, model, merge_on, { name })
+                    .then(first => {
+                        return MergeOn(instance, model, merge_on, { name })
+                            .then(second => [ first, second ])
+                    })
+                    .then(( [first, second] ) => {
+                        expect( first.id() ).to.equal( second.id() );
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             }).timeout(TIMEOUT);
         });
 

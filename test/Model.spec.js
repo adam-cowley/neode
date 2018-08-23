@@ -4,7 +4,8 @@ import RelationshipType from '../src/RelationshipType';
 import Property from '../src/Property';
 
 describe('Model.js', () => {
-    const instance = null;
+    let instance;
+let model;
     const name = 'ModelTest';
     const schema = {
         labels: ['Test', 'Labels'],
@@ -52,12 +53,23 @@ describe('Model.js', () => {
         },
     };
 
-    const model = new Model(instance, name, schema);
+    before(() => {
+        instance = require('./instance')();
+        model = instance.model(name, schema);
+    });
+
+    after(done => {
+        instance.deleteAll(name)
+            .then(() => {
+                return instance.close()
+            })
+            .then(() => done());
+    });
 
     describe('::constructor', () => {
         it('should construct', () => {
             expect( model.name() ).to.equal(name);
-            expect( model.labels() ).to.deep.equal(schema.labels);
+            expect( model.labels() ).to.deep.equal(schema.labels.sort());
 
             expect( model.primaryKey() ).to.deep.equal('uuid');
 
@@ -104,7 +116,21 @@ describe('Model.js', () => {
             expect( model.labels() ).to.deep.equal(['ModelTest']);
 
             expect( model.primaryKey() ).to.deep.equal('modeltest_id');
-        })
+        });
+    });
+
+    describe('::update', () => {
+        it('should update a nodes properties', done => {
+            instance.create(name, { string: 'old' })
+                .then(node => {
+                    return node.update({ string: 'new' })
+                })
+                .then(node => {
+                    expect( node.get('string') ).to.equal('new');
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
     });
 
 });

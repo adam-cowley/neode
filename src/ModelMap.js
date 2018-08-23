@@ -59,7 +59,7 @@ export default class ModelMap {
         for (let entry of this.models) {
             const [ name, definition ] = entry; // eslint-disable-line no-unused-vars
 
-            if ( definition.labels().join(':') == labels.join(':') ) {
+            if ( definition.labels().sort().join(':') == labels.sort().join(':') ) {
                 return definition;
             }
         }

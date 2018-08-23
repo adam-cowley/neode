@@ -1,4 +1,6 @@
 import Entity from './Entity';
+import UpdateRelationship from './Services/UpdateRelationship';
+import DeleteRelationship from './Services/DeleteRelationship';
 import { DIRECTION_IN, DIRECTION_OUT, } from './RelationshipType';
 
 export default class Relationship extends Entity {
@@ -100,6 +102,38 @@ export default class Relationship extends Entity {
                 output[ definition.nodeAlias() ] = json;
 
                 return output;
+            });
+    }
+
+    /**
+     * Update the properties for this relationship
+     * 
+     * @param {Object} properties  New properties
+     * @return {Node}
+     */
+    update(properties) {
+        return UpdateRelationship(this._neode, this._model, this._identity, properties)
+            .then(properties => {
+                Object.entries(properties).forEach(( [key, value] ) => {
+                    this._properties.set( key, value );
+                });
+            })
+            .then(() => {
+                return this;
+            });
+    }
+
+    /**
+     * Delete this relationship from the Graph
+     *
+     * @return {Promise}
+     */
+    delete() {
+        return DeleteRelationship(this._neode, this._identity)
+            .then(() => {
+                this._deleted = true;
+
+                return this;
             });
     }
 }

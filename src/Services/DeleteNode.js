@@ -1,7 +1,7 @@
 import Builder, {mode} from '../Query/Builder';
 import {eager} from '../Factory';
 
-export default function Delete(neode, identity, model) {
+export default function DeleteNode(neode, identity, model) {
     const alias = 'this';
     const to_delete = [];
     const detach_delete = [alias];

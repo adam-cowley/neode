@@ -81,7 +81,7 @@ export default class Model extends Queryable {
      * @return {Model}
      */
     setLabels(...labels) {
-        this._labels = labels;
+        this._labels = labels.sort();
 
         return this;
     }

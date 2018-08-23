@@ -1,7 +1,7 @@
 import { v1 as neo4j } from 'neo4j-driver';
 import Entity from './Entity';
-import Update from './Services/Update';
-import Delete from './Services/Delete';
+import UpdateNode from './Services/UpdateNode';
+import DeleteNode from './Services/DeleteNode';
 import RelateTo from './Services/RelateTo';
 import RelationshipType from './RelationshipType';
 
@@ -73,7 +73,7 @@ export default class Node extends Entity {
      * @return {Promise}
      */
     delete() {
-        return Delete(this._neode, this._identity, this._model)
+        return DeleteNode(this._neode, this._identity, this._model)
             .then(() => {
                 this._deleted = true;
 
@@ -144,4 +144,23 @@ export default class Node extends Entity {
                 return output;
             });
     }
+
+    /**
+     * Update the properties for this node
+     * 
+     * @param {Object} properties  New properties
+     * @return {Node}
+     */
+    update(properties) {
+        return UpdateNode(this._neode, this._model, this._identity, properties)
+            .then(properties => {
+                Object.entries(properties).forEach(( [key, value] ) => {
+                    this._properties.set( key, value );
+                });
+            })
+            .then(() => {
+                return this;
+            });
+    }
+
 }
