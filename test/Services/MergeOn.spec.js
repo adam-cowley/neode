@@ -2,6 +2,8 @@ import {assert, expect} from 'chai';
 import MergeOn from '../../src/Services/MergeOn';
 import Node from '../../src/Node';
 
+const TIMEOUT = 10000;
+
 describe('Services/MergeOn.js', () => {
     let instance;
     let model;
@@ -80,7 +82,6 @@ describe('Services/MergeOn.js', () => {
     };
     const merge_on = ['name'];
 
-    /*
     before(() => {
         instance = require('../instance')();
         model = instance.model(label, schema);
@@ -93,19 +94,8 @@ describe('Services/MergeOn.js', () => {
             })
             .then(() => done());
     });
-    */
-    /** Testing */
-    before(done => {
-        instance = require('../instance')();
-        model = instance.model(label, schema);
-
-        instance.deleteAll(label).then(() => done())
-    });
-    after(() => instance.close());
-    /** End Testing */
 
     describe('::MergeOn', () => {
-        /*
         describe('Properties', () => {
             it('should throw an error when no merge fields are present',done => {
                 MergeOn(instance, model, merge_on, {})
@@ -116,7 +106,7 @@ describe('Services/MergeOn.js', () => {
                         assert(true);
                     })
                     .then(() => done());
-            });
+            }).timeout(TIMEOUT);
 
             it('should perform validation', done => {
                 MergeOn(instance, model, merge_on, {name: 'al'})
@@ -128,7 +118,7 @@ describe('Services/MergeOn.js', () => {
                         expect(e.details.name).to.be.instanceOf(Array);
                     })
                     .then(() => done());
-            });
+            }).timeout(TIMEOUT);
 
             it('should merge and generate default values', done => {
                 const data = {
@@ -147,7 +137,7 @@ describe('Services/MergeOn.js', () => {
                     })
                     .then(() => done())
                     .catch(e => done(e));
-            });
+            }).timeout(TIMEOUT);
 
             it('should not attempt to overwrite a primary key ', done => {
                 Promise.all([
@@ -159,12 +149,10 @@ describe('Services/MergeOn.js', () => {
                 })
                 .then(() => done())
                 .catch(e => done(e));
-            });
+            }).timeout(TIMEOUT);
         });
-        */
 
         describe('-> node', () => {
-            /*
             it('should create a relationship to a Node instance', done => {
                 const name = 'End';
 
@@ -181,8 +169,7 @@ describe('Services/MergeOn.js', () => {
                         .then(() => done())
                         .catch(e => done(e));
                     })
-            });
-            */
+            }).timeout(TIMEOUT);
 
             it('should create a relationship to a single node by its primary key', done => {
                 const name = 'End node 2';
@@ -200,7 +187,7 @@ describe('Services/MergeOn.js', () => {
                         .then(() => done())
                         .catch(e => done(e));
                     });
-            });
+            }).timeout(TIMEOUT);
 
             it('should recursively create nodes', done => {
                 const data = {
@@ -217,7 +204,7 @@ describe('Services/MergeOn.js', () => {
                     })
                     .then(() => done())
                     .catch(e => done(e));
-            });
+            }).timeout(TIMEOUT);
         });
 
         describe('-> nodes', () => {
@@ -237,7 +224,7 @@ describe('Services/MergeOn.js', () => {
                         .then(() => done())
                         .catch(e => done(e));
                     })
-            });
+            }).timeout(TIMEOUT);
 
             it('should create a relationship to a single node by its primary key', done => {
                 const name = 'End';
@@ -255,7 +242,7 @@ describe('Services/MergeOn.js', () => {
                         .then(() => done())
                         .catch(e => done(e));
                     });
-            });
+            }).timeout(TIMEOUT);
 
             it('should recursively create nodes', done => {
                 const data = {
@@ -272,7 +259,7 @@ describe('Services/MergeOn.js', () => {
                     })
                     .then(() => done())
                     .catch(e => done(e));
-            });
+            }).timeout(TIMEOUT);
 
             it('should recursively create nodes to multiple degrees', done => {
                 const data = {
@@ -293,10 +280,9 @@ describe('Services/MergeOn.js', () => {
                     })
                     .then(() => done())
                     .catch(e => done(e));
-            });
+            }).timeout(TIMEOUT);
         });
 
-        /*
         describe('-> relationship', () => {
             it('should create a relationship to a Node instance', done => {
                 const name = 'End';
@@ -318,7 +304,7 @@ describe('Services/MergeOn.js', () => {
                         .then(() => done())
                         .catch(e => done(e));
                     })
-            });
+            }).timeout(TIMEOUT);
 
             it('should create a relationship to a single node by its primary key', done => {
                 const name = 'End';
@@ -340,7 +326,7 @@ describe('Services/MergeOn.js', () => {
                         .then(() => done())
                         .catch(e => done(e));
                     });
-            });
+            }).timeout(TIMEOUT);
 
             it('should recursively create nodes', done => {
                 const data = {
@@ -378,53 +364,53 @@ describe('Services/MergeOn.js', () => {
                     })
                     .then(() => done())
                     .catch(e => done(e));
-            });
+            }).timeout(TIMEOUT);
         });
 
         describe('-> relationships', () => {
             it('should create relationships to an array of Node instances', done => {
-                const name = 'End';
+                const name = 'Rel End 1';
 
                 MergeOn(instance, model, merge_on, { name })
                     .then(end_node => {
                         return MergeOn(instance, model, merge_on, {
-                            name: 'Start',
+                            name: 'Rel Start 1',
                             relationships: [{ 
                                 since: 100,
                                 otherEnd: end_node 
                             }]
                         })
                         .then(res => {
-                            expect( res.get('name') ).to.equal('Start');
+                            expect( res.get('name') ).to.equal('Rel Start 1');
                             expect( res.get('relationships').first().get('since') ).to.equal(100);
                             expect( res.get('relationships').first().otherNode().get('name') ).to.equal(name);
                         })
                         .then(() => done())
                         .catch(e => done(e));
                     })
-            });
+            }).timeout(TIMEOUT);
 
             it('should create a relationship to a single node by its primary key', done => {
-                const name = 'End';
+                const name = 'Rel End 2';
 
                 MergeOn(instance, model, merge_on, { name })
                     .then(end_node => {
                         return MergeOn(instance, model, merge_on, {
-                            name: 'Start',
+                            name: 'Rel Start 2',
                             relationship: {
                                 since: 100,
                                 otherEnd: end_node.get('uuid'),
                             },
                         })
                         .then(res => {
-                            expect( res.get('name') ).to.equal('Start');
+                            expect( res.get('name') ).to.equal('Rel Start 2');
                             expect( res.get('relationships').first().get('since') ).to.equal(100);
                             expect( res.get('relationships').first().otherNode().get('name') ).to.equal(name);
                         })
                         .then(() => done())
                         .catch(e => done(e));
                     });
-            });
+            }).timeout(TIMEOUT);
 
             it('should recursively create nodes', done => {
                 const data = {
@@ -472,8 +458,7 @@ describe('Services/MergeOn.js', () => {
                     })
                     .then(() => done())
                     .catch(e => done(e));
-            });
+            }).timeout(TIMEOUT);
         });
-        */
     });
 });

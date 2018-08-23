@@ -2,6 +2,8 @@ import {assert, expect} from 'chai';
 import Create from '../../src/Services/Create';
 import Node from '../../src/Node';
 
+const TIMEOUT = 10000;
+
 describe('Services/Create.js', () => {
     let instance;
     let model;
@@ -103,7 +105,7 @@ describe('Services/Create.js', () => {
                         expect(e.details.name).to.be.instanceOf(Array);
                     })
                     .then(() => done());
-            });
+            }).timeout(TIMEOUT);
 
             it('should generate default values', done => {
                 const data = {
@@ -122,7 +124,7 @@ describe('Services/Create.js', () => {
                         })
                         .then(() => done())
                         .catch(e => done(e));
-            });
+            }).timeout(TIMEOUT);
         });
 
         describe('-> node', () => {
@@ -142,7 +144,7 @@ describe('Services/Create.js', () => {
                         .then(() => done())
                         .catch(e => done(e));
                     })
-            });
+            }).timeout(TIMEOUT);
 
             it('should create a relationship to a single node by its primary key', done => {
                 const name = 'End';
@@ -160,7 +162,7 @@ describe('Services/Create.js', () => {
                         .then(() => done())
                         .catch(e => done(e));
                     });
-            });
+            }).timeout(TIMEOUT);
 
             it('should recursively create nodes', done => {
                 const data = {
@@ -177,7 +179,7 @@ describe('Services/Create.js', () => {
                     })
                     .then(() => done())
                     .catch(e => done(e));
-            });
+            }).timeout(TIMEOUT);
         });
 
         describe('-> nodes', () => {
@@ -197,7 +199,7 @@ describe('Services/Create.js', () => {
                         .then(() => done())
                         .catch(e => done(e));
                     })
-            });
+            }).timeout(TIMEOUT);
 
             it('should create a relationship to a single node by its primary key', done => {
                 const name = 'End';
@@ -215,7 +217,7 @@ describe('Services/Create.js', () => {
                         .then(() => done())
                         .catch(e => done(e));
                     });
-            });
+            }).timeout(TIMEOUT);
 
             it('should recursively create nodes', done => {
                 const data = {
@@ -232,7 +234,7 @@ describe('Services/Create.js', () => {
                     })
                     .then(() => done())
                     .catch(e => done(e));
-            });
+            }).timeout(TIMEOUT);
 
             it('should recursively create nodes to multiple degrees', done => {
                 const data = {
@@ -253,9 +255,8 @@ describe('Services/Create.js', () => {
                     })
                     .then(() => done())
                     .catch(e => done(e));
-            });
+            }).timeout(TIMEOUT);
         });
-
 
         describe('-> relationship', () => {
             it('should create a relationship to a Node instance', done => {
@@ -278,7 +279,7 @@ describe('Services/Create.js', () => {
                         .then(() => done())
                         .catch(e => done(e));
                     })
-            });
+            }).timeout(TIMEOUT);
 
             it('should create a relationship to a single node by its primary key', done => {
                 const name = 'End';
@@ -300,7 +301,7 @@ describe('Services/Create.js', () => {
                         .then(() => done())
                         .catch(e => done(e));
                     });
-            });
+            }).timeout(TIMEOUT);
 
             it('should recursively create nodes', done => {
                 const data = {
@@ -338,7 +339,7 @@ describe('Services/Create.js', () => {
                     })
                     .then(() => done())
                     .catch(e => done(e));
-            });
+            }).timeout(TIMEOUT);
         });
 
         describe('-> relationships', () => {
@@ -362,7 +363,7 @@ describe('Services/Create.js', () => {
                         .then(() => done())
                         .catch(e => done(e));
                     })
-            });
+            }).timeout(TIMEOUT);
 
             it('should create a relationship to a single node by its primary key', done => {
                 const name = 'End';
@@ -384,7 +385,7 @@ describe('Services/Create.js', () => {
                         .then(() => done())
                         .catch(e => done(e));
                     });
-            });
+            }).timeout(TIMEOUT);
 
             it('should recursively create nodes', done => {
                 const data = {
@@ -432,7 +433,7 @@ describe('Services/Create.js', () => {
                     })
                     .then(() => done())
                     .catch(e => done(e));
-            });
+            }).timeout(TIMEOUT);
         });
     });
 
