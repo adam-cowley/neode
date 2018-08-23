@@ -660,19 +660,35 @@ describe('Services/Validator.js', () => {
     });
 
     describe('Nodes', () => {
-        it('should reject anything other than a node', () => {
+        it('should accept a string', () => {
             const model = instance.model('ValidatorTest', {
                 node: {
                     type: 'node',
                 },
             });
 
-            Validator(instance, model, { node: 'invalid' })
+            Validator(instance, model, { node: 'valid' })
                 .then(res => {
-                    assert(false, 'Should fail validation')
+                    assert(true)
                 })
                 .catch(e => {
-                    expect(e.details).to.contain.key('node');
+                    assert(false, e.message);
+                });
+        });
+
+        it('should accept an object', () => {
+            const model = instance.model('ValidatorTest', {
+                node: {
+                    type: 'node',
+                },
+            });
+
+            Validator(instance, model, { node: {id: 'invalid'} })
+                .then(res => {
+                    assert(true)
+                })
+                .catch(e => {
+                    assert(false, e.message);
                 });
         });
 
@@ -685,7 +701,7 @@ describe('Services/Validator.js', () => {
 
             Validator(instance, model, { node: new Node })
                 .then(res => {
-                    expect(res.node).to.be.an.instanceof(Node);
+                    assert(true)
                 })
                 .catch(e => {
                     assert(false, e.message);

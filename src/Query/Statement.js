@@ -117,30 +117,32 @@ export default class Statement {
             }).join(''));
         }
 
-        if ( this._set.length ) {
-            output.push('SET');
-
-            output.push(this._set.map(output => {
-                return output.toString();
-            }).join(', '));
-        }
-
-        if ( this._on_create_set.length ) {
-            output.push('ON CREATE SET');
-
-            output.push(this._set.map(output => {
-                return output.toString();
-            }).join(', '));
-        }
-
         if ( this._remove.length ) {
             output.push('REMOVE');
 
             output.push(this._remove.join(', '));
         }
 
+        if ( this._on_create_set.length ) {
+            output.push('ON CREATE SET');
+
+            output.push(this._on_create_set.map(output => {
+                return output.toString();
+            }).join(', '));
+        }
+
+
         if ( this._on_match_set.length ) {
             output.push('ON MATCH SET');
+
+            output.push(this._on_match_set.map(output => {
+                return output.toString();
+            }).join(', '));
+        }
+
+
+        if ( this._set.length ) {
+            output.push('SET');
 
             output.push(this._set.map(output => {
                 return output.toString();

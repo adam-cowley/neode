@@ -284,6 +284,58 @@ export default class Builder {
         return this;
     }
 
+
+    /**
+     * Set a property
+     * 
+     * @param {String|Object} property   Property in {alias}.{property} format
+     * @param {Mixed}         value      Value
+     */
+    onCreateSet(property, value) {
+        // Support a map of properties
+        if ( !value && property instanceof Object ) {
+            Object.keys(property).forEach(key => {
+                this.onCreateSet(key, property[ key ])
+            });
+        }
+        else {
+            const alias = `set_${this._set_count}`;
+            this._params[ alias ] = value;
+
+            this._set_count++;
+
+            this._current.onCreateSet(property, alias);
+        }
+
+        return this;
+    }
+
+
+    /**
+     * Set a property
+     * 
+     * @param {String|Object} property   Property in {alias}.{property} format
+     * @param {Mixed}         value      Value
+     */
+    onMatchSet(property, value) {
+        // Support a map of properties
+        if ( !value && property instanceof Object ) {
+            Object.keys(property).forEach(key => {
+                this.onMatchSet(key, property[ key ])
+            });
+        }
+        else {
+            const alias = `set_${this._set_count}`;
+            this._params[ alias ] = value;
+
+            this._set_count++;
+
+            this._current.onMatchSet(property, alias);
+        }
+
+        return this;
+    }
+
     /**
      * Remove properties or labels in {alias}.{property} 
      * or {alias}:{Label} format

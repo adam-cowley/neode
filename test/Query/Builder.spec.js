@@ -135,6 +135,28 @@ describe('Query/Builder.js', () => {
             expect(params).to.deep.equal(expected_params);
         });
 
+        it('should accept an object in the where clause', () => {
+            const builder = new Builder();
+
+            const { query, params } = builder
+                .match('this', 'QueryBuilderTest')
+                .where({'this.property': 'that'})
+                .return('this')
+                .build();
+
+            const expected = [
+                'MATCH',
+                '(this:QueryBuilderTest)',
+                'WHERE (this.property = {where_this_property}) ',
+                'RETURN',
+                'this'
+            ].join('\n');
+            const expected_params = { where_this_property: 'that' };
+
+            expect(query).to.equal(expected);
+            expect(params).to.deep.equal(expected_params);
+        })
+
         it('should build a query with a whereRaw clause', () => {
             const builder = new Builder();
 
@@ -916,16 +938,125 @@ describe('Query/Builder.js', () => {
                 'MERGE',
                 '(this)-[r:`TO`]->(that)',
                 '',
-                'SET',
-                'r.value = $set_0',
                 'REMOVE',
                 'this:Label, that:Label',
+                'SET',
+                'r.value = $set_0',
                 'RETURN',
                 'this,r,that'
             ].join('\n');
 
             expect(query).to.equal(expected);
             expect(params).to.deep.equal({ this_id: 1, that_id: 2, set_0: 'something' })
+        });
+
+
+        it('should combine match, merge, remove, set, on create set and on match set', () => {
+            const builder = new Builder();
+
+            const { query, params } = builder
+                .match('this', model, { id: 1 })
+                .match('that', model, { id: 2 })
+                .merge('this')
+                    .relationship('TO', 'out', 'r')
+                    .to('that')
+                .set('r.value', 'something')
+                .onCreateSet('r.another', 'something else')
+                .onMatchSet('r.number', 10)
+                .onMatchSet('r.boolean', true)
+                .remove('this:Label', 'that:Label')
+                .return('this', 'r', 'that')
+                .build();
+
+            const expected = [
+                'MATCH',
+                '(this:QueryBuilderTest { id: $this_id })',
+                '',
+                'MATCH',
+                '(that:QueryBuilderTest { id: $that_id })',
+                '',
+                'MERGE',
+                '(this)-[r:`TO`]->(that)',
+                '',
+                'REMOVE',
+                'this:Label, that:Label',
+                'ON CREATE SET',
+                'r.another = $set_1',
+                'ON MATCH SET',
+                'r.number = $set_2, r.boolean = $set_3',
+                'SET',
+                'r.value = $set_0',
+                'RETURN',
+                'this,r,that'
+            ].join('\n');
+
+            expect(query).to.equal(expected);
+            expect(params).to.deep.equal({
+                this_id: 1, 
+                that_id: 2, 
+                set_0: 'something',
+                set_1: 'something else',
+                set_2: 10,
+                set_3: true,
+            })
+        });
+
+        it('should accept an object of set values', () => {
+            const builder = new Builder();
+
+            const { query, params } = builder
+                .match('this', model, { id: 1 })
+                .match('that', model, { id: 2 })
+                .merge('this')
+                    .relationship('TO', 'out', 'r')
+                    .to('that')
+                .set({
+                    'r.value': 'something'
+                })
+                .onCreateSet({
+                    'r.another': 'something else'
+                })
+                .onMatchSet({
+                    'r.number': 10
+                })
+                .onMatchSet({
+                    'r.boolean': true
+                })
+                .remove('this:Label', 'that:Label')
+                .return('this', 'r', 'that')
+                .build();
+
+            const expected = [
+                'MATCH',
+                '(this:QueryBuilderTest { id: $this_id })',
+                '',
+                'MATCH',
+                '(that:QueryBuilderTest { id: $that_id })',
+                '',
+                'MERGE',
+                '(this)-[r:`TO`]->(that)',
+                '',
+                'REMOVE',
+                'this:Label, that:Label',
+                'ON CREATE SET',
+                'r.another = $set_1',
+                'ON MATCH SET',
+                'r.number = $set_2, r.boolean = $set_3',
+                'SET',
+                'r.value = $set_0',
+                'RETURN',
+                'this,r,that'
+            ].join('\n');
+
+            expect(query).to.equal(expected);
+            expect(params).to.deep.equal({
+                this_id: 1, 
+                that_id: 2, 
+                set_0: 'something',
+                set_1: 'something else',
+                set_2: 10,
+                set_3: true,
+            });
         });
 
     });
