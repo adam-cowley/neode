@@ -3,13 +3,10 @@
 Object.defineProperty(exports, "__esModule", {
     value: true
 });
-exports.default = GenerateDefaultValues;
 
 var _uuid = require('uuid');
 
 var _uuid2 = _interopRequireDefault(_uuid);
-
-var _neo4jDriver = require('neo4j-driver');
 
 var _ValidationError = require('../ValidationError');
 
@@ -21,15 +18,7 @@ var _CleanValue2 = _interopRequireDefault(_CleanValue);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-/**
- * Generate default values where no values are not currently set.
- *
- * @param  {Neode}  neode
- * @param  {Model}  model
- * @param  {Object} properties
- * @return {Promise}
- */
-function GenerateDefaultValues(neode, model, properties) {
+function GenerateDefaultValuesAsync(neode, model, properties) {
     var schema = model.schema();
     var output = {};
 
@@ -62,5 +51,23 @@ function GenerateDefaultValues(neode, model, properties) {
         }
     });
 
+    return output;
+}
+
+/**
+ * Generate default values where no values are not currently set.
+ *
+ * @param  {Neode}  neode
+ * @param  {Model}  model
+ * @param  {Object} properties
+ * @return {Promise}
+ */
+function GenerateDefaultValues(neode, model, properties) {
+    var output = GenerateDefaultValuesAsync(neode, model, properties);
+
     return Promise.resolve(output);
 }
+
+GenerateDefaultValues.async = GenerateDefaultValuesAsync;
+
+exports.default = GenerateDefaultValues;

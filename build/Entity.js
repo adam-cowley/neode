@@ -5,19 +5,22 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.valueToJson = undefined;
 
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }(); /* eslint indent: 0 */
+
+
+exports.valueToCypher = valueToCypher;
 
 var _neo4jDriver = require('neo4j-driver');
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 /**
-* Convert a raw property into a JSON friendly format
-* 
-* @param  {Property}   property
-* @param  {Mixed}      value 
-* @return {Mixed}
-*/
+ * Convert a raw property into a JSON friendly format
+ * 
+ * @param  {Property}   property
+ * @param  {Mixed}      value 
+ * @return {Mixed}
+ */
 function _valueToJson(property, value) {
     if (_neo4jDriver.v1.isInt(value)) {
         return value.toNumber();
@@ -47,7 +50,21 @@ function _valueToJson(property, value) {
     return value;
 }
 
+/**
+ * Convert a property into a cypher value
+ * 
+ * @param {Property} property 
+ * @param {Mixed}    value 
+ * @return {Mixed}
+ */
 exports.valueToJson = _valueToJson;
+function valueToCypher(property, value) {
+    if (property.convertToInteger()) {
+        value = _neo4jDriver.v1.int(value);
+    }
+
+    return value;
+}
 
 var Entity = function () {
     function Entity() {
@@ -121,7 +138,7 @@ var Entity = function () {
                 return this._properties.get(property);
             }
             // If property has been set in eager, return that
-            else if (this._eager.has(property)) {
+            else if (this._eager && this._eager.has(property)) {
                     return this._eager.get(property);
                 }
 

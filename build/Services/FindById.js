@@ -15,7 +15,6 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 function FindById(neode, model, id) {
     var alias = 'this';
-    var output = [alias];
 
     var builder = new _Builder2.default(neode);
 

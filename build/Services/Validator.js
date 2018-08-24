@@ -41,8 +41,9 @@ function BuildValidationSchema(model) {
         var validation = false;
 
         switch (config.type) {
+            // TODO: Recursive creation, validate nodes and relationships
             case 'node':
-                validation = _joi2.default.object().type(_Node2.default);
+                validation = _joi2.default.alternatives([_joi2.default.object().type(_Node2.default), _joi2.default.string(), _joi2.default.number(), _joi2.default.object()]);
                 break;
 
             case 'uuid':
@@ -115,6 +116,8 @@ function BuildValidationSchema(model) {
 
 /**
  * Run Validation
+ * 
+ * TODO: Recursive Validation
  *
  * @param  {Neode} neode
  * @param  {Model} model

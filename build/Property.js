@@ -82,6 +82,11 @@ var Property = function () {
         value: function readonly() {
             return this._readonly || false;
         }
+    }, {
+        key: 'convertToInteger',
+        value: function convertToInteger() {
+            return this._type == 'int' || this._type == 'integer';
+        }
     }]);
 
     return Property;

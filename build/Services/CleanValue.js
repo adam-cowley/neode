@@ -58,7 +58,8 @@ function CleanValue(config, value) {
             break;
 
         case 'localtime':
-            value = value instanceof Date ? new _neo4jDriver.v1.types.LocalTime(value.getHours(), value.getMinutes(), value.getSeconds(), value.getMilliseconds() * 1000000) : value;
+            value = value instanceof Date ? new _neo4jDriver.v1.types.LocalTime(value.getHours(), value.getMinutes(), value.getSeconds(), value.getMilliseconds() * 1000000 // nanoseconds
+            ) : value; // eslint-ignore-line
             break;
 
         case 'point':
@@ -85,4 +86,4 @@ function CleanValue(config, value) {
     }
 
     return value;
-}
+} /* eslint-disable */

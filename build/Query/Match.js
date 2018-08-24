@@ -4,7 +4,8 @@ Object.defineProperty(exports, "__esModule", {
     value: true
 });
 
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }(); // TODO: Rename this, NodePattern?
+
 
 var _Model = require('../Model');
 
@@ -17,11 +18,13 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 var Match = function () {
     function Match(alias) {
         var model = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
+        var properties = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : [];
 
         _classCallCheck(this, Match);
 
         this._alias = alias;
         this._model = model;
+        this._properties = properties;
     }
 
     _createClass(Match, [{
@@ -29,6 +32,7 @@ var Match = function () {
         value: function toString() {
             var alias = this._alias || '';
             var model = '';
+            var properties = '';
 
             if (this._model instanceof _Model2.default) {
                 model = ':' + this._model.labels().join(':');
@@ -36,7 +40,17 @@ var Match = function () {
                 model = ':' + this._model;
             }
 
-            return '(' + alias + (model ? model : '') + ')';
+            if (this._properties.length) {
+                properties = ' { ';
+
+                properties += this._properties.map(function (property) {
+                    return property.toInlineString();
+                }).join(', ');
+
+                properties += ' }';
+            }
+
+            return '(' + alias + (model ? model : '') + properties + ')';
         }
     }]);
 

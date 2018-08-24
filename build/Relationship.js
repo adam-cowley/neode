@@ -4,11 +4,21 @@ Object.defineProperty(exports, "__esModule", {
     value: true
 });
 
+var _slicedToArray = function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i["return"]) _i["return"](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError("Invalid attempt to destructure non-iterable instance"); } }; }();
+
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
 var _Entity2 = require('./Entity');
 
 var _Entity3 = _interopRequireDefault(_Entity2);
+
+var _UpdateRelationship = require('./Services/UpdateRelationship');
+
+var _UpdateRelationship2 = _interopRequireDefault(_UpdateRelationship);
+
+var _DeleteRelationship = require('./Services/DeleteRelationship');
+
+var _DeleteRelationship2 = _interopRequireDefault(_DeleteRelationship);
 
 var _RelationshipType = require('./RelationshipType');
 
@@ -142,6 +152,49 @@ var Relationship = function (_Entity) {
                 output[definition.nodeAlias()] = json;
 
                 return output;
+            });
+        }
+
+        /**
+         * Update the properties for this relationship
+         * 
+         * @param {Object} properties  New properties
+         * @return {Node}
+         */
+
+    }, {
+        key: 'update',
+        value: function update(properties) {
+            var _this3 = this;
+
+            return (0, _UpdateRelationship2.default)(this._neode, this._model, this._identity, properties).then(function (properties) {
+                Object.entries(properties).forEach(function (_ref) {
+                    var _ref2 = _slicedToArray(_ref, 2),
+                        key = _ref2[0],
+                        value = _ref2[1];
+
+                    _this3._properties.set(key, value);
+                });
+            }).then(function () {
+                return _this3;
+            });
+        }
+
+        /**
+         * Delete this relationship from the Graph
+         *
+         * @return {Promise}
+         */
+
+    }, {
+        key: 'delete',
+        value: function _delete() {
+            var _this4 = this;
+
+            return (0, _DeleteRelationship2.default)(this._neode, this._identity).then(function () {
+                _this4._deleted = true;
+
+                return _this4;
             });
         }
     }]);

@@ -136,7 +136,7 @@ var Model = function (_Queryable) {
                 labels[_key] = arguments[_key];
             }
 
-            this._labels = labels;
+            this._labels = labels.sort();
 
             return this;
         }

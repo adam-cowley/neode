@@ -14,6 +14,10 @@ var _RelationshipType = require('../RelationshipType');
 
 var _RelationshipType2 = _interopRequireDefault(_RelationshipType);
 
+var _Property = require('./Property');
+
+var _Property2 = _interopRequireDefault(_Property);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -23,18 +27,22 @@ var Statement = function () {
         _classCallCheck(this, Statement);
 
         this._prefix = prefix || 'MATCH';
-        this._match = [];
+        this._pattern = [];
         this._where = [];
         this._order = [];
         this._detach_delete = [];
         this._delete = [];
         this._return = [];
+        this._set = [];
+        this._on_create_set = [];
+        this._on_match_set = [];
+        this._remove = [];
     }
 
     _createClass(Statement, [{
         key: 'match',
         value: function match(_match) {
-            this._match.push(_match);
+            this._pattern.push(_match);
 
             return this;
         }
@@ -103,7 +111,41 @@ var Statement = function () {
                 direction = rel.direction();
             }
 
-            this._match.push(new _Relationship2.default(_relationship, direction, alias, traversals));
+            this._pattern.push(new _Relationship2.default(_relationship, direction, alias, traversals));
+
+            return this;
+        }
+    }, {
+        key: 'set',
+        value: function set(key, value) {
+            this._set.push(new _Property2.default(key, value));
+
+            return this;
+        }
+    }, {
+        key: 'onCreateSet',
+        value: function onCreateSet(key, value) {
+            this._on_create_set.push(new _Property2.default(key, value));
+
+            return this;
+        }
+    }, {
+        key: 'onMatchSet',
+        value: function onMatchSet(key, value) {
+            this._on_match_set.push(new _Property2.default(key, value));
+
+            return this;
+        }
+
+        /**
+         * 
+         * @param {Array} items 
+         */
+
+    }, {
+        key: 'remove',
+        value: function remove(items) {
+            this._remove = this._remove.concat(items);
 
             return this;
         }
@@ -114,10 +156,10 @@ var Statement = function () {
 
             var output = [];
 
-            if (this._match.length) {
+            if (this._pattern.length) {
                 if (includePrefix) output.push(this._prefix);
 
-                output.push(this._match.map(function (statement) {
+                output.push(this._pattern.map(function (statement) {
                     return statement.toString();
                 }).join(''));
             }
@@ -126,6 +168,36 @@ var Statement = function () {
                 output.push(this._where.map(function (statement) {
                     return statement.toString();
                 }).join(''));
+            }
+
+            if (this._remove.length) {
+                output.push('REMOVE');
+
+                output.push(this._remove.join(', '));
+            }
+
+            if (this._on_create_set.length) {
+                output.push('ON CREATE SET');
+
+                output.push(this._on_create_set.map(function (output) {
+                    return output.toString();
+                }).join(', '));
+            }
+
+            if (this._on_match_set.length) {
+                output.push('ON MATCH SET');
+
+                output.push(this._on_match_set.map(function (output) {
+                    return output.toString();
+                }).join(', '));
+            }
+
+            if (this._set.length) {
+                output.push('SET');
+
+                output.push(this._set.map(function (output) {
+                    return output.toString();
+                }).join(', '));
             }
 
             if (this._delete.length) {

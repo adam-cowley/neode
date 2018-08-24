@@ -25,6 +25,10 @@ var _Statement = require('./Statement');
 
 var _Statement2 = _interopRequireDefault(_Statement);
 
+var _Property = require('./Property');
+
+var _Property2 = _interopRequireDefault(_Property);
+
 var _WhereStatement = require('./WhereStatement');
 
 var _WhereStatement2 = _interopRequireDefault(_WhereStatement);
@@ -70,6 +74,7 @@ var Builder = function () {
         this._statements = [];
         this._current;
         this._where;
+        this._set_count = 0;
     }
 
     /**
@@ -114,16 +119,17 @@ var Builder = function () {
          *
          * @param  {String} alias           Alias in query
          * @param  {Model|String}  model    Model definition
+         * @param  {Object|null}   properties   Inline Properties
          * @return {Builder}                Builder
          */
 
     }, {
         key: 'match',
-        value: function match(alias, model) {
+        value: function match(alias, model, properties) {
             this.whereStatement('WHERE');
             this.statement();
 
-            this._current.match(new _Match2.default(alias, model));
+            this._current.match(new _Match2.default(alias, model, this._convertPropertyMap(alias, properties)));
 
             return this;
         }
@@ -300,6 +306,176 @@ var Builder = function () {
         }
 
         /**
+         * Start a Create Statement by alias/definition
+         *
+         * @param  {String} alias               Alias in query
+         * @param  {Model|String}  model        Model definition
+         * @param  {Object|null}   properties   Inline Properties
+         * @return {Builder}                    Builder
+         */
+
+    }, {
+        key: 'create',
+        value: function create(alias, model, properties) {
+            this.whereStatement('WHERE');
+            this.statement('CREATE');
+
+            this._current.match(new _Match2.default(alias, model, this._convertPropertyMap(alias, properties)));
+
+            return this;
+        }
+
+        /**
+         * Convert a map of properties into an Array of 
+         * 
+         * @param {Object|null} properties 
+         */
+
+    }, {
+        key: '_convertPropertyMap',
+        value: function _convertPropertyMap(alias, properties) {
+            var _this2 = this;
+
+            if (properties) {
+                return Object.keys(properties).map(function (key) {
+                    var property_alias = alias + '_' + key;
+
+                    _this2._params[property_alias] = properties[key];
+
+                    return new _Property2.default(key, property_alias);
+                });
+            }
+
+            return [];
+        }
+
+        /**
+         * Start a Merge Statement by alias/definition
+         *
+         * @param  {String}        alias        Alias in query
+         * @param  {Model|String}  model        Model definition
+         * @param  {Object|null}   properties   Inline Properties
+         * @return {Builder}                    Builder
+         */
+
+    }, {
+        key: 'merge',
+        value: function merge(alias, model, properties) {
+            this.whereStatement('WHERE');
+            this.statement('MERGE');
+
+            this._current.match(new _Match2.default(alias, model, this._convertPropertyMap(alias, properties)));
+
+            return this;
+        }
+
+        /**
+         * Set a property
+         * 
+         * @param {String|Object} property   Property in {alias}.{property} format
+         * @param {Mixed}         value      Value
+         */
+
+    }, {
+        key: 'set',
+        value: function set(property, value) {
+            var _this3 = this;
+
+            // Support a map of properties
+            if (!value && property instanceof Object) {
+                Object.keys(property).forEach(function (key) {
+                    _this3.set(key, property[key]);
+                });
+            } else {
+                var alias = 'set_' + this._set_count;
+                this._params[alias] = value;
+
+                this._set_count++;
+
+                this._current.set(property, alias);
+            }
+
+            return this;
+        }
+
+        /**
+         * Set a property
+         * 
+         * @param {String|Object} property   Property in {alias}.{property} format
+         * @param {Mixed}         value      Value
+         */
+
+    }, {
+        key: 'onCreateSet',
+        value: function onCreateSet(property, value) {
+            var _this4 = this;
+
+            // Support a map of properties
+            if (!value && property instanceof Object) {
+                Object.keys(property).forEach(function (key) {
+                    _this4.onCreateSet(key, property[key]);
+                });
+            } else {
+                var alias = 'set_' + this._set_count;
+                this._params[alias] = value;
+
+                this._set_count++;
+
+                this._current.onCreateSet(property, alias);
+            }
+
+            return this;
+        }
+
+        /**
+         * Set a property
+         * 
+         * @param {String|Object} property   Property in {alias}.{property} format
+         * @param {Mixed}         value      Value
+         */
+
+    }, {
+        key: 'onMatchSet',
+        value: function onMatchSet(property, value) {
+            var _this5 = this;
+
+            // Support a map of properties
+            if (!value && property instanceof Object) {
+                Object.keys(property).forEach(function (key) {
+                    _this5.onMatchSet(key, property[key]);
+                });
+            } else {
+                var alias = 'set_' + this._set_count;
+                this._params[alias] = value;
+
+                this._set_count++;
+
+                this._current.onMatchSet(property, alias);
+            }
+
+            return this;
+        }
+
+        /**
+         * Remove properties or labels in {alias}.{property} 
+         * or {alias}:{Label} format
+         * 
+         * @param {[String]} items 
+         */
+
+    }, {
+        key: 'remove',
+        value: function remove() {
+            for (var _len3 = arguments.length, items = Array(_len3), _key3 = 0; _key3 < _len3; _key3++) {
+                items[_key3] = arguments[_key3];
+            }
+
+            this._current.remove(items);
+
+            return this;
+        }
+
+        /**
          * Set Return fields
          *
          * @param  {...mixed} args
@@ -356,10 +532,10 @@ var Builder = function () {
     }, {
         key: 'orderBy',
         value: function orderBy() {
-            var _this2 = this;
+            var _this6 = this;
 
-            for (var _len3 = arguments.length, args = Array(_len3), _key3 = 0; _key3 < _len3; _key3++) {
-                args[_key3] = arguments[_key3];
+            for (var _len4 = arguments.length, args = Array(_len4), _key4 = 0; _key4 < _len4; _key4++) {
+                args[_key4] = arguments[_key4];
             }
 
             var order_by = void 0;
@@ -370,7 +546,7 @@ var Builder = function () {
             } else if (Array.isArray(args[0])) {
                 // Handle array of where's
                 args[0].forEach(function (arg) {
-                    _this2.orderBy(arg);
+                    _this6.orderBy(arg);
                 });
             }
             // TODO: Ugly, stop supporting this
@@ -380,7 +556,7 @@ var Builder = function () {
                 } else if (_typeof(args[0]) == 'object') {
                     // Assume {key: order}
                     Object.keys(args[0]).forEach(function (key) {
-                        _this2.orderBy(key, args[0][key]);
+                        _this6.orderBy(key, args[0][key]);
                     });
                 } else if (args[0]) {
                     // Assume orderBy(what, 'ASC')
@@ -414,15 +590,16 @@ var Builder = function () {
 
         /**
          * Complete a relationship
-         * @param  {String} alias Alias
-         * @param  {Model} model  Model definition
+         * @param  {String} alias       Alias
+         * @param  {Model}  model       Model definition
+         * @param  {Object} properties  Properties
          * @return {Builder}
          */
 
     }, {
         key: 'to',
-        value: function to(alias, model) {
-            this._current.match(new _Match2.default(alias, model));
+        value: function to(alias, model, properties) {
+            this._current.match(new _Match2.default(alias, model, this._convertPropertyMap(properties)));
 
             return this;
         }

@@ -4,21 +4,21 @@ Object.defineProperty(exports, "__esModule", {
     value: true
 });
 
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+var _slicedToArray = function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i["return"]) _i["return"](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError("Invalid attempt to destructure non-iterable instance"); } }; }();
 
-var _neo4jDriver = require('neo4j-driver');
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
 var _Entity2 = require('./Entity');
 
 var _Entity3 = _interopRequireDefault(_Entity2);
 
-var _Update = require('./Services/Update');
+var _UpdateNode = require('./Services/UpdateNode');
 
-var _Update2 = _interopRequireDefault(_Update);
+var _UpdateNode2 = _interopRequireDefault(_UpdateNode);
 
-var _Delete = require('./Services/Delete');
+var _DeleteNode = require('./Services/DeleteNode');
 
-var _Delete2 = _interopRequireDefault(_Delete);
+var _DeleteNode2 = _interopRequireDefault(_DeleteNode);
 
 var _RelateTo = require('./Services/RelateTo');
 
@@ -122,7 +122,7 @@ var Node = function (_Entity) {
         value: function _delete() {
             var _this2 = this;
 
-            return (0, _Delete2.default)(this._neode, this._identity, this._model).then(function () {
+            return (0, _DeleteNode2.default)(this._neode, this._identity, this._model).then(function () {
                 _this2._deleted = true;
 
                 return _this2;
@@ -168,9 +168,10 @@ var Node = function (_Entity) {
             var output = {
                 _id: this.id(),
                 _labels: this.labels()
+            };
 
-                // Properties
-            };this._model.properties().forEach(function (property, key) {
+            // Properties
+            this._model.properties().forEach(function (property, key) {
                 if (property.hidden()) {
                     return;
                 }
@@ -207,6 +208,31 @@ var Node = function (_Entity) {
                 });
 
                 return output;
+            });
+        }
+
+        /**
+         * Update the properties for this node
+         * 
+         * @param {Object} properties  New properties
+         * @return {Node}
+         */
+
+    }, {
+        key: 'update',
+        value: function update(properties) {
+            var _this4 = this;
+
+            return (0, _UpdateNode2.default)(this._neode, this._model, this._identity, properties).then(function (properties) {
+                Object.entries(properties).forEach(function (_ref2) {
+                    var _ref3 = _slicedToArray(_ref2, 2),
+                        key = _ref3[0],
+                        value = _ref3[1];
+
+                    _this4._properties.set(key, value);
+                });
+            }).then(function () {
+                return _this4;
             });
         }
     }]);

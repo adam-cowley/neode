@@ -155,11 +155,9 @@ var Factory = function () {
                         break;
 
                     case 'nodes':
-                        var nodes = record[name].map(function (value) {
+                        node.setEager(name, new _Collection2.default(_this2._neode, record[name].map(function (value) {
                             return _this2.hydrateNode(value);
-                        });
-
-                        node.setEager(name, new _Collection2.default(_this2._neode, nodes));
+                        })));
                         break;
 
                     case 'relationship':
@@ -167,11 +165,9 @@ var Factory = function () {
                         break;
 
                     case 'relationships':
-                        var relationships = record[name].map(function (value) {
+                        node.setEager(name, new _Collection2.default(_this2._neode, record[name].map(function (value) {
                             return _this2.hydrateRelationship(eager, value, node);
-                        });
-
-                        node.setEager(name, new _Collection2.default(_this2._neode, relationships));
+                        })));
                         break;
                 }
             });

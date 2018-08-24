@@ -271,7 +271,6 @@ var Neode = function () {
         value: function relate(from, to, type, properties) {
             var force_create = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : false;
 
-            console.log('force?', force_create);
             return from.relateTo(to, type, properties, force_create);
         }
 
@@ -562,7 +561,7 @@ var Neode = function () {
             var connection_string = process.env.NEO4J_PROTOCOL + '://' + process.env.NEO4J_HOST + ':' + process.env.NEO4J_PORT;
             var username = process.env.NEO4J_USERNAME;
             var password = process.env.NEO4J_PASSWORD;
-            var enterprise = !!process.env.NEO4J_ENTERPRISE;
+            var enterprise = process.env.NEO4J_ENTERPRISE === 'true';
 
             // Build additional config
             var config = {};
