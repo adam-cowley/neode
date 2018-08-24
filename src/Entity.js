@@ -1,12 +1,13 @@
+/* eslint indent: 0 */
 import { v1 as neo4j } from 'neo4j-driver';
 
 /**
-* Convert a raw property into a JSON friendly format
-* 
-* @param  {Property}   property
-* @param  {Mixed}      value 
-* @return {Mixed}
-*/
+ * Convert a raw property into a JSON friendly format
+ * 
+ * @param  {Property}   property
+ * @param  {Mixed}      value 
+ * @return {Mixed}
+ */
 export function valueToJson(property, value) {
    if ( neo4j.isInt(value) ) {
        return value.toNumber();

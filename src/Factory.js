@@ -112,9 +112,7 @@ export default class Factory {
                     break;
 
                 case 'nodes':
-                    const nodes = record[ name ].map(value => this.hydrateNode(value))
-
-                    node.setEager( name, new Collection(this._neode, nodes) );
+                    node.setEager( name, new Collection(this._neode, record[ name ].map(value => this.hydrateNode(value))) );
                     break;
 
                 case 'relationship':
@@ -122,9 +120,7 @@ export default class Factory {
                     break;
 
                 case 'relationships':
-                    const relationships = record[ name ].map(value => this.hydrateRelationship(eager, value, node));
-
-                    node.setEager( name, new Collection(this._neode, relationships) );
+                    node.setEager( name, new Collection(this._neode, record[ name ].map(value => this.hydrateRelationship(eager, value, node))) );
                     break;
             }
         });

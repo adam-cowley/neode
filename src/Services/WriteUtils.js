@@ -56,7 +56,7 @@ function splitProperties(mode, model, properties, merge_on = []) {
         on_create, 
         on_match,
         set,
-    }
+    };
 }
 
 
@@ -106,7 +106,7 @@ export function addNodeToStatement(neode, builder, alias, model, properties, ali
     }
 
     // Relationships
-    model.relationships().forEach((relationship, key, map) => {
+    model.relationships().forEach((relationship, key) => {
         if ( properties.hasOwnProperty(key) ) {
             let value = properties[ key ];
 
@@ -181,7 +181,7 @@ export function addRelationshipToStatement(neode, builder, alias, rel_alias, tar
     // If Node is passed, attempt to create a relationship to that specific node
     if ( node_value instanceof Node ) {
         builder.match(target_alias)
-            .whereId(target_alias, node_value.identity())
+            .whereId(target_alias, node_value.identity());
     }
 
     // If Primary key is passed then try to match on that
@@ -204,14 +204,14 @@ export function addRelationshipToStatement(neode, builder, alias, rel_alias, tar
     // Create the Relationship
     builder[mode](alias)
         .relationship( relationship.relationship(), relationship.direction(), rel_alias )
-        .to(target_alias)
+        .to(target_alias);
 
     // Set Relationship Properties
     relationship.properties().forEach(property => {
         const name = property.name();
 
-        if ( value.hasOwnProperty( property.name() ) ) {
-            builder.set(`${rel_alias}.${property.name()}`, value[ property.name() ] );
+        if ( value.hasOwnProperty( name ) ) {
+            builder.set(`${rel_alias}.${name}`, value[ name ] );
         }
     });
 }
@@ -237,7 +237,7 @@ export function addNodeRelationshipToStatement(neode, builder, alias, rel_alias,
     // If Node is passed, attempt to create a relationship to that specific node
     if ( value instanceof Node ) {
         builder.match(target_alias)
-            .whereId(target_alias, value.identity())
+            .whereId(target_alias, value.identity());
     }
     // If Primary key is passed then try to match on that
     else if ( typeof value == 'string' || typeof value == 'number' ) {

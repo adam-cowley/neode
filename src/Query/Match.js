@@ -21,13 +21,13 @@ export default class Match {
         }
 
         if ( this._properties.length ) {
-            properties = ' { '
+            properties = ' { ';
 
             properties += this._properties.map(property => {
                 return property.toInlineString();
             }).join(', ');
 
-            properties += ' }'
+            properties += ' }';
         }
         
         return `(${alias}${model ? model : ''}${properties})`;

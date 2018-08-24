@@ -1,7 +1,7 @@
 import Entity from './Entity';
 import UpdateRelationship from './Services/UpdateRelationship';
 import DeleteRelationship from './Services/DeleteRelationship';
-import { DIRECTION_IN, DIRECTION_OUT, } from './RelationshipType';
+import { DIRECTION_IN, } from './RelationshipType';
 
 export default class Relationship extends Entity {
     /**
@@ -34,7 +34,7 @@ export default class Relationship extends Entity {
      * @return {Definition}
      */
     definition() {
-        return this._definition
+        return this._definition;
     }
 
     /** 

@@ -49,7 +49,7 @@ export default function RelateTo(neode, from, to, relationship, properties, forc
                     const properties = new Map;
 
                     Object.keys(rel.properties).forEach(key => {
-                        properties.set( key, rel.properties[ key ] )
+                        properties.set( key, rel.properties[ key ] );
                     });
 
                     return new Relationship(neode, relationship, rel.identity, rel.type, properties, hydrate_from, hydrate_to);

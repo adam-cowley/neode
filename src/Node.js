@@ -1,10 +1,8 @@
-import { v1 as neo4j } from 'neo4j-driver';
 import Entity from './Entity';
 import UpdateNode from './Services/UpdateNode';
 import DeleteNode from './Services/DeleteNode';
 import RelateTo from './Services/RelateTo';
 import RelationshipType from './RelationshipType';
-
 
 /** 
  * Node Container
@@ -109,7 +107,7 @@ export default class Node extends Entity {
         const output = {
             _id: this.id(),
             _labels: this.labels(),
-        }
+        };
 
         // Properties
         this._model.properties().forEach((property, key) => {
@@ -130,7 +128,7 @@ export default class Node extends Entity {
                 // Call internal toJson function on either a Node or NodeCollection
                 return this._eager.get( rel.name() ).toJson()
                     .then(value => {
-                        return { key, value }
+                        return { key, value };
                     });
             }
         }) )
@@ -139,7 +137,7 @@ export default class Node extends Entity {
 
             // Assign to Output
             .then(eager => {
-                eager.forEach(({ key, value }) => output[ key ] = value)
+                eager.forEach(({ key, value }) => output[ key ] = value);
                 
                 return output;
             });

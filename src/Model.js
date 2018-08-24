@@ -3,7 +3,7 @@ import Queryable from './Queryable';
 import RelationshipType, {DIRECTION_BOTH} from './RelationshipType';
 import Property from './Property';
 
-const RELATIONSHIP_TYPES = [ 'relationship', 'relationships', 'node', 'nodes' ]
+const RELATIONSHIP_TYPES = [ 'relationship', 'relationships', 'node', 'nodes' ];
 
 export default class Model extends Queryable {
     constructor(neode, name, schema) {

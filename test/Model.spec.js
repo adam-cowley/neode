@@ -5,7 +5,7 @@ import Property from '../src/Property';
 
 describe('Model.js', () => {
     let instance;
-let model;
+    let model;
     const name = 'ModelTest';
     const schema = {
         labels: ['Test', 'Labels'],

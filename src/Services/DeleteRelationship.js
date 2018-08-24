@@ -1,5 +1,3 @@
-import Builder, {mode} from '../Query/Builder';
-
 export default function DeleteRelationship(neode, identity) {
     const query = `
         MATCH ()-[rel]->() 

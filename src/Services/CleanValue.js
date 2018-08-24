@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { v1 as neo4j } from 'neo4j-driver';
 
 /**
@@ -8,8 +9,8 @@ import { v1 as neo4j } from 'neo4j-driver';
 * @return {mixed}
 */
 export default function CleanValue(config, value) {
-   // Clean Values
-   switch (config.type.toLowerCase()) {
+    // Clean Values
+    switch (config.type.toLowerCase()) {
         case 'float':
             value = parseFloat(value);
             break;
@@ -83,11 +84,11 @@ export default function CleanValue(config, value) {
                     value.getHours(),
                     value.getMinutes(),
                     value.getSeconds(),
-                    value.getMilliseconds() * 1000000,  // nanoseconds
-                ) : value;
-                break;
+                    value.getMilliseconds() * 1000000  // nanoseconds
+                ) : value; // eslint-ignore-line
+                break; 
 
-       case 'point':
+        case 'point':
            // SRID values: @https://neo4j.com/docs/developer-manual/current/cypher/functions/spatial/
            if (isNaN(value.x)) { // WGS 84
                if (isNaN(value.height)) {
@@ -124,7 +125,7 @@ export default function CleanValue(config, value) {
                }
            }
            break;
-   }
+    }
 
-   return value;
+    return value;
 }

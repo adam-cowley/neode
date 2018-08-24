@@ -97,7 +97,7 @@ export default class Statement {
     remove(items) {
         this._remove = this._remove.concat(items);
 
-        return
+        return this;
     }
 
     toString(includePrefix = true) {

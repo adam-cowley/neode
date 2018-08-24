@@ -269,7 +269,7 @@ export default class Builder {
         // Support a map of properties
         if ( !value && property instanceof Object ) {
             Object.keys(property).forEach(key => {
-                this.set(key, property[ key ])
+                this.set(key, property[ key ]);
             });
         }
         else {
@@ -295,7 +295,7 @@ export default class Builder {
         // Support a map of properties
         if ( !value && property instanceof Object ) {
             Object.keys(property).forEach(key => {
-                this.onCreateSet(key, property[ key ])
+                this.onCreateSet(key, property[ key ]);
             });
         }
         else {
@@ -321,7 +321,7 @@ export default class Builder {
         // Support a map of properties
         if ( !value && property instanceof Object ) {
             Object.keys(property).forEach(key => {
-                this.onMatchSet(key, property[ key ])
+                this.onMatchSet(key, property[ key ]);
             });
         }
         else {

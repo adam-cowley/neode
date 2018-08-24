@@ -1,9 +1,7 @@
 import GenerateDefaultValues from './GenerateDefaultValues';
 import Validator from './Validator';
-import { DIRECTION_IN, DIRECTION_OUT } from '../RelationshipType';
 import Builder, {mode} from '../Query/Builder';
 import { eagerNode, } from '../Query/EagerUtils';
-import { v1 as neo4j } from 'neo4j-driver';
 import { addNodeToStatement, ORIGINAL_ALIAS } from './WriteUtils';
 
 export default function Create(neode, model, properties) {
@@ -22,6 +20,5 @@ export default function Create(neode, model, properties) {
             return builder.return(output)
                 .execute(mode.WRITE)
                 .then(res => neode.hydrateFirst(res, alias));
-
-        })
+        });
 }

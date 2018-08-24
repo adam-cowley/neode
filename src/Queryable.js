@@ -1,4 +1,3 @@
-import Builder from './Query/Builder';
 import Create from './Services/Create';
 import DeleteAll from './Services/DeleteAll';
 import FindAll from './Services/FindAll';
@@ -6,7 +5,6 @@ import FindById from './Services/FindById';
 import FindWithinDistance from './Services/FindWithinDistance';
 import First from './Services/First';
 import MergeOn from './Services/MergeOn';
-import Node from './Node';
 
 export default class Queryable {
 

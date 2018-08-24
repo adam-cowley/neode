@@ -3,7 +3,6 @@ import { eagerNode, } from '../Query/EagerUtils';
 
 export default function FindById(neode, model, id) {
     const alias = 'this';
-    const output = [alias];
 
     const builder = new Builder(neode);
 

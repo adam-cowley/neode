@@ -1,5 +1,4 @@
 import uuid from 'uuid';
-import {v1 as neo4j} from 'neo4j-driver';
 import ValidationError from '../ValidationError';
 import CleanValue from './CleanValue';
 

@@ -76,7 +76,7 @@ export default class Neode {
 
                 config[ key ] = value;
             }
-        })
+        });
 
         return new Neode(connection_string, username, password, enterprise, config);
     }
