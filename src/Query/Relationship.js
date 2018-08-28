@@ -12,7 +12,17 @@ export default class Relationship {
         const dir_in = this._direction == DIRECTION_IN || this._direction == ALT_DIRECTION_IN ? '<' : '';
         const dir_out = this._direction == DIRECTION_OUT || this._direction == ALT_DIRECTION_OUT ? '>' : '';
         const alias = this._alias ? `${this._alias}` : '';
-        const relationship = this._relationship ? `:\`${this._relationship}\`` : '';
+
+        let relationship = this._relationship || '';
+
+        if ( Array.isArray(relationship) ) {
+            relationship = relationship.join('`|`');
+        }
+
+        if ( relationship != '' ) {
+            relationship = `:\`${relationship}\``;
+        }
+
         const traversals = this._traversals ? `*${this._traversals}` : '';
 
         const rel = this._relationship || this._alias || this._traversals ? `[${alias}${relationship}${traversals}]` : '';

@@ -78,6 +78,17 @@ describe('Services/Create.js', () => {
             direction: 'out',
             eager: true,
         },
+        relationshipToAnything: {
+            type: 'node',
+            relationship: 'RELATIONSHIP',
+            direction: 'out',
+        },
+        ambiguousRelationship: {
+            type: 'node',
+            relationship: 'AMBIGUOUS_RELATIONSHIP',
+            direction: 'out',
+            target: [ label, 'Person', 'Thing' ],
+        },
     };
 
     before(() => {
@@ -180,6 +191,26 @@ describe('Services/Create.js', () => {
                     .then(() => done())
                     .catch(e => done(e));
             }).timeout(TIMEOUT);
+
+            it('should throw an error when you try to create a relationship to an ambiguous node', done => {
+                const data = {
+                    name: 'Start',
+                    relationshipToAnything: {
+                        name: 'End',
+                    },
+                };
+
+                Create(instance, model, data)
+                    .then(res => {
+                        assert(false, 'Should throw an exception')
+                    })
+                    .catch(e => {
+                        const expected = 'A target defintion must be defined for relationshipToAnything on model CreateTest';
+                        expect( e.message ).to.equal(expected);
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
+            });
         });
 
         describe('-> nodes', () => {
@@ -340,6 +371,28 @@ describe('Services/Create.js', () => {
                     .then(() => done())
                     .catch(e => done(e));
             }).timeout(TIMEOUT);
+
+            it('should throw an error when trying to create a relationship with ambiguous targets', done => {
+                const data = {
+                    name: 'Start',
+                    ambiguousRelationship: {
+                        node: {
+                            name: 'End',
+                        },
+                    },
+                };
+
+                Create(instance, model, data)
+                    .then(res => {
+                        assert(false, 'Should throw an exception')
+                    })
+                    .catch(e => {
+                        const expected = 'You cannot create a node with the ambiguous relationship: ambiguousRelationship on model CreateTest';
+                        expect( e.message ).to.equal(expected);
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
+            });
         });
 
         describe('-> relationships', () => {

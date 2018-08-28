@@ -614,6 +614,28 @@ describe('Query/Builder.js', () => {
             expect(query).to.equal(expected);
         });
 
+        it('should build a query with multiple relationship types', () => {
+            const builder = new Builder();
+
+            const { query, params } = builder
+                .match('this', model)
+                .relationship(['REL_1_TO', 'REL_2_TO'], 'out', 'rel')
+                .to('that', model)
+                .return('this', 'rel', 'that')
+                .build();
+
+            const expected = [
+                'MATCH',
+                '(this:QueryBuilderTest)-[rel:`REL_1_TO`|`REL_2_TO`]->(that:QueryBuilderTest)',
+                '',
+                'RETURN',
+                'this,rel,that'
+            ].join('\n');
+
+            expect(query).to.equal(expected);
+        });
+
+
         it('should build a query with an outwards relationship with alias and traversal', () => {
             const builder = new Builder();
 
@@ -1062,9 +1084,6 @@ describe('Query/Builder.js', () => {
     });
 
     describe('::execute', () => {
-
-
-
         it('should execute a query in read mode by default', done => {
             (new Builder(instance))
                 .match('n')
@@ -1111,9 +1130,7 @@ describe('Query/Builder.js', () => {
             statement.setConnector('OR')
 
             expect(statement._connector).to.equal('OR');
-
         });
     });
-
 
 });
