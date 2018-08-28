@@ -162,6 +162,12 @@ function addNodeToStatement(neode, builder, alias, model, properties) {
             // Carry alias through
             builder.with.apply(builder, _toConsumableArray(aliases));
 
+            if (!relationship.target()) {
+                throw new Error('A target defintion must be defined for ' + key + ' on model ' + model.name());
+            } else if (Array.isArray(relationship.target())) {
+                throw new Error('You cannot create a node with the ambiguous relationship: ' + key + ' on model ' + model.name());
+            }
+
             switch (relationship.type()) {
                 // Single Relationship
                 case 'relationship':
