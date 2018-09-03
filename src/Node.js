@@ -68,10 +68,11 @@ export default class Node extends Entity {
     /**
      * Delete this node from the Graph
      *
+     * @param {Integer} to_depth    Depth to delete to (Defaults to 10)
      * @return {Promise}
      */
-    delete() {
-        return DeleteNode(this._neode, this._identity, this._model)
+    delete(to_depth) {
+        return DeleteNode(this._neode, this._identity, this._model, to_depth)
             .then(() => {
                 this._deleted = true;
 

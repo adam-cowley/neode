@@ -31,7 +31,11 @@ describe('Model.js', () => {
             relationship: 'RELATIONSHIP',
             target: 'ModelTest',
             eager: true,
-            alias: 'nodeattheend'
+            alias: 'nodeattheend',
+            properties: {
+                updated: 'boolean',
+                default: false,
+            },
         },
         relationships: {
             type: 'relationships',
@@ -63,7 +67,8 @@ describe('Model.js', () => {
             .then(() => {
                 return instance.close()
             })
-            .then(() => done());
+            .then(() => done())
+            .catch(e => done(e));
     });
 
     describe('::constructor', () => {
@@ -131,6 +136,44 @@ describe('Model.js', () => {
                 .then(() => done())
                 .catch(e => done(e));
         });
+    });
+
+    describe('Relationships', () => {
+        it('should create, update and delete a relationship', done => {
+            Promise.all([
+                instance.create(name, { string: 'first' }),
+                instance.create(name, { string: 'second' }),
+            ])
+            .then(([ first, second]) => {
+                return first.relateTo(second, 'relationship')
+            })
+            .then(relationship => {
+                return relationship.update({ updated: true })
+                    .then(res => {
+                        expect( res.get('updated') ).to.be.true
+
+                        return instance.cypher('MATCH ()-[r]->() WHERE id(r) = {id} RETURN r.updated AS updated', { id: res.identity() })
+                            .then(( {records} ) => {
+                                expect( records[0].get('updated') ).to.be.true
+                                
+                                return res;
+                            });
+                    });
+            })
+            .then(relationship => {
+                return relationship.delete();
+            })
+            .then(res => {
+                return instance.cypher('MATCH ()-[r]->() WHERE id(r) = {id} RETURN r', { id: res.identity() })
+                    .then(res => {
+                        expect( res.records.length ).to.equal(0);
+                    });
+            })
+            .then(() => done())
+            .catch(e => done(e));
+        });
+
+
     });
 
 });

@@ -33,7 +33,7 @@ function FindAll(neode, model, properties, order, limit, skip) {
 
     // Order
     if (typeof order == 'string') {
-        order = alias + '.' + order;
+        builder.orderBy(alias + '.' + order);
     } else if ((typeof order === 'undefined' ? 'undefined' : _typeof(order)) == 'object') {
         Object.keys(order).forEach(function (key) {
             builder.orderBy(alias + '.' + key, order[key]);

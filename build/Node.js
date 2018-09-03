@@ -114,15 +114,16 @@ var Node = function (_Entity) {
         /**
          * Delete this node from the Graph
          *
+         * @param {Integer} to_depth    Depth to delete to (Defaults to 10)
          * @return {Promise}
          */
 
     }, {
         key: 'delete',
-        value: function _delete() {
+        value: function _delete(to_depth) {
             var _this2 = this;
 
-            return (0, _DeleteNode2.default)(this._neode, this._identity, this._model).then(function () {
+            return (0, _DeleteNode2.default)(this._neode, this._identity, this._model, to_depth).then(function () {
                 _this2._deleted = true;
 
                 return _this2;

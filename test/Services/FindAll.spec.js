@@ -73,13 +73,15 @@ describe('Services/FindAll.js', () => {
         model = instance.model(label, schema);
     });
 
-    after(done => {
+    afterEach(done => {
         instance.deleteAll(label)
-            .then(() => {
-                return instance.close()
-            })
+            // .then(() => {
+            //     return instance.close()
+            // })
             .then(() => done());
     });
+
+    after(() => instance.close());
 
     it('should find nodes filtered by properties', done => {
         const name = 'Filtered Node';
@@ -114,8 +116,44 @@ describe('Services/FindAll.js', () => {
             })
             .then(() => done())
             .catch(e => done(e));
-        
+    });
 
+    it('should apply the alias to an order', done => {
+        Promise.all([
+            instance.create(label, { name: '100' }),
+            instance.create(label, { name: '300' }),
+            instance.create(label, { name: '150' }),
+        ])
+        .then(() => {
+            return FindAll(instance, model, {}, 'name')
+                .then(res => {
+                    const actual = res.map(r => r.get('name'));
+                    const expected = [ '100', '150', '300' ];
+
+                    expect( actual ).to.deep.equal( expected );
+                })
+                .then(() => done())
+                .catch(e => done(e));;
+        });
+    });
+
+    it('should apply the alias to a map of orders', done => {
+        Promise.all([
+            instance.create(label, { name: '100' }),
+            instance.create(label, { name: '300' }),
+            instance.create(label, { name: '150' }),
+        ])
+        .then(() => {
+            return FindAll(instance, model, {}, { name: 'DESC' })
+                .then(res => {
+                    const actual = res.map(r => r.get('name'));
+                    const expected = [ '300', '150', '100' ];
+
+                    expect( actual ).to.deep.equal( expected );
+                });
+        })
+        .then(() => done())
+        .catch(e => done(e));
     });
 
 });

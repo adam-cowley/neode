@@ -49,6 +49,10 @@ var _WithStatement = require('./WithStatement');
 
 var _WithStatement2 = _interopRequireDefault(_WithStatement);
 
+var _WithDistinctStatement = require('./WithDistinctStatement');
+
+var _WithDistinctStatement2 = _interopRequireDefault(_WithDistinctStatement);
+
 var _neo4jDriver = require('neo4j-driver');
 
 var _neo4jDriver2 = _interopRequireDefault(_neo4jDriver);
@@ -147,7 +151,7 @@ var Builder = function () {
         /**
          * Add a 'with' statement to the query
          *
-         * @param  {...String} args Variables/aliases to return
+         * @param  {...String} args Variables/aliases to carry through
          * @return {Builder}
          */
 
@@ -162,6 +166,28 @@ var Builder = function () {
             }
 
             this._statements.push(new (Function.prototype.bind.apply(_WithStatement2.default, [null].concat(args)))());
+
+            return this;
+        }
+
+        /**
+         * Add a 'with distinct' statement to the query
+         *
+         * @param  {...String} args Variables/aliases to carry through
+         * @return {Builder}
+         */
+
+    }, {
+        key: 'withDistinct',
+        value: function withDistinct() {
+            this.whereStatement('WHERE');
+            this.statement();
+
+            for (var _len2 = arguments.length, args = Array(_len2), _key2 = 0; _key2 < _len2; _key2++) {
+                args[_key2] = arguments[_key2];
+            }
+
+            this._statements.push(new (Function.prototype.bind.apply(_WithDistinctStatement2.default, [null].concat(args)))());
 
             return this;
         }
@@ -192,8 +218,8 @@ var Builder = function () {
         value: function where() {
             var _this = this;
 
-            for (var _len2 = arguments.length, args = Array(_len2), _key2 = 0; _key2 < _len2; _key2++) {
-                args[_key2] = arguments[_key2];
+            for (var _len3 = arguments.length, args = Array(_len3), _key3 = 0; _key3 < _len3; _key3++) {
+                args[_key3] = arguments[_key3];
             }
 
             if (!args.length || !args[0]) return this;
@@ -466,8 +492,8 @@ var Builder = function () {
     }, {
         key: 'remove',
         value: function remove() {
-            for (var _len3 = arguments.length, items = Array(_len3), _key3 = 0; _key3 < _len3; _key3++) {
-                items[_key3] = arguments[_key3];
+            for (var _len4 = arguments.length, items = Array(_len4), _key4 = 0; _key4 < _len4; _key4++) {
+                items[_key4] = arguments[_key4];
             }
 
             this._current.remove(items);
@@ -534,8 +560,8 @@ var Builder = function () {
         value: function orderBy() {
             var _this6 = this;
 
-            for (var _len4 = arguments.length, args = Array(_len4), _key4 = 0; _key4 < _len4; _key4++) {
-                args[_key4] = arguments[_key4];
+            for (var _len5 = arguments.length, args = Array(_len5), _key5 = 0; _key5 < _len5; _key5++) {
+                args[_key5] = arguments[_key5];
             }
 
             var order_by = void 0;

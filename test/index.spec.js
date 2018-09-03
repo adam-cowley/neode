@@ -421,10 +421,26 @@ describe('index.js', () => {
             const key = 'name';
             const value = 'FirstTest';
 
-            
             instance.create(label, { [key] : value })
                 .then(res => {
                     return instance.first(label, key, value)
+                        .then(found => {
+                            expect(found).to.be.instanceOf(Node);
+
+                            expect(found.id()).to.equal(res.id());
+                        });
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+
+        it('should find a label by a map of properties', (done) => {
+            const key = 'name';
+            const value = 'FirstMapTest';
+
+            instance.create(label, { [key] : value })
+                .then(res => {
+                    return instance.first(label, { [key] : value })
                         .then(found => {
                             expect(found).to.be.instanceOf(Node);
 

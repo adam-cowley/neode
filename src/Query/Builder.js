@@ -8,6 +8,7 @@ import Where, {OPERATOR_EQUALS} from './Where';
 import WhereId from './WhereId';
 import WhereRaw from './WhereRaw';
 import WithStatement from './WithStatement';
+import WithDistinctStatement from './WithDistinctStatement';
 import neo4j from 'neo4j-driver';
 
 export const mode = {
@@ -87,7 +88,7 @@ export default class Builder {
     /**
      * Add a 'with' statement to the query
      *
-     * @param  {...String} args Variables/aliases to return
+     * @param  {...String} args Variables/aliases to carry through
      * @return {Builder}
      */
     with(...args) {
@@ -95,6 +96,21 @@ export default class Builder {
         this.statement();
 
         this._statements.push(new WithStatement(...args));
+
+        return this;
+    }
+
+    /**
+     * Add a 'with distinct' statement to the query
+     *
+     * @param  {...String} args Variables/aliases to carry through
+     * @return {Builder}
+     */
+    withDistinct(...args) {
+        this.whereStatement('WHERE');
+        this.statement();
+
+        this._statements.push(new WithDistinctStatement(...args));
 
         return this;
     }
@@ -508,7 +524,7 @@ export default class Builder {
      * @return {Promise}
      */
     execute(query_mode = mode.WRITE) {
-        const {query, params} = this.build();
+        const { query, params } = this.build();
 
         switch (query_mode) {
             case mode.WRITE:
