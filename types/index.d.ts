@@ -1,10 +1,6 @@
 import {v1 as neo4j} from 'neo4j-driver';
 
 declare class Neode {
-<<<<<<< HEAD
-
-=======
->>>>>>> release/0.2.0
   schema: Neode.Schema;
 
   /**
@@ -361,11 +357,7 @@ declare namespace Neode {
      * Add a where condition to the current statement.
      *
      * @param  {...mixed} args Argumenta
-<<<<<<< HEAD
-     * @return {Builder}         [description]
-=======
      * @return {Builder}         
->>>>>>> release/0.2.0
      */
     where(...args: Array<string>): Builder;
 
@@ -374,11 +366,7 @@ declare namespace Neode {
      *
      * @param  {String} alias
      * @param  {Int}    value
-<<<<<<< HEAD
-     * @return {Builder}       [description]
-=======
      * @return {Builder}       
->>>>>>> release/0.2.0
      */
     whereId(alias: string, value: number): Builder;
 
