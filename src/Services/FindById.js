@@ -1,72 +1,15 @@
 import Builder, {mode} from '../Query/Builder';
-import { eager } from '../Factory';
+import { eagerNode, } from '../Query/EagerUtils';
 
-export default function Find(neode, model, id) {
+export default function FindById(neode, model, id) {
     const alias = 'this';
-    const output = [alias];
 
     const builder = new Builder(neode);
 
-    builder.match(alias, model)
-        .whereId(alias, id);
-
-    // Load Eager Relationships
-    model.eager().forEach(relationship => {
-        const key = `${eager}${relationship.type()}`;
-
-        builder.optionalMatch(alias)
-            .relationship(relationship.relationship(), relationship.direction())
-            .to(key, relationship.target());
-
-        output.push(`COLLECT(${key}) as ${key}`);
-    });
-
-    return builder.return(output)
+    return builder.match(alias, model)
+        .whereId(alias, id)
+        .return( eagerNode(neode, 1, alias, model) )
         .limit(1)
         .execute(mode.READ)
         .then(res => neode.hydrateFirst(res, alias, model));
-
-
-/*
-    const alias = 'this';
-    const output = [alias];
-
-    // Prefix key on Properties
-    if (properties) {
-        Object.keys(properties).forEach(key => {
-            properties[ `${alias}.${key}` ] = properties[ key ];
-
-            delete properties[ key ];
-        });
-    }
-
-    // Prefix key on Order
-    if (typeof order == 'string') {
-        order = `${alias}.${order}`;
-    }
-    else if (typeof order == 'object') {
-        Object.keys(order).forEach(key => {
-            order[ `${alias}.${key}` ] = order[ key ];
-
-            delete order[ key ];
-        });
-    }
-
-    const builder = new Builder(neode);
-
-    // Match
-    builder.match(alias, model)
-        .where(properties);
-
-
-
-    // Complete Query
-    builder.orderBy(order)
-        .skip(skip)
-        .limit(limit)
-        .return(...output);
-
-    return builder.execute()
-        .then(res => neode.hydrate(res, alias));
-    */
 }

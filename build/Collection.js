@@ -8,7 +8,7 @@ var _createClass = function () { function defineProperties(target, props) { for 
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var NodeCollection = function () {
+var Collection = function () {
 
     /**
      * @constructor
@@ -16,8 +16,8 @@ var NodeCollection = function () {
      * @param  {Node[]} values  Array of Node
      * @return {Collectiob}
      */
-    function NodeCollection(neode, values) {
-        _classCallCheck(this, NodeCollection);
+    function Collection(neode, values) {
+        _classCallCheck(this, Collection);
 
         this._neode = neode;
         this._values = values || [];
@@ -30,7 +30,7 @@ var NodeCollection = function () {
      */
 
 
-    _createClass(NodeCollection, [{
+    _createClass(Collection, [{
         key: "get",
 
 
@@ -101,7 +101,7 @@ var NodeCollection = function () {
         }
     }]);
 
-    return NodeCollection;
+    return Collection;
 }();
 
-exports.default = NodeCollection;
+exports.default = Collection;

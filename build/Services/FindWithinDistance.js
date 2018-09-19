@@ -12,15 +12,24 @@ var _Builder = require('../Query/Builder');
 
 var _Builder2 = _interopRequireDefault(_Builder);
 
-var _Factory = require('../Factory');
+var _EagerUtils = require('../Query/EagerUtils');
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function FindWithinDistance(neode, model, location_property, point, distance, properties, order, limit, skip) {
-    var _builder$orderBy$skip;
-
     var alias = 'this';
-    var output = [alias];
+
+    var builder = new _Builder2.default(neode);
+
+    // Match
+    builder.match(alias, model);
+
+    // Where
+    if (properties) {
+        Object.keys(properties).forEach(function (key) {
+            builder.where(alias + '.' + key, properties[key]);
+        });
+    }
 
     // Prefix key on Properties
     if (properties) {
@@ -31,40 +40,33 @@ function FindWithinDistance(neode, model, location_property, point, distance, pr
         });
     }
 
-    // Prefix key on Order
+    // Distance from Point
+    // TODO: When properties are passed match them as well .where(properties);
+    var pointString = isNaN(point.x) ? 'latitude:' + point.latitude + ', longitude:' + point.longitude : 'x:' + point.x + ', y:' + point.y;
+    if (!isNaN(point.z)) {
+        pointString += ', z:' + point.z;
+    }
+
+    if (!isNaN(point.height)) {
+        pointString += ', height:' + point.height;
+    }
+
+    builder.whereRaw('distance (this.' + location_property + ', point({' + pointString + '})) <= ' + distance);
+
+    // Order
     if (typeof order == 'string') {
         order = alias + '.' + order;
     } else if ((typeof order === 'undefined' ? 'undefined' : _typeof(order)) == 'object') {
         Object.keys(order).forEach(function (key) {
-            order[alias + '.' + key] = order[key];
-
-            delete order[key];
+            builder.orderBy(alias + '.' + key, order[key]);
         });
     }
 
-    var builder = new _Builder2.default(neode);
-    var pointString = isNaN(point.x) ? 'latitude:' + point.latitude + ', longitude:' + point.longitude : 'x:' + point.x + ', y:' + point.y;
-    if (!isNaN(point.z)) pointString += ', z:' + point.z;
-    if (!isNaN(point.height)) pointString += ', height:' + point.height;
-
-    // Match
-    builder.match(alias, model)
-    // TODO When properties are passed match them as well .where(properties);
-    .where('distance (this.' + location_property + ', point({' + pointString + '})) <= ' + distance);
-
-    // Load Eager Relationships
-    model.eager().forEach(function (relationship) {
-        var key = '' + _Factory.eager + relationship.type();
-
-        builder.optionalMatch(alias).relationship(relationship.relationship(), relationship.direction()).to(key, relationship.target());
-
-        output.push('COLLECT(' + key + ') as ' + key);
-    });
+    // Output
+    var output = (0, _EagerUtils.eagerNode)(neode, 1, alias, model);
 
     // Complete Query
-    (_builder$orderBy$skip = builder.orderBy(order).skip(skip).limit(limit)).return.apply(_builder$orderBy$skip, output);
-
-    return builder.execute(_Builder.mode.READ).then(function (res) {
+    return builder.orderBy(order).skip(skip).limit(limit).return(output).execute(_Builder.mode.READ).then(function (res) {
         return neode.hydrate(res, alias);
     });
 }

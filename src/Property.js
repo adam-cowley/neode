@@ -1,3 +1,8 @@
+/**
+ *  Container holding information for a property.
+ * 
+ * TODO: Schema validation to enforce correct data types
+ */
 export default class Property {
     constructor(name, schema) {
         if ( typeof schema == 'string' ) {
@@ -51,5 +56,9 @@ export default class Property {
 
     readonly() {
         return this._readonly || false;
+    }
+
+    convertToInteger() {
+        return this._type == 'int' || this._type == 'integer';
     }
 }

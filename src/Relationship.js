@@ -1,91 +1,139 @@
+import Entity from './Entity';
+import UpdateRelationship from './Services/UpdateRelationship';
+import DeleteRelationship from './Services/DeleteRelationship';
+import { DIRECTION_IN, } from './RelationshipType';
 
-export default class Relationship {
-
+export default class Relationship extends Entity {
     /**
-     * Constructor
-     *
-     * @param  {Neode}            neode         Neode Instance
-     * @param  {RelationshipType} type          Relationship Type definition
-     * @param  {Relationship}     relationship  Neo4j Relationship
-     * @param  {Node}             from          Start node for the relationship
-     * @param  {Node}             to            End node for the relationship
-     * @return {Relationship}
+     * 
+     * @param {Neode}            neode          Neode instance
+     * @param {RelationshipType} definition     Relationship type definition
+     * @param {Integer}          identity       Identity
+     * @param {String}           relationship   Relationship type
+     * @param {Map}              properties     Map of properties for the relationship
+     * @param {Node}             start          Start Node
+     * @param {Node}             end            End Node
+     * @param {String}           node_alias     Alias given to the Node when converting to JSON
      */
-    constructor(neode, type, relationship, from, to) {
-        this._neode = neode;
-        this._type = type;
-        this._relationship = relationship;
-        this._from = from;
-        this._to = to;
-        this._type = type;
+    constructor(neode, definition, identity, type, properties, start, end, node_alias) {
+        super();
 
-        this._deleted = false;
+        this._neode = neode;
+        this._definition = definition;
+        this._identity = identity;
+        this._type = type;
+        this._properties = properties || new Map;
+        this._start = start;
+        this._end = end;
+        this._node_alias = node_alias;
     }
 
-    /**
-     * Relationship Type definition for this node
-     *
-     * @return {RelationshipType}
+    /** 
+     * Get the definition for this relationship
+     * 
+     * @return {Definition}
+     */
+    definition() {
+        return this._definition;
+    }
+
+    /** 
+     * Get the relationship type
      */
     type() {
         return this._type;
     }
 
     /**
-     * Get Internal Relationship ID
-     *
-     * @return {int}
+     * Get the start node for this relationship
+     * 
+     * @return {Node}
      */
-    id() {
-        return this._relationship.identity.toNumber();
+    startNode() {
+        return this._start;
     }
 
     /**
-     * Return Internal Relationship ID as Neo4j Integer
-     *
-     * @return {Integer}
+     * Get the start node for this relationship
+     * 
+     * @return {Node}
      */
-    idInt() {
-        return this._relationship.identity;
+    endNode() {
+        return this._end;
+    }
+
+    /** 
+     * Get the node on the opposite end of the Relationship to the subject
+     * (ie if direction is in, get the end node, otherwise get the start node)
+     */
+    otherNode() {
+        return this._definition.direction() == DIRECTION_IN 
+            ? this.startNode()
+            : this.endNode();
     }
 
     /**
-     * Get Properties for this Relationship
+     * Convert Relationship to a JSON friendly Object
      *
-     * @return {Object}
+     * @return {Promise}
      */
-    properties() {
-        return this._relationship.properties;
+    toJson() {
+        const output = {
+            _id: this.id(),
+            _type: this.type(),
+        };
+
+        const definition = this.definition();
+
+        // Properties
+        definition.properties().forEach((property, key) => {
+            if ( property.hidden() ) {
+                return;
+            }
+
+            if ( this._properties.has(key) ) {
+                output[ key ] = this.valueToJson(property, this._properties.get( key ));
+            }
+        });
+
+        // Get Other Node
+        return this.otherNode().toJson()
+            .then(json => {
+                output[ definition.nodeAlias() ] = json;
+
+                return output;
+            });
     }
 
     /**
-     * Get a property for this node
-     *
-     * @param  {String} property Name of property
-     * @param  {or}     default  Default value to supply if none exists
-     * @return {mixed}
+     * Update the properties for this relationship
+     * 
+     * @param {Object} properties  New properties
+     * @return {Node}
      */
-    get(property, or = null) {
-        return this._relationship.properties.hasOwnProperty(property) ? this._relationship.properties[property] : or;
+    update(properties) {
+        return UpdateRelationship(this._neode, this._model, this._identity, properties)
+            .then(properties => {
+                Object.entries(properties).forEach(( [key, value] ) => {
+                    this._properties.set( key, value );
+                });
+            })
+            .then(() => {
+                return this;
+            });
     }
 
     /**
-     * Get originating node for this relationship
+     * Delete this relationship from the Graph
      *
-     * @return Node
+     * @return {Promise}
      */
-    from() {
-        return this._from;
+    delete() {
+        return DeleteRelationship(this._neode, this._identity)
+            .then(() => {
+                this._deleted = true;
+
+                return this;
+            });
     }
-
-    /**
-     * Get destination node for this relationship
-     *
-     * @return Node
-     */
-    to() {
-        return this._to;
-    }
-
-
 }

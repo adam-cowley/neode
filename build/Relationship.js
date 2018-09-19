@@ -1,129 +1,205 @@
-"use strict";
+'use strict';
 
 Object.defineProperty(exports, "__esModule", {
     value: true
 });
 
+var _slicedToArray = function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i["return"]) _i["return"](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError("Invalid attempt to destructure non-iterable instance"); } }; }();
+
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+var _Entity2 = require('./Entity');
+
+var _Entity3 = _interopRequireDefault(_Entity2);
+
+var _UpdateRelationship = require('./Services/UpdateRelationship');
+
+var _UpdateRelationship2 = _interopRequireDefault(_UpdateRelationship);
+
+var _DeleteRelationship = require('./Services/DeleteRelationship');
+
+var _DeleteRelationship2 = _interopRequireDefault(_DeleteRelationship);
+
+var _RelationshipType = require('./RelationshipType');
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var Relationship = function () {
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+var Relationship = function (_Entity) {
+    _inherits(Relationship, _Entity);
 
     /**
-     * Constructor
-     *
-     * @param  {Neode}            neode         Neode Instance
-     * @param  {RelationshipType} type          Relationship Type definition
-     * @param  {Relationship}     relationship  Neo4j Relationship
-     * @param  {Node}             from          Start node for the relationship
-     * @param  {Node}             to            End node for the relationship
-     * @return {Relationship}
+     * 
+     * @param {Neode}            neode          Neode instance
+     * @param {RelationshipType} definition     Relationship type definition
+     * @param {Integer}          identity       Identity
+     * @param {String}           relationship   Relationship type
+     * @param {Map}              properties     Map of properties for the relationship
+     * @param {Node}             start          Start Node
+     * @param {Node}             end            End Node
+     * @param {String}           node_alias     Alias given to the Node when converting to JSON
      */
-    function Relationship(neode, type, relationship, from, to) {
+    function Relationship(neode, definition, identity, type, properties, start, end, node_alias) {
         _classCallCheck(this, Relationship);
 
-        this._neode = neode;
-        this._type = type;
-        this._relationship = relationship;
-        this._from = from;
-        this._to = to;
-        this._type = type;
+        var _this = _possibleConstructorReturn(this, (Relationship.__proto__ || Object.getPrototypeOf(Relationship)).call(this));
 
-        this._deleted = false;
+        _this._neode = neode;
+        _this._definition = definition;
+        _this._identity = identity;
+        _this._type = type;
+        _this._properties = properties || new Map();
+        _this._start = start;
+        _this._end = end;
+        _this._node_alias = node_alias;
+        return _this;
     }
 
-    /**
-     * Relationship Type definition for this node
-     *
-     * @return {RelationshipType}
+    /** 
+     * Get the definition for this relationship
+     * 
+     * @return {Definition}
      */
 
 
     _createClass(Relationship, [{
-        key: "type",
+        key: 'definition',
+        value: function definition() {
+            return this._definition;
+        }
+
+        /** 
+         * Get the relationship type
+         */
+
+    }, {
+        key: 'type',
         value: function type() {
             return this._type;
         }
 
         /**
-         * Get Internal Relationship ID
-         *
-         * @return {int}
+         * Get the start node for this relationship
+         * 
+         * @return {Node}
          */
 
     }, {
-        key: "id",
-        value: function id() {
-            return this._relationship.identity.toNumber();
+        key: 'startNode',
+        value: function startNode() {
+            return this._start;
         }
 
         /**
-         * Return Internal Relationship ID as Neo4j Integer
-         *
-         * @return {Integer}
+         * Get the start node for this relationship
+         * 
+         * @return {Node}
          */
 
     }, {
-        key: "idInt",
-        value: function idInt() {
-            return this._relationship.identity;
+        key: 'endNode',
+        value: function endNode() {
+            return this._end;
+        }
+
+        /** 
+         * Get the node on the opposite end of the Relationship to the subject
+         * (ie if direction is in, get the end node, otherwise get the start node)
+         */
+
+    }, {
+        key: 'otherNode',
+        value: function otherNode() {
+            return this._definition.direction() == _RelationshipType.DIRECTION_IN ? this.startNode() : this.endNode();
         }
 
         /**
-         * Get Properties for this Relationship
+         * Convert Relationship to a JSON friendly Object
          *
-         * @return {Object}
+         * @return {Promise}
          */
 
     }, {
-        key: "properties",
-        value: function properties() {
-            return this._relationship.properties;
+        key: 'toJson',
+        value: function toJson() {
+            var _this2 = this;
+
+            var output = {
+                _id: this.id(),
+                _type: this.type()
+            };
+
+            var definition = this.definition();
+
+            // Properties
+            definition.properties().forEach(function (property, key) {
+                if (property.hidden()) {
+                    return;
+                }
+
+                if (_this2._properties.has(key)) {
+                    output[key] = _this2.valueToJson(property, _this2._properties.get(key));
+                }
+            });
+
+            // Get Other Node
+            return this.otherNode().toJson().then(function (json) {
+                output[definition.nodeAlias()] = json;
+
+                return output;
+            });
         }
 
         /**
-         * Get a property for this node
-         *
-         * @param  {String} property Name of property
-         * @param  {or}     default  Default value to supply if none exists
-         * @return {mixed}
+         * Update the properties for this relationship
+         * 
+         * @param {Object} properties  New properties
+         * @return {Node}
          */
 
     }, {
-        key: "get",
-        value: function get(property) {
-            var or = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : null;
+        key: 'update',
+        value: function update(properties) {
+            var _this3 = this;
 
-            return this._relationship.properties.hasOwnProperty(property) ? this._relationship.properties[property] : or;
+            return (0, _UpdateRelationship2.default)(this._neode, this._model, this._identity, properties).then(function (properties) {
+                Object.entries(properties).forEach(function (_ref) {
+                    var _ref2 = _slicedToArray(_ref, 2),
+                        key = _ref2[0],
+                        value = _ref2[1];
+
+                    _this3._properties.set(key, value);
+                });
+            }).then(function () {
+                return _this3;
+            });
         }
 
         /**
-         * Get originating node for this relationship
+         * Delete this relationship from the Graph
          *
-         * @return Node
+         * @return {Promise}
          */
 
     }, {
-        key: "from",
-        value: function from() {
-            return this._from;
-        }
+        key: 'delete',
+        value: function _delete() {
+            var _this4 = this;
 
-        /**
-         * Get destination node for this relationship
-         *
-         * @return Node
-         */
+            return (0, _DeleteRelationship2.default)(this._neode, this._identity).then(function () {
+                _this4._deleted = true;
 
-    }, {
-        key: "to",
-        value: function to() {
-            return this._to;
+                return _this4;
+            });
         }
     }]);
 
     return Relationship;
-}();
+}(_Entity3.default);
 
 exports.default = Relationship;

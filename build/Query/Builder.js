@@ -25,6 +25,10 @@ var _Statement = require('./Statement');
 
 var _Statement2 = _interopRequireDefault(_Statement);
 
+var _Property = require('./Property');
+
+var _Property2 = _interopRequireDefault(_Property);
+
 var _WhereStatement = require('./WhereStatement');
 
 var _WhereStatement2 = _interopRequireDefault(_WhereStatement);
@@ -44,6 +48,10 @@ var _WhereRaw2 = _interopRequireDefault(_WhereRaw);
 var _WithStatement = require('./WithStatement');
 
 var _WithStatement2 = _interopRequireDefault(_WithStatement);
+
+var _WithDistinctStatement = require('./WithDistinctStatement');
+
+var _WithDistinctStatement2 = _interopRequireDefault(_WithDistinctStatement);
 
 var _neo4jDriver = require('neo4j-driver');
 
@@ -70,6 +78,7 @@ var Builder = function () {
         this._statements = [];
         this._current;
         this._where;
+        this._set_count = 0;
     }
 
     /**
@@ -112,18 +121,19 @@ var Builder = function () {
         /**
          * Match a Node by a definition
          *
-         * @param  {String} alias      Alias in query
-         * @param  {Model}  model      Model definition
-         * @return {Builder}           Builder
+         * @param  {String} alias           Alias in query
+         * @param  {Model|String}  model    Model definition
+         * @param  {Object|null}   properties   Inline Properties
+         * @return {Builder}                Builder
          */
 
     }, {
         key: 'match',
-        value: function match(alias, model) {
+        value: function match(alias, model, properties) {
             this.whereStatement('WHERE');
             this.statement();
 
-            this._current.match(new _Match2.default(alias, model));
+            this._current.match(new _Match2.default(alias, model, this._convertPropertyMap(alias, properties)));
 
             return this;
         }
@@ -141,7 +151,7 @@ var Builder = function () {
         /**
          * Add a 'with' statement to the query
          *
-         * @param  {...String} args Variables/aliases to return
+         * @param  {...String} args Variables/aliases to carry through
          * @return {Builder}
          */
 
@@ -156,6 +166,28 @@ var Builder = function () {
             }
 
             this._statements.push(new (Function.prototype.bind.apply(_WithStatement2.default, [null].concat(args)))());
+
+            return this;
+        }
+
+        /**
+         * Add a 'with distinct' statement to the query
+         *
+         * @param  {...String} args Variables/aliases to carry through
+         * @return {Builder}
+         */
+
+    }, {
+        key: 'withDistinct',
+        value: function withDistinct() {
+            this.whereStatement('WHERE');
+            this.statement();
+
+            for (var _len2 = arguments.length, args = Array(_len2), _key2 = 0; _key2 < _len2; _key2++) {
+                args[_key2] = arguments[_key2];
+            }
+
+            this._statements.push(new (Function.prototype.bind.apply(_WithDistinctStatement2.default, [null].concat(args)))());
 
             return this;
         }
@@ -177,8 +209,8 @@ var Builder = function () {
         /**
          * Add a where condition to the current statement.
          *
-         * @param  {...mixed} args Argumenta
-         * @return {Builder}         [description]
+         * @param  {...mixed} args Arguments
+         * @return {Builder}         
          */
 
     }, {
@@ -186,8 +218,8 @@ var Builder = function () {
         value: function where() {
             var _this = this;
 
-            for (var _len2 = arguments.length, args = Array(_len2), _key2 = 0; _key2 < _len2; _key2++) {
-                args[_key2] = arguments[_key2];
+            for (var _len3 = arguments.length, args = Array(_len3), _key3 = 0; _key3 < _len3; _key3++) {
+                args[_key3] = arguments[_key3];
             }
 
             if (!args.length || !args[0]) return this;
@@ -214,8 +246,6 @@ var Builder = function () {
                 } else {
                     this._where.append(new _WhereRaw2.default(args[0]));
                 }
-            } else if (args.length == 1) {
-                this._where.append(new _WhereRaw2.default(args[0]));
             } else {
                 var _args3 = args,
                     _args4 = _slicedToArray(_args3, 3),
@@ -237,7 +267,7 @@ var Builder = function () {
          *
          * @param  {String} alias
          * @param  {Int}    value
-         * @return {Builder}       [description]
+         * @return {Builder}       
          */
 
     }, {
@@ -248,6 +278,21 @@ var Builder = function () {
             this._params[param] = _neo4jDriver2.default.int(value);
 
             this._where.append(new _WhereId2.default(alias, param));
+
+            return this;
+        }
+
+        /**
+         * Add a raw where clause
+         *
+         * @param  {String} clause
+         * @return {Builder}       
+         */
+
+    }, {
+        key: 'whereRaw',
+        value: function whereRaw(clause) {
+            this._where.append(new _WhereRaw2.default(clause));
 
             return this;
         }
@@ -282,6 +327,176 @@ var Builder = function () {
             var _current2;
 
             (_current2 = this._current).detachDelete.apply(_current2, arguments);
+
+            return this;
+        }
+
+        /**
+         * Start a Create Statement by alias/definition
+         *
+         * @param  {String} alias               Alias in query
+         * @param  {Model|String}  model        Model definition
+         * @param  {Object|null}   properties   Inline Properties
+         * @return {Builder}                    Builder
+         */
+
+    }, {
+        key: 'create',
+        value: function create(alias, model, properties) {
+            this.whereStatement('WHERE');
+            this.statement('CREATE');
+
+            this._current.match(new _Match2.default(alias, model, this._convertPropertyMap(alias, properties)));
+
+            return this;
+        }
+
+        /**
+         * Convert a map of properties into an Array of 
+         * 
+         * @param {Object|null} properties 
+         */
+
+    }, {
+        key: '_convertPropertyMap',
+        value: function _convertPropertyMap(alias, properties) {
+            var _this2 = this;
+
+            if (properties) {
+                return Object.keys(properties).map(function (key) {
+                    var property_alias = alias + '_' + key;
+
+                    _this2._params[property_alias] = properties[key];
+
+                    return new _Property2.default(key, property_alias);
+                });
+            }
+
+            return [];
+        }
+
+        /**
+         * Start a Merge Statement by alias/definition
+         *
+         * @param  {String}        alias        Alias in query
+         * @param  {Model|String}  model        Model definition
+         * @param  {Object|null}   properties   Inline Properties
+         * @return {Builder}                    Builder
+         */
+
+    }, {
+        key: 'merge',
+        value: function merge(alias, model, properties) {
+            this.whereStatement('WHERE');
+            this.statement('MERGE');
+
+            this._current.match(new _Match2.default(alias, model, this._convertPropertyMap(alias, properties)));
+
+            return this;
+        }
+
+        /**
+         * Set a property
+         * 
+         * @param {String|Object} property   Property in {alias}.{property} format
+         * @param {Mixed}         value      Value
+         */
+
+    }, {
+        key: 'set',
+        value: function set(property, value) {
+            var _this3 = this;
+
+            // Support a map of properties
+            if (!value && property instanceof Object) {
+                Object.keys(property).forEach(function (key) {
+                    _this3.set(key, property[key]);
+                });
+            } else {
+                var alias = 'set_' + this._set_count;
+                this._params[alias] = value;
+
+                this._set_count++;
+
+                this._current.set(property, alias);
+            }
+
+            return this;
+        }
+
+        /**
+         * Set a property
+         * 
+         * @param {String|Object} property   Property in {alias}.{property} format
+         * @param {Mixed}         value      Value
+         */
+
+    }, {
+        key: 'onCreateSet',
+        value: function onCreateSet(property, value) {
+            var _this4 = this;
+
+            // Support a map of properties
+            if (!value && property instanceof Object) {
+                Object.keys(property).forEach(function (key) {
+                    _this4.onCreateSet(key, property[key]);
+                });
+            } else {
+                var alias = 'set_' + this._set_count;
+                this._params[alias] = value;
+
+                this._set_count++;
+
+                this._current.onCreateSet(property, alias);
+            }
+
+            return this;
+        }
+
+        /**
+         * Set a property
+         * 
+         * @param {String|Object} property   Property in {alias}.{property} format
+         * @param {Mixed}         value      Value
+         */
+
+    }, {
+        key: 'onMatchSet',
+        value: function onMatchSet(property, value) {
+            var _this5 = this;
+
+            // Support a map of properties
+            if (!value && property instanceof Object) {
+                Object.keys(property).forEach(function (key) {
+                    _this5.onMatchSet(key, property[key]);
+                });
+            } else {
+                var alias = 'set_' + this._set_count;
+                this._params[alias] = value;
+
+                this._set_count++;
+
+                this._current.onMatchSet(property, alias);
+            }
+
+            return this;
+        }
+
+        /**
+         * Remove properties or labels in {alias}.{property} 
+         * or {alias}:{Label} format
+         * 
+         * @param {[String]} items 
+         */
+
+    }, {
+        key: 'remove',
+        value: function remove() {
+            for (var _len4 = arguments.length, items = Array(_len4), _key4 = 0; _key4 < _len4; _key4++) {
+                items[_key4] = arguments[_key4];
+            }
+
+            this._current.remove(items);
 
             return this;
         }
@@ -343,10 +558,10 @@ var Builder = function () {
     }, {
         key: 'orderBy',
         value: function orderBy() {
-            var _this2 = this;
+            var _this6 = this;
 
-            for (var _len3 = arguments.length, args = Array(_len3), _key3 = 0; _key3 < _len3; _key3++) {
-                args[_key3] = arguments[_key3];
+            for (var _len5 = arguments.length, args = Array(_len5), _key5 = 0; _key5 < _len5; _key5++) {
+                args[_key5] = arguments[_key5];
             }
 
             var order_by = void 0;
@@ -357,7 +572,7 @@ var Builder = function () {
             } else if (Array.isArray(args[0])) {
                 // Handle array of where's
                 args[0].forEach(function (arg) {
-                    _this2.orderBy(arg);
+                    _this6.orderBy(arg);
                 });
             }
             // TODO: Ugly, stop supporting this
@@ -367,7 +582,7 @@ var Builder = function () {
                 } else if (_typeof(args[0]) == 'object') {
                     // Assume {key: order}
                     Object.keys(args[0]).forEach(function (key) {
-                        _this2.orderBy(key, args[0][key]);
+                        _this6.orderBy(key, args[0][key]);
                     });
                 } else if (args[0]) {
                     // Assume orderBy(what, 'ASC')
@@ -401,15 +616,16 @@ var Builder = function () {
 
         /**
          * Complete a relationship
-         * @param  {String} alias Alias
-         * @param  {Model} model  Model definition
+         * @param  {String} alias       Alias
+         * @param  {Model}  model       Model definition
+         * @param  {Object} properties  Properties
          * @return {Builder}
          */
 
     }, {
         key: 'to',
-        value: function to(alias, model) {
-            this._current.match(new _Match2.default(alias, model));
+        value: function to(alias, model, properties) {
+            this._current.match(new _Match2.default(alias, model, this._convertPropertyMap(properties)));
 
             return this;
         }
@@ -423,9 +639,26 @@ var Builder = function () {
     }, {
         key: 'toAnything',
         value: function toAnything() {
-            this._current.toAnything();
+            this._current.match(new _Match2.default());
 
             return this;
+        }
+
+        /** 
+         * Build the pattern without any keywords
+         * 
+         * @return {String}
+         */
+
+    }, {
+        key: 'pattern',
+        value: function pattern() {
+            this.whereStatement();
+            this.statement();
+
+            return this._statements.map(function (statement) {
+                return statement.toString(false);
+            }).join('\n');
         }
 
         /**
@@ -455,22 +688,20 @@ var Builder = function () {
         /**
          * Execute the query
          *
+         * @param  {String}  query_mode
          * @return {Promise}
          */
 
     }, {
         key: 'execute',
         value: function execute() {
-            var mode = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : "WRITE";
+            var query_mode = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : mode.WRITE;
 
             var _build = this.build(),
                 query = _build.query,
                 params = _build.params;
 
-            switch (mode) {
-                case mode.READ:
-                    return this._neode.readCypher(query, params);
-
+            switch (query_mode) {
                 case mode.WRITE:
                     return this._neode.writeCypher(query, params);
 

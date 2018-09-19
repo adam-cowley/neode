@@ -101,7 +101,7 @@ var ModelMap = function () {
                         name = _entry[0],
                         definition = _entry[1]; // eslint-disable-line no-unused-vars
 
-                    if (definition.labels().join(':') == labels.join(':')) {
+                    if (definition.labels().sort().join(':') == labels.sort().join(':')) {
                         return definition;
                     }
                 }

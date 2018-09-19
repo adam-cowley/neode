@@ -26,7 +26,17 @@ var Relationship = function () {
             var dir_in = this._direction == _RelationshipType.DIRECTION_IN || this._direction == _RelationshipType.ALT_DIRECTION_IN ? '<' : '';
             var dir_out = this._direction == _RelationshipType.DIRECTION_OUT || this._direction == _RelationshipType.ALT_DIRECTION_OUT ? '>' : '';
             var alias = this._alias ? '' + this._alias : '';
-            var relationship = this._relationship ? ':`' + this._relationship + '`' : '';
+
+            var relationship = this._relationship || '';
+
+            if (Array.isArray(relationship)) {
+                relationship = relationship.join('`|`');
+            }
+
+            if (relationship != '') {
+                relationship = ':`' + relationship + '`';
+            }
+
             var traversals = this._traversals ? '*' + this._traversals : '';
 
             var rel = this._relationship || this._alias || this._traversals ? '[' + alias + relationship + traversals + ']' : '';

@@ -1,53 +1,39 @@
 import {assert, expect} from 'chai';
 import Model from '../src/Model';
-import Node from '../src/Node';
-import RelationshipType, {DIRECTION_IN} from '../src/RelationshipType';
-import Relationship from '../src/Relationship';
-import uuid from 'uuid';
+import RelationshipType from '../src/RelationshipType';
+import Property from '../src/Property';
 
 describe('Model.js', () => {
-    const instance = require('./instance');
-    const label = 'ModelTest';
+    let instance;
+    let model;
+    const name = 'ModelTest';
     const schema = {
-        labels: ['Test', 'ModelTest'],
-
-        id: {
+        labels: ['Test', 'Labels'],
+        uuid: {
             type: 'uuid',
             primary: true,
         },
-        name: {
-            type: 'string',
-            required: true,
-            alphanumberic: true,
-            min: 3,
-            max: 20,
-            index: true,
-        },
-        random: {
-            type: 'float',
-            required: true,
-            default: function() {
-                return Math.random();
-            },
-            unique: true,
-            protected: true,
+        boolean: 'boolean',
+        int: 'int',
+        integer: 'integer',
+        number: {
+            type: 'number',
             hidden: true,
+            readonly: true,
         },
-        defaulted: {
+        string: {
             type: 'string',
-            default: 'Default',
+            index: true,
+            unique: true,
         },
-        age: 'int',
-        living: 'boolean',
-
-        knows: {
+        relationship: {
             type: 'relationship',
-            relationship: 'KNOWS',
-            direction: 'OUT',
-            target: label,
+            relationship: 'RELATIONSHIP',
+            target: 'ModelTest',
             eager: true,
-            cascade: 'delete',
+            alias: 'nodeattheend',
             properties: {
+<<<<<<< HEAD
                 since: {
                     type: 'number',
                     required: true,
@@ -94,91 +80,77 @@ describe('Model.js', () => {
             since: {
                 type: 'number',
                 required: true,
+=======
+                updated: 'boolean',
+                default: false,
+>>>>>>> release/0.2.0
             },
-            defaulted: {
-                type: 'string',
-                default: 'default'
-            }
-        });
+        },
+        relationships: {
+            type: 'relationships',
+            relationship: 'RELATIONSHIPS',
+            target: 'ModelTest',
+            eager: false,
+        },
+        node: {
+            type: 'node',
+            relationship: 'NODE',
+            target: 'ModelTest',
+            eager: true,
+        },
+        nodes: {
+            type: 'nodes',
+            relationship: 'NODES',
+            target: 'ModelTest',
+            eager: false,
+        },
+    };
 
-        expect(rel).to.be.an.instanceOf(RelationshipType);
+    before(() => {
+        instance = require('./instance')();
+        model = instance.model(name, schema);
     });
 
-    it('should return a relationship if no extra parameters are passed', () => {
-        const rel = instance.model(label).relationship('known_by');
-
-        expect(rel).to.be.an.instanceOf(RelationshipType);
-    });
-
-    it('should create a new node with default values', (done) => {
-        Thing.create(create_data)
-            .then(res => {
-                created = res;
-
-                expect(res).to.be.an.instanceOf(Node);
-                expect(res.get('name')).to.equal(create_data.name);
-                expect(res.get('id')).to.equal(create_data.id);
-                expect(res.get('age')).to.equal(create_data.age);
-                expect(res.get('living')).to.equal(create_data.living);
-                expect(res.get('random')).to.be.a('number');
-
-                expect(res.get('defaulted')).to.equal(schema.defaulted.default);
+    after(done => {
+        instance.deleteAll(name)
+            .then(() => {
+                return instance.close()
             })
             .then(() => done())
             .catch(e => done(e));
     });
 
-    it('should throw exception when validation fails', (done) => {
-        const data = {
-            name: null
-        };
+    describe('::constructor', () => {
+        it('should construct', () => {
+            expect( model.name() ).to.equal(name);
+            expect( model.labels() ).to.deep.equal(schema.labels.sort());
 
-        Thing.create(data)
-            .then(res => {
-                expect(false).to.equal(true, 'This should throw an exception');
+            expect( model.primaryKey() ).to.deep.equal('uuid');
+
+            // Check Properties
+            const props = ['uuid', 'boolean', 'number', 'string', 'int', 'integer'];
+            expect( model.properties().size ).to.equal( props.length );
+            
+            props.forEach(name => {
+                const prop = model.properties().get(name);
+
+                expect( prop ).to.be.an.instanceof(Property)
+                expect( prop.type() ).to.equal(name);
             })
-            .catch(e => {
-                expect(e).to.be.instanceOf(Error);
-                expect(e.details).to.be.an('Object');
+            
+            // Check properties have been set
+            const uuid = model.properties().get('uuid');
+            expect( uuid.primary() ).to.equal(true);
 
-                expect(e.details.name).to.be.an('array');
-            })
-            .then(done)
-            .catch(done);
-    });
+            expect( model.properties().get('string').indexed() ).to.equal(true);
+            expect( model.properties().get('string').unique() ).to.equal(true);
 
-    it('should create an outgoing relationship', (done) => {
-        let relation;
-        const properties = {
-            since: 2017
-        };
+            expect( model.properties().get('number').readonly() ).to.equal(true);
+            expect( model.properties().get('number').hidden() ).to.equal(true);
 
-        instance.model(label).create({
-            id: uuid.v4(),
-            name: 'Relation',
-            age: 88,
-            living: true
-        })
-        .then(res => {
-            relation = res;
+            expect( model.hidden() ).to.deep.equal(['number']);
 
-            return created.relateTo(relation, 'knows', properties);
-        })
-        .then(res => {
-            expect(res).to.be.an.instanceOf(Relationship);
-            expect(res.type().relationship()).to.equal('KNOWS');
-            expect(res.type().type()).to.equal('knows');
-            expect(res.from()).to.equal(created);
-            expect(res.to()).to.equal(relation);
-            expect(res.properties()).to.be.an('object');
-            expect(res.get('since')).to.equal(properties.since);
-            expect(res.get('defaulted')).to.equal(schema.knows.properties.defaulted.default);
-
-            done();
-        })
-        .catch(e => done(e));
-    });
-
+<<<<<<< HEAD
     it('should force create an outgoing relationship', (done) => {
         let relation;
         const properties = {
@@ -216,152 +188,84 @@ describe('Model.js', () => {
         const properties = {
             since: 2017
         };
+=======
+            expect( model.indexes() ).to.deep.equal(['string']);
+>>>>>>> release/0.2.0
 
-        instance.model(label).create({
-            id: uuid.v4(),
-            name: 'Incoming',
-            age: 100,
-            living: true
-        })
-        .then(res => {
-            relation = res;
+            // Check Relationships
+            expect( model.relationships().size ).to.equal( 4 )
 
-            return created.relateTo(relation, 'known_by', properties);
-        })
-        .then(res => {
-            expect(res).to.be.an.instanceOf(Relationship);
-            expect(res.type().relationship()).to.equal('KNOWN_BY');
-            expect(res.type().type()).to.equal('known_by');
-            expect(res.to()).to.equal(created);
-            expect(res.from()).to.equal(relation);
+            const rels = [ 'relationship', 'relationships', 'node', 'nodes' ];
 
-            done();
-        })
-        .catch(e => done(e));
-    });
+            rels.forEach(rel => {
+                expect( model.relationships().get(rel) ).to.be.an.instanceof(RelationshipType)
+            })
 
-    it('should merge a model on its indexes', (done) => {
-        const {id, name, random} = created.properties();
-
-        const merge_data = Object.assign({}, {id, name, random}, {
-            living: false
         });
 
-        Thing.merge(merge_data)
+        it('should guess labels and primary key', () => {
+            const model = new Model(instance, name, {});
+
+            expect( model.name() ).to.equal(name);
+            expect( model.labels() ).to.deep.equal(['ModelTest']);
+
+            expect( model.primaryKey() ).to.deep.equal('modeltest_id');
+        });
+    });
+
+    describe('::update', () => {
+        it('should update a nodes properties', done => {
+            instance.create(name, { string: 'old' })
+                .then(node => {
+                    return node.update({ string: 'new' })
+                })
+                .then(node => {
+                    expect( node.get('string') ).to.equal('new');
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+    });
+
+    describe('Relationships', () => {
+        it('should create, update and delete a relationship', done => {
+            Promise.all([
+                instance.create(name, { string: 'first' }),
+                instance.create(name, { string: 'second' }),
+            ])
+            .then(([ first, second]) => {
+                return first.relateTo(second, 'relationship')
+            })
+            .then(relationship => {
+                return relationship.update({ updated: true })
+                    .then(res => {
+                        expect( res.get('updated') ).to.be.true
+
+                        return instance.cypher('MATCH ()-[r]->() WHERE id(r) = {id} RETURN r.updated AS updated', { id: res.identity() })
+                            .then(( {records} ) => {
+                                expect( records[0].get('updated') ).to.be.true
+                                
+                                return res;
+                            });
+                    });
+            })
+            .then(relationship => {
+                return relationship.delete();
+            })
             .then(res => {
-                expect(res).to.be.an.instanceOf(Node);
-
-                // ID's should match up
-                expect(res.id()).to.equal(created.id());
-
-                // Shouldn't overwrite protected fields
-                expect(res.get('id')).to.equal(created.get('id'));
-
-                // TODO: Should set new values
-                // Returning false, yet property is successfully set
-                // expect(res.get('living')).to.equal(merge_data.living);
-
+                return instance.cypher('MATCH ()-[r]->() WHERE id(r) = {id} RETURN r', { id: res.identity() })
+                    .then(res => {
+                        expect( res.records.length ).to.equal(0);
+                    });
             })
             .then(() => done())
             .catch(e => done(e));
+        });
+
+
     });
 
-    it('should not try to overwrite primary keys', (done) => {
-        let id, name, random;
-
-        Thing.create({name: "name"})
-            .then(thing => {
-                id = created.get('id');
-                name = created.get('name');
-                random = created.get('random');
-
-                return Thing.merge({name, random})
-            })
-            .then(merged => {
-                expect(merged.get('id')).to.equal(id);
-                expect(merged.get('name')).to.equal(name);
-                expect(merged.get('random')).to.equal(random);
-            })
-            .then(() => done())
-            .catch(e => done(e));
-    });
-
-    it('should merge on specific properties', (done) => {
-        const match = {
-            id: created.get('id')
-        };
-        const set = Object.assign({name: 'Specific Merge', living: true});
-        Thing.mergeOn(match, set)
-            .then(res => {
-                expect(res).to.be.an.instanceOf(Node);
-
-                // ID's should match up
-                expect(res.id()).to.equal(created.id());
-
-                // Shouldn't overwrite protected fields
-                expect(res.get('id')).to.equal(created.get('id'));
-
-                // Should set new values
-                expect(res.get('living')).to.equal(true);
-            })
-            .then(() => done())
-            .catch(e => done(e));
-    });
-
-    it('should update a node', (done) => {
-        const data = {
-            name: 'Updated Tester'
-        };
-
-        created.update(data)
-            .then(res => {
-                expect(res).to.be.an.instanceOf(Node);
-                expect(res.id()).to.equal(created.id());
-                expect(res.get('name')).to.equal(data.name);
-            })
-            .then(done)
-            .catch(e => done(e));
-    });
-
-    it('should convert to string and return the primary key', () => {
-        const str = created.toString();
-
-        expect(str).to.be.a('string');
-        expect(str).to.equal(created.get('id'));
-    });
-
-    it('should convert to JSON object and hide hidden properties', (done) => {
-        const expected = ['_id', 'id', 'name', 'living', 'defaulted', 'age'];
-        const hidden = ['random'];
-
-        created.toJson()
-            .then(json => {
-                expected.forEach(key => {
-                    expect(json).to.have.property(key);
-                });
-
-                hidden.forEach(key => {
-                    expect(json).to.not.have.property(key);
-                });
-            })
-            .then(() => done())
-            .catch(e => done(e));
-    });
-
-    it('should delete a node', (done) => {
-        const id = created.idInt();
-
-        created.delete()
-            .then(() => {
-                return instance.cypher('MATCH (n) WHERE id(n) = {id} RETURN n', {id});
-            })
-            .then(res => {
-                expect(res.records.length).to.equal(0);
-            })
-            .then(done)
-            .catch(e => done(e));
-    });
-
+<<<<<<< HEAD
     it('should cascade delete a node', (done) => {
         Promise.all([
             Thing.create({id: uuid.v4(), 'name': "Parent"}),
@@ -395,4 +299,6 @@ describe('Model.js', () => {
         .then(done)
         .catch(e => done(e))
     });
+=======
+>>>>>>> release/0.2.0
 });

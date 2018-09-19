@@ -3,15 +3,18 @@
 Object.defineProperty(exports, "__esModule", {
     value: true
 });
+
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
+
 exports.default = Validator;
 
 var _joi = require('joi');
 
 var _joi2 = _interopRequireDefault(_joi);
 
-var _Model = require('../Model');
+var _Node = require('../Node');
 
-var _Model2 = _interopRequireDefault(_Model);
+var _Node2 = _interopRequireDefault(_Node);
 
 var _ValidationError = require('../ValidationError');
 
@@ -24,6 +27,10 @@ var joi_options = {
     abortEarly: false
 };
 
+var ignore = ['type', 'default'];
+var booleans = ['optional', 'forbidden', 'strip', 'positive', 'negative', 'port', 'integer', 'iso', 'isoDate', 'insensitive', 'required', 'truncate', 'creditCard', 'alphanum', 'token', 'hex', 'hostname', 'lowercase', 'uppercase'];
+var booleanOrOptions = ['email', 'ip', 'uri', 'base64', 'normalize', 'hex'];
+
 function BuildValidationSchema(model) {
     var schema = model.schema();
     var output = {};
@@ -31,26 +38,39 @@ function BuildValidationSchema(model) {
     Object.keys(schema).forEach(function (key) {
         var config = typeof schema[key] == 'string' ? { type: schema[key] } : schema[key];
 
-        // Remove Default
-        // delete config.type;
-        // delete config.default;
-
         var validation = false;
 
         switch (config.type) {
+            // TODO: Recursive creation, validate nodes and relationships
             case 'node':
-                validation = _joi2.default.object().type(_Model2.default);
+                validation = _joi2.default.alternatives([_joi2.default.object().type(_Node2.default), _joi2.default.string(), _joi2.default.number(), _joi2.default.object()]);
                 break;
 
             case 'uuid':
-                validation = _joi2.default.string();
+                validation = _joi2.default.string().guid({ version: 'uuidv4' });
                 break;
 
-            //  TODO: Support more types
             case 'string':
             case 'number':
             case 'boolean':
                 validation = _joi2.default[config.type]();
+                break;
+
+            case 'date':
+            case 'datetime':
+            case 'time':
+            case 'localdate':
+            case 'localtime':
+                validation = _joi2.default.date();
+                break;
+
+            case 'int':
+            case 'integer':
+                validation = _joi2.default.number().integer();
+                break;
+
+            case 'float':
+                validation = _joi2.default.number();
                 break;
 
             default:
@@ -59,10 +79,32 @@ function BuildValidationSchema(model) {
         }
 
         // Apply additional Validation
-        var ignore = ['type', 'default'];
         Object.keys(config).forEach(function (validator) {
-            if (ignore.indexOf(validator) == -1 && validation[validator]) {
-                validation = validation[validator](config[validator]);
+            var options = config[validator];
+
+            if (validator == 'regex') {
+                if (options instanceof RegExp) {
+                    validation = validation.regex(options);
+                } else {
+                    var pattern = options.pattern;
+                    delete options.pattern;
+
+                    validation = validation.regex(pattern, options);
+                }
+            } else if (validator == 'replace') {
+                validation = validation.replace(options.pattern, options.replace);
+            } else if (booleanOrOptions.indexOf(validator) > -1) {
+                if ((typeof options === 'undefined' ? 'undefined' : _typeof(options)) == 'object') {
+                    validation = validation[validator](options);
+                } else if (options) {
+                    validation = validation[validator]();
+                }
+            } else if (booleans.indexOf(validator) > -1) {
+                if (options === true) {
+                    validation = validation[validator](options);
+                }
+            } else if (ignore.indexOf(validator) == -1 && validation[validator]) {
+                validation = validation[validator](options);
             }
         });
 
@@ -74,6 +116,8 @@ function BuildValidationSchema(model) {
 
 /**
  * Run Validation
+ * 
+ * TODO: Recursive Validation
  *
  * @param  {Neode} neode
  * @param  {Model} model

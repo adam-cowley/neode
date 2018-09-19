@@ -1,0 +1,14 @@
+language: node_js
+
+node_js:
+  - "7"
+  - "6"
+
+script:
+  - "npm run test"
+
+services:
+  - neo4j
+
+before_script:
+  - neo4j-admin set-initial-password TravisCI

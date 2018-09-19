@@ -4,26 +4,33 @@ import Schema from '../src/Schema';
 import uuid from 'uuid';
 
 describe('Schema.js', () => {
-    const instance = require('./instance');
-
     const label = 'SchemaThing';
+    let instance;
 
-    instance.model(label, {
-        id: {
-            type: 'string',
-            required: true,
-            unique: true,
-        },
-        name: {
-            type: 'string',
-            required: true
-        },
-        age: {
-            type: 'number',
-            index: true
-        }
+    before(() => {
+        instance = require('./instance')();
+
+        instance.model(label, {
+            id: {
+                type: 'string',
+                required: true,
+                unique: true,
+            },
+            name: {
+                type: 'string',
+                required: true
+            },
+            age: {
+                type: 'number',
+                index: true
+            }
+        });
     });
 
+    after(() => {
+        instance.close();
+    });
+   
     it('should construct', () => {
         assert.instanceOf(instance.schema, Schema);
         assert.isFunction(instance.schema.install);
@@ -35,19 +42,9 @@ describe('Schema.js', () => {
         instance.schema.install()
             .then(() => instance.cypher('CALL db.constraints'))
             .then(constraints => {
-                const expected = {
-                    id: {unique: true},
-                };
-                let actual = {
-                    id: {},
-                    name: {}
-                };
-
-                // Enterprise?
-                if (instance.enterprise()) {
-                    expected.id.required = true;
-                    expected.name = {index: true};
-                }
+                let id_unique = false;
+                let id_exists = false;
+                let name_exists = false;
 
                 // Check Constraints
                 const is_unique = /CONSTRAINT ON \( ([a-z0-9]+):([A-Za-z0-9]+) \) ASSERT ([a-z0-9]+).([A-Za-z0-9]+) IS UNIQUE/;
@@ -60,23 +57,29 @@ describe('Schema.js', () => {
                     const exists = description.match(will_exist);
 
                     if (unique && unique[2] == label) {
-                        if (!actual[ unique[4] ]) {
-                            actual[ unique[4] ] = {}
+                        if ( unique[4] == 'id' ) {
+                            id_unique = true;
                         }
-                        actual[ unique[4] ].unique = true
                     }
 
-                    if (exists && exists[2] !== label) {
-                        if (!actual[ exists[4] ]) {
-                            actual[ exists[4] ] = {}
+                    if (exists && exists[2] == label) {
+                        if ( exists[4] == 'id' ) {
+                            id_exists = true;
                         }
-                        actual[ exists[4] ].exists = true
+                        else if ( exists[4] == 'name' ) {
+                            name_exists = true;
+                        }
                     }
                 })
 
-                Object.keys(expected).forEach(key => {
-                    expect(actual[key]).to.deep.include(expected[key])
-                });
+                // Assertions
+                expect(id_unique).to.equal(true);
+                
+                // Enterprise?
+                if (instance.enterprise()) {
+                    expect(id_exists).to.equal(true);
+                    expect(name_exists).to.equal(true);
+                }
             })
             .then(() => instance.cypher('CALL db.indexes'))
             .then(indexes => {
@@ -99,24 +102,20 @@ describe('Schema.js', () => {
                 expect(actual).to.include(expected);
             })
             .then(() => done())
-            .catch(e => done(e))
+            .catch(e => {
+                console.log(e);
+                console.log(e.errors);
+                done(e)
+            })
     });
 
     it('should drop the schema', (done) => {
         instance.schema.drop()
             .then(() => instance.cypher('CALL db.constraints'))
             .then(constraints => {
-                const unexpected = {
-                    id: {unique: true},
-                };
-                let actual = {
-                    id: {},
-                    name: {}
-                };
-
-                if (instance.enterprise()) {
-                    expected.id.required = true;
-                }
+                let id_unique = false;
+                let id_exists = false;
+                let name_exists = false;
 
                 // Check Constraints
                 const is_unique = /CONSTRAINT ON \( ([a-z0-9]+):([A-Za-z0-9]+) \) ASSERT ([a-z0-9]+).([A-Za-z0-9]+) IS UNIQUE/;
@@ -129,23 +128,29 @@ describe('Schema.js', () => {
                     const exists = description.match(will_exist);
 
                     if (unique && unique[2] == label) {
-                        if (!actual[ unique[4] ]) {
-                            actual[ unique[4] ] = {}
+                        if ( unique[4] == 'id' ) {
+                            id_unique = true;
                         }
-                        actual[ unique[4] ].unique = true
                     }
 
-                    if (exists && exists[2] !== label) {
-                        if (!actual[ exists[4] ]) {
-                            actual[ exists[4] ] = {}
+                    if (exists && exists[2] == label) {
+                        if ( exists[4] == 'id' ) {
+                            id_exists = true;
                         }
-                        actual[ exists[4] ].exists = true
+                        else if ( exists[4] == 'name' ) {
+                            name_exists = true;
+                        }
                     }
                 })
 
-                Object.keys(unexpected).forEach(key => {
-                    expect(actual[key]).not.to.deep.include(unexpected[key])
-                });
+                // Assertions
+                expect(id_unique).to.equal(false);
+                expect(id_exists).to.equal(false);
+
+                // Enterprise?
+                if (instance.enterprise()) {
+                    expect(name_exists).to.equal(false);
+                }
             })
             .then(() => instance.cypher('CALL db.indexes'))
             .then(indexes => {

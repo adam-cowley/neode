@@ -137,28 +137,112 @@ instance.model('Person', {
 ```
 
 ##### Property Types
-- string
-- number
-  - int
-  - float
-- boolean
-- relationship
-  - type
-  - relationship: Neo4j relationship type
-  - target: node definition
-  - properties: `schema`
+
+The following property types are supported:
+
+- `string`
+- `number`
+- `int`
+- `integer`
+- `float`
+- Temporal
+  - `date`
+  - `time`
+  - `datetime`
+  - `localtime`
+  - `localdatetime`
+  - `duration`
+  - `uuid`
+  - `node`
+  - `nodes`
+  - `relationship`
+  - `relationships`
+- Spatial
+  - `point`
+  - `distance`
 
 ##### Validation
 
-Validation is provided by Joi.  Certain data types (float, integer, boolean) will also be type cast.
+Validation is provided by the [Joi](https://github.com/hapijs/joi/) library.  Certain data types (float, integer, boolean) will also be type cast during the data cleansing process.  For more information on the full range of validation options, [read the Joi API documentation](https://github.com/hapijs/joi/blob/v13.4.0/API.md).
 
-- required
-- string
-  - min
-  - max
-- number
-  - min
-  - max
+##### All Types
+
+| option | type | description | example |
+| -- | -- | -- | -- |
+| allow | Array | Whitelist of values that are allowed | `allow: ['A', 'B', 'C']` |
+| valid | Array | A strict whitelist of valid options.  All others will be rejected.  | `valid: ['A', 'B', 'C']` |
+| invalid | Array | A list of forbidden values  | `invalid: ['A', 'B', 'C']` |
+| required | Boolean | Should this field be required?  | `required: true` |
+| optional | Boolean | Allow the value to be `undefined`  | `optional: true` |
+| forbidden | Boolean | Marks a key as forbidden which will not allow any value except undefined. Used to explicitly forbid keys.  | `forbidden: true` |
+| strict | Boolean | prevent type casting for the current key | `strict: true`
+| strip | Boolean | Marks a key to be removed from a resulting object or array after validation. | `strip: true`
+| default | Mixed/Function | Default value for the property | `default: () => new Date()`
+| empty | Boolean | Considers anything that matches the schema to be empty | `empty: true`
+| error | Error/String/Function | Overrides the default error | `error: errors => new CustomValidationError('Oh No!',  errors)`
+
+
+##### Boolean
+
+| option | type | description | example |
+| -- | -- | -- | -- |
+| truthy | String
+| falsy | String
+| insensitive | Boolean
+
+
+##### Date, Time, DateTime, LocalDateTime, LocalTime
+
+| option | type | description | example |
+| -- | -- | -- | -- |
+| min | String | Date string or `now` to compare to the current date
+| max | String 
+| greater
+| less
+| iso | Requires the string value to be in valid ISO 8601 date format.
+| timestamp | Requires the value to be a timestamp - `unix` or `javascript`
+
+
+##### Numbers (number, int, integer, float)
+
+| option | type | description | example |
+| -- | -- | -- | -- |
+| min | Number
+| max | Number
+| integer | Boolean | Requires the number to be an integer
+| precision | Number | Specifies the maximum number of decimal places | `precision: 2`
+| multiple | Number | Multiple of a number | `multiple: 2`
+| positive | Boolean
+| negative | Boolean
+| port | Boolean | Requires the number to be a TCP port, so between 0 and 65535.
+
+
+##### Strings
+
+| option | type | description | example |
+| -- | -- | -- | -- |
+| insensitive | Boolean
+| min | Number | Min length
+| max | Number | Max length
+| truncate | Boolean | Will truncate value to the max length
+| creditCard | Boolean | Requires the number to be a credit card number (Using Luhn Algorithm).
+| length | Number | Exact string length
+| regex | Object | Regular expression rule | `{ pattern: /([A-Z]+)/, invert: true, name: 'myRule'}`
+| replace | Object | Replace in value | `{ pattern: /(^[A-Z]+)/, replace: '-' }` 
+| alphanum | Boolean | Requires the string value to only contain a-z, A-Z, and 0-9.
+| token | Boolean | Requires the string value to only contain a-z, A-Z, 0-9, and underscore _.
+| email | Boolean/Object | 
+| ip | Boolean/Object | 
+| uri | Boolean/Object | 
+| guid  | Boolean
+| hex | Boolean/Object
+| base64 | Boolean/Object
+| hostname | Boolean
+| normalize | Boolean/String
+| lowercase | Boolean
+| uppercase | Boolean
+| trim | Boolean
+| isoDate | Boolean
 
 
 #### Defining Relationships
@@ -201,7 +285,7 @@ You can eager load relationships in a `findAll()` call by setting the `eager` pr
 }
 ```
 
-Eager loaded relationships can be retrieved by using the `get()` method.  A `NodeCollection` instance will be returned.
+Eager loaded relationships can be retrieved by using the `get()` method.  A `Collection` instance will be returned.
 
 ```
 const person = person.find({name: "Tom Hanks"})
@@ -517,30 +601,3 @@ Dropping the schema will remove all indexes and constraints created by Neode.  A
 instance.schema.drop()
     .then(() => console.log('Schema dropped!'))
 ```
-
-
-## TODO
-
-- 3.3
-  - Routing policies and countries for CC
-  - Set pool size
-  - Read & Write sessions/transactions
-  - Encryption
-
-- Relationships
-  - Relationship Constraints
-  - Delete dependencies when deleting a node beyond the first degree
-
-- Schema
-  - Composite indexes
-
-- Query Builder
-  - More where clauses
-  - CREATE
-  - SET
-  - DELETE
-  - Match Relationship
-  - Match path
-
-- Housekeeping
-  - Tests/Code Coverage

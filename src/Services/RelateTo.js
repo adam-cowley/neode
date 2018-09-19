@@ -16,8 +16,8 @@ export default function RelateTo(neode, from, to, relationship, properties, forc
             const type = relationship.relationship();
 
             let params = {
-                from_id: from.idInt(),
-                to_id: to.idInt()
+                from_id: from.identity(),
+                to_id: to.identity(),
             };
             let set = '';
 
@@ -46,7 +46,13 @@ export default function RelateTo(neode, from, to, relationship, properties, forc
                     const hydrate_from = relationship.direction() == DIRECTION_IN ? to : from;
                     const hydrate_to = relationship.direction() == DIRECTION_IN ? from : to;
 
-                    return new Relationship(neode, relationship, rel, hydrate_from, hydrate_to);
+                    const properties = new Map;
+
+                    Object.keys(rel.properties).forEach(key => {
+                        properties.set( key, rel.properties[ key ] );
+                    });
+
+                    return new Relationship(neode, relationship, rel.identity, rel.type, properties, hydrate_from, hydrate_to);
                 });
         });
 }

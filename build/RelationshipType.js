@@ -26,22 +26,26 @@ var RelationshipType = function () {
 
     /**
      * Constructor
-     * @param  {String} type                Reference of Relationship
+     * @param  {String} name                The name given to the relationship
+     * @param  {String} type                Type of Relationship (relationship, relationships, node, nodes)
      * @param  {String} relationship        Internal Neo4j Relationship type (ie 'KNOWS')
      * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
-     * @param  {String|Model|null} target   Target type definition for the
+     * @param  {String|Model|null} target   Target type definition for the Relationship
      * @param  {Object} schema              Relationship definition schema
      * @param  {Bool} eager                 Should this relationship be eager loaded?
      * @param  {Bool|String} cascade        Cascade delete policy for this relationship
+     * @param  {String} node_alias          Alias to give to the node in the pattern comprehension
      * @return {Relationship}
      */
-    function RelationshipType(type, relationship, direction, target) {
-        var schema = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : {};
-        var eager = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : false;
-        var cascade = arguments.length > 6 && arguments[6] !== undefined ? arguments[6] : false;
+    function RelationshipType(name, type, relationship, direction, target) {
+        var schema = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : {};
+        var eager = arguments.length > 6 && arguments[6] !== undefined ? arguments[6] : false;
+        var cascade = arguments.length > 7 && arguments[7] !== undefined ? arguments[7] : false;
+        var node_alias = arguments.length > 8 && arguments[8] !== undefined ? arguments[8] : 'node';
 
         _classCallCheck(this, RelationshipType);
 
+        this._name = name;
         this._type = type;
         this._relationship = relationship;
         this.setDirection(direction);
@@ -51,6 +55,7 @@ var RelationshipType = function () {
 
         this._eager = eager;
         this._cascade = cascade;
+        this._node_alias = node_alias;
 
         this._properties = new Map();
 
@@ -67,13 +72,25 @@ var RelationshipType = function () {
     }
 
     /**
-     * Type
+     * Name
      *
      * @return {String}
      */
 
 
     _createClass(RelationshipType, [{
+        key: 'name',
+        value: function name() {
+            return this._name;
+        }
+
+        /**
+         * Type
+         *
+         * @return {String}
+         */
+
+    }, {
         key: 'type',
         value: function type() {
             return this._type;
@@ -100,22 +117,14 @@ var RelationshipType = function () {
     }, {
         key: 'setDirection',
         value: function setDirection(direction) {
-            switch (direction.toUpperCase()) {
-                case DIRECTION_IN:
-                case DIRECTION_OUT:
-                    break;
+            direction = direction.toUpperCase();
 
-                case ALT_DIRECTION_IN:
-                    direction = DIRECTION_IN;
-                    break;
-
-                case ALT_DIRECTION_OUT:
-                    direction = DIRECTION_OUT;
-                    break;
-
-                default:
-                    direction = DIRECTION_OUT;
-                    break;
+            if (direction == ALT_DIRECTION_IN) {
+                direction = DIRECTION_IN;
+            } else if (direction == ALT_DIRECTION_OUT) {
+                direction = DIRECTION_OUT;
+            } else if ([DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH].indexOf(direction) == -1) {
+                direction = DIRECTION_OUT;
             }
 
             this._direction = direction;
@@ -181,6 +190,30 @@ var RelationshipType = function () {
         key: 'cascade',
         value: function cascade() {
             return this._cascade;
+        }
+
+        /** 
+         * Get Properties defined for this relationship
+         * 
+         * @return Map
+         */
+
+    }, {
+        key: 'properties',
+        value: function properties() {
+            return this._properties;
+        }
+
+        /** 
+         * Get the alias given to the node
+         * 
+         * @return {String}
+         */
+
+    }, {
+        key: 'nodeAlias',
+        value: function nodeAlias() {
+            return this._node_alias;
         }
     }]);
 

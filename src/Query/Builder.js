@@ -2,11 +2,13 @@ import Match from './Match';
 import Order from './Order';
 // import Return from './Return';
 import Statement from './Statement';
+import Property from './Property';
 import WhereStatement from './WhereStatement';
 import Where, {OPERATOR_EQUALS} from './Where';
 import WhereId from './WhereId';
 import WhereRaw from './WhereRaw';
 import WithStatement from './WithStatement';
+import WithDistinctStatement from './WithDistinctStatement';
 import neo4j from 'neo4j-driver';
 
 export const mode = {
@@ -24,6 +26,7 @@ export default class Builder {
         this._statements = [];
         this._current;
         this._where;
+        this._set_count = 0;
     }
 
     /**
@@ -59,15 +62,16 @@ export default class Builder {
     /**
      * Match a Node by a definition
      *
-     * @param  {String} alias      Alias in query
-     * @param  {Model}  model      Model definition
-     * @return {Builder}           Builder
+     * @param  {String} alias           Alias in query
+     * @param  {Model|String}  model    Model definition
+     * @param  {Object|null}   properties   Inline Properties
+     * @return {Builder}                Builder
      */
-    match(alias, model) {
+    match(alias, model, properties) {
         this.whereStatement('WHERE');
         this.statement();
 
-        this._current.match(new Match(alias, model));
+        this._current.match( new Match(alias, model, this._convertPropertyMap( alias, properties ) ) );
 
         return this;
     }
@@ -84,7 +88,7 @@ export default class Builder {
     /**
      * Add a 'with' statement to the query
      *
-     * @param  {...String} args Variables/aliases to return
+     * @param  {...String} args Variables/aliases to carry through
      * @return {Builder}
      */
     with(...args) {
@@ -92,6 +96,21 @@ export default class Builder {
         this.statement();
 
         this._statements.push(new WithStatement(...args));
+
+        return this;
+    }
+
+    /**
+     * Add a 'with distinct' statement to the query
+     *
+     * @param  {...String} args Variables/aliases to carry through
+     * @return {Builder}
+     */
+    withDistinct(...args) {
+        this.whereStatement('WHERE');
+        this.statement();
+
+        this._statements.push(new WithDistinctStatement(...args));
 
         return this;
     }
@@ -110,8 +129,8 @@ export default class Builder {
     /**
      * Add a where condition to the current statement.
      *
-     * @param  {...mixed} args Argumenta
-     * @return {Builder}         [description]
+     * @param  {...mixed} args Arguments
+     * @return {Builder}         
      */
     where(...args) {
         if (!args.length || !args[0]) return this;
@@ -139,9 +158,6 @@ export default class Builder {
                 this._where.append(new WhereRaw(args[0]));
             }
         }
-        else if ( args.length == 1 ) {
-            this._where.append(new WhereRaw(args[0]));
-        }
         else {
             const [left, operator, value] = args;
             const right = `where_${left}`.replace(/([^a-z0-9_]+)/i, '_');
@@ -158,7 +174,7 @@ export default class Builder {
      *
      * @param  {String} alias
      * @param  {Int}    value
-     * @return {Builder}       [description]
+     * @return {Builder}       
      */
     whereId(alias, value) {
         const param = `where_id_${alias}`;
@@ -166,6 +182,18 @@ export default class Builder {
         this._params[ param ] = neo4j.int(value);
 
         this._where.append(new WhereId(alias, param));
+
+        return this;
+    }
+
+    /**
+     * Add a raw where clause
+     *
+     * @param  {String} clause
+     * @return {Builder}       
+     */
+    whereRaw(clause) {
+        this._where.append(new WhereRaw(clause));
 
         return this;
     }
@@ -190,6 +218,148 @@ export default class Builder {
      */
     detachDelete(...args) {
         this._current.detachDelete(...args);
+
+        return this;
+    }
+
+    /**
+     * Start a Create Statement by alias/definition
+     *
+     * @param  {String} alias               Alias in query
+     * @param  {Model|String}  model        Model definition
+     * @param  {Object|null}   properties   Inline Properties
+     * @return {Builder}                    Builder
+     */
+    create(alias, model, properties) {
+        this.whereStatement('WHERE');
+        this.statement('CREATE');
+
+        this._current.match( new Match(alias, model, this._convertPropertyMap( alias, properties ) ) );
+
+        return this;
+    }
+
+    /**
+     * Convert a map of properties into an Array of 
+     * 
+     * @param {Object|null} properties 
+     */
+    _convertPropertyMap(alias, properties) {
+        if ( properties ) {
+            return Object.keys(properties).map(key => {
+                const property_alias = `${alias}_${key}`;
+
+                this._params[ property_alias ] = properties[ key ];
+
+                return new Property( key, property_alias );
+            });
+        }
+
+        return [];
+    }
+
+    /**
+     * Start a Merge Statement by alias/definition
+     *
+     * @param  {String}        alias        Alias in query
+     * @param  {Model|String}  model        Model definition
+     * @param  {Object|null}   properties   Inline Properties
+     * @return {Builder}                    Builder
+     */
+    merge(alias, model, properties) {
+        this.whereStatement('WHERE');
+        this.statement('MERGE');
+
+        this._current.match( new Match(alias, model, this._convertPropertyMap( alias, properties ) ) );
+
+        return this;
+    }
+
+    /**
+     * Set a property
+     * 
+     * @param {String|Object} property   Property in {alias}.{property} format
+     * @param {Mixed}         value      Value
+     */
+    set(property, value) {
+        // Support a map of properties
+        if ( !value && property instanceof Object ) {
+            Object.keys(property).forEach(key => {
+                this.set(key, property[ key ]);
+            });
+        }
+        else {
+            const alias = `set_${this._set_count}`;
+            this._params[ alias ] = value;
+
+            this._set_count++;
+
+            this._current.set(property, alias);
+        }
+
+        return this;
+    }
+
+
+    /**
+     * Set a property
+     * 
+     * @param {String|Object} property   Property in {alias}.{property} format
+     * @param {Mixed}         value      Value
+     */
+    onCreateSet(property, value) {
+        // Support a map of properties
+        if ( !value && property instanceof Object ) {
+            Object.keys(property).forEach(key => {
+                this.onCreateSet(key, property[ key ]);
+            });
+        }
+        else {
+            const alias = `set_${this._set_count}`;
+            this._params[ alias ] = value;
+
+            this._set_count++;
+
+            this._current.onCreateSet(property, alias);
+        }
+
+        return this;
+    }
+
+
+    /**
+     * Set a property
+     * 
+     * @param {String|Object} property   Property in {alias}.{property} format
+     * @param {Mixed}         value      Value
+     */
+    onMatchSet(property, value) {
+        // Support a map of properties
+        if ( !value && property instanceof Object ) {
+            Object.keys(property).forEach(key => {
+                this.onMatchSet(key, property[ key ]);
+            });
+        }
+        else {
+            const alias = `set_${this._set_count}`;
+            this._params[ alias ] = value;
+
+            this._set_count++;
+
+            this._current.onMatchSet(property, alias);
+        }
+
+        return this;
+    }
+
+    /**
+     * Remove properties or labels in {alias}.{property} 
+     * or {alias}:{Label} format
+     * 
+     * @param {[String]} items 
+     */
+    remove(...items) {
+        this._current.remove(items);
 
         return this;
     }
@@ -290,12 +460,13 @@ export default class Builder {
 
     /**
      * Complete a relationship
-     * @param  {String} alias Alias
-     * @param  {Model} model  Model definition
+     * @param  {String} alias       Alias
+     * @param  {Model}  model       Model definition
+     * @param  {Object} properties  Properties
      * @return {Builder}
      */
-    to(alias, model) {
-        this._current.match(new Match(alias, model));
+    to(alias, model, properties) {
+        this._current.match( new Match(alias, model, this._convertPropertyMap(properties) ) );
 
         return this;
     }
@@ -306,9 +477,23 @@ export default class Builder {
      * @return {Builder}
      */
     toAnything() {
-        this._current.toAnything();
+        this._current.match(new Match());
 
         return this;
+    }
+
+    /** 
+     * Build the pattern without any keywords
+     * 
+     * @return {String}
+     */
+    pattern() {
+        this.whereStatement();
+        this.statement();
+
+        return this._statements.map(statement => {
+            return statement.toString(false);
+        }).join('\n');
     }
 
     /**
@@ -335,15 +520,13 @@ export default class Builder {
     /**
      * Execute the query
      *
+     * @param  {String}  query_mode
      * @return {Promise}
      */
-    execute(mode = "WRITE") {
-        const {query, params} = this.build();
+    execute(query_mode = mode.WRITE) {
+        const { query, params } = this.build();
 
-        switch (mode) {
-            case mode.READ:
-                return this._neode.readCypher(query, params);
-
+        switch (query_mode) {
             case mode.WRITE:
                 return this._neode.writeCypher(query, params);
 
@@ -351,7 +534,5 @@ export default class Builder {
                 return this._neode.cypher(query, params);
         }
     }
-
-
 
 }

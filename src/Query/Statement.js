@@ -1,19 +1,24 @@
 import Relationship from './Relationship';
 import RelationshipType from '../RelationshipType';
+import Property from './Property';
 
 export default class Statement {
     constructor(prefix) {
         this._prefix = prefix || 'MATCH';
-        this._match = [];
+        this._pattern = [];
         this._where = [];
         this._order = [];
         this._detach_delete = [];
         this._delete = [];
         this._return = [];
+        this._set = [];
+        this._on_create_set = [];
+        this._on_match_set = [];
+        this._remove = [];
     }
 
     match(match) {
-        this._match.push(match);
+        this._pattern.push(match);
 
         return this;
     }
@@ -62,18 +67,46 @@ export default class Statement {
             direction = rel.direction();
         }
 
-        this._match.push(new Relationship(relationship, direction, alias, traversals));
+        this._pattern.push(new Relationship(relationship, direction, alias, traversals));
 
         return this;
     }
 
-    toString() {
+    set(key, value) {
+        this._set.push( new Property(key, value) );
+
+        return this;
+    }
+
+    onCreateSet(key, value) {
+        this._on_create_set.push( new Property(key, value) );
+
+        return this;
+    }
+
+    onMatchSet(key, value) {
+        this._on_match_set.push( new Property(key, value) );
+
+        return this;
+    }
+
+    /**
+     * 
+     * @param {Array} items 
+     */
+    remove(items) {
+        this._remove = this._remove.concat(items);
+
+        return this;
+    }
+
+    toString(includePrefix = true) {
         const output = [];
 
-        if (this._match.length) {
-            output.push(this._prefix);
+        if (this._pattern.length) {
+            if ( includePrefix ) output.push(this._prefix);
 
-            output.push(this._match.map(statement => {
+            output.push(this._pattern.map(statement => {
                 return statement.toString();
             }).join(''));
         }
@@ -82,6 +115,38 @@ export default class Statement {
             output.push(this._where.map(statement => {
                 return statement.toString();
             }).join(''));
+        }
+
+        if ( this._remove.length ) {
+            output.push('REMOVE');
+
+            output.push(this._remove.join(', '));
+        }
+
+        if ( this._on_create_set.length ) {
+            output.push('ON CREATE SET');
+
+            output.push(this._on_create_set.map(output => {
+                return output.toString();
+            }).join(', '));
+        }
+
+
+        if ( this._on_match_set.length ) {
+            output.push('ON MATCH SET');
+
+            output.push(this._on_match_set.map(output => {
+                return output.toString();
+            }).join(', '));
+        }
+
+
+        if ( this._set.length ) {
+            output.push('SET');
+
+            output.push(this._set.map(output => {
+                return output.toString();
+            }).join(', '));
         }
 
         if (this._delete.length) {

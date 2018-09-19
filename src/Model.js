@@ -3,6 +3,8 @@ import Queryable from './Queryable';
 import RelationshipType, {DIRECTION_BOTH} from './RelationshipType';
 import Property from './Property';
 
+const RELATIONSHIP_TYPES = [ 'relationship', 'relationships', 'node', 'nodes' ];
+
 export default class Model extends Queryable {
     constructor(neode, name, schema) {
         super(neode);
@@ -32,10 +34,10 @@ export default class Model extends Queryable {
                     break;
 
                 default:
-                    if ( value.type && value.type == 'relationship' ) {
-                        const {relationship, direction, target, properties, eager, cascade} = value;
+                    if ( value.type &&  RELATIONSHIP_TYPES.indexOf(value.type) > -1 ) {
+                        const { relationship, direction, target, properties, eager, cascade, alias } = value;
 
-                        this.relationship(key, relationship, direction, target, properties, eager, cascade);
+                        this.relationship(key, value.type, relationship, direction, target, properties, eager, cascade, alias);
                     }
                     else {
                         this.addProperty(key, value);
@@ -79,7 +81,7 @@ export default class Model extends Queryable {
      * @return {Model}
      */
     setLabels(...labels) {
-        this._labels = labels;
+        this._labels = labels.sort();
 
         return this;
     }
@@ -136,18 +138,19 @@ export default class Model extends Queryable {
     /**
      * Add a new relationship
      *
-     * @param  {String} name                Reference of Relationship
-     * @param  {String} relationship        Internal Relationship type
+     * @param  {String} name                The name given to the relationship
+     * @param  {String} type                Type of Relationship
      * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
      * @param  {String|Model|null} target   Target type definition for the
      * @param  {Object} schema              Property Schema
      * @param  {Bool} eager                 Should this relationship be eager loaded?
      * @param  {Bool|String} cascade        Cascade delete policy for this relationship
+     * @param  {String} node_alias          Alias to give to the node in the pattern comprehension
      * @return {Relationship}
      */
-    relationship(name, relationship, direction = DIRECTION_BOTH, target, schema = {}, eager = false, cascade = false) {
+    relationship(name, type, relationship, direction = DIRECTION_BOTH, target, schema = {}, eager = false, cascade = false, node_alias = 'node') {
         if (relationship && direction && schema) {
-            this._relationships.set(name, new RelationshipType(name, relationship, direction, target, schema, eager, cascade));
+            this._relationships.set(name, new RelationshipType(name, type, relationship, direction, target, schema, eager, cascade, node_alias));
         }
 
         return this._relationships.get(name);
@@ -189,6 +192,15 @@ export default class Model extends Queryable {
      */
     hidden() {
         return this._hidden;
+    }
+
+    /**
+     * Get array of indexed fields
+     *
+     * @return {String[]}
+     */
+    indexes() {
+        return this._indexed;
     }
 
     /**

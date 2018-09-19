@@ -30,6 +30,8 @@ function _possibleConstructorReturn(self, call) { if (!self) { throw new Referen
 
 function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
+var RELATIONSHIP_TYPES = ['relationship', 'relationships', 'node', 'nodes'];
+
 var Model = function (_Queryable) {
     _inherits(Model, _Queryable);
 
@@ -63,16 +65,17 @@ var Model = function (_Queryable) {
                     break;
 
                 default:
-                    if (value.type && value.type == 'relationship') {
+                    if (value.type && RELATIONSHIP_TYPES.indexOf(value.type) > -1) {
                         var relationship = value.relationship,
                             direction = value.direction,
                             target = value.target,
                             properties = value.properties,
                             eager = value.eager,
-                            cascade = value.cascade;
+                            cascade = value.cascade,
+                            alias = value.alias;
 
 
-                        _this.relationship(key, relationship, direction, target, properties, eager, cascade);
+                        _this.relationship(key, value.type, relationship, direction, target, properties, eager, cascade, alias);
                     } else {
                         _this.addProperty(key, value);
                     }
@@ -133,7 +136,7 @@ var Model = function (_Queryable) {
                 labels[_key] = arguments[_key];
             }
 
-            this._labels = labels;
+            this._labels = labels.sort();
 
             return this;
         }
@@ -196,27 +199,29 @@ var Model = function (_Queryable) {
         /**
          * Add a new relationship
          *
-         * @param  {String} name                Reference of Relationship
-         * @param  {String} relationship        Internal Relationship type
+         * @param  {String} name                The name given to the relationship
+         * @param  {String} type                Type of Relationship
          * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
          * @param  {String|Model|null} target   Target type definition for the
          * @param  {Object} schema              Property Schema
          * @param  {Bool} eager                 Should this relationship be eager loaded?
          * @param  {Bool|String} cascade        Cascade delete policy for this relationship
+         * @param  {String} node_alias          Alias to give to the node in the pattern comprehension
          * @return {Relationship}
          */
 
     }, {
         key: 'relationship',
-        value: function relationship(name, _relationship) {
-            var direction = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : _RelationshipType.DIRECTION_BOTH;
-            var target = arguments[3];
-            var schema = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : {};
-            var eager = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : false;
-            var cascade = arguments.length > 6 && arguments[6] !== undefined ? arguments[6] : false;
+        value: function relationship(name, type, _relationship) {
+            var direction = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : _RelationshipType.DIRECTION_BOTH;
+            var target = arguments[4];
+            var schema = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : {};
+            var eager = arguments.length > 6 && arguments[6] !== undefined ? arguments[6] : false;
+            var cascade = arguments.length > 7 && arguments[7] !== undefined ? arguments[7] : false;
+            var node_alias = arguments.length > 8 && arguments[8] !== undefined ? arguments[8] : 'node';
 
             if (_relationship && direction && schema) {
-                this._relationships.set(name, new _RelationshipType2.default(name, _relationship, direction, target, schema, eager, cascade));
+                this._relationships.set(name, new _RelationshipType2.default(name, type, _relationship, direction, target, schema, eager, cascade, node_alias));
             }
 
             return this._relationships.get(name);
@@ -277,6 +282,18 @@ var Model = function (_Queryable) {
         key: 'hidden',
         value: function hidden() {
             return this._hidden;
+        }
+
+        /**
+         * Get array of indexed fields
+         *
+         * @return {String[]}
+         */
+
+    }, {
+        key: 'indexes',
+        value: function indexes() {
+            return this._indexed;
         }
 
         /**
