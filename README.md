@@ -130,7 +130,7 @@ instance.model('Person', {
     },
     name: {
         type: 'name',
-        indexed: true, // Creates an Index
+        index: true, // Creates an Index
     },
     age: 'number' // Simple schema definition of property : type
 });
