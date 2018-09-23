@@ -145,6 +145,11 @@ The following property types are supported:
 - `int`
 - `integer`
 - `float`
+- `uuid`
+- `node`
+- `nodes`
+- `relationship`
+- `relationships`
 - Temporal
   - `date`
   - `time`
@@ -152,11 +157,6 @@ The following property types are supported:
   - `localtime`
   - `localdatetime`
   - `duration`
-  - `uuid`
-  - `node`
-  - `nodes`
-  - `relationship`
-  - `relationships`
 - Spatial
   - `point`
   - `distance`
@@ -246,11 +246,11 @@ Validation is provided by the [Joi](https://github.com/hapijs/joi/) library.  Ce
 Relationships can be created in the schema or defined retrospectively.
 
 ```javascript
-instance.model(label).relationship(type, relationship, direction, label, schema);
+instance.model(label).relationship(type, relationship, direction, target, schema, eager, cascade, node_alias);
 ```
 
 ```javascript
-instance.model('Person').relationship('knows', 'KNOWS', 'out', 'Person', {
+instance.model('Person').relationship('knows', 'relationship', 'KNOWS', 'out', 'Person', {
     since: {
         type: 'number',
         required: true,
