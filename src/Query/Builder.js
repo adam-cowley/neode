@@ -466,7 +466,7 @@ export default class Builder {
      * @return {Builder}
      */
     to(alias, model, properties) {
-        this._current.match( new Match(alias, model, this._convertPropertyMap(properties) ) );
+        this._current.match( new Match(alias, model, this._convertPropertyMap(alias, properties) ) );
 
         return this;
     }
