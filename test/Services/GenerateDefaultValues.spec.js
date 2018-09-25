@@ -1,24 +1,6 @@
 import {assert, expect} from 'chai';
 import GenerateDefaultValues from '../../src/Services/GenerateDefaultValues';
 
-<<<<<<< HEAD
-describe('GenerateDefaultValues.js', () => {
-    const instance = require('../instance');
-    const label = 'GenerateDefaultValues';
-    const schema = {
-        someNumber: 'integer',
-    };
-
-    const model = instance.model(label, schema);
-
-    describe('::GenerateDefaultValues', () => {
-        it('should not treat 0 as a null value', (done) => {
-            const input = { someNumber: 0 };
-
-            GenerateDefaultValues(instance, instance.model(label), input)
-                .then(output => {
-                    expect(input).to.deep.equal(output);
-=======
 describe('Services/GenerateDefaultValues.js', () => {
     let instance;
     let model;
@@ -88,16 +70,10 @@ describe('Services/GenerateDefaultValues.js', () => {
                 .then(output => {
                     expect(output.defaultFunction).to.deep.equal(schema.defaultFunction.default());
 
->>>>>>> release/0.2.0
                     done();
                 })
                 .catch(e => done(e));
         });
-<<<<<<< HEAD
-=======
-
-        
->>>>>>> release/0.2.0
     });
 
 });

@@ -16,7 +16,14 @@ export default {
         relationship: 'KNOWS',
         direction: 'out',
         properties: {
-            since: 'number',
+            since: {
+                type: 'localdatetime',
+                default: () => new Date,
+            },
         },
+    },
+    createdAt: {
+        type: 'datetime',
+        default: () => new Date,
     }
 };

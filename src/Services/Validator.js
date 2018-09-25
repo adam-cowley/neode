@@ -1,6 +1,7 @@
 import Joi from 'joi';
 import Node from '../Node';
 import ValidationError from '../ValidationError';
+import { v1 as neo4j } from 'neo4j-driver';
 
 const joi_options = {
     allowUnknown:true,
@@ -35,8 +36,60 @@ const booleanOrOptions = [
     'uri',
     'base64',
     'normalize',
-    'hex'
+    'hex',
 ];
+
+const temporal = Joi.extend({
+    base: Joi.object(),
+    name: 'temporal',
+    language: {
+        before: 'Value before minimum expected value',
+        after: 'Value after minimum expected value',
+    },
+    rules: [
+        {
+            name: 'after',
+            params: {
+                after: Joi.alternatives([
+                    Joi.date(),
+                    Joi.string(),
+                ]),
+            },
+            validate(params, value, state, options) {
+                if ( params.after === 'now' ) {
+                    params.after = new Date();
+                }
+                
+                if ( params.after > value ) {
+                    return this.createError('temporal.after', { v: value }, state, options);
+                }
+                
+                return value;
+            },
+        },
+        {
+            name: 'before',
+            params: {
+                after: Joi.alternatives([
+                    Joi.date(),
+                    Joi.string(),
+                ]),
+            },
+            validate(params, value, state, options) {
+                if ( params.after === 'now' ) {
+                    params.after = new Date();
+                }
+                
+                if ( params.after < value ) {
+                    return this.createError('temporal.after', { v: value }, state, options);
+                }
+                
+                return value;
+            },
+        },
+    ],
+
+});
 
 function BuildValidationSchema(model) {
     const schema = model.schema();
@@ -68,12 +121,24 @@ function BuildValidationSchema(model) {
                 validation = Joi[ config.type ]();
                 break;
 
-            case 'date':
             case 'datetime':
+                validation = temporal.temporal().type(neo4j.types.DateTime);
+                break;
+
+            case 'date':
+                validation = temporal.temporal().type(neo4j.types.Date);
+                break;
+
             case 'time':
+                validation = temporal.temporal().type(neo4j.types.Time);
+                break;
+
             case 'localdate':
+                validation = temporal.temporal().type(neo4j.types.LocalDate);
+                break;
+
             case 'localtime':
-                validation = Joi.date();
+                validation = temporal.temporal().type(neo4j.types.LocalTime);
                 break;
 
             case 'int':

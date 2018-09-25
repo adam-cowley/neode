@@ -7,6 +7,8 @@ exports.default = CleanValue;
 
 var _neo4jDriver = require('neo4j-driver');
 
+var temporal = ['date', 'datetime', 'time', 'localdatetime', 'localtime'];
+
 /**
 * Convert a value to it's native type
 *
@@ -14,7 +16,13 @@ var _neo4jDriver = require('neo4j-driver');
 * @param  {mixed}  value    Value to be converted
 * @return {mixed}
 */
+/* eslint-disable */
 function CleanValue(config, value) {
+    // Convert temporal to a native date?
+    if (temporal.indexOf(config.type.toLowerCase()) > -1 && typeof value == 'number') {
+        value = new Date(value);
+    }
+
     // Clean Values
     switch (config.type.toLowerCase()) {
         case 'float':
@@ -36,30 +44,23 @@ function CleanValue(config, value) {
             break;
 
         case 'date':
-            value = value instanceof Date ? new _neo4jDriver.v1.types.Date(value.getFullYear(), value.getMonth() + 1, value.getDate()) : value;
+            value = value instanceof Date ? _neo4jDriver.v1.types.Date.fromStandardDate(value) : value;
             break;
 
         case 'datetime':
-            value = value instanceof Date ? new _neo4jDriver.v1.types.DateTime(value.getFullYear(), value.getMonth() + 1, value.getDate(), value.getHours(), value.getMinutes(), value.getSeconds(), value.getMilliseconds() * 1000000, // nanoseconds
-            value.getTimezoneOffset() * 60 // seconds
-            ) : value;
+            value = value instanceof Date ? _neo4jDriver.v1.types.DateTime.fromStandardDate(value) : value;
             break;
 
         case 'localdatetime':
-            value = value instanceof Date ? new _neo4jDriver.v1.types.LocalDateTime(value.getFullYear(), value.getMonth() + 1, value.getDate(), value.getHours(), value.getMinutes(), value.getSeconds(), value.getMilliseconds() * 1000000, // nanoseconds
-            value.getTimezoneOffset() * 60 // seconds
-            ) : value;
+            value = value instanceof Date ? _neo4jDriver.v1.types.LocalDateTime.fromStandardDate(value) : value;
             break;
 
         case 'time':
-            value = value instanceof Date ? new _neo4jDriver.v1.types.Time(value.getHours(), value.getMinutes(), value.getSeconds(), value.getMilliseconds() * 1000000, // nanoseconds
-            value.getTimezoneOffset() * 60 // seconds
-            ) : value;
+            value = value instanceof Date ? _neo4jDriver.v1.types.Time.fromStandardDate(value) : value;
             break;
 
         case 'localtime':
-            value = value instanceof Date ? new _neo4jDriver.v1.types.LocalTime(value.getHours(), value.getMinutes(), value.getSeconds(), value.getMilliseconds() * 1000000 // nanoseconds
-            ) : value; // eslint-ignore-line
+            value = value instanceof Date ? _neo4jDriver.v1.types.LocalTime.fromStandardDate(value) : value;
             break;
 
         case 'point':
@@ -86,4 +87,4 @@ function CleanValue(config, value) {
     }
 
     return value;
-} /* eslint-disable */
+}

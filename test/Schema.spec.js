@@ -103,9 +103,7 @@ describe('Schema.js', () => {
             })
             .then(() => done())
             .catch(e => {
-                console.log(e);
-                console.log(e.errors);
-                done(e)
+                done(e);
             })
     });
 

@@ -19,6 +19,10 @@ describe('Services/Create.js', () => {
             required: true,
         },
         age: 'integer',
+        dob: {
+            type: 'datetime',
+            default: Date.now,
+        },
 
         relationship: {
             type: 'relationship',
@@ -104,14 +108,6 @@ describe('Services/Create.js', () => {
             .then(() => done());
     });
 
-<<<<<<< HEAD
-    it('should create a record with default values and ignore undefined values', (done) => {
-        const data = {
-            id: 'defaultvalues',
-            name: 'neode',
-            ignoreme: 'ignoreme',
-        };
-=======
     describe('::Create', () => {
         describe('Properties', () => {
             it('should perform validation', done => {
@@ -125,7 +121,6 @@ describe('Services/Create.js', () => {
                     })
                     .then(() => done());
             }).timeout(TIMEOUT);
->>>>>>> release/0.2.0
 
             it('should generate default values', done => {
                 const data = {
@@ -143,7 +138,10 @@ describe('Services/Create.js', () => {
                             assert( res.get('uuid').match(/^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/i) )
                         })
                         .then(() => done())
-                        .catch(e => done(e));
+                        .catch(e => {
+                            console.log(e.details)
+                            done(e)
+                        });
             }).timeout(TIMEOUT);
         });
 
@@ -499,29 +497,4 @@ describe('Services/Create.js', () => {
         });
     });
 
-<<<<<<< HEAD
-    it('should treat 0 as a number', (done) => {
-        const data = {
-            id: 'treat0',
-            name: 'neode',
-            age: 0,
-        };
-
-        instance.create(label, data)
-            .then(res => {
-                expect(res).to.be.an.instanceOf(Node);
-                expect(res.get('id')).to.equal(data.id);
-                expect(res.get('name')).to.equal(data.name);
-                expect(res.get('age')).to.equal(data.age);
-
-                expect(res.get('ignoreme')).not.to.equal(data.ignoreme);
-
-                done();
-            })
-            .catch(e => done(e))
-    });
-
 });
-=======
-});
->>>>>>> release/0.2.0

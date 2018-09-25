@@ -193,16 +193,16 @@ describe('Services/Validator.js', () => {
         });
 
         describe('DateTime', () => {
-            describe('min', () => {
+            describe('after', () => {
                 it('should accept a date as a minimum value', () => {
                     const model = instance.model('ValidatorTest', {
                         date: {
                             type: 'datetime',
-                            min: '2018-01-01',
+                            after: '2018-01-01',
                         },
                     });
 
-                    Validator(instance, model, { date: '2017-01-01' })
+                    Validator(instance, model, { date: new Date('2017-01-01') })
                         .then(res => {
                             assert(false, 'Should fail validation');
                         })
@@ -215,7 +215,7 @@ describe('Services/Validator.js', () => {
                     const model = instance.model('ValidatorTest', {
                         date: {
                             type: 'datetime',
-                            min: 'now',
+                            after: 'now',
                         },
                     });
 
@@ -232,7 +232,7 @@ describe('Services/Validator.js', () => {
                     const model = instance.model('ValidatorTest', {
                         date: {
                             type: 'datetime',
-                            min: '2018-01-01',
+                            after: '2018-01-01',
                         },
                     });
 
@@ -250,7 +250,7 @@ describe('Services/Validator.js', () => {
                     const model = instance.model('ValidatorTest', {
                         date: {
                             type: 'datetime',
-                            min: '2018-01-01',
+                            after: '2018-01-01',
                         },
                     });
 
@@ -267,12 +267,12 @@ describe('Services/Validator.js', () => {
                 });
             });
 
-            describe('max', () => {
+            describe('before', () => {
                 it('should accept a date as a minimum value', () => {
                     const model = instance.model('ValidatorTest', {
                         date: {
                             type: 'datetime',
-                            max: '2017-01-01',
+                            before: '2017-01-01',
                         },
                     });
 
@@ -289,7 +289,7 @@ describe('Services/Validator.js', () => {
                     const model = instance.model('ValidatorTest', {
                         date: {
                             type: 'datetime',
-                            max: 'now',
+                            before: 'now',
                         },
                     });
 
@@ -306,7 +306,7 @@ describe('Services/Validator.js', () => {
                     const model = instance.model('ValidatorTest', {
                         date: {
                             type: 'datetime',
-                            max: '2019-01-01',
+                            before: '2019-01-01',
                         },
                     });
 
@@ -324,7 +324,7 @@ describe('Services/Validator.js', () => {
                     const model = instance.model('ValidatorTest', {
                         date: {
                             type: 'datetime',
-                            min: '2019-01-01',
+                            before: '2019-01-01',
                         },
                     });
 

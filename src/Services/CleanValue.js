@@ -1,6 +1,14 @@
 /* eslint-disable */
 import { v1 as neo4j } from 'neo4j-driver';
 
+const temporal = [
+    'date', 
+    'datetime',
+    'time',
+    'localdatetime',
+    'localtime'
+];
+
 /**
 * Convert a value to it's native type
 *
@@ -9,6 +17,11 @@ import { v1 as neo4j } from 'neo4j-driver';
 * @return {mixed}
 */
 export default function CleanValue(config, value) {
+    // Convert temporal to a native date?
+    if ( temporal.indexOf( config.type.toLowerCase() ) > -1 && typeof value == 'number' ) {
+        value = new Date(value)
+    }
+
     // Clean Values
     switch (config.type.toLowerCase()) {
         case 'float':
@@ -30,63 +43,24 @@ export default function CleanValue(config, value) {
             break;
 
         case 'date':
-            value = value instanceof Date ?
-            new neo4j.types.Date(
-                value.getFullYear(),
-                value.getMonth() + 1,
-                value.getDate()
-            ) : value;
+            value = value instanceof Date ? neo4j.types.Date.fromStandardDate(value) : value;
             break;
 
         case 'datetime':
-            value = value instanceof Date ?
-                new neo4j.types.DateTime(
-                    value.getFullYear(),
-                    value.getMonth() + 1,
-                    value.getDate(),
-                    value.getHours(),
-                    value.getMinutes(),
-                    value.getSeconds(),
-                    value.getMilliseconds() * 1000000,  // nanoseconds
-                    value.getTimezoneOffset() * 60      // seconds
-                ) : value;
+            value = value instanceof Date ? neo4j.types.DateTime.fromStandardDate(value) : value;
             break;
 
         case 'localdatetime':
-            value = value instanceof Date ?
-                new neo4j.types.LocalDateTime(
-                    value.getFullYear(),
-                    value.getMonth() + 1,
-                    value.getDate(),
-                    value.getHours(),
-                    value.getMinutes(),
-                    value.getSeconds(),
-                    value.getMilliseconds() * 1000000,  // nanoseconds
-                    value.getTimezoneOffset() * 60      // seconds
-               ) : value;
+            value = value instanceof Date ? neo4j.types.LocalDateTime.fromStandardDate(value) : value;
             break;
 
         case 'time':
-            value = value instanceof Date ?
-                new neo4j.types.Time(
-                    value.getHours(),
-                    value.getMinutes(),
-                    value.getSeconds(),
-                    value.getMilliseconds() * 1000000,  // nanoseconds
-                    value.getTimezoneOffset() * 60      // seconds
-               ) : value;
-               break;
-
+            value = value instanceof Date ? neo4j.types.Time.fromStandardDate(value) : value;
+            break;
 
         case 'localtime':
-            value = value instanceof Date ?
-                new neo4j.types.LocalTime(
-                    value.getHours(),
-                    value.getMinutes(),
-                    value.getSeconds(),
-                    value.getMilliseconds() * 1000000  // nanoseconds
-                ) : value; // eslint-ignore-line
-                break; 
+            value = value instanceof Date ? neo4j.types.LocalTime.fromStandardDate(value) : value;
+            break;
 
         case 'point':
            // SRID values: @https://neo4j.com/docs/developer-manual/current/cypher/functions/spatial/

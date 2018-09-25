@@ -8,6 +8,8 @@ var _slicedToArray = function () { function sliceIterator(arr, i) { var _arr = [
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
+var _neo4jDriver = require('neo4j-driver');
+
 var _Entity2 = require('./Entity');
 
 var _Entity3 = _interopRequireDefault(_Entity2);
@@ -179,9 +181,9 @@ var Node = function (_Entity) {
 
                 if (_this3._properties.has(key)) {
                     output[key] = _this3.valueToJson(property, _this3._properties.get(key));
-                } else if (neo4j.temporal.isDateTime(output[key])) {
+                } else if (_neo4jDriver.v1.temporal.isDateTime(output[key])) {
                     output[key] = new Date(output[key].toString());
-                } else if (neo4j.spatial.isPoint(output[key])) {
+                } else if (_neo4jDriver.v1.spatial.isPoint(output[key])) {
                     switch (output[key].srid.toString()) {
                         // SRID values: @https://neo4j.com/docs/developer-manual/current/cypher/functions/spatial/
                         case '4326':

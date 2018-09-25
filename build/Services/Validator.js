@@ -20,6 +20,8 @@ var _ValidationError = require('../ValidationError');
 
 var _ValidationError2 = _interopRequireDefault(_ValidationError);
 
+var _neo4jDriver = require('neo4j-driver');
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 var joi_options = {
@@ -30,6 +32,49 @@ var joi_options = {
 var ignore = ['type', 'default'];
 var booleans = ['optional', 'forbidden', 'strip', 'positive', 'negative', 'port', 'integer', 'iso', 'isoDate', 'insensitive', 'required', 'truncate', 'creditCard', 'alphanum', 'token', 'hex', 'hostname', 'lowercase', 'uppercase'];
 var booleanOrOptions = ['email', 'ip', 'uri', 'base64', 'normalize', 'hex'];
+
+var temporal = _joi2.default.extend({
+    base: _joi2.default.object(),
+    name: 'temporal',
+    language: {
+        before: 'Value before minimum expected value',
+        after: 'Value after minimum expected value'
+    },
+    rules: [{
+        name: 'after',
+        params: {
+            after: _joi2.default.alternatives([_joi2.default.date(), _joi2.default.string()])
+        },
+        validate: function validate(params, value, state, options) {
+            if (params.after === 'now') {
+                params.after = new Date();
+            }
+
+            if (params.after > value) {
+                return this.createError('temporal.after', { v: value }, state, options);
+            }
+
+            return value;
+        }
+    }, {
+        name: 'before',
+        params: {
+            after: _joi2.default.alternatives([_joi2.default.date(), _joi2.default.string()])
+        },
+        validate: function validate(params, value, state, options) {
+            if (params.after === 'now') {
+                params.after = new Date();
+            }
+
+            if (params.after < value) {
+                return this.createError('temporal.after', { v: value }, state, options);
+            }
+
+            return value;
+        }
+    }]
+
+});
 
 function BuildValidationSchema(model) {
     var schema = model.schema();
@@ -56,12 +101,24 @@ function BuildValidationSchema(model) {
                 validation = _joi2.default[config.type]();
                 break;
 
-            case 'date':
             case 'datetime':
+                validation = temporal.temporal().type(_neo4jDriver.v1.types.DateTime);
+                break;
+
+            case 'date':
+                validation = temporal.temporal().type(_neo4jDriver.v1.types.Date);
+                break;
+
             case 'time':
+                validation = temporal.temporal().type(_neo4jDriver.v1.types.Time);
+                break;
+
             case 'localdate':
+                validation = temporal.temporal().type(_neo4jDriver.v1.types.LocalDate);
+                break;
+
             case 'localtime':
-                validation = _joi2.default.date();
+                validation = temporal.temporal().type(_neo4jDriver.v1.types.LocalTime);
                 break;
 
             case 'int':

@@ -195,12 +195,8 @@ Validation is provided by the [Joi](https://github.com/hapijs/joi/) library.  Ce
 
 | option | type | description | example |
 | -- | -- | -- | -- |
-| min | String | Date string or `now` to compare to the current date
-| max | String 
-| greater
-| less
-| iso | Requires the string value to be in valid ISO 8601 date format.
-| timestamp | Requires the value to be a timestamp - `unix` or `javascript`
+| before | String | `Date`, date string or `"now"` to compare to the current date
+| after | String | `Date`, date string or `"now"` to compare to the current date
 
 
 ##### Numbers (number, int, integer, float)

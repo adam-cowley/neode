@@ -33,57 +33,8 @@ describe('Model.js', () => {
             eager: true,
             alias: 'nodeattheend',
             properties: {
-<<<<<<< HEAD
-                since: {
-                    type: 'number',
-                    required: true,
-                },
-                defaulted: {
-                    type: 'string',
-                    default: 'default',
-                }
-            }
-        }
-    };
-
-    let Thing, created;
-
-    const create_data = {
-        id: uuid.v4(),
-        name: 'Tester',
-        age: 99,
-        living: true
-    };
-
-    // after(function(done) {
-    //     instance.deleteAll(label)
-    //         .then(() => done())
-    //         .catch(e => done(e));
-    // });
-
-    it('should register a new model definition', () => {
-        Thing = instance.model(label, schema);
-
-        expect(Thing).to.be.an.instanceOf(Model);
-        expect(Thing.labels()).to.be.an('array');
-    });
-
-    it('should return model definition when no configuration is supplied', () => {
-        const Thing = instance.model(label);
-
-        expect(Thing).to.be.an.instanceOf(Model);
-        expect(Thing.name()).to.equal(label);
-    });
-
-    it('should define a new relationship', () => {
-        const rel = instance.model(label).relationship('known_by', 'KNOWN_BY', DIRECTION_IN, label, {
-            since: {
-                type: 'number',
-                required: true,
-=======
                 updated: 'boolean',
                 default: false,
->>>>>>> release/0.2.0
             },
         },
         relationships: {
@@ -150,47 +101,7 @@ describe('Model.js', () => {
 
             expect( model.hidden() ).to.deep.equal(['number']);
 
-<<<<<<< HEAD
-    it('should force create an outgoing relationship', (done) => {
-        let relation;
-        const properties = {
-            since: 0
-        };
-
-        instance.model(label).create({
-            id: uuid.v4(),
-            name: 'Relation',
-            age: 88,
-            living: true
-        })
-        .then(res => {
-            relation = res;
-
-            return created.relateTo(relation, 'knows', properties, true);
-        })
-        .then(res => {
-            expect(res).to.be.an.instanceOf(Relationship);
-            expect(res.type().relationship()).to.equal('KNOWS');
-            expect(res.type().type()).to.equal('knows');
-            expect(res.from()).to.equal(created);
-            expect(res.to()).to.equal(relation);
-            expect(res.properties()).to.be.an('object');
-            expect(res.get('since')).to.equal(properties.since);
-            expect(res.get('defaulted')).to.equal(schema.knows.properties.defaulted.default);
-
-            done();
-        })
-        .catch(e => done(e));
-    });
-
-    it('should create an incoming relationship and invert from and to properties', (done) => {
-        let relation;
-        const properties = {
-            since: 2017
-        };
-=======
             expect( model.indexes() ).to.deep.equal(['string']);
->>>>>>> release/0.2.0
 
             // Check Relationships
             expect( model.relationships().size ).to.equal( 4 )
@@ -265,40 +176,4 @@ describe('Model.js', () => {
 
     });
 
-<<<<<<< HEAD
-    it('should cascade delete a node', (done) => {
-        Promise.all([
-            Thing.create({id: uuid.v4(), 'name': "Parent"}),
-            Thing.create({id: uuid.v4(), 'name': "Child"}),
-        ])
-        .then(res => {
-            const [parent, child] = res;
-            return parent.relateTo(child, 'knows', {since: 2017})
-                .then(() => {
-                    return res;
-                });
-        })
-        .then(res => {
-            const [parent, child] = res;
-            return parent.delete()
-                .then(() => {
-                    return res;
-                });
-        })
-        .then(res => {
-            const [ parent, child ] = res;
-
-            return instance.cypher('MATCH (n) WHERE id(n) IN [{parent}, {child}] RETURN count(n) AS count', {parent:parent.idInt(), child:child.idInt()})
-                .then(res => {
-                    expect(res.records.length).to.equal(1);
-                    expect(res.records[0].get('count').toNumber()).to.equal(0);
-
-                })
-
-        })
-        .then(done)
-        .catch(e => done(e))
-    });
-=======
->>>>>>> release/0.2.0
 });
