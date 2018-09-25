@@ -1,3 +1,4 @@
+/* eslint-disable */
 import neode from './neode';
 import Person from './Person';
 

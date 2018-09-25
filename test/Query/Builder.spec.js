@@ -593,6 +593,27 @@ describe('Query/Builder.js', () => {
             expect(query).to.equal(expected);
         });
 
+        it('should build a query with an outwards relationship with alias and properties', () => {
+            const builder = new Builder();
+            const { query, params } = builder
+                .match('this', model)
+                .relationship('REL_TO', 'out', 'rel')
+                .to('that', model, {name: 'name'})
+                .return('this', 'rel', 'that')
+                .build();
+            const expected = [
+                'MATCH',
+                '(this:QueryBuilderTest)-[rel:`REL_TO`]->(that:QueryBuilderTest { name: $that_name })',
+                '',
+                'RETURN',
+                'this,rel,that'
+            ].join('\n');
+            
+            const expected_params = { that_name: 'name' };
+            expect(query).to.equal(expected);
+            expect(params).to.deep.equal(expected_params);
+        });
+
         it('should build a query with an outwards relationship with alias but no type', () => {
             const builder = new Builder();
 
