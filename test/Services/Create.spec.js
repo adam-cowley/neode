@@ -19,6 +19,10 @@ describe('Services/Create.js', () => {
             required: true,
         },
         age: 'integer',
+        enabled: {
+            type: 'boolean',
+            default: false,
+        },
         dob: {
             type: 'datetime',
             default: Date.now,
@@ -133,6 +137,9 @@ describe('Services/Create.js', () => {
                             expect(res).to.be.an.instanceOf(Node);
 
                             expect( res.get('name') ).to.equal(data.name);
+                            
+                            expect( res.get('enabled') ).to.equal(false);
+
                             expect( res.get('age').toInt()) .to.equal(data.age);
 
                             assert( res.get('uuid').match(/^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/i) )
