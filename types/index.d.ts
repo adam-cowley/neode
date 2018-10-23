@@ -619,7 +619,7 @@ declare namespace Neode {
      * @param  {Bool|String} cascade        Cascade delete policy for this relationship
      * @return {Relationship}
      */
-    relationship(name: string, relationship: string, direction?: Neode.Direction, target?: string | Model<T>, schema?: Neode.RelationshipSchema, eager?: boolean, cascade?: boolean | string): Relationship;
+    relationship(name: string, relationship: string, direction?: Neode.Direction, target?: string | Model<T>, schema?: Neode.SchemaObject, eager?: boolean, cascade?: boolean | string): Relationship;
 
     /**
      * Get all defined Relationships  for this Model
