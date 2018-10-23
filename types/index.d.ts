@@ -937,7 +937,7 @@ declare namespace Neode {
      * @param  {Function} fn
      * @return {mixed}
      */
-    map<U>(fn: (value: Node<any>, index: number, array: Array<Node<any>>) => U): U;
+    map<U>(fn: (value: Node<any>, index: number, array: Array<Node<any>>) => U): Array<U>;
 
     /**
      * Run a function on all values
