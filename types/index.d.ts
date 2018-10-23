@@ -60,7 +60,7 @@ declare class Neode {
    * @param  {Object} schema
    * @return {Model}
    */
-  model<T>(name: string, schema: Neode.SchemaObject): Neode.Model<T>;
+  model<T>(name: string, schema?: Neode.SchemaObject): Neode.Model<T>;
 
   /**
    * Extend a model with extra configuration
