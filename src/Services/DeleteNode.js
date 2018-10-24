@@ -73,8 +73,9 @@ function addDetachNode(neode, builder, from_alias, relationship, aliases) {
  * @param {Integer} identity    Neo4j internal ID of node to delete
  * @param {Model}   model       Model definition
  * @param {Integer} to_depth    Maximum deletion depth
- */
-export default function DeleteNode(neode, identity, model, to_depth = MAX_EAGER_DEPTH) {
+ * @param  {Transaction} transaction (optional)
+*/
+export default function DeleteNode(neode, identity, model, to_depth = MAX_EAGER_DEPTH, transaction = undefined) {
     const alias = 'this';
     const to_delete = [];
     const aliases = [alias];
@@ -100,5 +101,5 @@ export default function DeleteNode(neode, identity, model, to_depth = MAX_EAGER_
     // Detach Delete target node
     builder.detachDelete(alias);
 
-    return builder.execute(mode.WRITE);
+    return builder.execute(mode.WRITE, transaction);
 }

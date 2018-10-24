@@ -7,7 +7,7 @@ import Relationship from '../Relationship';
 import GenerateDefaultValues from './GenerateDefaultValues';
 import Validator from './Validator';
 
-export default function RelateTo(neode, from, to, relationship, properties, force_create = false) {
+export default function RelateTo(neode, from, to, relationship, properties, force_create = false, transaction = undefined) {
     return GenerateDefaultValues(neode, relationship, properties)
         .then(properties => Validator(neode, relationship, properties))
         .then(properties => {
@@ -40,7 +40,7 @@ export default function RelateTo(neode, from, to, relationship, properties, forc
                 RETURN rel
             `;
 
-            return neode.writeCypher(query, params)
+            return neode.writeCypher(query, params, transaction)
                 .then(res => {
                     const rel = res.records[0].get('rel');
                     const hydrate_from = relationship.direction() == DIRECTION_IN ? to : from;

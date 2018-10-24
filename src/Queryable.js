@@ -31,22 +31,24 @@ export default class Queryable {
      * Create a new instance of this Model
      *
      * @param  {object} properties
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    create(properties) {
-        return Create(this._neode, this, properties);
+    create(properties, transaction) {
+        return Create(this._neode, this, properties, transaction);
     }
 
     /**
      * Merge a node based on the defined indexes
      *
      * @param  {Object} properties
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    merge(properties) {
+    merge(properties, transaction) {
         const merge_on = this.mergeFields();
 
-        return MergeOn(this._neode, this, merge_on, properties);
+        return MergeOn(this._neode, this, merge_on, properties, transaction);
     }
 
     /**
@@ -54,22 +56,24 @@ export default class Queryable {
      *
      * @param  {Object} match Specific properties to merge on
      * @param  {Object} set   Properties to set
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    mergeOn(match, set) {
+    mergeOn(match, set, transaction) {
         const merge_on = Object.keys(match);
         const properties = Object.assign({}, match, set);
 
-        return MergeOn(this._neode, this, merge_on, properties);
+        return MergeOn(this._neode, this, merge_on, properties, transaction);
     }
 
     /**
      * Delete all nodes for this model
      *
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    deleteAll() {
-        return DeleteAll(this._neode, this);
+    deleteAll(transaction) {
+        return DeleteAll(this._neode, this, transaction);
     }
 
     /**
@@ -79,22 +83,24 @@ export default class Queryable {
      * @param  {String|Array|Object} order
      * @param  {Int}                 limit
      * @param  {Int}                 skip
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    all(properties, order, limit, skip) {
-        return FindAll(this._neode, this, properties, order, limit, skip);
+    all(properties, order, limit, skip, transaction) {
+        return FindAll(this._neode, this, properties, order, limit, skip, transaction);
     }
 
     /**
      * Find a Node by its Primary Key
      *
      * @param  {mixed} id
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    find(id) {
+    find(id, transaction) {
         const primary_key = this.primaryKey();
 
-        return this.first(primary_key, id);
+        return this.first(primary_key, id, transaction);
     }
 
     /**
@@ -102,10 +108,11 @@ export default class Queryable {
      *
      * @param  {String} model
      * @param  {int}    id
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    findById(id) {
-        return FindById(this._neode, this, id);
+    findById(id, transaction) {
+        return FindById(this._neode, this, id, transaction);
     }
 
     /**
@@ -114,10 +121,11 @@ export default class Queryable {
      * @param  {String} label
      * @param  {mixed}  key     Either a string for the property name or an object of values
      * @param  {mixed}  value   Value
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    first(key, value) {
-        return First(this._neode, this, key, value);
+    first(key, value, transaction) {
+        return First(this._neode, this, key, value, transaction);
     }
 
     /**
@@ -130,10 +138,11 @@ export default class Queryable {
      * @param  {String|Array|Object} order
      * @param  {Int}                 limit
      * @param  {Int}                 skip
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    withinDistance(location_property, point, distance, properties, order, limit, skip) {
-        return FindWithinDistance(this._neode, this, location_property, point, distance, properties, order, limit, skip);
+    withinDistance(location_property, point, distance, properties, order, limit, skip, transaction) {
+        return FindWithinDistance(this._neode, this, location_property, point, distance, properties, order, limit, skip, transaction);
     }
 
 }

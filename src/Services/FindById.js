@@ -1,7 +1,7 @@
 import Builder, {mode} from '../Query/Builder';
 import { eagerNode, } from '../Query/EagerUtils';
 
-export default function FindById(neode, model, id) {
+export default function FindById(neode, model, id, transaction) {
     const alias = 'this';
 
     const builder = new Builder(neode);
@@ -10,6 +10,6 @@ export default function FindById(neode, model, id) {
         .whereId(alias, id)
         .return( eagerNode(neode, 1, alias, model) )
         .limit(1)
-        .execute(mode.READ)
+        .execute(mode.READ, transaction)
         .then(res => neode.hydrateFirst(res, alias, model));
 }

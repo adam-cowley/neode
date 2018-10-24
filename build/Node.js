@@ -117,15 +117,16 @@ var Node = function (_Entity) {
          * Delete this node from the Graph
          *
          * @param {Integer} to_depth    Depth to delete to (Defaults to 10)
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'delete',
-        value: function _delete(to_depth) {
+        value: function _delete(to_depth, transaction) {
             var _this2 = this;
 
-            return (0, _DeleteNode2.default)(this._neode, this._identity, this._model, to_depth).then(function () {
+            return (0, _DeleteNode2.default)(this._neode, this._identity, this._model, to_depth, transaction).then(function () {
                 _this2._deleted = true;
 
                 return _this2;
@@ -139,6 +140,7 @@ var Node = function (_Entity) {
          * @param  {String} type            Type of Relationship definition
          * @param  {Object} properties      Properties to set against the relationships
          * @param  {Boolean} force_create   Force the creation a new relationship? If false, the relationship will be merged
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
@@ -147,6 +149,7 @@ var Node = function (_Entity) {
         value: function relateTo(node, type) {
             var properties = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
             var force_create = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;
+            var transaction = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : undefined;
 
             var relationship = this._model.relationships().get(type);
 
@@ -154,7 +157,7 @@ var Node = function (_Entity) {
                 return Promise.reject(new Error('Cannot find relationship with type ' + type));
             }
 
-            return (0, _RelateTo2.default)(this._neode, this, node, relationship, properties, force_create);
+            return (0, _RelateTo2.default)(this._neode, this, node, relationship, properties, force_create, transaction);
         }
 
         /**
@@ -243,15 +246,16 @@ var Node = function (_Entity) {
          * Update the properties for this node
          * 
          * @param {Object} properties  New properties
+         * @param  {Transaction} transaction (optional)
          * @return {Node}
          */
 
     }, {
         key: 'update',
-        value: function update(properties) {
+        value: function update(properties, transaction) {
             var _this4 = this;
 
-            return (0, _UpdateNode2.default)(this._neode, this._model, this._identity, properties).then(function (properties) {
+            return (0, _UpdateNode2.default)(this._neode, this._model, this._identity, properties, transaction).then(function (properties) {
                 Object.entries(properties).forEach(function (_ref2) {
                     var _ref3 = _slicedToArray(_ref2, 2),
                         key = _ref3[0],

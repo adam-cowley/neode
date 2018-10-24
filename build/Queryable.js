@@ -72,28 +72,30 @@ var Queryable = function () {
          * Create a new instance of this Model
          *
          * @param  {object} properties
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'create',
-        value: function create(properties) {
-            return (0, _Create2.default)(this._neode, this, properties);
+        value: function create(properties, transaction) {
+            return (0, _Create2.default)(this._neode, this, properties, transaction);
         }
 
         /**
          * Merge a node based on the defined indexes
          *
          * @param  {Object} properties
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'merge',
-        value: function merge(properties) {
+        value: function merge(properties, transaction) {
             var merge_on = this.mergeFields();
 
-            return (0, _MergeOn2.default)(this._neode, this, merge_on, properties);
+            return (0, _MergeOn2.default)(this._neode, this, merge_on, properties, transaction);
         }
 
         /**
@@ -101,28 +103,30 @@ var Queryable = function () {
          *
          * @param  {Object} match Specific properties to merge on
          * @param  {Object} set   Properties to set
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'mergeOn',
-        value: function mergeOn(match, set) {
+        value: function mergeOn(match, set, transaction) {
             var merge_on = Object.keys(match);
             var properties = Object.assign({}, match, set);
 
-            return (0, _MergeOn2.default)(this._neode, this, merge_on, properties);
+            return (0, _MergeOn2.default)(this._neode, this, merge_on, properties, transaction);
         }
 
         /**
          * Delete all nodes for this model
          *
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'deleteAll',
-        value: function deleteAll() {
-            return (0, _DeleteAll2.default)(this._neode, this);
+        value: function deleteAll(transaction) {
+            return (0, _DeleteAll2.default)(this._neode, this, transaction);
         }
 
         /**
@@ -132,28 +136,30 @@ var Queryable = function () {
          * @param  {String|Array|Object} order
          * @param  {Int}                 limit
          * @param  {Int}                 skip
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'all',
-        value: function all(properties, order, limit, skip) {
-            return (0, _FindAll2.default)(this._neode, this, properties, order, limit, skip);
+        value: function all(properties, order, limit, skip, transaction) {
+            return (0, _FindAll2.default)(this._neode, this, properties, order, limit, skip, transaction);
         }
 
         /**
          * Find a Node by its Primary Key
          *
          * @param  {mixed} id
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'find',
-        value: function find(id) {
+        value: function find(id, transaction) {
             var primary_key = this.primaryKey();
 
-            return this.first(primary_key, id);
+            return this.first(primary_key, id, transaction);
         }
 
         /**
@@ -161,13 +167,14 @@ var Queryable = function () {
          *
          * @param  {String} model
          * @param  {int}    id
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'findById',
-        value: function findById(id) {
-            return (0, _FindById2.default)(this._neode, this, id);
+        value: function findById(id, transaction) {
+            return (0, _FindById2.default)(this._neode, this, id, transaction);
         }
 
         /**
@@ -176,13 +183,14 @@ var Queryable = function () {
          * @param  {String} label
          * @param  {mixed}  key     Either a string for the property name or an object of values
          * @param  {mixed}  value   Value
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'first',
-        value: function first(key, value) {
-            return (0, _First2.default)(this._neode, this, key, value);
+        value: function first(key, value, transaction) {
+            return (0, _First2.default)(this._neode, this, key, value, transaction);
         }
 
         /**
@@ -195,13 +203,14 @@ var Queryable = function () {
          * @param  {String|Array|Object} order
          * @param  {Int}                 limit
          * @param  {Int}                 skip
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'withinDistance',
-        value: function withinDistance(location_property, point, distance, properties, order, limit, skip) {
-            return (0, _FindWithinDistance2.default)(this._neode, this, location_property, point, distance, properties, order, limit, skip);
+        value: function withinDistance(location_property, point, distance, properties, order, limit, skip, transaction) {
+            return (0, _FindWithinDistance2.default)(this._neode, this, location_property, point, distance, properties, order, limit, skip, transaction);
         }
     }]);
 

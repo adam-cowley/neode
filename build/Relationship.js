@@ -159,15 +159,16 @@ var Relationship = function (_Entity) {
          * Update the properties for this relationship
          * 
          * @param {Object} properties  New properties
+         * @param  {Transaction} transaction (optional)
          * @return {Node}
          */
 
     }, {
         key: 'update',
-        value: function update(properties) {
+        value: function update(properties, transaction) {
             var _this3 = this;
 
-            return (0, _UpdateRelationship2.default)(this._neode, this._model, this._identity, properties).then(function (properties) {
+            return (0, _UpdateRelationship2.default)(this._neode, this._model, this._identity, properties, transaction).then(function (properties) {
                 Object.entries(properties).forEach(function (_ref) {
                     var _ref2 = _slicedToArray(_ref, 2),
                         key = _ref2[0],
@@ -183,15 +184,16 @@ var Relationship = function (_Entity) {
         /**
          * Delete this relationship from the Graph
          *
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'delete',
-        value: function _delete() {
+        value: function _delete(transaction) {
             var _this4 = this;
 
-            return (0, _DeleteRelationship2.default)(this._neode, this._identity).then(function () {
+            return (0, _DeleteRelationship2.default)(this._neode, this._identity, transaction).then(function () {
                 _this4._deleted = true;
 
                 return _this4;

@@ -70,10 +70,11 @@ export default class Node extends Entity {
      * Delete this node from the Graph
      *
      * @param {Integer} to_depth    Depth to delete to (Defaults to 10)
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    delete(to_depth) {
-        return DeleteNode(this._neode, this._identity, this._model, to_depth)
+    delete(to_depth, transaction) {
+        return DeleteNode(this._neode, this._identity, this._model, to_depth, transaction)
             .then(() => {
                 this._deleted = true;
 
@@ -88,16 +89,17 @@ export default class Node extends Entity {
      * @param  {String} type            Type of Relationship definition
      * @param  {Object} properties      Properties to set against the relationships
      * @param  {Boolean} force_create   Force the creation a new relationship? If false, the relationship will be merged
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    relateTo(node, type, properties = {}, force_create = false) {
+    relateTo(node, type, properties = {}, force_create = false, transaction = undefined) {
         const relationship = this._model.relationships().get(type);
 
         if ( !(relationship instanceof RelationshipType) ) {
             return Promise.reject( new Error(`Cannot find relationship with type ${type}`) );
         }
 
-        return RelateTo(this._neode, this, node, relationship, properties, force_create);
+        return RelateTo(this._neode, this, node, relationship, properties, force_create, transaction);
     }
 
     /**
@@ -172,10 +174,11 @@ export default class Node extends Entity {
      * Update the properties for this node
      * 
      * @param {Object} properties  New properties
+     * @param  {Transaction} transaction (optional)
      * @return {Node}
      */
-    update(properties) {
-        return UpdateNode(this._neode, this._model, this._identity, properties)
+    update(properties, transaction) {
+        return UpdateNode(this._neode, this._model, this._identity, properties, transaction)
             .then(properties => {
                 Object.entries(properties).forEach(( [key, value] ) => {
                     this._properties.set( key, value );

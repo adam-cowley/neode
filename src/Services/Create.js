@@ -4,7 +4,7 @@ import Builder, {mode} from '../Query/Builder';
 import { eagerNode, } from '../Query/EagerUtils';
 import { addNodeToStatement, ORIGINAL_ALIAS } from './WriteUtils';
 
-export default function Create(neode, model, properties) {
+export default function Create(neode, model, properties, transaction) {
     return GenerateDefaultValues(neode, model, properties)
         .then(properties => Validator(neode, model, properties))
         .then(properties => {
@@ -18,7 +18,7 @@ export default function Create(neode, model, properties) {
             const output = eagerNode(neode, 1, alias, model);
 
             return builder.return(output)
-                .execute(mode.WRITE)
+                .execute(mode.WRITE, transaction)
                 .then(res => neode.hydrateFirst(res, alias));
         });
 }

@@ -167,20 +167,22 @@ export default class Neode {
      *
      * @param  {String} model
      * @param  {Object} properties
+     * @param  {Transaction} transaction (optional)
      * @return {Node}
      */
-    create(model, properties) {
-        return this.models.get(model).create(properties);
+    create(model, properties, transaction) {
+        return this.models.get(model).create(properties, transaction);
     }
 
     /**
      * Merge a node based on the defined indexes
      *
      * @param  {Object} properties
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    merge(model, properties) {
-        return this.model(model).merge(properties);
+    merge(model, properties, transaction) {
+        return this.model(model).merge(properties, transaction);
     }
 
     /**
@@ -188,30 +190,33 @@ export default class Neode {
      *
      * @param  {Object} match Specific properties to merge on
      * @param  {Object} set   Properties to set
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    mergeOn(model, match, set) {
-        return this.model(model).mergeOn(match, set);
+    mergeOn(model, match, set, transaction) {
+        return this.model(model).mergeOn(match, set, transaction);
     }
 
     /**
      * Delete a Node from the graph
      *
      * @param  {Node} node
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    delete(node) {
-        return node.delete();
+    delete(node, transaction) {
+        return node.delete(transaction);
     }
 
     /**
      * Delete all node labels
      *
      * @param  {String} label
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    deleteAll(model) {
-        return this.models.get(model).deleteAll();
+    deleteAll(model, transaction) {
+        return this.models.get(model).deleteAll(transaction);
     }
 
     /**
@@ -222,10 +227,11 @@ export default class Neode {
      * @param  {String} type        Type of Relationship definition
      * @param  {Object} properties  Properties to set against the relationships
      * @param  {Boolean} force_create   Force the creation a new relationship? If false, the relationship will be merged
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    relate(from, to, type, properties, force_create = false) {
-        return from.relateTo(to, type, properties, force_create);
+    relate(from, to, type, properties, force_create = false, transaction = undefined) {
+        return from.relateTo(to, type, properties, force_create, transaction);
     }
 
     /**
@@ -233,12 +239,11 @@ export default class Neode {
      *
      * @param  {String} query
      * @param  {Object} params
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    readCypher(query, params) {
-        const session = this.readSession();
-
-        return this.cypher(query, params, session);
+    readCypher(query, params, transaction) {
+        return this.cypher(query, params, transaction);
     }
 
     /**
@@ -246,12 +251,11 @@ export default class Neode {
      *
      * @param  {String} query
      * @param  {Object} params
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    writeCypher(query, params) {
-        const session = this.writeSession();
-
-        return this.cypher(query, params, session);
+    writeCypher(query, params, transaction) {
+        return this.cypher(query, params, transaction);
     }
 
     /**
@@ -259,26 +263,22 @@ export default class Neode {
      *
      * @param  {String} query
      * @param  {Object} params
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    cypher(query, params, session = false) {
-        // If single run, open a new session
-        const single = !session;
-        if ( single ) {
-            session = this.session();
-        }
-
-        return session.run(query, params)
+    cypher(query, params, transaction = this.transaction(true)) {
+        return transaction.run(query, params)
             .then(res => {
-                if ( single ) {
-                    session.close();
+                // Commit the transaction if it's single use.
+                if (transaction.isSingleUse) {
+                    return transaction.success().then(()=>res);
                 }
 
                 return res;
             })
             .catch(err => {
-                if ( single ) {
-                    session.close();
+                if (transaction.isSingleUse) {
+                    return transaction.rollback().then(()=> {throw err;});
                 }
 
                 throw err;
@@ -315,20 +315,33 @@ export default class Neode {
     /**
      * Create a new Transaction
      *
+     * @param singleUse Internal. If true, this transaction is only usable for a single operation.
      * @return {Transaction}
      */
-    transaction() {
+    transaction(isSingleUse = false) {
         const session = this.driver.session();
         const tx = session.beginTransaction();
 
         // Create an 'end' function to commit & close the session
-        // TODO: Clean up
         tx.success = () => {
             return tx.commit()
-                .then(() => {
+                // pass on the result of the `commit` method.
+                .then((result) => {
                     session.close();
+                    return result;
                 });
         };
+
+        tx.failure = ()=>{
+            return tx.rollback()
+                // pass on the result of the `rollback` method.
+                .then((result) => {
+                    session.close();
+                    return result;
+                });
+        }
+
+        tx.isSingleUse = isSingleUse;
 
         return tx;
     }
@@ -403,10 +416,11 @@ export default class Neode {
      * @param  {String|Array|Object} order
      * @param  {Int}                 limit
      * @param  {Int}                 skip
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    all(label, properties, order, limit, skip) {
-        return this.models.get(label).all(properties, order, limit, skip);
+    all(label, properties, order, limit, skip, transaction) {
+        return this.models.get(label).all(properties, order, limit, skip, transaction);
     }
 
     /**
@@ -414,10 +428,11 @@ export default class Neode {
      *
      * @param  {String} label
      * @param  {mixed}  id
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    find(label, id) {
-        return this.models.get(label).find(id);
+    find(label, id, transaction) {
+        return this.models.get(label).find(id, transaction);
     }
 
     /**
@@ -425,10 +440,11 @@ export default class Neode {
      *
      * @param  {String} model
      * @param  {int}    id
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    findById(label, id) {
-        return this.models.get(label).findById(id);
+    findById(label, id, transaction) {
+        return this.models.get(label).findById(id, transaction);
     }
 
     /**
@@ -437,10 +453,11 @@ export default class Neode {
      * @param  {String} label
      * @param  {mixed}  key     Either a string for the property name or an object of values
      * @param  {mixed}  value   Value
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    first(label, key, value) {
-        return this.models.get(label).first(key, value);
+    first(label, key, value, transaction) {
+        return this.models.get(label).first(key, value, transaction);
     }
 
     /**

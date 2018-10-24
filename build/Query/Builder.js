@@ -625,7 +625,7 @@ var Builder = function () {
     }, {
         key: 'to',
         value: function to(alias, model, properties) {
-            this._current.match(new _Match2.default(alias, model, this._convertPropertyMap(properties)));
+            this._current.match(new _Match2.default(alias, model, this._convertPropertyMap(alias, properties)));
 
             return this;
         }
@@ -689,6 +689,7 @@ var Builder = function () {
          * Execute the query
          *
          * @param  {String}  query_mode
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
@@ -696,6 +697,7 @@ var Builder = function () {
         key: 'execute',
         value: function execute() {
             var query_mode = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : mode.WRITE;
+            var transaction = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : undefined;
 
             var _build = this.build(),
                 query = _build.query,
@@ -703,10 +705,10 @@ var Builder = function () {
 
             switch (query_mode) {
                 case mode.WRITE:
-                    return this._neode.writeCypher(query, params);
+                    return this._neode.writeCypher(query, params, transaction);
 
                 default:
-                    return this._neode.cypher(query, params);
+                    return this._neode.cypher(query, params, transaction);
             }
         }
     }]);

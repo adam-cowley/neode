@@ -23,6 +23,7 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 function RelateTo(neode, from, to, relationship, properties) {
     var force_create = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : false;
+    var transaction = arguments.length > 6 && arguments[6] !== undefined ? arguments[6] : undefined;
 
     return (0, _GenerateDefaultValues2.default)(neode, relationship, properties).then(function (properties) {
         return (0, _Validator2.default)(neode, relationship, properties);
@@ -49,7 +50,7 @@ function RelateTo(neode, from, to, relationship, properties) {
 
         var query = '\n                MATCH (from), (to)\n                WHERE id(from) = {from_id}\n                AND id(to) = {to_id}\n                ' + mode + ' (from)' + direction_in + '-[rel:' + type + ']-' + direction_out + '(to)\n                ' + set + '\n                RETURN rel\n            ';
 
-        return neode.writeCypher(query, params).then(function (res) {
+        return neode.writeCypher(query, params, transaction).then(function (res) {
             var rel = res.records[0].get('rel');
             var hydrate_from = relationship.direction() == _RelationshipType.DIRECTION_IN ? to : from;
             var hydrate_to = relationship.direction() == _RelationshipType.DIRECTION_IN ? from : to;

@@ -109,10 +109,11 @@ export default class Relationship extends Entity {
      * Update the properties for this relationship
      * 
      * @param {Object} properties  New properties
+     * @param  {Transaction} transaction (optional)
      * @return {Node}
      */
-    update(properties) {
-        return UpdateRelationship(this._neode, this._model, this._identity, properties)
+    update(properties, transaction) {
+        return UpdateRelationship(this._neode, this._model, this._identity, properties, transaction)
             .then(properties => {
                 Object.entries(properties).forEach(( [key, value] ) => {
                     this._properties.set( key, value );
@@ -126,10 +127,11 @@ export default class Relationship extends Entity {
     /**
      * Delete this relationship from the Graph
      *
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    delete() {
-        return DeleteRelationship(this._neode, this._identity)
+    delete(transaction) {
+        return DeleteRelationship(this._neode, this._identity, transaction)
             .then(() => {
                 this._deleted = true;
 

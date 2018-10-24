@@ -521,17 +521,18 @@ export default class Builder {
      * Execute the query
      *
      * @param  {String}  query_mode
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    execute(query_mode = mode.WRITE) {
+    execute(query_mode = mode.WRITE, transaction = undefined) {
         const { query, params } = this.build();
 
         switch (query_mode) {
             case mode.WRITE:
-                return this._neode.writeCypher(query, params);
+                return this._neode.writeCypher(query, params, transaction);
 
             default:
-                return this._neode.cypher(query, params);
+                return this._neode.cypher(query, params, transaction);
         }
     }
 

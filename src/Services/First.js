@@ -1,7 +1,7 @@
 import Builder, {mode} from '../Query/Builder';
 import { eagerNode, } from '../Query/EagerUtils';
 
-export default function First(neode, model, key, value) {
+export default function First(neode, model, key, value, transaction) {
     const alias = 'this';
 
     const builder = new Builder(neode);
@@ -25,6 +25,6 @@ export default function First(neode, model, key, value) {
 
     return builder.return(output)
         .limit(1)
-        .execute(mode.READ)
+        .execute(mode.READ, transaction)
         .then(res => neode.hydrateFirst(res, alias, model));
 }

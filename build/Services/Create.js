@@ -1,7 +1,7 @@
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
-    value: true
+            value: true
 });
 exports.default = Create;
 
@@ -23,21 +23,21 @@ var _WriteUtils = require('./WriteUtils');
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-function Create(neode, model, properties) {
-    return (0, _GenerateDefaultValues2.default)(neode, model, properties).then(function (properties) {
-        return (0, _Validator2.default)(neode, model, properties);
-    }).then(function (properties) {
-        var alias = _WriteUtils.ORIGINAL_ALIAS;
+function Create(neode, model, properties, transaction) {
+            return (0, _GenerateDefaultValues2.default)(neode, model, properties).then(function (properties) {
+                        return (0, _Validator2.default)(neode, model, properties);
+            }).then(function (properties) {
+                        var alias = _WriteUtils.ORIGINAL_ALIAS;
 
-        var builder = new _Builder2.default(neode);
+                        var builder = new _Builder2.default(neode);
 
-        (0, _WriteUtils.addNodeToStatement)(neode, builder, alias, model, properties, [alias]);
+                        (0, _WriteUtils.addNodeToStatement)(neode, builder, alias, model, properties, [alias]);
 
-        // Output
-        var output = (0, _EagerUtils.eagerNode)(neode, 1, alias, model);
+                        // Output
+                        var output = (0, _EagerUtils.eagerNode)(neode, 1, alias, model);
 
-        return builder.return(output).execute(_Builder.mode.WRITE).then(function (res) {
-            return neode.hydrateFirst(res, alias);
-        });
-    });
+                        return builder.return(output).execute(_Builder.mode.WRITE, transaction).then(function (res) {
+                                    return neode.hydrateFirst(res, alias);
+                        });
+            });
 }

@@ -187,20 +187,10 @@ function Validator(neode, model, properties) {
     return new Promise(function (resolve, reject) {
         _joi2.default.validate(properties, schema, joi_options, function (err, validated) {
             if (err) {
-                var errors = {};
-
-                err.details.forEach(function (e) {
-                    if (!errors[e.path]) {
-                        errors[e.path] = [];
-                    }
-
-                    errors[e.path].push(e.type);
-                });
-
-                return reject(new _ValidationError2.default(errors));
+                return reject(err);
             }
 
-            resolve(validated);
+            return resolve(validated);
         });
     });
 }

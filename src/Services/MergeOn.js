@@ -15,7 +15,7 @@ import { eagerNode, } from '../Query/EagerUtils';
 import { addNodeToStatement, ORIGINAL_ALIAS } from './WriteUtils';
 
 
-export default function MergeOn(neode, model, merge_on, properties) {
+export default function MergeOn(neode, model, merge_on, properties, transaction) {
     return GenerateDefaultValues(neode, model, properties)
         .then(properties => Validator(neode, model, properties))
         .then(properties => {
@@ -29,7 +29,7 @@ export default function MergeOn(neode, model, merge_on, properties) {
             const output = eagerNode(neode, 1, alias, model);
 
             return builder.return(output)
-                .execute(mode.WRITE)
+                .execute(mode.WRITE, transaction)
                 .then(res => neode.hydrateFirst(res, alias));
         });
 }

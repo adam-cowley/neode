@@ -16,7 +16,7 @@ var _EagerUtils = require('../Query/EagerUtils');
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-function FindWithinDistance(neode, model, location_property, point, distance, properties, order, limit, skip) {
+function FindWithinDistance(neode, model, location_property, point, distance, properties, order, limit, skip, transaction) {
     var alias = 'this';
 
     var builder = new _Builder2.default(neode);
@@ -66,7 +66,7 @@ function FindWithinDistance(neode, model, location_property, point, distance, pr
     var output = (0, _EagerUtils.eagerNode)(neode, 1, alias, model);
 
     // Complete Query
-    return builder.orderBy(order).skip(skip).limit(limit).return(output).execute(_Builder.mode.READ).then(function (res) {
+    return builder.orderBy(order).skip(skip).limit(limit).return(output).execute(_Builder.mode.READ, transaction).then(function (res) {
         return neode.hydrate(res, alias);
     });
 }

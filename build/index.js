@@ -193,26 +193,28 @@ var Neode = function () {
          *
          * @param  {String} model
          * @param  {Object} properties
+         * @param  {Transaction} transaction (optional)
          * @return {Node}
          */
 
     }, {
         key: 'create',
-        value: function create(model, properties) {
-            return this.models.get(model).create(properties);
+        value: function create(model, properties, transaction) {
+            return this.models.get(model).create(properties, transaction);
         }
 
         /**
          * Merge a node based on the defined indexes
          *
          * @param  {Object} properties
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'merge',
-        value: function merge(model, properties) {
-            return this.model(model).merge(properties);
+        value: function merge(model, properties, transaction) {
+            return this.model(model).merge(properties, transaction);
         }
 
         /**
@@ -220,39 +222,42 @@ var Neode = function () {
          *
          * @param  {Object} match Specific properties to merge on
          * @param  {Object} set   Properties to set
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'mergeOn',
-        value: function mergeOn(model, match, set) {
-            return this.model(model).mergeOn(match, set);
+        value: function mergeOn(model, match, set, transaction) {
+            return this.model(model).mergeOn(match, set, transaction);
         }
 
         /**
          * Delete a Node from the graph
          *
          * @param  {Node} node
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'delete',
-        value: function _delete(node) {
-            return node.delete();
+        value: function _delete(node, transaction) {
+            return node.delete(transaction);
         }
 
         /**
          * Delete all node labels
          *
          * @param  {String} label
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'deleteAll',
-        value: function deleteAll(model) {
-            return this.models.get(model).deleteAll();
+        value: function deleteAll(model, transaction) {
+            return this.models.get(model).deleteAll(transaction);
         }
 
         /**
@@ -263,6 +268,7 @@ var Neode = function () {
          * @param  {String} type        Type of Relationship definition
          * @param  {Object} properties  Properties to set against the relationships
          * @param  {Boolean} force_create   Force the creation a new relationship? If false, the relationship will be merged
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
@@ -270,8 +276,9 @@ var Neode = function () {
         key: 'relate',
         value: function relate(from, to, type, properties) {
             var force_create = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : false;
+            var transaction = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : undefined;
 
-            return from.relateTo(to, type, properties, force_create);
+            return from.relateTo(to, type, properties, force_create, transaction);
         }
 
         /**
@@ -279,15 +286,14 @@ var Neode = function () {
          *
          * @param  {String} query
          * @param  {Object} params
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'readCypher',
-        value: function readCypher(query, params) {
-            var session = this.readSession();
-
-            return this.cypher(query, params, session);
+        value: function readCypher(query, params, transaction) {
+            return this.cypher(query, params, transaction);
         }
 
         /**
@@ -295,15 +301,14 @@ var Neode = function () {
          *
          * @param  {String} query
          * @param  {Object} params
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'writeCypher',
-        value: function writeCypher(query, params) {
-            var session = this.writeSession();
-
-            return this.cypher(query, params, session);
+        value: function writeCypher(query, params, transaction) {
+            return this.cypher(query, params, transaction);
         }
 
         /**
@@ -311,29 +316,29 @@ var Neode = function () {
          *
          * @param  {String} query
          * @param  {Object} params
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'cypher',
         value: function cypher(query, params) {
-            var session = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : false;
+            var transaction = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : this.transaction(true);
 
-            // If single run, open a new session
-            var single = !session;
-            if (single) {
-                session = this.session();
-            }
-
-            return session.run(query, params).then(function (res) {
-                if (single) {
-                    session.close();
+            return transaction.run(query, params).then(function (res) {
+                // Commit the transaction if it's single use.
+                if (transaction.isSingleUse) {
+                    return transaction.success().then(function () {
+                        return res;
+                    });
                 }
 
                 return res;
             }).catch(function (err) {
-                if (single) {
-                    session.close();
+                if (transaction.isSingleUse) {
+                    return transaction.rollback().then(function () {
+                        throw err;
+                    });
                 }
 
                 throw err;
@@ -379,22 +384,30 @@ var Neode = function () {
         /**
          * Create a new Transaction
          *
+         * @param singleUse Internal. If true, this transaction is only usable for a single operation.
          * @return {Transaction}
          */
 
     }, {
         key: 'transaction',
         value: function transaction() {
+            var isSingleUse = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
+
             var session = this.driver.session();
             var tx = session.beginTransaction();
 
             // Create an 'end' function to commit & close the session
             // TODO: Clean up
             tx.success = function () {
-                return tx.commit().then(function () {
+                return tx.commit()
+                // pass on the result of the `commit` method.
+                .then(function (result) {
                     session.close();
+                    return result;
                 });
             };
+
+            tx.isSingleUse = isSingleUse;
 
             return tx;
         }
@@ -473,13 +486,14 @@ var Neode = function () {
          * @param  {String|Array|Object} order
          * @param  {Int}                 limit
          * @param  {Int}                 skip
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'all',
-        value: function all(label, properties, order, limit, skip) {
-            return this.models.get(label).all(properties, order, limit, skip);
+        value: function all(label, properties, order, limit, skip, transaction) {
+            return this.models.get(label).all(properties, order, limit, skip, transaction);
         }
 
         /**
@@ -487,13 +501,14 @@ var Neode = function () {
          *
          * @param  {String} label
          * @param  {mixed}  id
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'find',
-        value: function find(label, id) {
-            return this.models.get(label).find(id);
+        value: function find(label, id, transaction) {
+            return this.models.get(label).find(id, transaction);
         }
 
         /**
@@ -501,13 +516,14 @@ var Neode = function () {
          *
          * @param  {String} model
          * @param  {int}    id
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'findById',
-        value: function findById(label, id) {
-            return this.models.get(label).findById(id);
+        value: function findById(label, id, transaction) {
+            return this.models.get(label).findById(id, transaction);
         }
 
         /**
@@ -516,13 +532,14 @@ var Neode = function () {
          * @param  {String} label
          * @param  {mixed}  key     Either a string for the property name or an object of values
          * @param  {mixed}  value   Value
+         * @param  {Transaction} transaction (optional)
          * @return {Promise}
          */
 
     }, {
         key: 'first',
-        value: function first(label, key, value) {
-            return this.models.get(label).first(key, value);
+        value: function first(label, key, value, transaction) {
+            return this.models.get(label).first(key, value, transaction);
         }
 
         /**

@@ -16,7 +16,7 @@ var _EagerUtils = require('../Query/EagerUtils');
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-function FindAll(neode, model, properties, order, limit, skip) {
+function FindAll(neode, model, properties, order, limit, skip, transaction) {
     var alias = 'this';
 
     var builder = new _Builder2.default(neode);
@@ -43,7 +43,7 @@ function FindAll(neode, model, properties, order, limit, skip) {
     // Output
     var output = (0, _EagerUtils.eagerNode)(neode, 1, alias, model);
 
-    return builder.return(output).limit(limit).skip(skip).execute(_Builder.mode.READ).then(function (res) {
+    return builder.return(output).limit(limit).skip(skip).execute(_Builder.mode.READ, transaction).then(function (res) {
         return neode.hydrate(res, alias);
     });
 }

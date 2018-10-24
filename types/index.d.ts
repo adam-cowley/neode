@@ -77,42 +77,47 @@ declare class Neode {
    *
    * @param  {String} model
    * @param  {Object} properties
+   * @param  {Transaction} transaction (optional)
    * @return {Node}
    */
-  create<T>(model: string, properties: object): Neode.Node<T>;
+  create<T>(model: string, properties: object, transaction?: Neode.Transaction): Neode.Node<T>;
 
   /**
    * Merge a node based on the defined indexes
    *
    * @param  {Object} properties
+   * @param  {Transaction} transaction (optional)
    * @return {Promise}
    */
-  merge<T>(model: string, properties: object): Promise<Neode.Node<T>>;
+  merge<T>(model: string, properties: object, transaction?: Neode.Transaction): Promise<Neode.Node<T>>;
 
   /**
    * Merge a node based on the supplied properties
    *
    * @param  {Object} match Specific properties to merge on
    * @param  {Object} set   Properties to set
+   * @param  {Transaction} transaction (optional)
    * @return {Promise}
    */
-  mergeOn<T>(model: string, match: object, set: object): Promise<Neode.Node<T>>;
+  mergeOn<T>(model: string, match: object, set: object, transaction?: Neode.Transaction): Promise<Neode.Node<T>>;
 
   /**
    * Delete a Node from the graph
    *
    * @param  {Node} node
+   * @param  {Transaction} transaction (optional)
    * @return {Promise}
    */
-  delete(node: Neode.Node<any>): Promise<void>;
+  delete(node: Neode.Node<any>, transaction?: Neode.Transaction): Promise<void>;
 
   /**
    * Delete all node labels
    *
    * @param  {String} label
+   * @param  {Transaction} transaction (optional)
    * @return {Promise}
    */
-  deleteAll(model: string): Promise<void>;
+  deleteAll(model: string, transaction?: Neode.Transaction): Promise<void>;
 
   /**
    * Relate two nodes based on the type
@@ -122,36 +127,40 @@ declare class Neode {
    * @param  {String} type        Type of Relationship definition
    * @param  {Object} properties  Properties to set against the relationships
    * @param  {Boolean} force_create   Force the creation a new relationship? If false, the relationship will be merged
+   * @param  {Transaction} transaction (optional)
    * @return {Promise}
    */
-  relate<T,U>(from: Neode.Node<T>, to: Neode.Node<U>, type: string, properties: Neode.RelationshipSchema, force_create ?: boolean): Promise<Neode.Relationship>;
+  relate<T,U>(from: Neode.Node<T>, to: Neode.Node<U>, type: string, properties: Neode.RelationshipSchema, force_create ?: boolean, transaction?: Neode.Transaction): Promise<Neode.Relationship>;
 
   /**
    * Run an explicitly defined Read query
    *
    * @param  {String} query
    * @param  {Object} params
+   * @param  {Transaction} transaction (optional)
    * @return {Promise}
    */
-  readCypher(query: string, params: object): Promise<neo4j.StatementResult>;
+  readCypher(query: string, params: object, transaction?: Neode.Transaction): Promise<neo4j.StatementResult>;
 
   /**
    * Run an explicitly defined Write query
    *
    * @param  {String} query
    * @param  {Object} params
+   * @param  {Transaction} transaction (optional)
    * @return {Promise}
    */
-  writeCypher(query: string, params: object): Promise<neo4j.StatementResult>;
+  writeCypher(query: string, params: object, transaction?: Neode.Transaction): Promise<neo4j.StatementResult>;
 
   /**
    * Run a Cypher query
    *
    * @param  {String} query
    * @param  {Object} params
+   * @param  {Transaction} transaction (optional)
    * @return {Promise}
    */
-  cypher(query: string, params: object, session?: neo4j.Session): Promise<neo4j.StatementResult>;
+  cypher(query: string, params: object, transaction?: Neode.Transaction): Promise<neo4j.StatementResult>;
 
   /**
    * Create a new Session in the Neo4j Driver.
@@ -177,9 +186,10 @@ declare class Neode {
   /**
    * Create a new Transaction
    *
+   * @param {Boolean} isSingleUse
    * @return {Transaction}
    */
-  transaction(): neo4j.Transaction;
+  transaction(isSingleUse?: boolean): Neode.Transaction;
 
   /**
    * Run a batch of queries within a transaction
@@ -211,27 +221,30 @@ declare class Neode {
    * @param  {String|Array|Object} order
    * @param  {Int}                 limit
    * @param  {Int}                 skip
+   * @param  {Transaction} transaction (optional)
    * @return {Promise}
    */
-  all(label: string, properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number): Promise<Neode.NodeCollection>;
+  all(label: string, properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number, transaction?: Neode.Transaction): Promise<Neode.NodeCollection>;
 
   /**
    * Find a Node by it's label and primary key
    *
    * @param  {String} label
    * @param  {mixed}  id
+   * @param  {Transaction} transaction (optional)
    * @return {Promise}
    */
-  find<T>(label: string, id: string | number): Promise<Neode.Node<T>>;
+  find<T>(label: string, id: string | number, transaction?: Neode.Transaction): Promise<Neode.Node<T>>;
 
   /**
    * Find a Node by it's internal node ID
    *
    * @param  {String} model
    * @param  {int}    id
+   * @param  {Transaction} transaction (optional)
    * @return {Promise}
    */
-  findById<T>(label: string, id: number): Promise<Neode.Node<T>>;
+  findById<T>(label: string, id: number, transaction?: Neode.Transaction): Promise<Neode.Node<T>>;
 
   /**
    * Find a Node by properties
@@ -239,9 +252,10 @@ declare class Neode {
    * @param  {String} label
    * @param  {mixed}  key     Either a string for the property name or an object of values
    * @param  {mixed}  value   Value
+   * @param  {Transaction} transaction (optional)
    * @return {Promise}
    */
-  first<T>(label: string, key: string | {[key: string]: any}, value: any): Promise<Neode.Node<T>>;
+  first<T>(label: string, key: string | {[key: string]: any}, value: any, transaction?: Neode.Transaction): Promise<Neode.Node<T>>;
 
   /**
    * Hydrate a set of nodes and return a NodeCollection
@@ -268,11 +282,25 @@ export = Neode;
 
 declare namespace Neode {
 
+  interface Transaction extends neo4j.Transaction{
+    isSingleUse: boolean;
+    /**
+     * Commits the transaction and closes the associated session.
+     */
+    success(): neo4j.Result;
+    /**
+     * Rollbacks the transaction and closes the associated session.
+     */
+    failure(): neo4j.Result;
+  }
+
   type PropertyType = string | number | boolean;
 
   type PropertyTypes = 'uuid' | 'number' | 'string' | 'boolean' | 'DateTime' | 'Point';
 
-  type Direction = 'direction_in' | 'direction_out' | 'direction_both' | 'in' | 'out';
+  type Direction  = "DIRECTION_IN" | "DIRECTION_OUT" | "DIRECTION_OUT";
+  
+  type RelationshipTypes = "relationship" | "relationships" | "node" | "nodes";
 
   type NodeProperty = PropertyTypes | {
       type:       PropertyTypes,
@@ -285,7 +313,7 @@ declare namespace Neode {
   };
 
   type RelationshipProperty = {
-      type:       'relationship',
+      type:       RelationshipTypes,
       target:     string,
       relationship: string,
       required?:  boolean,
@@ -427,7 +455,7 @@ declare namespace Neode {
      * @param  {Int|String}              traversals    Number of traversals (1, "1..2", "0..2", "..3")
      * @return {Builder}
      */
-    relationship(relationship: string | RelationshipType, direction: Neode.Direction, alias: string | null, traversals: number | string): Builder;
+    relationship(relationship: RelationshipTypes | RelationshipType, direction: Neode.Direction, alias: string | null, traversals: number | string): Builder;
 
     /**
      * Complete a relationship
@@ -457,7 +485,7 @@ declare namespace Neode {
      *
      * @return {Promise}
      */
-    execute(mode?: Mode): Promise<neo4j.StatementResult>;
+    execute(mode?: Mode, transaction?: Transaction): Promise<neo4j.StatementResult>;
   }
 
   class Queryable<T> {
@@ -481,7 +509,7 @@ declare namespace Neode {
      * @param  {object} properties
      * @return {Promise}
      */
-    create(properties: T): Promise<Node<T>>;
+    create(properties: T, transaction?: Transaction): Promise<Node<T>>;
 
     /**
      * Merge a node based on the defined indexes
@@ -489,7 +517,7 @@ declare namespace Neode {
      * @param  {Object} properties
      * @return {Promise}
      */
-    merge(properties: T): Promise<Node<T>>;
+    merge(properties: T, transaction?: Transaction): Promise<Node<T>>;
 
     /**
      * Merge a node based on the supplied properties
@@ -498,14 +526,14 @@ declare namespace Neode {
      * @param  {Object} set   Properties to set
      * @return {Promise}
      */
-    mergeOn(match: Object, set: Object): Promise<Node<T>>;
+    mergeOn(match: Object, set: Object, transaction?: Transaction): Promise<Node<T>>;
 
     /**
      * Delete all nodes for this model
      *
      * @return {Promise}
      */
-    deleteAll(): Promise<void>;
+    deleteAll(transaction?: Transaction): Promise<void>;
 
     /**
      * Get a collection of nodes for this label
@@ -516,7 +544,7 @@ declare namespace Neode {
      * @param  {Int}                 skip
      * @return {Promise}
      */
-    all(properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number): Promise<NodeCollection>;
+    all(properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number, transaction?: Transaction): Promise<NodeCollection>;
 
     /**
      * Find a Node by its Primary Key
@@ -524,7 +552,7 @@ declare namespace Neode {
      * @param  {mixed} id
      * @return {Promise}
      */
-    find(id: string | number): Promise<Node<T>>;
+    find(id: string | number, transaction?: Transaction): Promise<Node<T>>;
 
     /**
      * Find a Node by it's internal node ID
@@ -532,7 +560,7 @@ declare namespace Neode {
      * @param  {int}    id
      * @return {Promise}
      */
-    findById(id: number): Promise<Node<T>>;
+    findById(id: number, transaction?: Transaction): Promise<Node<T>>;
 
     /**
      * Find a Node by properties
@@ -542,7 +570,7 @@ declare namespace Neode {
      * @param  {mixed}  value   Value
      * @return {Promise}
      */
-    first(key: string | object, value: string | number): Promise<Node<T>>;
+    first(key: string | object, value: string | number, transaction?: Transaction): Promise<Node<T>>;
 
     /**
      * Get a collection of nodes within a certain distance belonging to this label
@@ -556,7 +584,7 @@ declare namespace Neode {
      * @param  {Int}                 skip
      * @return {Promise}
      */
-    withinDistance(location_property: string, point: {x: number, y: number, z?: number} | {latitude: number, longitude: number, height?: number}, distance: number, properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number): Promise<NodeCollection>;
+    withinDistance(location_property: string, point: {x: number, y: number, z?: number} | {latitude: number, longitude: number, height?: number}, distance: number, properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number, transaction?: Transaction): Promise<NodeCollection>;
   }
 
   class Model<T> extends Queryable<T> {
@@ -611,7 +639,8 @@ declare namespace Neode {
      * Add a new relationship
      *
      * @param  {String} name                Reference of Relationship
-     * @param  {String} relationship        Internal Relationship type
+     * @param  {RelationshipTypes} type     Internal Relationship type
+     * @param  {String} relationship        Neo4j name of the relationship
      * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
      * @param  {String|Model|null} target   Target type definition for the
      * @param  {Object} schema              Property Schema
@@ -619,7 +648,7 @@ declare namespace Neode {
      * @param  {Bool|String} cascade        Cascade delete policy for this relationship
      * @return {Relationship}
      */
-    relationship(name: string, relationship: string, direction?: Neode.Direction, target?: string | Model<T>, schema?: Neode.SchemaObject, eager?: boolean, cascade?: boolean | string): Relationship;
+    relationship(name: string, type: RelationshipTypes, relationship: string, direction?: Neode.Direction, target?: string | Model<T>, schema?: Neode.SchemaObject, eager?: boolean, cascade?: boolean | string): Relationship;
 
     /**
      * Get all defined Relationships  for this Model
@@ -675,8 +704,9 @@ declare namespace Neode {
 
     /**
      * Constructor
-     * @param  {String} type                Reference of Relationship
-     * @param  {String} relationship        Internal Neo4j Relationship type (ie 'KNOWS')
+     * @param {String} name                 Reference of Relationship
+     * @param  {String} type                Internal Relationship type
+     * @param  {String} relationship        Neo4j Relationship name (ie 'KNOWS')
      * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
      * @param  {String|Model|null} target   Target type definition for the
      * @param  {Object} schema              Relationship definition schema
@@ -684,14 +714,14 @@ declare namespace Neode {
      * @param  {Bool|String} cascade        Cascade delete policy for this relationship
      * @return {Relationship}
      */
-    constructor(type: string, relationship: string, direction: Neode.Direction, target: string | Model<any> | null, schema?: Neode.RelationshipSchema, eager?: boolean, cascade?: boolean | string);
+    constructor(name: string, type: RelationshipTypes, relationship: string, direction: Neode.Direction, target: string | Model<any> | null, schema?: Neode.RelationshipSchema, eager?: boolean, cascade?: boolean | string);
 
     /**
      * Type
      *
-     * @return {String}
+     * @return {RelationshipTypes}
      */
-    type(): string;
+    type(): RelationshipTypes;
 
     /**
      * Get Internal Relationship Type
@@ -862,27 +892,30 @@ declare namespace Neode {
     /**
      * Update the properties of a node
      * @param  {Object} properties Updated properties
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    update(properties: T): Promise<Node<T>>;
+    update(properties: T, transaction?: Transaction): Promise<Node<T>>;
 
     /**
      * Delete this node from the Graph
      *
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    delete(): Promise<Node<T>>;
+    delete(transaction?: Transaction): Promise<Node<T>>;
 
     /**
      * Relate this node to another based on the type
      *
      * @param  {Node}   node            Node to relate to
-     * @param  {String} type            Type of Relationship definition
+     * @param  {String} name            Reference property name in this node
      * @param  {Object} properties      Properties to set against the relationships
      * @param  {Boolean} force_create   Force the creation a new relationship? If false, the relationship will be merged
+     * @param  {Transaction} transaction (optional)
      * @return {Promise}
      */
-    relateTo(node: Node<any>, type: string, properties ?: object, force_create ?: boolean): Promise<Relationship>;
+    relateTo(node: Node<any>, name: string, properties ?: object, force_create ?: boolean, transaction?: Transaction): Promise<Relationship>;
 
     /**
      * When converting to string, return this model's primary key

@@ -16,7 +16,7 @@ var _EagerUtils = require('../Query/EagerUtils');
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-function First(neode, model, key, value) {
+function First(neode, model, key, value, transaction) {
     var alias = 'this';
 
     var builder = new _Builder2.default(neode);
@@ -37,7 +37,7 @@ function First(neode, model, key, value) {
 
     var output = (0, _EagerUtils.eagerNode)(neode, 1, alias, model);
 
-    return builder.return(output).limit(1).execute(_Builder.mode.READ).then(function (res) {
+    return builder.return(output).limit(1).execute(_Builder.mode.READ, transaction).then(function (res) {
         return neode.hydrateFirst(res, alias, model);
     });
 }

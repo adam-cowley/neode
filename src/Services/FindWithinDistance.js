@@ -1,7 +1,7 @@
 import Builder, {mode} from '../Query/Builder';
 import { eagerNode, } from '../Query/EagerUtils';
 
-export default function FindWithinDistance(neode, model, location_property, point, distance, properties, order, limit, skip) {
+export default function FindWithinDistance(neode, model, location_property, point, distance, properties, order, limit, skip, transaction) {
     const alias = 'this';
 
     const builder = new Builder(neode);
@@ -57,6 +57,6 @@ export default function FindWithinDistance(neode, model, location_property, poin
         .skip(skip)
         .limit(limit)
         .return(output)
-        .execute(mode.READ)
+        .execute(mode.READ, transaction)
         .then(res => neode.hydrate(res, alias));
 }
