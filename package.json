@@ -22,7 +22,7 @@
     "url": "https://github.com/adam-cowley/neode.git"
   },
   "author": "Adam Cowley <github@adamcowley.co.uk>",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "dotenv": "^4.0.0",
     "joi": "^13.6.0",
