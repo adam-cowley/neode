@@ -397,10 +397,18 @@ var Neode = function () {
             var tx = session.beginTransaction();
 
             // Create an 'end' function to commit & close the session
-            // TODO: Clean up
             tx.success = function () {
                 return tx.commit()
                 // pass on the result of the `commit` method.
+                .then(function (result) {
+                    session.close();
+                    return result;
+                });
+            };
+
+            tx.failure = function () {
+                return tx.rollback()
+                // pass on the result of the `rollback` method.
                 .then(function (result) {
                     session.close();
                     return result;
