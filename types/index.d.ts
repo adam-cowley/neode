@@ -265,7 +265,7 @@ declare class Neode {
    * @param  {Definition|null} definition     Force Definition
    * @return {NodeCollection}
    */
-  hydrate<T>(res: neo4j.StatementResult, alias: string, definition?: Neode.Model<T>): Neode.NodeCollection;
+  hydrate<T>(res: neo4j.StatementResult, alias: string, definition?: Neode.Model<T>): Neode.NodeCollection<T>;
 
   /**
    * Hydrate the first record in a result set
@@ -544,7 +544,7 @@ declare namespace Neode {
      * @param  {Int}                 skip
      * @return {Promise}
      */
-    all(properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number, transaction?: Transaction): Promise<NodeCollection>;
+    all(properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number, transaction?: Transaction): Promise<NodeCollection<T>>;
 
     /**
      * Find a Node by its Primary Key
@@ -584,7 +584,7 @@ declare namespace Neode {
      * @param  {Int}                 skip
      * @return {Promise}
      */
-    withinDistance(location_property: string, point: {x: number, y: number, z?: number} | {latitude: number, longitude: number, height?: number}, distance: number, properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number, transaction?: Transaction): Promise<NodeCollection>;
+    withinDistance(location_property: string, point: {x: number, y: number, z?: number} | {latitude: number, longitude: number, height?: number}, distance: number, properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number, transaction?: Transaction): Promise<NodeCollection<T>>;
   }
 
   class Model<T> extends Queryable<T> {
@@ -932,7 +932,7 @@ declare namespace Neode {
     toJson(): Promise<T>;
   }
 
-  class NodeCollection {
+  class NodeCollection<T> {
 
     /**
      * @constructor
@@ -940,7 +940,7 @@ declare namespace Neode {
      * @param  {Node[]} values  Array of Node
      * @return {Collectiob}
      */
-    constructor(neode: Neode, values: Array<Node<any>>);
+    constructor(neode: Neode, values: Array<Node<T>>);
 
     /**
      * Get length property
@@ -955,14 +955,14 @@ declare namespace Neode {
      * @param  {Int} index
      * @return {Node}
      */
-    get(index: number): Node<any>;
+    get(index: number): Node<T>;
 
     /**
      * Get the first Node in the Collection
      *
      * @return {Node}
      */
-    first(): Node<any>;
+    first(): Node<T>;
 
     /**
      * Map a function to all values
@@ -970,14 +970,14 @@ declare namespace Neode {
      * @param  {Function} fn
      * @return {mixed}
      */
-    map<U>(fn: (value: Node<any>, index: number, array: Array<Node<any>>) => U): Array<U>;
+    map<U>(fn: (value: Node<T>, index: number, array: Array<Node<T>>) => U): Array<U>;
 
     /**
      * Run a function on all values
      * @param  {Function} fn
      * @return {mixed}
      */
-    forEach(fn: (value: Node<any>, index: number, array: Array<Node<any>>) => any): any;
+    forEach(fn: (value: Node<T>, index: number, array: Array<Node<T>>) => any): any;
 
     /**
      * Map the 'toJson' function on all values
