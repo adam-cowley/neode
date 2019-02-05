@@ -248,20 +248,10 @@ export default function Validator(neode, model, properties) {
     return new Promise((resolve, reject) => {
         Joi.validate(properties, schema, joi_options, (err, validated) => {
             if (err) {
-                let errors = {};
-
-                err.details.forEach(e => {
-                    if ( !errors[ e.path ] ) {
-                        errors[ e.path ] = [];
-                    }
-
-                    errors[ e.path ].push(e.type);
-                });
-
-                return reject( new ValidationError(errors) );
+                return reject(err);
             }
 
-            resolve(validated);
+            return resolve(validated);
         });
     });
 }

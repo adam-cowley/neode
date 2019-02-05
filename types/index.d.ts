@@ -60,7 +60,7 @@ declare class Neode {
    * @param  {Object} schema
    * @return {Model}
    */
-  model<T>(name: string, schema: Neode.SchemaObject): Neode.Model<T>;
+  model<T>(name: string, schema?: Neode.SchemaObject): Neode.Model<T>;
 
   /**
    * Extend a model with extra configuration
@@ -619,7 +619,7 @@ declare namespace Neode {
      * @param  {Bool|String} cascade        Cascade delete policy for this relationship
      * @return {Relationship}
      */
-    relationship(name: string, relationship: string, direction?: Neode.Direction, target?: string | Model<T>, schema?: Neode.RelationshipSchema, eager?: boolean, cascade?: boolean | string): Relationship;
+    relationship(name: string, relationship: string, direction?: Neode.Direction, target?: string | Model<T>, schema?: Neode.SchemaObject, eager?: boolean, cascade?: boolean | string): Relationship;
 
     /**
      * Get all defined Relationships  for this Model
@@ -937,7 +937,7 @@ declare namespace Neode {
      * @param  {Function} fn
      * @return {mixed}
      */
-    map<U>(fn: (value: Node<any>, index: number, array: Array<Node<any>>) => U): U;
+    map<U>(fn: (value: Node<any>, index: number, array: Array<Node<any>>) => U): Array<U>;
 
     /**
      * Run a function on all values
