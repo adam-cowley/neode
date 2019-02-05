@@ -25,7 +25,7 @@ function RelateTo(neode, from, to, relationship, properties) {
     var force_create = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : false;
 
     return (0, _GenerateDefaultValues2.default)(neode, relationship, properties).then(function (properties) {
-        return (0, _Validator2.default)(neode, relationship, properties);
+        return (0, _Validator2.default)(neode, relationship.schema(), properties);
     }).then(function (properties) {
         var direction_in = relationship.direction() == _RelationshipType.DIRECTION_IN ? '<' : '';
         var direction_out = relationship.direction() == _RelationshipType.DIRECTION_OUT ? '>' : '';

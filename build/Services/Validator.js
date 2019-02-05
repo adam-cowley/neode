@@ -12,9 +12,15 @@ var _joi = require('joi');
 
 var _joi2 = _interopRequireDefault(_joi);
 
+var _Model = require('../Model');
+
+var _Model2 = _interopRequireDefault(_Model);
+
 var _Node = require('../Node');
 
 var _Node2 = _interopRequireDefault(_Node);
+
+var _RelationshipType = require('../RelationshipType');
 
 var _ValidationError = require('../ValidationError');
 
@@ -23,6 +29,9 @@ var _ValidationError2 = _interopRequireDefault(_ValidationError);
 var _neo4jDriver = require('neo4j-driver');
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; } /* eslint-disable no-case-declarations */
+
 
 var joi_options = {
     allowUnknown: true,
@@ -73,11 +82,23 @@ var temporal = _joi2.default.extend({
             return value;
         }
     }]
-
 });
 
-function BuildValidationSchema(model) {
-    var schema = model.schema();
+function nodeSchema() {
+    return _joi2.default.alternatives([_joi2.default.object().type(_Node2.default), _joi2.default.string(), _joi2.default.number(), _joi2.default.object()]);
+}
+
+function relationshipSchema(alias) {
+    var properties = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+
+    return _joi2.default.object().keys(Object.assign({}, _defineProperty({}, alias, nodeSchema().required()), BuildValidationSchema(properties)));
+}
+
+function BuildValidationSchema(schema) {
+    if (schema instanceof _Model2.default) {
+        schema = schema.schema();
+    }
+
     var output = {};
 
     Object.keys(schema).forEach(function (key) {
@@ -88,7 +109,21 @@ function BuildValidationSchema(model) {
         switch (config.type) {
             // TODO: Recursive creation, validate nodes and relationships
             case 'node':
-                validation = _joi2.default.alternatives([_joi2.default.object().type(_Node2.default), _joi2.default.string(), _joi2.default.number(), _joi2.default.object()]);
+                validation = nodeSchema();
+                break;
+
+            case 'nodes':
+                validation = _joi2.default.array().items(nodeSchema());
+                break;
+
+            case 'relationship':
+                // TODO: Clean up... This should probably be an object
+                validation = relationshipSchema(config.alias || _RelationshipType.DEFAULT_ALIAS, config.properties);
+
+                break;
+
+            case 'relationships':
+                validation = _joi2.default.array().items(relationshipSchema(config.alias || _RelationshipType.DEFAULT_ALIAS, config.properties));
                 break;
 
             case 'uuid':

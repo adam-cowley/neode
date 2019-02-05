@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", {
     value: true
 });
-exports.ALT_DIRECTION_OUT = exports.ALT_DIRECTION_IN = exports.DIRECTION_BOTH = exports.DIRECTION_OUT = exports.DIRECTION_IN = undefined;
+exports.DEFAULT_ALIAS = exports.ALT_DIRECTION_OUT = exports.ALT_DIRECTION_IN = exports.DIRECTION_BOTH = exports.DIRECTION_OUT = exports.DIRECTION_IN = undefined;
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
@@ -21,6 +21,8 @@ var DIRECTION_BOTH = exports.DIRECTION_BOTH = 'DIRECTION_BOTH';
 
 var ALT_DIRECTION_IN = exports.ALT_DIRECTION_IN = 'IN';
 var ALT_DIRECTION_OUT = exports.ALT_DIRECTION_OUT = 'OUT';
+
+var DEFAULT_ALIAS = exports.DEFAULT_ALIAS = 'node';
 
 var RelationshipType = function () {
 
@@ -41,7 +43,7 @@ var RelationshipType = function () {
         var schema = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : {};
         var eager = arguments.length > 6 && arguments[6] !== undefined ? arguments[6] : false;
         var cascade = arguments.length > 7 && arguments[7] !== undefined ? arguments[7] : false;
-        var node_alias = arguments.length > 8 && arguments[8] !== undefined ? arguments[8] : 'node';
+        var node_alias = arguments.length > 8 && arguments[8] !== undefined ? arguments[8] : DEFAULT_ALIAS;
 
         _classCallCheck(this, RelationshipType);
 

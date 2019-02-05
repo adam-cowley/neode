@@ -7,6 +7,8 @@ export const DIRECTION_BOTH = 'DIRECTION_BOTH';
 export const ALT_DIRECTION_IN = 'IN';
 export const ALT_DIRECTION_OUT = 'OUT';
 
+export const DEFAULT_ALIAS = 'node';
+
 export default class RelationshipType {
 
     /**
@@ -22,7 +24,7 @@ export default class RelationshipType {
      * @param  {String} node_alias          Alias to give to the node in the pattern comprehension
      * @return {Relationship}
      */
-    constructor(name, type, relationship, direction, target, schema = {}, eager = false, cascade = false, node_alias = 'node') {
+    constructor(name, type, relationship, direction, target, schema = {}, eager = false, cascade = false, node_alias = DEFAULT_ALIAS) {
         this._name = name;
         this._type = type;
         this._relationship = relationship;

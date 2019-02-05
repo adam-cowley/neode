@@ -9,7 +9,7 @@ import Validator from './Validator';
 
 export default function RelateTo(neode, from, to, relationship, properties, force_create = false) {
     return GenerateDefaultValues(neode, relationship, properties)
-        .then(properties => Validator(neode, relationship, properties))
+        .then(properties => Validator(neode, relationship.schema(), properties))
         .then(properties => {
             const direction_in = relationship.direction() == DIRECTION_IN ? '<' : '';
             const direction_out = relationship.direction() == DIRECTION_OUT ? '>' : '';

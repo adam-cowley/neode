@@ -1,12 +1,12 @@
+/* eslint-disable no-undef */
 import {assert, expect} from 'chai';
 import Validator from '../../src/Services/Validator';
 import Node from '../../src/Node';
-import ValidationError, { ERROR_VALIDATION } from '../../src/ValidationError';
+import { ERROR_VALIDATION } from '../../src/ValidationError';
 
 
 describe('Services/Validator.js', () => {
     let instance;
-
 
     before(() => {
         instance = require('../instance')();
@@ -669,7 +669,7 @@ describe('Services/Validator.js', () => {
 
             Validator(instance, model, { node: 'valid' })
                 .then(res => {
-                    assert(true)
+                    assert(true);
                 })
                 .catch(e => {
                     assert(false, e.message);
@@ -685,7 +685,7 @@ describe('Services/Validator.js', () => {
 
             Validator(instance, model, { node: {id: 'invalid'} })
                 .then(res => {
-                    assert(true)
+                    assert(true);
                 })
                 .catch(e => {
                     assert(false, e.message);
@@ -701,7 +701,135 @@ describe('Services/Validator.js', () => {
 
             Validator(instance, model, { node: new Node })
                 .then(res => {
-                    assert(true)
+                    assert(true);
+                })
+                .catch(e => {
+                    assert(false, e.message);
+                });
+        });
+    });
+    
+    describe('Relationships', () => {
+        it('should accept a string', () => {
+            const model = instance.model('ValidatorTest', {
+                relationship: {
+                    type: 'relationship',
+                    properties: {
+                        prop: 'string'
+                    },
+                },
+            });
+
+            Validator(instance, model, {
+                relationship: {
+                    prop: 'value',
+                    node: '1234',
+                }   
+            })
+                .then(res => {
+                    assert(true);
+                })
+                .catch(e => {
+                    assert(false, e.message);
+                });
+        });
+
+        it('should accept an aliased string', () => {
+            const model = instance.model('ValidatorTest', {
+                relationship: {
+                    type: 'relationship',
+                    alias: 'alias',
+                    properties: {
+                        prop: 'string'
+                    },
+                },
+            });
+
+            Validator(instance, model, {
+                relationship: {
+                    prop: 'value',
+                    alias: '1234', 
+                }   
+            })
+                .then(() => {
+                    assert(true);
+                })
+                .catch(e => {
+                    assert(false, e.message);
+                });
+        });
+
+        it('should accept an object', () => {
+            const model = instance.model('ValidatorTest', {
+                relationship: {
+                    type: 'relationship',
+                    properties: {
+                        prop: 'string'
+                    },
+                },
+            });
+
+            Validator(instance, model, { node: {id: 'alias'} })
+                .then(() => {
+                    assert(true);
+                })
+                .catch(e => {
+                    assert(false, e.message);
+                });
+        });
+
+        it('should accept an aliased object', () => {
+            const model = instance.model('ValidatorTest', {
+                relationship: {
+                    type: 'relationship',
+                    alias: 'alias',
+                    properties: {
+                        prop: 'string'
+                    },
+                },
+            });
+
+            Validator(instance, model, { node: {id: 'alias'} })
+                .then(() => {
+                    assert(true);
+                })
+                .catch(e => {
+                    assert(false, e.message);
+                });
+        });
+
+        it('should accept a node', () => {
+            const model = instance.model('ValidatorTest', {
+                relationship: {
+                    type: 'relationship',
+                    properties: {
+                        prop: 'string'
+                    },
+                },
+            });
+
+            Validator(instance, model, { relationship: {prop: 'value', node: new Node }})
+                .then(res => {
+                    assert(true);
+                })
+                .catch(e => {
+                    assert(false, e.message);
+                });
+        });
+
+        it('should require a relationship', () => {
+            const model = instance.model('ValidatorTest', {
+                relationship: {
+                    type: 'relationship',
+                    properties: {
+                        prop: 'string'
+                    },
+                },
+            });
+
+            Validator(instance, model, { relationship: {prop: 'value', node: new Node }})
+                .then(res => {
+                    assert(true);
                 })
                 .catch(e => {
                     assert(false, e.message);

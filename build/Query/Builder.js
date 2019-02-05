@@ -625,7 +625,7 @@ var Builder = function () {
     }, {
         key: 'to',
         value: function to(alias, model, properties) {
-            this._current.match(new _Match2.default(alias, model, this._convertPropertyMap(properties)));
+            this._current.match(new _Match2.default(alias, model, this._convertPropertyMap(alias, properties)));
 
             return this;
         }

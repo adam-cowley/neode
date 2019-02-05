@@ -228,14 +228,14 @@ describe('Services/Create.js', () => {
                     .then(end_node => {
                         return Create(instance, model, {
                             name: 'Start',
-                            nodes: end_node
+                            nodes: [end_node]
                         })
-                        .then(res => {
-                            expect( res.get('name') ).to.equal('Start');
-                            expect( res.get('nodes').first().get('name') ).to.equal(name)
-                        })
-                        .then(() => done())
-                        .catch(e => done(e));
+                            .then(res => {
+                                expect( res.get('name') ).to.equal('Start');
+                                expect( res.get('nodes').first().get('name') ).to.equal(name)
+                            })
+                            .then(() => done())
+                            .catch(e => done(e));
                     })
             }).timeout(TIMEOUT);
 
@@ -246,23 +246,23 @@ describe('Services/Create.js', () => {
                     .then(end_node => {
                         return Create(instance, model, {
                             name: 'Start',
-                            nodes: end_node.get('uuid'),
+                            nodes: [end_node.get('uuid')],
                         })
-                        .then(res => {
-                            expect( res.get('name') ).to.equal('Start');
-                            expect( res.get('nodes').first().get('name') ).to.equal(name)
-                        })
-                        .then(() => done())
-                        .catch(e => done(e));
+                            .then(res => {
+                                expect( res.get('name') ).to.equal('Start');
+                                expect( res.get('nodes').first().get('name') ).to.equal(name)
+                            })
+                            .then(() => done())
+                            .catch(e => done(e));
                     });
             }).timeout(TIMEOUT);
 
             it('should recursively create nodes', done => {
                 const data = {
                     name: 'Start',
-                    nodes: {
+                    nodes: [{
                         name: 'End',
-                    },
+                    }],
                 };
 
                 Create(instance, model, data)
@@ -277,12 +277,12 @@ describe('Services/Create.js', () => {
             it('should recursively create nodes to multiple degrees', done => {
                 const data = {
                     name: 'Start',
-                    nodes: {
+                    nodes: [{
                         name: 'Middle',
-                        nodes: {
+                        nodes: [{
                             name: 'End',
-                        },
-                    },
+                        }],
+                    }],
                 };
 
                 Create(instance, model, data)
@@ -309,13 +309,13 @@ describe('Services/Create.js', () => {
                                 otherEnd: end_node,
                             },
                         })
-                        .then(res => {
-                            expect( res.get('name') ).to.equal('Start');
-                            expect( res.get('relationship').get('since') ).to.equal(100);
-                            expect( res.get('relationship').otherNode().get('name') ).to.equal(name)
-                        })
-                        .then(() => done())
-                        .catch(e => done(e));
+                            .then(res => {
+                                expect( res.get('name') ).to.equal('Start');
+                                expect( res.get('relationship').get('since') ).to.equal(100);
+                                expect( res.get('relationship').otherNode().get('name') ).to.equal(name)
+                            })
+                            .then(() => done())
+                            .catch(e => done(e));
                     })
             }).timeout(TIMEOUT);
 

@@ -1,5 +1,8 @@
+/* eslint-disable no-case-declarations */
 import Joi from 'joi';
+import Model from '../Model';
 import Node from '../Node';
+import { DEFAULT_ALIAS } from '../RelationshipType';
 import ValidationError from '../ValidationError';
 import { v1 as neo4j } from 'neo4j-driver';
 
@@ -88,11 +91,32 @@ const temporal = Joi.extend({
             },
         },
     ],
-
 });
 
-function BuildValidationSchema(model) {
-    const schema = model.schema();
+function nodeSchema() {
+    return Joi.alternatives([
+        Joi.object().type(Node),
+        Joi.string(),
+        Joi.number(),
+        Joi.object(),
+    ]);
+}
+
+function relationshipSchema(alias, properties = {}) {
+    return Joi.object().keys(Object.assign(
+        {}, 
+        {
+            [ alias ]: nodeSchema().required(),
+        },
+        BuildValidationSchema(properties)
+    ));
+}
+
+function BuildValidationSchema(schema) {
+    if ( schema instanceof Model ) {
+        schema = schema.schema();
+    }
+
     let output = {};
 
     Object.keys(schema).forEach(key => {
@@ -103,12 +127,23 @@ function BuildValidationSchema(model) {
         switch (config.type) {
             // TODO: Recursive creation, validate nodes and relationships
             case 'node':
-                validation = Joi.alternatives([
-                    Joi.object().type(Node),
-                    Joi.string(),
-                    Joi.number(),
-                    Joi.object(),
-                ]);
+                validation = nodeSchema();
+                break;
+
+            case 'nodes':
+                validation = Joi.array().items(nodeSchema());
+                break;
+
+            case 'relationship': 
+                // TODO: Clean up... This should probably be an object
+                validation = relationshipSchema(config.alias || DEFAULT_ALIAS, config.properties);
+
+                break;
+
+            case 'relationships':
+                validation = Joi.array().items(
+                    relationshipSchema(config.alias || DEFAULT_ALIAS, config.properties)
+                );
                 break;
 
             case 'uuid':
