@@ -71,7 +71,7 @@ export default class Neode {
                     value = value.split(',');
                 }
                 else if ( key == "disableLosslessIntegers" ) {
-                    value = !!value;
+                    value = value === 'true';
                 }
 
                 config[ key ] = value;
