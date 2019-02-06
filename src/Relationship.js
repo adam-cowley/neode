@@ -112,7 +112,7 @@ export default class Relationship extends Entity {
      * @return {Node}
      */
     update(properties) {
-        return UpdateRelationship(this._neode, this._model, this._identity, properties)
+        return UpdateRelationship(this._neode, this._definition, this._identity, properties)
             .then(properties => {
                 Object.entries(properties).forEach(( [key, value] ) => {
                     this._properties.set( key, value );

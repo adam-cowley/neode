@@ -22,6 +22,8 @@ var _Node2 = _interopRequireDefault(_Node);
 
 var _RelationshipType = require('../RelationshipType');
 
+var _RelationshipType2 = _interopRequireDefault(_RelationshipType);
+
 var _ValidationError = require('../ValidationError');
 
 var _ValidationError2 = _interopRequireDefault(_ValidationError);
@@ -95,11 +97,13 @@ function relationshipSchema(alias) {
 }
 
 function BuildValidationSchema(schema) {
-    if (schema instanceof _Model2.default) {
+    if (schema instanceof _Model2.default || schema instanceof _RelationshipType2.default) {
         schema = schema.schema();
     }
 
     var output = {};
+
+    // console.log('??', schema);
 
     Object.keys(schema).forEach(function (key) {
         var config = typeof schema[key] == 'string' ? { type: schema[key] } : schema[key];
@@ -222,20 +226,10 @@ function Validator(neode, model, properties) {
     return new Promise(function (resolve, reject) {
         _joi2.default.validate(properties, schema, joi_options, function (err, validated) {
             if (err) {
-                var errors = {};
-
-                err.details.forEach(function (e) {
-                    if (!errors[e.path]) {
-                        errors[e.path] = [];
-                    }
-
-                    errors[e.path].push(e.type);
-                });
-
-                return reject(new _ValidationError2.default(errors));
+                return reject(err);
             }
 
-            resolve(validated);
+            return resolve(validated);
         });
     });
 }

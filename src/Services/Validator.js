@@ -2,7 +2,7 @@
 import Joi from 'joi';
 import Model from '../Model';
 import Node from '../Node';
-import { DEFAULT_ALIAS } from '../RelationshipType';
+import RelationshipType, { DEFAULT_ALIAS } from '../RelationshipType';
 import ValidationError from '../ValidationError';
 import { v1 as neo4j } from 'neo4j-driver';
 
@@ -113,11 +113,13 @@ function relationshipSchema(alias, properties = {}) {
 }
 
 function BuildValidationSchema(schema) {
-    if ( schema instanceof Model ) {
+    if ( schema instanceof Model || schema instanceof RelationshipType ) {
         schema = schema.schema();
     }
 
     let output = {};
+
+    // console.log('??', schema);
 
     Object.keys(schema).forEach(key => {
         const config = typeof schema[ key ] == 'string' ? {type: schema[ key ]} : schema[ key ];

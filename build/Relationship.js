@@ -167,7 +167,7 @@ var Relationship = function (_Entity) {
         value: function update(properties) {
             var _this3 = this;
 
-            return (0, _UpdateRelationship2.default)(this._neode, this._model, this._identity, properties).then(function (properties) {
+            return (0, _UpdateRelationship2.default)(this._neode, this._definition, this._identity, properties).then(function (properties) {
                 Object.entries(properties).forEach(function (_ref) {
                     var _ref2 = _slicedToArray(_ref, 2),
                         key = _ref2[0],

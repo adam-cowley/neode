@@ -589,7 +589,7 @@ var Neode = function () {
                     if (key == "trustedCertificates") {
                         value = value.split(',');
                     } else if (key == "disableLosslessIntegers") {
-                        value = !!value;
+                        value = value === 'true';
                     }
 
                     config[key] = value;

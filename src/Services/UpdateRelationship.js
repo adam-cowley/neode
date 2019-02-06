@@ -1,4 +1,5 @@
-// TODO: Validation?
+import Validator from './Validator';
+
 export default function UpdateRelationship(neode, model, identity, properties) {
     const query = `
         MATCH ()-[rel]->() 
@@ -7,8 +8,11 @@ export default function UpdateRelationship(neode, model, identity, properties) {
         RETURN properties(rel) as properties
     `;
 
-    return neode.writeCypher(query, { identity, properties })
-        .then(res => {
-            return res.records[0].get('properties');
+    return Validator(neode, model, properties)
+        .then(properties => {
+            return neode.writeCypher(query, { identity, properties })
+                .then(res => {
+                    return res.records[0].get('properties');
+                });
         });
 }

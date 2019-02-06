@@ -1,4 +1,5 @@
-// TODO: Validation?
+import Validator from './Validator';
+
 export default function UpdateNode(neode, model, identity, properties) {
     const query = `
         MATCH (node) 
@@ -7,8 +8,11 @@ export default function UpdateNode(neode, model, identity, properties) {
         RETURN properties(node) as properties
     `;
 
-    return neode.writeCypher(query, { identity, properties })
-        .then(res => {
-            return res.records[0].get('properties');
+    return Validator(neode, model, properties)
+        .then(properties => {
+            return neode.writeCypher(query, { identity, properties })
+                .then(res => {
+                    return res.records[0].get('properties');
+                });
         });
 }
