@@ -59,7 +59,7 @@ export default class Statement {
         return this;
     }
 
-    relationship(relationship, direction, alias, traversals) {
+    relationship(relationship, direction, alias, degrees) {
         if ( relationship instanceof RelationshipType ) {
             const rel = relationship;
 
@@ -67,7 +67,7 @@ export default class Statement {
             direction = rel.direction();
         }
 
-        this._pattern.push(new Relationship(relationship, direction, alias, traversals));
+        this._pattern.push(new Relationship(relationship, direction, alias, degrees));
 
         return this;
     }

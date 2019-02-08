@@ -103,7 +103,7 @@ var Statement = function () {
         }
     }, {
         key: 'relationship',
-        value: function relationship(_relationship, direction, alias, traversals) {
+        value: function relationship(_relationship, direction, alias, degrees) {
             if (_relationship instanceof _RelationshipType2.default) {
                 var rel = _relationship;
 
@@ -111,7 +111,7 @@ var Statement = function () {
                 direction = rel.direction();
             }
 
-            this._pattern.push(new _Relationship2.default(_relationship, direction, alias, traversals));
+            this._pattern.push(new _Relationship2.default(_relationship, direction, alias, degrees));
 
             return this;
         }

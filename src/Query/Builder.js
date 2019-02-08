@@ -5,6 +5,7 @@ import Statement from './Statement';
 import Property from './Property';
 import WhereStatement from './WhereStatement';
 import Where, {OPERATOR_EQUALS} from './Where';
+import WhereBetween from './WhereBetween';
 import WhereId from './WhereId';
 import WhereRaw from './WhereRaw';
 import WithStatement from './WithStatement';
@@ -127,6 +128,30 @@ export default class Builder {
     }
 
     /**
+     * Generate a unique key and add the value to the params object
+     * 
+     * @param {String} key 
+     * @param {Mixed} value 
+     */
+    _addWhereParameter(key, value) {
+        let attempt = 1;
+        let base = `where_${key.replace(/[^a-z0-9]+/, '_')}`;
+
+        // Try to create a unique key
+        let variable = base;
+
+        while ( typeof this._params[ variable ] != "undefined" ) {
+            attempt++;
+
+            variable = `${base}_${attempt}`;
+        }
+
+        this._params[ variable ] = value;
+
+        return variable;
+    }
+
+    /**
      * Add a where condition to the current statement.
      *
      * @param  {...mixed} args Arguments
@@ -160,7 +185,7 @@ export default class Builder {
         }
         else {
             const [left, operator, value] = args;
-            const right = `where_${left}`.replace(/([^a-z0-9_]+)/i, '_');
+            const right = this._addWhereParameter(left, value);
 
             this._params[ right ] = value;
             this._where.append(new Where(left, operator, `{${right}}`));
@@ -177,9 +202,7 @@ export default class Builder {
      * @return {Builder}       
      */
     whereId(alias, value) {
-        const param = `where_id_${alias}`;
-
-        this._params[ param ] = neo4j.int(value);
+        const param = this._addWhereParameter(`${alias}_id`, neo4j.int(value));
 
         this._where.append(new WhereId(alias, param));
 
@@ -194,6 +217,53 @@ export default class Builder {
      */
     whereRaw(clause) {
         this._where.append(new WhereRaw(clause));
+
+        return this;
+    }
+
+    /**
+     * A negative where clause
+     * 
+     * @param {*} args 
+     * @return {Builder}       
+     */
+    whereNot(...args) {
+        this.where(...args);
+
+        this._where.last().setNegative();
+
+        return this;
+    }
+
+    /**
+     * Between clause
+     * 
+     * @param {String} alias 
+     * @param {Mixed} floor 
+     * @param {Mixed} ceiling 
+     * @return {Builder}
+     */
+    whereBetween(alias, floor, ceiling) {
+        const floor_alias = this._addWhereParameter(`${alias}_floor`, floor);
+        const ceiling_alias = this._addWhereParameter(`${alias}_ceiling`, ceiling);
+
+        this._where.append(new WhereBetween(alias, floor_alias, ceiling_alias));
+
+        return this;
+    }
+
+    /**
+     * Negative Between clause
+     * 
+     * @param {String} alias 
+     * @param {Mixed} floor 
+     * @param {Mixed} ceiling 
+     * @return {Builder}
+     */
+    whereNotBetween(alias, floor, ceiling) {
+        this.whereBetween(alias, floor, ceiling);
+
+        this._where.last().setNegative();
 
         return this;
     }
@@ -449,11 +519,11 @@ export default class Builder {
      * @param  {String|RelationshipType} relationship  Relationship name or RelationshipType object
      * @param  {String}                  direction     Direction of relationship DIRECTION_IN, DIRECTION_OUT
      * @param  {String|null}             alias         Relationship alias
-     * @param  {Int|String}              traversals    Number of traversals (1, "1..2", "0..2", "..3")
+     * @param  {Int|String}              degrees        Number of traversdegreesals (1, "1..2", "0..2", "..3")
      * @return {Builder}
      */
-    relationship(relationship, direction, alias, traversals) {
-        this._current.relationship(relationship, direction, alias, traversals);
+    relationship(relationship, direction, alias, degrees) {
+        this._current.relationship(relationship, direction, alias, degrees);
 
         return this;
     }

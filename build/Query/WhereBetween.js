@@ -8,17 +8,17 @@ var _createClass = function () { function defineProperties(target, props) { for 
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var WhereId = function () {
-    function WhereId(alias, param) {
-        _classCallCheck(this, WhereId);
+var WhereBetween = function () {
+    function WhereBetween(alias, floor, ceiling) {
+        _classCallCheck(this, WhereBetween);
 
         this._alias = alias;
-        this._param = param;
-
+        this._floor = floor;
+        this._ceiling = ceiling;
         this._negative = false;
     }
 
-    _createClass(WhereId, [{
+    _createClass(WhereBetween, [{
         key: 'setNegative',
         value: function setNegative() {
             this._negative = true;
@@ -27,11 +27,12 @@ var WhereId = function () {
         key: 'toString',
         value: function toString() {
             var negative = this._negative ? 'NOT ' : '';
-            return negative + 'id(' + this._alias + ') = {' + this._param + '}';
+
+            return negative + '{' + this._floor + '} <= ' + this._alias + ' <= {' + this._ceiling + '}';
         }
     }]);
 
-    return WhereId;
+    return WhereBetween;
 }();
 
-exports.default = WhereId;
+exports.default = WhereBetween;

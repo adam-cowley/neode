@@ -6,10 +6,17 @@ export default class Where {
         this._left = left;
         this._operator = operator;
         this._right = right;
+        this._negative = false;
+    }
+
+    setNegative() {
+        this._negative = true;
     }
 
     toString() {
-        return `${this._left} ${this._operator} ${this._right}`;
+        const negative = this._negative ? 'NOT ' : '';
+
+        return `${negative}${this._left} ${this._operator} ${this._right}`;
     }
 
 }

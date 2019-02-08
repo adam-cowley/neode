@@ -37,6 +37,10 @@ var _Where = require('./Where');
 
 var _Where2 = _interopRequireDefault(_Where);
 
+var _WhereBetween = require('./WhereBetween');
+
+var _WhereBetween2 = _interopRequireDefault(_WhereBetween);
+
 var _WhereId = require('./WhereId');
 
 var _WhereId2 = _interopRequireDefault(_WhereId);
@@ -207,6 +211,33 @@ var Builder = function () {
         }
 
         /**
+         * Generate a unique key and add the value to the params object
+         * 
+         * @param {String} key 
+         * @param {Mixed} value 
+         */
+
+    }, {
+        key: '_addWhereParameter',
+        value: function _addWhereParameter(key, value) {
+            var attempt = 1;
+            var base = 'where_' + key.replace(/[^a-z0-9]+/, '_');
+
+            // Try to create a unique key
+            var variable = base;
+
+            while (typeof this._params[variable] != "undefined") {
+                attempt++;
+
+                variable = base + '_' + attempt;
+            }
+
+            this._params[variable] = value;
+
+            return variable;
+        }
+
+        /**
          * Add a where condition to the current statement.
          *
          * @param  {...mixed} args Arguments
@@ -253,7 +284,7 @@ var Builder = function () {
                     operator = _args4[1],
                     value = _args4[2];
 
-                var right = ('where_' + left).replace(/([^a-z0-9_]+)/i, '_');
+                var right = this._addWhereParameter(left, value);
 
                 this._params[right] = value;
                 this._where.append(new _Where2.default(left, operator, '{' + right + '}'));
@@ -273,9 +304,7 @@ var Builder = function () {
     }, {
         key: 'whereId',
         value: function whereId(alias, value) {
-            var param = 'where_id_' + alias;
-
-            this._params[param] = _neo4jDriver2.default.int(value);
+            var param = this._addWhereParameter(alias + '_id', _neo4jDriver2.default.int(value));
 
             this._where.append(new _WhereId2.default(alias, param));
 
@@ -293,6 +322,62 @@ var Builder = function () {
         key: 'whereRaw',
         value: function whereRaw(clause) {
             this._where.append(new _WhereRaw2.default(clause));
+
+            return this;
+        }
+
+        /**
+         * A negative where clause
+         * 
+         * @param {*} args 
+         * @return {Builder}       
+         */
+
+    }, {
+        key: 'whereNot',
+        value: function whereNot() {
+            this.where.apply(this, arguments);
+
+            this._where.last().setNegative();
+
+            return this;
+        }
+
+        /**
+         * Between clause
+         * 
+         * @param {String} alias 
+         * @param {Mixed} floor 
+         * @param {Mixed} ceiling 
+         * @return {Builder}
+         */
+
+    }, {
+        key: 'whereBetween',
+        value: function whereBetween(alias, floor, ceiling) {
+            var floor_alias = this._addWhereParameter(alias + '_floor', floor);
+            var ceiling_alias = this._addWhereParameter(alias + '_ceiling', ceiling);
+
+            this._where.append(new _WhereBetween2.default(alias, floor_alias, ceiling_alias));
+
+            return this;
+        }
+
+        /**
+         * Negative Between clause
+         * 
+         * @param {String} alias 
+         * @param {Mixed} floor 
+         * @param {Mixed} ceiling 
+         * @return {Builder}
+         */
+
+    }, {
+        key: 'whereNotBetween',
+        value: function whereNotBetween(alias, floor, ceiling) {
+            this.whereBetween(alias, floor, ceiling);
+
+            this._where.last().setNegative();
 
             return this;
         }
@@ -602,14 +687,14 @@ var Builder = function () {
          * @param  {String|RelationshipType} relationship  Relationship name or RelationshipType object
          * @param  {String}                  direction     Direction of relationship DIRECTION_IN, DIRECTION_OUT
          * @param  {String|null}             alias         Relationship alias
-         * @param  {Int|String}              traversals    Number of traversals (1, "1..2", "0..2", "..3")
+         * @param  {Int|String}              degrees        Number of traversdegreesals (1, "1..2", "0..2", "..3")
          * @return {Builder}
          */
 
     }, {
         key: 'relationship',
-        value: function relationship(_relationship, direction, alias, traversals) {
-            this._current.relationship(_relationship, direction, alias, traversals);
+        value: function relationship(_relationship, direction, alias, degrees) {
+            this._current.relationship(_relationship, direction, alias, degrees);
 
             return this;
         }

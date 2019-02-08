@@ -48,6 +48,18 @@ var WhereStatement = function () {
             return this;
         }
 
+        /** 
+         * Return the last condition in the collection
+         * 
+         * @return {Where}
+         */
+
+    }, {
+        key: 'last',
+        value: function last() {
+            return this._clauses[this._clauses.length - 1];
+        }
+
         /**
          * Convert this Where Statement to a String
          *

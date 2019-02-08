@@ -17,12 +17,20 @@ var Where = function () {
         this._left = left;
         this._operator = operator;
         this._right = right;
+        this._negative = false;
     }
 
     _createClass(Where, [{
+        key: 'setNegative',
+        value: function setNegative() {
+            this._negative = true;
+        }
+    }, {
         key: 'toString',
         value: function toString() {
-            return this._left + ' ' + this._operator + ' ' + this._right;
+            var negative = this._negative ? 'NOT ' : '';
+
+            return '' + negative + this._left + ' ' + this._operator + ' ' + this._right;
         }
     }]);
 
