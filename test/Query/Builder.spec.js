@@ -53,11 +53,11 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (id(this) = {where_id_this}) ',
+                'WHERE (id(this) = {where_this_id}) ',
                 'RETURN',
                 'this'
             ].join('\n');
-            const expected_params = { where_id_this: new Integer(1) };
+            const expected_params = { where_this_id: new Integer(1) };
 
             expect(query).to.equal(expected);
             expect(params).to.deep.equal(expected_params);
@@ -77,15 +77,15 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (id(this) = {where_id_this}) ',
+                'WHERE (id(this) = {where_this_id}) ',
                 'MATCH',
                 '(that:QueryBuilderTest)',
-                'WHERE (id(that) = {where_id_that}) ',
+                'WHERE (id(that) = {where_that_id}) ',
                 'RETURN',
                 'this,that'
             ].join('\n');
 
-            const expected_params = { where_id_this: new Integer(1), where_id_that: new Integer(2) };
+            const expected_params = { where_this_id: new Integer(1), where_that_id: new Integer(2) };
 
             expect(query).to.equal(expected);
             expect(params).to.deep.equal(expected_params);
@@ -324,17 +324,17 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (id(this) = {where_id_this}) ',
+                'WHERE (id(this) = {where_this_id}) ',
                 'WITH this',
                 '',
                 'MATCH',
                 '(that:QueryBuilderTest)',
-                'WHERE (id(that) = {where_id_that}) ',
+                'WHERE (id(that) = {where_that_id}) ',
                 'RETURN',
                 'this,that'
             ].join('\n');
 
-            const expected_params = { where_id_this: new Integer(1), where_id_that: new Integer(2) };
+            const expected_params = { where_this_id: new Integer(1), where_that_id: new Integer(2) };
 
             expect(query).to.equal(expected);
             expect(params).to.deep.equal(expected_params);
@@ -715,6 +715,87 @@ describe('Query/Builder.js', () => {
                 'MATCH',
                 '(this:QueryBuilderTest { id: $this_id, name: $this_name })',
                 '',
+                'RETURN',
+                'this'
+            ].join('\n');
+
+            expect(query).to.equal(expected);
+        });
+
+        it('should build a query with a negative where condition', () => {
+            const builder = new Builder();
+
+            const { query, params } = builder
+                .match('this', model)
+                .whereNot('this.name', 'adam')
+                .return('this')
+                .build();
+
+            const expected = [
+                'MATCH',
+                '(this:QueryBuilderTest)',
+                'WHERE (NOT this.name = {where_this_name}) ',
+                'RETURN',
+                'this'
+            ].join('\n');
+
+            expect(query).to.equal(expected);
+        });
+
+        it('should handle a query with multiple clauses on the same property', () => {
+            const builder = new Builder();
+
+            const { query, params } = builder
+                .match('this', model)
+                .whereNot('this.name', 'Adam')
+                .whereNot('this.name', 'Lauren')
+                .return('this')
+                .build();
+
+            const expected = [
+                'MATCH',
+                '(this:QueryBuilderTest)',
+                'WHERE (NOT this.name = {where_this_name} AND NOT this.name = {where_this_name_2}) ',
+                'RETURN',
+                'this'
+            ].join('\n');
+
+            expect(query).to.equal(expected);
+        });
+
+        it('should handle a query with a between statement', () => {
+            const builder = new Builder();
+
+            const { query, params } = builder
+                .match('this', model)
+                .whereBetween('this.age', 18, 21)
+                .return('this')
+                .build();
+
+            const expected = [
+                'MATCH',
+                '(this:QueryBuilderTest)',
+                'WHERE ({where_this_age_floor} <= this.age <= {where_this_age_ceiling}) ',
+                'RETURN',
+                'this'
+            ].join('\n');
+
+            expect(query).to.equal(expected);
+        });
+
+        it('should handle a query with a not between statement', () => {
+            const builder = new Builder();
+
+            const { query, params } = builder
+                .match('this', model)
+                .whereNotBetween('this.age', 18, 21)
+                .return('this')
+                .build();
+
+            const expected = [
+                'MATCH',
+                '(this:QueryBuilderTest)',
+                'WHERE (NOT {where_this_age_floor} <= this.age <= {where_this_age_ceiling}) ',
                 'RETURN',
                 'this'
             ].join('\n');
