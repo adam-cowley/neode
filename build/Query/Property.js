@@ -10,16 +10,19 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 var Property = function () {
     function Property(property, param) {
+        var operator = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '=';
+
         _classCallCheck(this, Property);
 
         this._property = property;
         this._param = '$' + param || 'null';
+        this._operator = operator;
     }
 
     _createClass(Property, [{
         key: 'toString',
         value: function toString() {
-            return (this._property + ' = ' + this._param).trim();
+            return (this._property + ' ' + this._operator + ' ' + this._param).trim();
         }
     }, {
         key: 'toInlineString',
