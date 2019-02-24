@@ -1183,6 +1183,62 @@ describe('Query/Builder.js', () => {
             });
         });
 
+        it('should accept a mutation for SET', () => {
+            const builder = new Builder();
+
+            const { query, params } = builder
+                .match('this', model, {id: 1})
+                .set('this', {foo: "bar"}, '+=')
+                .return('this')
+                .build();
+
+            const expected = [
+                'MATCH',
+                '(this:QueryBuilderTest { id: $this_id })',
+                '',
+                'SET',
+                'this += $set_0',
+                'RETURN',
+                'this'
+            ].join('\n');
+
+            expect(query).to.equal(expected);
+            expect(params).to.deep.equal({
+                this_id: 1, 
+                set_0: {foo: "bar"},
+            });
+        });
+        
+        it('should accept a mutation for onCreateSet, onMatchSet', () => {
+            const builder = new Builder();
+
+            const { query, params } = builder
+                .merge('this', model, {id: 1})
+                .onCreateSet('this', {foo: "bar"}, '+=')
+                .onMatchSet('this', {foo: "baz"}, '+=')
+                .return('this')
+                .build();
+
+            const expected = [
+                'MERGE',
+                '(this:QueryBuilderTest { id: $this_id })',
+                '',
+                'ON CREATE SET',
+                'this += $set_0',
+                'ON MATCH SET',
+                'this += $set_1',
+                'RETURN',
+                'this'
+            ].join('\n');
+
+            expect(query).to.equal(expected);
+            expect(params).to.deep.equal({
+                this_id: 1, 
+                set_0: {foo: "bar"},
+                set_1: {foo: "baz"},
+            });
+        });
+
     });
 
     describe('::execute', () => {
