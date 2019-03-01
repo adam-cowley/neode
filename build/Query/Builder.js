@@ -221,7 +221,7 @@ var Builder = function () {
         key: '_addWhereParameter',
         value: function _addWhereParameter(key, value) {
             var attempt = 1;
-            var base = 'where_' + key.replace(/[^a-z0-9]+/, '_');
+            var base = 'where_' + key.replace(/[^a-z0-9]+/g, '_');
 
             // Try to create a unique key
             var variable = base;
@@ -287,7 +287,7 @@ var Builder = function () {
                 var right = this._addWhereParameter(left, value);
 
                 this._params[right] = value;
-                this._where.append(new _Where2.default(left, operator, '{' + right + '}'));
+                this._where.append(new _Where2.default(this._quoteKey(left), operator, '{' + right + '}'));
             }
 
             return this;
@@ -306,7 +306,7 @@ var Builder = function () {
         value: function whereId(alias, value) {
             var param = this._addWhereParameter(alias + '_id', _neo4jDriver2.default.int(value));
 
-            this._where.append(new _WhereId2.default(alias, param));
+            this._where.append(new _WhereId2.default(this._quoteKey(alias), param));
 
             return this;
         }
@@ -358,7 +358,7 @@ var Builder = function () {
             var floor_alias = this._addWhereParameter(alias + '_floor', floor);
             var ceiling_alias = this._addWhereParameter(alias + '_ceiling', ceiling);
 
-            this._where.append(new _WhereBetween2.default(alias, floor_alias, ceiling_alias));
+            this._where.append(new _WhereBetween2.default(this._quoteKey(alias), floor_alias, ceiling_alias));
 
             return this;
         }
@@ -435,6 +435,13 @@ var Builder = function () {
 
             return this;
         }
+    }, {
+        key: '_quoteKey',
+        value: function _quoteKey(string) {
+            return string.split('.').map(function (part) {
+                return part.indexOf("`") !== -1 ? part : '`' + part + '`';
+            }).join('.');
+        }
 
         /**
          * Convert a map of properties into an Array of 
@@ -449,11 +456,11 @@ var Builder = function () {
 
             if (properties) {
                 return Object.keys(properties).map(function (key) {
-                    var property_alias = alias + '_' + key;
+                    var property_alias = (alias + '_' + key).replace(/[^a-z0-9]+/g, '_');
 
                     _this2._params[property_alias] = properties[key];
 
-                    return new _Property2.default(key, property_alias);
+                    return new _Property2.default(_this2._quoteKey(key), property_alias);
                 });
             }
 
@@ -503,7 +510,7 @@ var Builder = function () {
 
                 this._set_count++;
 
-                this._current.set(property, alias);
+                this._current.set(this._quoteKey(property), alias);
             }
 
             return this;
@@ -532,7 +539,7 @@ var Builder = function () {
 
                 this._set_count++;
 
-                this._current.onCreateSet(property, alias);
+                this._current.onCreateSet(this._quoteKey(property), alias);
             }
 
             return this;
@@ -561,7 +568,7 @@ var Builder = function () {
 
                 this._set_count++;
 
-                this._current.onMatchSet(property, alias);
+                this._current.onMatchSet(this._quoteKey(property), alias);
             }
 
             return this;
@@ -653,7 +660,7 @@ var Builder = function () {
 
             if (args.length == 2) {
                 // Assume orderBy(what, how)
-                order_by = new _Order2.default(args[0], args[1]);
+                order_by = new _Order2.default(this._quoteKey(args[0]), args[1]);
             } else if (Array.isArray(args[0])) {
                 // Handle array of where's
                 args[0].forEach(function (arg) {
@@ -663,7 +670,7 @@ var Builder = function () {
             // TODO: Ugly, stop supporting this
             else if (_typeof(args[0]) == 'object' && args[0].field) {
                     // Assume orderBy(args[0].field, args[0].order)
-                    order_by = new _Order2.default(args[0].field, args[0].order);
+                    order_by = new _Order2.default(this._quoteKey(args[0].field), args[0].order);
                 } else if (_typeof(args[0]) == 'object') {
                     // Assume {key: order}
                     Object.keys(args[0]).forEach(function (key) {
@@ -671,7 +678,7 @@ var Builder = function () {
                     });
                 } else if (args[0]) {
                     // Assume orderBy(what, 'ASC')
-                    order_by = new _Order2.default(args[0]);
+                    order_by = new _Order2.default(this._quoteKey(args[0]));
                 }
 
             if (order_by) {

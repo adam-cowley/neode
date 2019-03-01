@@ -53,7 +53,7 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (id(this) = {where_this_id}) ',
+                'WHERE (id(`this`) = {where_this_id}) ',
                 'RETURN',
                 'this'
             ].join('\n');
@@ -77,10 +77,10 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (id(this) = {where_this_id}) ',
+                'WHERE (id(`this`) = {where_this_id}) ',
                 'MATCH',
                 '(that:QueryBuilderTest)',
-                'WHERE (id(that) = {where_that_id}) ',
+                'WHERE (id(`that`) = {where_that_id}) ',
                 'RETURN',
                 'this,that'
             ].join('\n');
@@ -103,7 +103,7 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (this.property = {where_this_property}) ',
+                'WHERE (`this`.`property` = {where_this_property}) ',
                 'RETURN',
                 'this'
             ].join('\n');
@@ -125,7 +125,7 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (this.property = {where_this_property}) ',
+                'WHERE (`this`.`property` = {where_this_property}) ',
                 'RETURN',
                 'this'
             ].join('\n');
@@ -147,7 +147,7 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (this.property = {where_this_property}) ',
+                'WHERE (`this`.`property` = {where_this_property}) ',
                 'RETURN',
                 'this'
             ].join('\n');
@@ -180,7 +180,7 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (this.property = {where_this_property} AND this.other_property = {where_this_other_property}) ',
+                'WHERE (`this`.`property` = {where_this_property} AND `this`.`other_property` = {where_this_other_property}) ',
                 'RETURN',
                 'this'
             ].join('\n');
@@ -205,7 +205,7 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (this.property = {where_this_property} AND this.other_property = {where_this_other_property}) ',
+                'WHERE (`this`.`property` = {where_this_property} AND `this`.`other_property` = {where_this_other_property}) ',
                 'RETURN',
                 'this'
             ].join('\n');
@@ -230,7 +230,7 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (this.property = {where_this_property} AND this.other_property = {where_this_other_property}) ',
+                'WHERE (`this`.`property` = {where_this_property} AND `this`.`other_property` = {where_this_other_property}) ',
                 'RETURN',
                 'this'
             ].join('\n');
@@ -273,7 +273,7 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (this.property = {where_this_property}) OR (this.other_property = {where_this_other_property}) ',
+                'WHERE (`this`.`property` = {where_this_property}) OR (`this`.`other_property` = {where_this_other_property}) ',
                 'RETURN',
                 'this'
             ].join('\n');
@@ -297,7 +297,7 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (this.property = {where_this_property}) ',
+                'WHERE (`this`.`property` = {where_this_property}) ',
                 'RETURN',
                 'this',
                 'SKIP 1',
@@ -324,12 +324,12 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (id(this) = {where_this_id}) ',
+                'WHERE (id(`this`) = {where_this_id}) ',
                 'WITH this',
                 '',
                 'MATCH',
                 '(that:QueryBuilderTest)',
-                'WHERE (id(that) = {where_that_id}) ',
+                'WHERE (id(`that`) = {where_that_id}) ',
                 'RETURN',
                 'this,that'
             ].join('\n');
@@ -355,11 +355,11 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (this.property = {where_this_property}) ',
+                'WHERE (`this`.`property` = {where_this_property}) ',
                 'RETURN',
                 'this',
                 'ORDER BY',
-                'this.property ASC',
+                '`this`.`property` ASC',
                 'SKIP 20',
                 'LIMIT 10'
             ].join('\n');
@@ -385,11 +385,11 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (this.property = {where_this_property}) ',
+                'WHERE (`this`.`property` = {where_this_property}) ',
                 'RETURN',
                 'this',
                 'ORDER BY',
-                'this.property ASC,this.other DESC',
+                '`this`.`property` ASC,`this`.`other` DESC',
                 'SKIP 20',
                 'LIMIT 10'
             ].join('\n');
@@ -414,11 +414,11 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (this.property = {where_this_property}) ',
+                'WHERE (`this`.`property` = {where_this_property}) ',
                 'RETURN',
                 'this',
                 'ORDER BY',
-                'this.property,this.other',
+                '`this`.`property`,`this`.`other`',
                 'SKIP 20',
                 'LIMIT 10'
             ].join('\n');
@@ -443,11 +443,11 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (this.property = {where_this_property}) ',
+                'WHERE (`this`.`property` = {where_this_property}) ',
                 'RETURN',
                 'this',
                 'ORDER BY',
-                'this.property DESC',
+                '`this`.`property` DESC',
                 'SKIP 20',
                 'LIMIT 10'
             ].join('\n');
@@ -464,7 +464,7 @@ describe('Query/Builder.js', () => {
                 .match('this', model)
                 .where('this.property', 'that')
                 .return('this')
-                .orderBy([{ field: 'this.property', order: 'ASC' }, { field: 'this.that', order: 'DESC' }])
+                .orderBy([{ field: '`this`.`property`', order: 'ASC' }, { field: 'this.that', order: 'DESC' }])
                 .skip(20)
                 .limit(10)
                 .build();
@@ -472,11 +472,11 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (this.property = {where_this_property}) ',
+                'WHERE (`this`.`property` = {where_this_property}) ',
                 'RETURN',
                 'this',
                 'ORDER BY',
-                'this.property ASC,this.that DESC',
+                '`this`.`property` ASC,`this`.`that` DESC',
                 'SKIP 20',
                 'LIMIT 10'
             ].join('\n');
@@ -603,7 +603,7 @@ describe('Query/Builder.js', () => {
                 .build();
             const expected = [
                 'MATCH',
-                '(this:QueryBuilderTest)-[rel:`REL_TO`]->(that:QueryBuilderTest { name: $that_name })',
+                '(this:QueryBuilderTest)-[rel:`REL_TO`]->(that:QueryBuilderTest { `name`: $that_name })',
                 '',
                 'RETURN',
                 'this,rel,that'
@@ -707,19 +707,24 @@ describe('Query/Builder.js', () => {
             const builder = new Builder();
 
             const { query, params } = builder
-                .match('this', model, { id: 1, name: 'name' })
+                .match('this', model, { id: 1, name: 'name', 'special:prop1': 'val1' })
                 .return('this')
                 .build();
 
             const expected = [
                 'MATCH',
-                '(this:QueryBuilderTest { id: $this_id, name: $this_name })',
+                '(this:QueryBuilderTest { `id`: $this_id, `name`: $this_name, `special:prop1`: $this_special_prop1 })',
                 '',
                 'RETURN',
                 'this'
             ].join('\n');
 
             expect(query).to.equal(expected);
+            expect(params).to.equal({
+              this_id: 1,
+              this_name: 'name',
+              this_special_prop1: 'val1',
+            });
         });
 
         it('should build a query with a negative where condition', () => {
@@ -734,7 +739,7 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (NOT this.name = {where_this_name}) ',
+                'WHERE (NOT `this`.`name` = {where_this_name}) ',
                 'RETURN',
                 'this'
             ].join('\n');
@@ -755,7 +760,7 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (NOT this.name = {where_this_name} AND NOT this.name = {where_this_name_2}) ',
+                'WHERE (NOT `this`.`name` = {where_this_name} AND NOT `this`.`name` = {where_this_name_2}) ',
                 'RETURN',
                 'this'
             ].join('\n');
@@ -775,7 +780,7 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE ({where_this_age_floor} <= this.age <= {where_this_age_ceiling}) ',
+                'WHERE ({where_this_age_floor} <= `this`.`age` <= {where_this_age_ceiling}) ',
                 'RETURN',
                 'this'
             ].join('\n');
@@ -795,7 +800,7 @@ describe('Query/Builder.js', () => {
             const expected = [
                 'MATCH',
                 '(this:QueryBuilderTest)',
-                'WHERE (NOT {where_this_age_floor} <= this.age <= {where_this_age_ceiling}) ',
+                'WHERE (NOT {where_this_age_floor} <= `this`.`age` <= {where_this_age_ceiling}) ',
                 'RETURN',
                 'this'
             ].join('\n');
@@ -862,7 +867,31 @@ describe('Query/Builder.js', () => {
                 '(this:QueryBuilderTest)',
                 '',
                 'SET',
-                'this.prop1 = $set_0, this.prop2 = $set_1',
+                '`this`.`prop1` = $set_0, `this`.`prop2` = $set_1',
+            ].join('\n');
+
+            expect(query).to.equal(expected);
+            expect(params).to.deep.equal({
+                'set_0': 'value1',
+                'set_1': 'value2',
+            });
+        });
+  
+        it('should protect field names with backticks in SET', () => {
+            const builder = new Builder();
+
+            const { query, params } = builder
+                .create('this', model)
+                .set('this.special:prop1', 'value1')
+                .set('`this`.`special:prop2`', 'value2')
+                .build();
+
+            const expected = [
+                'CREATE',
+                '(this:QueryBuilderTest)',
+                '',
+                'SET',
+                '`this`.`special:prop1` = $set_0, `this`.`special:prop2` = $set_1',
             ].join('\n');
 
             expect(query).to.equal(expected);
@@ -889,7 +918,7 @@ describe('Query/Builder.js', () => {
                 '(this:QueryBuilderTest)-[:`REL_TO`]->(that:QueryBuilderTest)',
                 '',
                 'SET',
-                'this.prop1 = $set_0, this.prop2 = $set_1',
+                '`this`.`prop1` = $set_0, `this`.`prop2` = $set_1',
                 'RETURN',
                 'this,rel,that'
             ].join('\n');
@@ -907,7 +936,7 @@ describe('Query/Builder.js', () => {
 
             const expected = [
                 'CREATE',
-                '(this:QueryBuilderTest { id: $this_id, name: $this_name })',
+                '(this:QueryBuilderTest { `id`: $this_id, `name`: $this_name })',
                 '',
                 'RETURN',
                 'this'
@@ -932,7 +961,7 @@ describe('Query/Builder.js', () => {
                 '(this:QueryBuilderTest)',
                 '',
                 'SET',
-                'this.prop1 = $set_0, this.prop2 = $set_1',
+                '`this`.`prop1` = $set_0, `this`.`prop2` = $set_1',
             ].join('\n');
 
             expect(query).to.equal(expected);
@@ -959,7 +988,7 @@ describe('Query/Builder.js', () => {
                 '(this:QueryBuilderTest)-[:`REL_TO`]->(that:QueryBuilderTest)',
                 '',
                 'SET',
-                'this.prop1 = $set_0, this.prop2 = $set_1',
+                '`this`.`prop1` = $set_0, `this`.`prop2` = $set_1',
                 'RETURN',
                 'this,rel,that'
             ].join('\n');
@@ -977,7 +1006,7 @@ describe('Query/Builder.js', () => {
 
             const expected = [
                 'MERGE',
-                '(this:QueryBuilderTest { id: $this_id })',
+                '(this:QueryBuilderTest { `id`: $this_id })',
                 '',
                 'RETURN',
                 'this'
@@ -996,7 +1025,7 @@ describe('Query/Builder.js', () => {
 
             const expected = [
                 'MERGE',
-                '(this:QueryBuilderTest { id: $this_id, name: $this_name })',
+                '(this:QueryBuilderTest { `id`: $this_id, `name`: $this_name })',
                 '',
                 'RETURN',
                 'this'
@@ -1020,16 +1049,16 @@ describe('Query/Builder.js', () => {
 
             const expected = [
                 'MATCH',
-                '(this:QueryBuilderTest { id: $this_id })',
+                '(this:QueryBuilderTest { `id`: $this_id })',
                 '',
                 'MATCH',
-                '(that:QueryBuilderTest { id: $that_id })',
+                '(that:QueryBuilderTest { `id`: $that_id })',
                 '',
                 'MERGE',
                 '(this)-[r:`TO`]->(that)',
                 '',
                 'SET',
-                'r.value = $set_0',
+                '`r`.`value` = $set_0',
                 'RETURN',
                 'this,r,that'
             ].join('\n');
@@ -1054,10 +1083,10 @@ describe('Query/Builder.js', () => {
 
             const expected = [
                 'MATCH',
-                '(this:QueryBuilderTest { id: $this_id })',
+                '(this:QueryBuilderTest { `id`: $this_id })',
                 '',
                 'MATCH',
-                '(that:QueryBuilderTest { id: $that_id })',
+                '(that:QueryBuilderTest { `id`: $that_id })',
                 '',
                 'MERGE',
                 '(this)-[r:`TO`]->(that)',
@@ -1065,7 +1094,7 @@ describe('Query/Builder.js', () => {
                 'REMOVE',
                 'this:Label, that:Label',
                 'SET',
-                'r.value = $set_0',
+                '`r`.`value` = $set_0',
                 'RETURN',
                 'this,r,that'
             ].join('\n');
@@ -1094,10 +1123,10 @@ describe('Query/Builder.js', () => {
 
             const expected = [
                 'MATCH',
-                '(this:QueryBuilderTest { id: $this_id })',
+                '(this:QueryBuilderTest { `id`: $this_id })',
                 '',
                 'MATCH',
-                '(that:QueryBuilderTest { id: $that_id })',
+                '(that:QueryBuilderTest { `id`: $that_id })',
                 '',
                 'MERGE',
                 '(this)-[r:`TO`]->(that)',
@@ -1105,11 +1134,11 @@ describe('Query/Builder.js', () => {
                 'REMOVE',
                 'this:Label, that:Label',
                 'ON CREATE SET',
-                'r.another = $set_1',
+                '`r`.`another` = $set_1',
                 'ON MATCH SET',
-                'r.number = $set_2, r.boolean = $set_3',
+                '`r`.`number` = $set_2, `r`.`boolean` = $set_3',
                 'SET',
-                'r.value = $set_0',
+                '`r`.`value` = $set_0',
                 'RETURN',
                 'this,r,that'
             ].join('\n');
@@ -1152,10 +1181,10 @@ describe('Query/Builder.js', () => {
 
             const expected = [
                 'MATCH',
-                '(this:QueryBuilderTest { id: $this_id })',
+                '(this:QueryBuilderTest { `id`: $this_id })',
                 '',
                 'MATCH',
-                '(that:QueryBuilderTest { id: $that_id })',
+                '(that:QueryBuilderTest { `id`: $that_id })',
                 '',
                 'MERGE',
                 '(this)-[r:`TO`]->(that)',
@@ -1163,11 +1192,11 @@ describe('Query/Builder.js', () => {
                 'REMOVE',
                 'this:Label, that:Label',
                 'ON CREATE SET',
-                'r.another = $set_1',
+                '`r`.`another` = $set_1',
                 'ON MATCH SET',
-                'r.number = $set_2, r.boolean = $set_3',
+                '`r`.`number` = $set_2, `r`.`boolean` = $set_3',
                 'SET',
-                'r.value = $set_0',
+                '`r`.`value` = $set_0',
                 'RETURN',
                 'this,r,that'
             ].join('\n');

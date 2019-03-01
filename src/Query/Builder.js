@@ -135,7 +135,7 @@ export default class Builder {
      */
     _addWhereParameter(key, value) {
         let attempt = 1;
-        let base = `where_${key.replace(/[^a-z0-9]+/, '_')}`;
+        let base = `where_${key.replace(/[^a-z0-9]+/g, '_')}`;
 
         // Try to create a unique key
         let variable = base;
@@ -173,22 +173,19 @@ export default class Builder {
                 arg.forEach(inner => {
                     this.where(...inner);
                 });
-            }
-            else if (typeof arg == 'object') {
+            } else if (typeof arg == 'object') {
                 Object.keys(arg).forEach(key => {
                     this.where(key, arg[key]);
                 });
-            }
-            else {
+            } else {
                 this._where.append(new WhereRaw(args[0]));
             }
-        }
-        else {
+        } else {
             const [left, operator, value] = args;
             const right = this._addWhereParameter(left, value);
 
             this._params[ right ] = value;
-            this._where.append(new Where(left, operator, `{${right}}`));
+            this._where.append(new Where(this._quoteKey(left), operator, `{${right}}`));
         }
 
         return this;
@@ -204,7 +201,7 @@ export default class Builder {
     whereId(alias, value) {
         const param = this._addWhereParameter(`${alias}_id`, neo4j.int(value));
 
-        this._where.append(new WhereId(alias, param));
+        this._where.append(new WhereId(this._quoteKey(alias), param));
 
         return this;
     }
@@ -247,7 +244,7 @@ export default class Builder {
         const floor_alias = this._addWhereParameter(`${alias}_floor`, floor);
         const ceiling_alias = this._addWhereParameter(`${alias}_ceiling`, ceiling);
 
-        this._where.append(new WhereBetween(alias, floor_alias, ceiling_alias));
+        this._where.append(new WhereBetween(this._quoteKey(alias), floor_alias, ceiling_alias));
 
         return this;
     }
@@ -308,6 +305,15 @@ export default class Builder {
 
         return this;
     }
+    
+    _quoteKey(string) {
+      return string
+        .split('.')
+        .map(part => {
+          return part.indexOf("`") !== -1 ? part : `\`${part}\``;
+        })
+        .join('.');
+    }
 
     /**
      * Convert a map of properties into an Array of 
@@ -317,11 +323,11 @@ export default class Builder {
     _convertPropertyMap(alias, properties) {
         if ( properties ) {
             return Object.keys(properties).map(key => {
-                const property_alias = `${alias}_${key}`;
+                const property_alias = `${alias}_${key}`.replace(/[^a-z0-9]+/g, '_');
 
                 this._params[ property_alias ] = properties[ key ];
 
-                return new Property( key, property_alias );
+                return new Property(this._quoteKey(key), property_alias );
             });
         }
 
@@ -364,7 +370,7 @@ export default class Builder {
 
             this._set_count++;
 
-            this._current.set(property, alias);
+            this._current.set(this._quoteKey(property), alias);
         }
 
         return this;
@@ -390,7 +396,7 @@ export default class Builder {
 
             this._set_count++;
 
-            this._current.onCreateSet(property, alias);
+            this._current.onCreateSet(this._quoteKey(property), alias);
         }
 
         return this;
@@ -416,7 +422,7 @@ export default class Builder {
 
             this._set_count++;
 
-            this._current.onMatchSet(property, alias);
+            this._current.onMatchSet(this._quoteKey(property), alias);
         }
 
         return this;
@@ -481,10 +487,9 @@ export default class Builder {
 
         if (args.length == 2) {
             // Assume orderBy(what, how)
-            order_by = new Order(args[0], args[1]);
+            order_by = new Order(this._quoteKey(args[0]), args[1]);
 
-        }
-        else if (Array.isArray(args[0])) {
+        } else if (Array.isArray(args[0])) {
             // Handle array of where's
             args[0].forEach(arg => {
                 this.orderBy(arg);
@@ -493,7 +498,7 @@ export default class Builder {
         // TODO: Ugly, stop supporting this
         else if (typeof args[0] == 'object' && args[0].field) {
             // Assume orderBy(args[0].field, args[0].order)
-            order_by = new Order(args[0].field, args[0].order);
+            order_by = new Order(this._quoteKey(args[0].field), args[0].order);
         }
         else if (typeof args[0] == 'object') {
             // Assume {key: order}
@@ -503,7 +508,7 @@ export default class Builder {
         }
         else if (args[0]) {
             // Assume orderBy(what, 'ASC')
-            order_by = new Order(args[0]);
+            order_by = new Order(this._quoteKey(args[0]));
         }
 
         if (order_by) {
