@@ -221,7 +221,7 @@ var Builder = function () {
         key: '_addWhereParameter',
         value: function _addWhereParameter(key, value) {
             var attempt = 1;
-            var base = 'where_' + key.replace(/[^a-z0-9]+/g, '_');
+            var base = 'where_' + key.replace(/[^A-Za-z0-9]+/g, '_');
 
             // Try to create a unique key
             var variable = base;
@@ -456,7 +456,7 @@ var Builder = function () {
 
             if (properties) {
                 return Object.keys(properties).map(function (key) {
-                    var property_alias = (alias + '_' + key).replace(/[^a-z0-9]+/g, '_');
+                    var property_alias = (alias + '_' + key).replace(/[^A-Za-z0-9]+/g, '_');
 
                     _this2._params[property_alias] = properties[key];
 

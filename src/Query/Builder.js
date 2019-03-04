@@ -135,7 +135,7 @@ export default class Builder {
      */
     _addWhereParameter(key, value) {
         let attempt = 1;
-        let base = `where_${key.replace(/[^a-z0-9]+/g, '_')}`;
+        let base = `where_${key.replace(/[^A-Za-z0-9]+/g, '_')}`;
 
         // Try to create a unique key
         let variable = base;
@@ -323,7 +323,7 @@ export default class Builder {
     _convertPropertyMap(alias, properties) {
         if ( properties ) {
             return Object.keys(properties).map(key => {
-                const property_alias = `${alias}_${key}`.replace(/[^a-z0-9]+/g, '_');
+                const property_alias = `${alias}_${key}`.replace(/[^A-Za-z0-9]+/g, '_');
 
                 this._params[ property_alias ] = properties[ key ];
 
