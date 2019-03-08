@@ -118,21 +118,27 @@ var Statement = function () {
     }, {
         key: 'set',
         value: function set(key, value) {
-            this._set.push(new _Property2.default(key, value));
+            var operator = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '=';
+
+            this._set.push(new _Property2.default(key, value, operator));
 
             return this;
         }
     }, {
         key: 'onCreateSet',
         value: function onCreateSet(key, value) {
-            this._on_create_set.push(new _Property2.default(key, value));
+            var operator = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '=';
+
+            this._on_create_set.push(new _Property2.default(key, value, operator));
 
             return this;
         }
     }, {
         key: 'onMatchSet',
         value: function onMatchSet(key, value) {
-            this._on_match_set.push(new _Property2.default(key, value));
+            var operator = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '=';
+
+            this._on_match_set.push(new _Property2.default(key, value, operator));
 
             return this;
         }

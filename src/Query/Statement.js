@@ -72,20 +72,20 @@ export default class Statement {
         return this;
     }
 
-    set(key, value) {
-        this._set.push( new Property(key, value) );
+    set(key, value, operator = '=') {
+        this._set.push( new Property(key, value, operator) );
 
         return this;
     }
 
-    onCreateSet(key, value) {
-        this._on_create_set.push( new Property(key, value) );
+    onCreateSet(key, value, operator = '=') {
+        this._on_create_set.push( new Property(key, value, operator) );
 
         return this;
     }
 
-    onMatchSet(key, value) {
-        this._on_match_set.push( new Property(key, value) );
+    onMatchSet(key, value, operator = '=') {
+        this._on_match_set.push( new Property(key, value, operator) );
 
         return this;
     }

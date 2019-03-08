@@ -356,8 +356,9 @@ export default class Builder {
      * 
      * @param {String|Object} property   Property in {alias}.{property} format
      * @param {Mixed}         value      Value
+     * @param {String}        operator   Operator
      */
-    set(property, value) {
+    set(property, value, operator = '=') {
         // Support a map of properties
         if ( !value && property instanceof Object ) {
             Object.keys(property).forEach(key => {
@@ -382,8 +383,9 @@ export default class Builder {
      * 
      * @param {String|Object} property   Property in {alias}.{property} format
      * @param {Mixed}         value      Value
+     * @param {String}        operator   Operator
      */
-    onCreateSet(property, value) {
+    onCreateSet(property, value, operator = '=') {
         // Support a map of properties
         if ( !value && property instanceof Object ) {
             Object.keys(property).forEach(key => {
@@ -408,8 +410,9 @@ export default class Builder {
      * 
      * @param {String|Object} property   Property in {alias}.{property} format
      * @param {Mixed}         value      Value
+     * @param {String}        operator   Operator
      */
-    onMatchSet(property, value) {
+    onMatchSet(property, value, operator = '=') {
         // Support a map of properties
         if ( !value && property instanceof Object ) {
             Object.keys(property).forEach(key => {

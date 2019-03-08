@@ -492,12 +492,15 @@ var Builder = function () {
          * 
          * @param {String|Object} property   Property in {alias}.{property} format
          * @param {Mixed}         value      Value
+         * @param {String}        operator   Operator
          */
 
     }, {
         key: 'set',
         value: function set(property, value) {
             var _this3 = this;
+
+            var operator = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '=';
 
             // Support a map of properties
             if (!value && property instanceof Object) {
@@ -521,12 +524,15 @@ var Builder = function () {
          * 
          * @param {String|Object} property   Property in {alias}.{property} format
          * @param {Mixed}         value      Value
+         * @param {String}        operator   Operator
          */
 
     }, {
         key: 'onCreateSet',
         value: function onCreateSet(property, value) {
             var _this4 = this;
+
+            var operator = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '=';
 
             // Support a map of properties
             if (!value && property instanceof Object) {
@@ -550,12 +556,15 @@ var Builder = function () {
          * 
          * @param {String|Object} property   Property in {alias}.{property} format
          * @param {Mixed}         value      Value
+         * @param {String}        operator   Operator
          */
 
     }, {
         key: 'onMatchSet',
         value: function onMatchSet(property, value) {
             var _this5 = this;
+
+            var operator = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '=';
 
             // Support a map of properties
             if (!value && property instanceof Object) {
@@ -568,7 +577,7 @@ var Builder = function () {
 
                 this._set_count++;
 
-                this._current.onMatchSet(this._quoteKey(property), alias);
+              this._current.onMatchSet(this._quoteKey(property), alias);
             }
 
             return this;
