@@ -341,11 +341,37 @@ declare namespace Neode {
   }
 
   interface StringNodeProperties extends BaseNodeProperties {
-    type: 'string',
+    type: 'string'
+  
     regex: RegExp | {
-      pattern: RegExp,
+      pattern: RegExp
       invert: boolean
       name: string
+    }
+
+    /**
+     * Replace parts of the string
+     */
+    replace: {
+      /**
+       * RegExp pattern
+       */
+      pattern: RegExp
+
+      /**
+       * What should replace the pattern
+       */
+      replace: string
+    }
+
+    /**
+     * Should the string be in a valid email format
+     */
+    email: boolean | {
+      /**
+       * tld Domain whitelist (e.g ['com', 'fr'])
+       */
+      tldWhitelist: string[]
     }
   }
 
