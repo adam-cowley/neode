@@ -77,6 +77,12 @@ export default class Statement {
 
         return this;
     }
+    
+    setRaw(items) {
+        this._set = this._set.concat(items);
+
+        return this;
+    }
 
     onCreateSet(key, value, operator = '=') {
         this._on_create_set.push( new Property(key, value, operator) );

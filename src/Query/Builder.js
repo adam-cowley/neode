@@ -360,12 +360,16 @@ export default class Builder {
             });
         }
         else {
-            const alias = `set_${this._set_count}`;
-            this._params[ alias ] = value;
-
-            this._set_count++;
-
-            this._current.set(property, alias, operator);
+            if (value) {
+                const alias = `set_${this._set_count}`;
+                this._params[ alias ] = value;
+                
+                this._set_count++;
+                
+                this._current.set(property, alias, operator);
+            } else {
+                this._current.setRaw(property);
+            }
         }
 
         return this;

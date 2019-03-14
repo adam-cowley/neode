@@ -1182,6 +1182,36 @@ describe('Query/Builder.js', () => {
                 set_3: true,
             });
         });
+        
+        it('should accept raw values for set', () => {
+            const builder = new Builder();
+
+            const { query, params } = builder
+                .match('this', model, { id: 1 })
+                .match('that', model, { id: 2 })
+                .set('this:Label, that:OtherLabel')
+                .return('this', 'that')
+                .build();
+
+            const expected = [
+                'MATCH',
+                '(this:QueryBuilderTest { id: $this_id })',
+                '',
+                'MATCH',
+                '(that:QueryBuilderTest { id: $that_id })',
+                '',
+                'SET',
+                'this:Label, that:OtherLabel',
+                'RETURN',
+                'this,that'
+            ].join('\n');
+
+            expect(query).to.equal(expected);
+            expect(params).to.deep.equal({
+                this_id: 1, 
+                that_id: 2, 
+            });
+        });
 
         it('should accept a mutation for SET', () => {
             const builder = new Builder();
