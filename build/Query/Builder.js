@@ -501,12 +501,16 @@ var Builder = function () {
                     _this3.set(key, property[key]);
                 });
             } else {
-                var alias = 'set_' + this._set_count;
-                this._params[alias] = value;
+                if (value) {
+                    var alias = 'set_' + this._set_count;
+                    this._params[alias] = value;
 
-                this._set_count++;
+                    this._set_count++;
 
-                this._current.set(property, alias, operator);
+                    this._current.set(property, alias, operator);
+                } else {
+                    this._current.setRaw(property);
+                }
             }
 
             return this;
