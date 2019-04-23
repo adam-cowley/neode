@@ -44,6 +44,10 @@ var _Builder = require('./Query/Builder');
 
 var _Builder2 = _interopRequireDefault(_Builder);
 
+var _Collection = require('./Collection');
+
+var _Collection2 = _interopRequireDefault(_Collection);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -552,6 +556,19 @@ var Neode = function () {
         key: 'hydrateFirst',
         value: function hydrateFirst(res, alias, definition) {
             return this.factory.hydrateFirst(res, alias, definition);
+        }
+
+        /**
+         * Turn an array into a Collection
+         * 
+         * @param  {Array} array An array
+         * @return {Collection}
+         */
+
+    }, {
+        key: 'toCollection',
+        value: function toCollection(array) {
+            return new _Collection2.default(this, array);
         }
     }], [{
         key: 'fromEnv',

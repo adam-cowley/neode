@@ -7,6 +7,7 @@ import ModelMap from './ModelMap';
 import Schema from './Schema';
 import TransactionError from './TransactionError';
 import Builder from './Query/Builder';
+import Collection from './Collection';
 
 export default class Neode {
 
@@ -464,6 +465,16 @@ export default class Neode {
      */
     hydrateFirst(res, alias, definition) {
         return this.factory.hydrateFirst(res, alias, definition);
+    }
+
+    /**
+     * Turn an array into a Collection
+     * 
+     * @param  {Array} array An array
+     * @return {Collection}
+     */
+    toCollection(array) {
+        return new Collection(this, array);
     }
 
 }
