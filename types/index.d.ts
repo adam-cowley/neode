@@ -264,7 +264,7 @@ declare class Neode {
 
 }
 
-export = Neode;
+export { Neode };
 
 declare namespace Neode {
 
