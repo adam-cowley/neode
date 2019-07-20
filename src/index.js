@@ -282,6 +282,9 @@ export default class Neode {
                     session.close();
                 }
 
+                err.query = query;
+                err.params = params;
+
                 throw err;
             });
     }
@@ -318,9 +321,9 @@ export default class Neode {
      *
      * @return {Transaction}
      */
-    transaction() {
+    transaction(mode = neo4j.WRITE) {
         const session = this.driver.session();
-        const tx = session.beginTransaction();
+        const tx = session.beginTransaction(mode);
 
         // Create an 'end' function to commit & close the session
         // TODO: Clean up
@@ -469,7 +472,7 @@ export default class Neode {
 
     /**
      * Turn an array into a Collection
-     * 
+     *
      * @param  {Array} array An array
      * @return {Collection}
      */

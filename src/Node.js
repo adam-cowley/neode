@@ -5,7 +5,7 @@ import DeleteNode from './Services/DeleteNode';
 import RelateTo from './Services/RelateTo';
 import RelationshipType from './RelationshipType';
 
-/** 
+/**
  * Node Container
  */
 export default class Node extends Entity {
@@ -35,9 +35,9 @@ export default class Node extends Entity {
         this._deleted = false;
     }
 
-    /** 
+    /**
      * Get the Model for this Node
-     * 
+     *
      * @return {Model}
      */
     model() {
@@ -55,9 +55,9 @@ export default class Node extends Entity {
 
     /**
      * Set an eager value on the fly
-     * 
-     * @param  {String} key 
-     * @param  {Mixed}  value 
+     *
+     * @param  {String} key
+     * @param  {Mixed}  value
      * @return {Node}
      */
     setEager(key, value) {
@@ -97,7 +97,12 @@ export default class Node extends Entity {
             return Promise.reject( new Error(`Cannot find relationship with type ${type}`) );
         }
 
-        return RelateTo(this._neode, this, node, relationship, properties, force_create);
+        return RelateTo(this._neode, this, node, relationship, properties, force_create)
+            .then(rel => {
+                this._eager.delete(type);
+
+                return rel;
+            });
     }
 
     /**
@@ -157,20 +162,20 @@ export default class Node extends Entity {
                     });
             }
         }) )
-            // Remove Empty 
+            // Remove Empty
             .then(eager => eager.filter( e => !!e ))
 
             // Assign to Output
             .then(eager => {
                 eager.forEach(({ key, value }) => output[ key ] = value);
-                
+
                 return output;
             });
     }
 
     /**
      * Update the properties for this node
-     * 
+     *
      * @param {Object} properties  New properties
      * @return {Node}
      */

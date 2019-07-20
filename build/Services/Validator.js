@@ -174,6 +174,13 @@ function BuildValidationSchema(schema) {
                 break;
         }
 
+
+        console.log('???', config)
+
+        if (!config.required) {
+            validation = validation.allow(null);
+        }
+
         // Apply additional Validation
         Object.keys(config).forEach(function (validator) {
             var options = config[validator];
@@ -212,7 +219,7 @@ function BuildValidationSchema(schema) {
 
 /**
  * Run Validation
- * 
+ *
  * TODO: Recursive Validation
  *
  * @param  {Neode} neode

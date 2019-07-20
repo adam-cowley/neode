@@ -340,6 +340,9 @@ var Neode = function () {
                     session.close();
                 }
 
+                err.query = query;
+                err.params = params;
+
                 throw err;
             });
         }
@@ -389,8 +392,10 @@ var Neode = function () {
     }, {
         key: 'transaction',
         value: function transaction() {
+            var mode = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : _neo4jDriver2.default.WRITE;
+
             var session = this.driver.session();
-            var tx = session.beginTransaction();
+            var tx = session.beginTransaction(mode);
 
             // Create an 'end' function to commit & close the session
             // TODO: Clean up
@@ -560,7 +565,7 @@ var Neode = function () {
 
         /**
          * Turn an array into a Collection
-         * 
+         *
          * @param  {Array} array An array
          * @return {Collection}
          */

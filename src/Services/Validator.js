@@ -62,11 +62,11 @@ const temporal = Joi.extend({
                 if ( params.after === 'now' ) {
                     params.after = new Date();
                 }
-                
+
                 if ( params.after > value ) {
                     return this.createError('temporal.after', { v: value }, state, options);
                 }
-                
+
                 return value;
             },
         },
@@ -82,11 +82,11 @@ const temporal = Joi.extend({
                 if ( params.after === 'now' ) {
                     params.after = new Date();
                 }
-                
+
                 if ( params.after < value ) {
                     return this.createError('temporal.after', { v: value }, state, options);
                 }
-                
+
                 return value;
             },
         },
@@ -104,7 +104,7 @@ function nodeSchema() {
 
 function relationshipSchema(alias, properties = {}) {
     return Joi.object().keys(Object.assign(
-        {}, 
+        {},
         {
             [ alias ]: nodeSchema().required(),
         },
@@ -136,7 +136,7 @@ function BuildValidationSchema(schema) {
                 validation = Joi.array().items(nodeSchema());
                 break;
 
-            case 'relationship': 
+            case 'relationship':
                 // TODO: Clean up... This should probably be an object
                 validation = relationshipSchema(config.alias || DEFAULT_ALIAS, config.properties);
 
@@ -192,6 +192,10 @@ function BuildValidationSchema(schema) {
                 break;
         }
 
+        if ( ! config.required ) {
+            validation = validation.allow(null);
+        }
+
         // Apply additional Validation
         Object.keys(config).forEach(validator => {
             const options = config[validator];
@@ -236,7 +240,7 @@ function BuildValidationSchema(schema) {
 
 /**
  * Run Validation
- * 
+ *
  * TODO: Recursive Validation
  *
  * @param  {Neode} neode
