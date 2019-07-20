@@ -174,9 +174,6 @@ function BuildValidationSchema(schema) {
                 break;
         }
 
-
-        console.log('???', config)
-
         if (!config.required) {
             validation = validation.allow(null);
         }
