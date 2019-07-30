@@ -24,6 +24,7 @@
   "author": "Adam Cowley <github@adamcowley.co.uk>",
   "license": "MIT",
   "dependencies": {
+    "@hapi/joi": "^15.1.0",
     "dotenv": "^4.0.0",
     "joi": "^13.7.0",
     "neo4j-driver": "^1.6.3",
