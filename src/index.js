@@ -109,7 +109,7 @@ export default class Neode {
             .forEach(file => {
                 const model = file.replace('.js', '');
                 const path = directory +'/'+ file;
-                const schema = require(path);
+                const schema = require("" + path);
 
                 return this.model(model, schema);
             });
