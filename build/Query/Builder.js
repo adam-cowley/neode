@@ -212,9 +212,9 @@ var Builder = function () {
 
         /**
          * Generate a unique key and add the value to the params object
-         * 
-         * @param {String} key 
-         * @param {Mixed} value 
+         *
+         * @param {String} key
+         * @param {Mixed} value
          */
 
     }, {
@@ -241,7 +241,7 @@ var Builder = function () {
          * Add a where condition to the current statement.
          *
          * @param  {...mixed} args Arguments
-         * @return {Builder}         
+         * @return {Builder}
          */
 
     }, {
@@ -298,7 +298,7 @@ var Builder = function () {
          *
          * @param  {String} alias
          * @param  {Int}    value
-         * @return {Builder}       
+         * @return {Builder}
          */
 
     }, {
@@ -315,7 +315,7 @@ var Builder = function () {
          * Add a raw where clause
          *
          * @param  {String} clause
-         * @return {Builder}       
+         * @return {Builder}
          */
 
     }, {
@@ -328,9 +328,9 @@ var Builder = function () {
 
         /**
          * A negative where clause
-         * 
-         * @param {*} args 
-         * @return {Builder}       
+         *
+         * @param {*} args
+         * @return {Builder}
          */
 
     }, {
@@ -345,10 +345,10 @@ var Builder = function () {
 
         /**
          * Between clause
-         * 
-         * @param {String} alias 
-         * @param {Mixed} floor 
-         * @param {Mixed} ceiling 
+         *
+         * @param {String} alias
+         * @param {Mixed} floor
+         * @param {Mixed} ceiling
          * @return {Builder}
          */
 
@@ -365,10 +365,10 @@ var Builder = function () {
 
         /**
          * Negative Between clause
-         * 
-         * @param {String} alias 
-         * @param {Mixed} floor 
-         * @param {Mixed} ceiling 
+         *
+         * @param {String} alias
+         * @param {Mixed} floor
+         * @param {Mixed} ceiling
          * @return {Builder}
          */
 
@@ -437,9 +437,9 @@ var Builder = function () {
         }
 
         /**
-         * Convert a map of properties into an Array of 
-         * 
-         * @param {Object|null} properties 
+         * Convert a map of properties into an Array of
+         *
+         * @param {Object|null} properties
          */
 
     }, {
@@ -482,7 +482,7 @@ var Builder = function () {
 
         /**
          * Set a property
-         * 
+         *
          * @param {String|Object} property   Property in {alias}.{property} format
          * @param {Mixed}         value      Value
          * @param {String}        operator   Operator
@@ -501,7 +501,7 @@ var Builder = function () {
                     _this3.set(key, property[key]);
                 });
             } else {
-                if (value) {
+                if (value !== undefined) {
                     var alias = 'set_' + this._set_count;
                     this._params[alias] = value;
 
@@ -518,7 +518,7 @@ var Builder = function () {
 
         /**
          * Set a property
-         * 
+         *
          * @param {String|Object} property   Property in {alias}.{property} format
          * @param {Mixed}         value      Value
          * @param {String}        operator   Operator
@@ -532,7 +532,7 @@ var Builder = function () {
             var operator = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '=';
 
             // Support a map of properties
-            if (!value && property instanceof Object) {
+            if (value === undefined && property instanceof Object) {
                 Object.keys(property).forEach(function (key) {
                     _this4.onCreateSet(key, property[key]);
                 });
@@ -550,7 +550,7 @@ var Builder = function () {
 
         /**
          * Set a property
-         * 
+         *
          * @param {String|Object} property   Property in {alias}.{property} format
          * @param {Mixed}         value      Value
          * @param {String}        operator   Operator
@@ -564,7 +564,7 @@ var Builder = function () {
             var operator = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '=';
 
             // Support a map of properties
-            if (!value && property instanceof Object) {
+            if (value === undefined && property instanceof Object) {
                 Object.keys(property).forEach(function (key) {
                     _this5.onMatchSet(key, property[key]);
                 });
@@ -581,10 +581,10 @@ var Builder = function () {
         }
 
         /**
-         * Remove properties or labels in {alias}.{property} 
+         * Remove properties or labels in {alias}.{property}
          * or {alias}:{Label} format
-         * 
-         * @param {[String]} items 
+         *
+         * @param {[String]} items
          */
 
     }, {
@@ -742,9 +742,9 @@ var Builder = function () {
             return this;
         }
 
-        /** 
+        /**
          * Build the pattern without any keywords
-         * 
+         *
          * @return {String}
          */
 

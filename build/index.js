@@ -126,7 +126,7 @@ var Neode = function () {
             }).forEach(function (file) {
                 var model = file.replace('.js', '');
                 var path = directory + '/' + file;
-                var schema = require(path);
+                var schema = require("" + path);
 
                 return _this2.model(model, schema);
             });

@@ -49,7 +49,7 @@ function InstallSchema(neode) {
     neode.models.forEach(function (model, label) {
         model.properties().forEach(function (property) {
             // Constraints
-            if (property.unique()) {
+            if (property.primary() || property.unique()) {
                 queries.push(UniqueConstraintCypher(label, property.name()));
             }
 
