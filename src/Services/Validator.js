@@ -1,5 +1,5 @@
 /* eslint-disable no-case-declarations */
-import Joi from 'joi';
+import Joi from '@hapi/joi';
 import Model from '../Model';
 import Node from '../Node';
 import RelationshipType, { DEFAULT_ALIAS } from '../RelationshipType';

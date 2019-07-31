@@ -8,7 +8,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 
 exports.default = Validator;
 
-var _joi = require('joi');
+var _joi = require('@hapi/joi');
 
 var _joi2 = _interopRequireDefault(_joi);
 
