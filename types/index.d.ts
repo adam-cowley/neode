@@ -270,7 +270,7 @@ declare namespace Neode {
 
   type PropertyType = string | number | boolean;
 
-  type TemporalPropertyTypes = 'datetime' | 'date' | 'time' | 'localdate' | 'localtime'
+  type TemporalPropertyTypes = 'datetime' | 'date' | 'time' | 'localdate' | 'localtime' | 'duration'
   type NumberPropertyTypes = 'number' | 'int' | 'integer' | 'float'
   type RelationshipPropertyTypes = 'relationship' | 'relationships'
   type StringPropertyTypes = 'string' | 'uuid'
