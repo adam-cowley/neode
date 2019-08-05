@@ -2,7 +2,7 @@
 import { v1 as neo4j } from 'neo4j-driver';
 
 const temporal = [
-    'date', 
+    'date',
     'datetime',
     'time',
     'localdatetime',
@@ -30,7 +30,7 @@ export default function CleanValue(config, value) {
 
         case 'int':
         case 'integer':
-            value = parseInt(value);
+            value = neo4j.int( parseInt(value) );
             break;
 
         case 'bool':
