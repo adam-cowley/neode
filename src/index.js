@@ -313,7 +313,7 @@ export default class Neode {
      * @return {Session}
      */
     writeSession() {
-        return this.session(neo4j.WRITE);
+        return this.driver.session(neo4j.WRITE);
     }
 
     /**
