@@ -93,6 +93,20 @@ const temporal = Joi.extend({
     ],
 });
 
+// {
+//     lat: Joi.number(),
+//     long: Joi.number()
+//   }).and('lat', 'long')
+
+const point = Joi.extend({
+    base: Joi.object().keys({
+        latitude: Joi.number().required(),
+        longitude: Joi.number().required(),
+        height: Joi.number().optional()
+    }).and('latitude', 'longitude'),
+    name: 'point',
+});
+
 function nodeSchema() {
     return Joi.alternatives([
         Joi.object().type(Node),
@@ -118,8 +132,6 @@ function BuildValidationSchema(schema) {
     }
 
     let output = {};
-
-    // console.log('??', schema);
 
     Object.keys(schema).forEach(key => {
         const config = typeof schema[ key ] == 'string' ? {type: schema[ key ]} : schema[ key ];
@@ -178,9 +190,13 @@ function BuildValidationSchema(schema) {
                 validation = temporal.temporal().type(neo4j.types.LocalTime);
                 break;
 
+            case 'point':
+                validation = point.point().type(neo4j.types.Point);
+                break;
+
             case 'int':
             case 'integer':
-                validation = Joi.number().integer();
+                validation = Joi.alternatives().try([ Joi.number().integer(), Joi.object().type(neo4j.types.Integer) ]);
                 break;
 
             case 'float':

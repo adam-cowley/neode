@@ -63,9 +63,9 @@ export default class Factory {
 
     /**
      * Take a result object and convert it into a Model
-     * 
-     * @param {Object}      record 
-     * @param {Model|null}  definition
+     *
+     * @param {Object}              record
+     * @param {Model|String|null}   definition
      * @return {Node}
      */
     hydrateNode(record, definition) {
@@ -80,10 +80,18 @@ export default class Factory {
         // Get Internals
         const identity = record[ EAGER_ID ];
         const labels = record[ EAGER_LABELS ];
-        
-        // Get Definition from 
+
+        // Get Definition from
         if ( !definition ) {
             definition = this.getDefinition(labels);
+        }
+        else if ( typeof definition === 'string' ) {
+            definition = this._neode.models.get(definition);
+        }
+
+        // Helpful error message if nothing could be found
+        if ( !definition ) {
+            throw new Error(`No model definition found for labels ${ JSON.stringify(labels) }`);
         }
 
         // Get Properties
@@ -130,7 +138,7 @@ export default class Factory {
 
     /**
      * Take a result object and convert it into a Relationship
-     * 
+     *
      * @param  {RelationshipType}  definition  Relationship type
      * @param  {Object}            record      Record object
      * @param  {Node}              this_node   'This' node in the current  context
@@ -141,7 +149,7 @@ export default class Factory {
         const identity = record[ EAGER_ID ];
         const type = record[ EAGER_TYPE ];
 
-        // Get Definition from 
+        // Get Definition from
         // const definition = this.getDefinition(labels);
 
         // Get Properties
@@ -159,7 +167,7 @@ export default class Factory {
         // Calculate Start & End Nodes
         const start_node = definition.direction() == DIRECTION_IN
             ? other_node: this_node;
-            
+
         const end_node = definition.direction() == DIRECTION_IN
             ? this_node : other_node;
 

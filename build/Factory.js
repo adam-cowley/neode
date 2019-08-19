@@ -102,9 +102,9 @@ var Factory = function () {
 
         /**
          * Take a result object and convert it into a Model
-         * 
-         * @param {Object}      record 
-         * @param {Model|null}  definition
+         *
+         * @param {Object}              record
+         * @param {Model|String|null}   definition
          * @return {Node}
          */
 
@@ -124,9 +124,16 @@ var Factory = function () {
             var identity = record[_EagerUtils.EAGER_ID];
             var labels = record[_EagerUtils.EAGER_LABELS];
 
-            // Get Definition from 
+            // Get Definition from
             if (!definition) {
                 definition = this.getDefinition(labels);
+            } else if (typeof definition === 'string') {
+                definition = this._neode.models.get(definition);
+            }
+
+            // Helpful error message if nothing could be found
+            if (!definition) {
+                throw new Error('No model definition found for labels ' + JSON.stringify(labels));
             }
 
             // Get Properties
@@ -177,7 +184,7 @@ var Factory = function () {
 
         /**
          * Take a result object and convert it into a Relationship
-         * 
+         *
          * @param  {RelationshipType}  definition  Relationship type
          * @param  {Object}            record      Record object
          * @param  {Node}              this_node   'This' node in the current  context
@@ -191,7 +198,7 @@ var Factory = function () {
             var identity = record[_EagerUtils.EAGER_ID];
             var type = record[_EagerUtils.EAGER_TYPE];
 
-            // Get Definition from 
+            // Get Definition from
             // const definition = this.getDefinition(labels);
 
             // Get Properties

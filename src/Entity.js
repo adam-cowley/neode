@@ -3,16 +3,16 @@ import { v1 as neo4j } from 'neo4j-driver';
 
 /**
  * Convert a raw property into a JSON friendly format
- * 
+ *
  * @param  {Property}   property
- * @param  {Mixed}      value 
+ * @param  {Mixed}      value
  * @return {Mixed}
  */
 export function valueToJson(property, value) {
    if ( neo4j.isInt(value) ) {
        return value.toNumber();
    }
-   else if ( 
+   else if (
         neo4j.temporal.isDate(value)
         || neo4j.temporal.isDateTime(value)
         || neo4j.temporal.isTime(value)
@@ -44,13 +44,13 @@ export function valueToJson(property, value) {
 
 /**
  * Convert a property into a cypher value
- * 
- * @param {Property} property 
- * @param {Mixed}    value 
+ *
+ * @param {Property} property
+ * @param {Mixed}    value
  * @return {Mixed}
  */
 export function valueToCypher(property, value) {
-    if ( property.convertToInteger() ) {
+    if ( property.convertToInteger() && value !== null && value !== undefined ) {
         value = neo4j.int(value);
     }
 
@@ -70,7 +70,7 @@ export default class Entity {
 
     /**
      * Return internal ID as a Neo4j Integer
-     * 
+     *
      * @return {Integer}
      */
     identity() {
@@ -79,7 +79,7 @@ export default class Entity {
 
     /**
      * Return the Node's properties as an Object
-     * 
+     *
      * @return {Object}
      */
     properties() {
@@ -118,9 +118,9 @@ export default class Entity {
 
     /**
      * Convert a raw property into a JSON friendly format
-     * 
+     *
      * @param  {Property}   property
-     * @param  {Mixed}      value 
+     * @param  {Mixed}      value
      * @return {Mixed}
      */
     valueToJson(property, value) {

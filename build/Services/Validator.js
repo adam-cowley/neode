@@ -86,6 +86,20 @@ var temporal = _joi2.default.extend({
     }]
 });
 
+// {
+//     lat: Joi.number(),
+//     long: Joi.number()
+//   }).and('lat', 'long')
+
+var point = _joi2.default.extend({
+    base: _joi2.default.object().keys({
+        latitude: _joi2.default.number().required(),
+        longitude: _joi2.default.number().required(),
+        height: _joi2.default.number().optional()
+    }).and('latitude', 'longitude'),
+    name: 'point'
+});
+
 function nodeSchema() {
     return _joi2.default.alternatives([_joi2.default.object().type(_Node2.default), _joi2.default.string(), _joi2.default.number(), _joi2.default.object()]);
 }
@@ -102,8 +116,6 @@ function BuildValidationSchema(schema) {
     }
 
     var output = {};
-
-    // console.log('??', schema);
 
     Object.keys(schema).forEach(function (key) {
         var config = typeof schema[key] == 'string' ? { type: schema[key] } : schema[key];
@@ -160,9 +172,13 @@ function BuildValidationSchema(schema) {
                 validation = temporal.temporal().type(_neo4jDriver.v1.types.LocalTime);
                 break;
 
+            case 'point':
+                validation = point.point().type(_neo4jDriver.v1.types.Point);
+                break;
+
             case 'int':
             case 'integer':
-                validation = _joi2.default.number().integer();
+                validation = _joi2.default.alternatives().try([_joi2.default.number().integer(), _joi2.default.object().type(_neo4jDriver.v1.types.Integer)]);
                 break;
 
             case 'float':
