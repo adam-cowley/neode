@@ -1087,6 +1087,15 @@ declare namespace Neode {
     map<U>(fn: (value: Node<any>, index: number, array: Array<Node<any>>) => U): Array<U>;
 
     /**
+     * Find node with function
+     *
+     * @param  {Function} fn
+     * @return {mixed}
+     */
+    find<U>(fn: (value: Node<any>, index: number, array: Array<Node<any>>) => U): Node<U>;
+    
+    
+    /**
      * Run a function on all values
      * @param  {Function} fn
      * @return {mixed}
