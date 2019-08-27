@@ -70,6 +70,19 @@ var Collection = function () {
         }
 
         /**
+        * Find value in collection
+        *
+        * @param  {Function} fn
+        * @return {mixed}
+        */
+
+    }, {
+        key: "find",
+        value: function find(fn) {
+            return this._values.find(fn);
+        }
+
+        /**
          * Run a function on all values
          * @param  {Function} fn
          * @return {mixed}
