@@ -327,7 +327,7 @@ instance.cypher('MATCH (p:Person {name: {name}}) RETURN p', {name: "Adam"})
 ```
 
 ### Running a Batch
-Batch queries run within their own transaction.  Transactions can be sent as either a string or an object containing `query` and `param` propertes.
+Batch queries run within their own transaction.  Transactions can be sent as either a string or an object containing `query` and `param` properties.
 
 ```
 instance.batch(queries)

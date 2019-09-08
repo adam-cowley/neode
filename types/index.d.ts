@@ -10,9 +10,10 @@ declare class Neode {
    * @param  {String} username
    * @param  {String} password
    * @param  {Bool}   enterprise
+   * @param  {Object} config
    * @return {Neode}
    */
-  constructor(connection_string: string, username: string, password: string, enterprise ?: boolean);
+  constructor(connection_string: string, username: string, password: string, enterprise?: boolean, config?: object);
 
 
   /**
@@ -270,12 +271,13 @@ declare namespace Neode {
 
   type PropertyType = string | number | boolean;
 
-  type TemporalPropertyTypes = 'datetime' | 'date' | 'time' | 'localdate' | 'localtime'
+  type TemporalPropertyTypes = 'datetime' | 'date' | 'time' | 'localdate' | 'localtime' | 'duration'
   type NumberPropertyTypes = 'number' | 'int' | 'integer' | 'float'
   type RelationshipPropertyTypes = 'relationship' | 'relationships'
+  type NodesPropertyTypes = 'node' | 'nodes'
   type StringPropertyTypes = 'string' | 'uuid'
   type PropertyTypes = TemporalPropertyTypes | NumberPropertyTypes
-                        | RelationshipPropertyTypes | StringPropertyTypes
+                        | RelationshipPropertyTypes | StringPropertyTypes | NodesPropertyTypes
                         | 'boolean' | 'Point';
 
   type Direction = 'direction_in' | 'direction_out' | 'direction_both' | 'in' | 'out';
@@ -342,7 +344,7 @@ declare namespace Neode {
 
   interface StringNodeProperties extends BaseNodeProperties {
     type: 'string'
-  
+
     regex: RegExp | {
       pattern: RegExp
       invert: boolean
@@ -426,6 +428,14 @@ declare namespace Neode {
     type: 'relationship'
   }
 
+  interface NodesNodeProperties extends BaseRelationshipNodeProperties {
+    type: 'nodes'
+  }
+  
+  interface NodeNodeProperties extends BaseRelationshipNodeProperties {
+    type: 'node'
+  }
+
   interface OtherNodeProperties extends BaseNodeProperties {
     type: PropertyTypes
   }
@@ -433,6 +443,7 @@ declare namespace Neode {
   type NodeProperty = PropertyTypes
                       | NumberNodeProperties | IntNodeProperties | IntegerNodeProperties | FloatNodeProperties
                       | RelationshipNodeProperties | RelationshipsNodeProperties
+                      | NodeNodeProperties | NodesNodeProperties
                       | StringNodeProperties | OtherNodeProperties;
 
   export type SchemaObject = {
@@ -494,7 +505,7 @@ declare namespace Neode {
      * Add a where condition to the current statement.
      *
      * @param  {...mixed} args Argumenta
-     * @return {Builder}         
+     * @return {Builder}
      */
     where(...args: Array<string>): Builder;
 
@@ -503,7 +514,7 @@ declare namespace Neode {
      *
      * @param  {String} alias
      * @param  {Int}    value
-     * @return {Builder}       
+     * @return {Builder}
      */
     whereId(alias: string, value: number): Builder;
 
@@ -748,7 +759,8 @@ declare namespace Neode {
      * Add a new relationship
      *
      * @param  {String} name                Reference of Relationship
-     * @param  {String} relationship        Internal Relationship type
+     * @param  {String} type                Internal Relationship type
+     * @param  {String} relationship        Internal Relationship name
      * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
      * @param  {String|Model|null} target   Target type definition for the
      * @param  {Object} schema              Property Schema
@@ -756,7 +768,8 @@ declare namespace Neode {
      * @param  {Bool|String} cascade        Cascade delete policy for this relationship
      * @return {Relationship}
      */
-    relationship(name: string, relationship: string, direction?: Neode.Direction, target?: string | Model<T>, schema?: Neode.SchemaObject, eager?: boolean, cascade?: boolean | string): Relationship;
+     relationship(name: string, type: string, relationship: string, direction?: Neode.Direction, target?: string | Model<T>, schema?: Neode.SchemaObject, eager?: boolean, cascade?: boolean | string): Relationship
+    
 
     /**
      * Get all defined Relationships  for this Model
@@ -1076,6 +1089,15 @@ declare namespace Neode {
      */
     map<U>(fn: (value: Node<any>, index: number, array: Array<Node<any>>) => U): Array<U>;
 
+    /**
+     * Find node with function
+     *
+     * @param  {Function} fn
+     * @return {mixed}
+     */
+    find<U>(fn: (value: Node<any>, index: number, array: Array<Node<any>>) => U): Node<U>;
+    
+    
     /**
      * Run a function on all values
      * @param  {Function} fn

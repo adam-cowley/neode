@@ -380,7 +380,7 @@ var Neode = function () {
     }, {
         key: 'writeSession',
         value: function writeSession() {
-            return this.session(_neo4jDriver2.default.WRITE);
+            return this.driver.session(_neo4jDriver2.default.WRITE);
         }
 
         /**
