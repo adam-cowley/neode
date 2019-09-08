@@ -6,8 +6,8 @@ export const MAX_CREATE_DEPTH = 99;
 export const ORIGINAL_ALIAS = 'this';
 
 /**
- * Split properties into 
- * 
+ * Split properties into
+ *
  * @param  {String}  mode        'create' or 'merge'
  * @param  {Model}   model        Model to merge on
  * @param  {Object}  properties   Map of properties
@@ -52,8 +52,8 @@ function splitProperties(mode, model, properties, merge_on = []) {
     });
 
     return {
-        inline, 
-        on_create, 
+        inline,
+        on_create,
         on_match,
         set,
     };
@@ -62,7 +62,7 @@ function splitProperties(mode, model, properties, merge_on = []) {
 
 /**
  * Add a node to the current statement
- * 
+ *
  * @param {Neode}   neode       Neode instance
  * @param {Builder} builder     Query builder
  * @param {String}  alias       Alias
@@ -161,7 +161,7 @@ export function addNodeToStatement(neode, builder, alias, model, properties, ali
 
 /**
  * Add a relationship to the current statement
- * 
+ *
  * @param {Neode}           neode           Neode instance
  * @param {Builder}         builder         Query builder
  * @param {String}          alias           Current node alias
@@ -203,6 +203,11 @@ export function addRelationshipToStatement(neode, builder, alias, rel_alias, tar
     // If Map is passed, attempt to create that node and then relate
     else if ( Object.keys(node_value).length ) {
         const model = neode.model( relationship.target() );
+
+        if ( !model ) {
+            throw new Error(`Couldn't find a target model for ${relationship.target()} in ${relationship.name()}.  Did you use module.exports?`);
+        }
+
         node_value = GenerateDefaultValues.async(neode, model, node_value);
 
         addNodeToStatement(neode, builder, target_alias, model, node_value, aliases, mode, model.mergeFields());
@@ -225,7 +230,7 @@ export function addRelationshipToStatement(neode, builder, alias, rel_alias, tar
 
 /**
  * Add a node relationship to the current statement
- * 
+ *
  * @param {Neode}           neode           Neode instance
  * @param {Builder}         builder         Query builder
  * @param {String}          alias           Current node alias
@@ -259,11 +264,16 @@ export function addNodeRelationshipToStatement(neode, builder, alias, rel_alias,
     // TODO: Is mergeFields() the right option here?
     else if ( Object.keys(value).length ) {
         const model = neode.model( relationship.target() );
+
+        if ( !model ) {
+            throw new Error(`Couldn't find a target model for ${relationship.target()} in ${relationship.name()}.  Did you use module.exports?`);
+        }
+
         value = GenerateDefaultValues.async(neode, model, value);
 
         addNodeToStatement(neode, builder, target_alias, model, value, aliases, mode, model.mergeFields());
     }
-    
+
     // Create the Relationship
     builder[mode](alias)
         .relationship( relationship.relationship(), relationship.direction(), rel_alias )

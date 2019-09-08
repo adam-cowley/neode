@@ -17,7 +17,7 @@ describe('Services/CleanValue.js', () => {
         const expected = parseInt(1.2);
         const output = CleanValue({ type: 'int' }, input);
 
-        expect(output).to.equal(expected);
+        expect(output.toNumber()).to.equal(expected);
     });
 
     it('should handle an integer', () => {
@@ -25,7 +25,7 @@ describe('Services/CleanValue.js', () => {
         const expected = parseInt(1.2);
         const output = CleanValue({ type: 'integer' }, input);
 
-        expect(output).to.equal(expected);
+        expect(output.toNumber()).to.equal(expected);
     });
 
     it('should handle a boolean', () => {
@@ -61,7 +61,7 @@ describe('Services/CleanValue.js', () => {
         });
 
         it('should handle a Date from a timestamp', () => {
-            const input = new Date; 
+            const input = new Date;
             const output = CleanValue({ type: 'date' }, input.getTime());
 
             expect(output).to.be.an.instanceOf(neo4j.types.Date);
@@ -85,7 +85,7 @@ describe('Services/CleanValue.js', () => {
             expect(output.hour).to.equal(input.getHours());
             expect(output.minute).to.equal(input.getMinutes());
             expect(output.second).to.equal(input.getSeconds());
-            expect(output.timeZoneOffsetSeconds).to.equal(input.getTimezoneOffset() * 60);
+            expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * 60);
         });
 
         it('should handle a DateTime as a timestamp', () => {
@@ -100,7 +100,7 @@ describe('Services/CleanValue.js', () => {
             expect(output.hour).to.equal(input.getHours());
             expect(output.minute).to.equal(input.getMinutes());
             expect(output.second).to.equal(input.getSeconds());
-            expect(output.timeZoneOffsetSeconds).to.equal(input.getTimezoneOffset() * 60);
+            expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * 60);
         });
     });
 
@@ -145,7 +145,7 @@ describe('Services/CleanValue.js', () => {
             expect(output.minute).to.equal(input.getMinutes());
             expect(output.second).to.equal(input.getSeconds());
             expect(output.nanosecond).to.equal(input.getMilliseconds() * 1000000);
-            expect(output.timeZoneOffsetSeconds).to.equal(input.getTimezoneOffset() * 60);
+            expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * 60);
         });
 
         it('should handle a Time as a timestamp', () => {
@@ -158,7 +158,7 @@ describe('Services/CleanValue.js', () => {
             expect(output.minute).to.equal(input.getMinutes());
             expect(output.second).to.equal(input.getSeconds());
             expect(output.nanosecond).to.equal(input.getMilliseconds() * 1000000);
-            expect(output.timeZoneOffsetSeconds).to.equal(input.getTimezoneOffset() * 60);
+            expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * 60);
         });
     });
 
@@ -233,5 +233,5 @@ describe('Services/CleanValue.js', () => {
             expect(output.z).to.equal(input.z);
         });
     });
-    
+
 });

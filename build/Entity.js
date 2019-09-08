@@ -60,13 +60,7 @@ function _valueToJson(property, value) {
 exports.valueToJson = _valueToJson;
 function valueToCypher(property, value) {
     if (property.convertToInteger() && value !== null && value !== undefined) {
-        try {
-            value = _neo4jDriver.v1.int(value);
-        } catch (e) {
-            console.log('!!!', value, property);
-
-            throw e;
-        }
+        value = _neo4jDriver.v1.int(value);
     }
 
     return value;

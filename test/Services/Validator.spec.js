@@ -609,7 +609,7 @@ describe('Services/Validator.js', () => {
                     email: {
                         type: 'string',
                         email: {
-                            tldWhitelist: ['com'],
+                            tlds: { allow: true },
                         },
                     },
                 });
@@ -708,7 +708,7 @@ describe('Services/Validator.js', () => {
                 });
         });
     });
-    
+
     describe('Relationships', () => {
         it('should accept a string', () => {
             const model = instance.model('ValidatorTest', {
@@ -724,7 +724,7 @@ describe('Services/Validator.js', () => {
                 relationship: {
                     prop: 'value',
                     node: '1234',
-                }   
+                }
             })
                 .then(res => {
                     assert(true);
@@ -748,8 +748,8 @@ describe('Services/Validator.js', () => {
             Validator(instance, model, {
                 relationship: {
                     prop: 'value',
-                    alias: '1234', 
-                }   
+                    alias: '1234',
+                }
             })
                 .then(() => {
                     assert(true);
