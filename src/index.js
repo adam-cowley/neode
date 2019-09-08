@@ -7,6 +7,7 @@ import ModelMap from './ModelMap';
 import Schema from './Schema';
 import TransactionError from './TransactionError';
 import Builder from './Query/Builder';
+import Collection from './Collection';
 
 export default class Neode {
 
@@ -108,7 +109,7 @@ export default class Neode {
             .forEach(file => {
                 const model = file.replace('.js', '');
                 const path = directory +'/'+ file;
-                const schema = require(path);
+                const schema = require("" + path);
 
                 return this.model(model, schema);
             });
@@ -281,6 +282,9 @@ export default class Neode {
                     session.close();
                 }
 
+                err.query = query;
+                err.params = params;
+
                 throw err;
             });
     }
@@ -309,7 +313,7 @@ export default class Neode {
      * @return {Session}
      */
     writeSession() {
-        return this.session(neo4j.WRITE);
+        return this.driver.session(neo4j.WRITE);
     }
 
     /**
@@ -317,9 +321,9 @@ export default class Neode {
      *
      * @return {Transaction}
      */
-    transaction() {
+    transaction(mode = neo4j.WRITE) {
         const session = this.driver.session();
-        const tx = session.beginTransaction();
+        const tx = session.beginTransaction(mode);
 
         // Create an 'end' function to commit & close the session
         // TODO: Clean up
@@ -464,6 +468,16 @@ export default class Neode {
      */
     hydrateFirst(res, alias, definition) {
         return this.factory.hydrateFirst(res, alias, definition);
+    }
+
+    /**
+     * Turn an array into a Collection
+     *
+     * @param  {Array} array An array
+     * @return {Collection}
+     */
+    toCollection(array) {
+        return new Collection(this, array);
     }
 
 }

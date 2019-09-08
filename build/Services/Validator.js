@@ -8,7 +8,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 
 exports.default = Validator;
 
-var _joi = require('joi');
+var _joi = require('@hapi/joi');
 
 var _joi2 = _interopRequireDefault(_joi);
 
@@ -174,6 +174,10 @@ function BuildValidationSchema(schema) {
                 break;
         }
 
+        if (!config.required) {
+            validation = validation.allow(null);
+        }
+
         // Apply additional Validation
         Object.keys(config).forEach(function (validator) {
             var options = config[validator];
@@ -212,7 +216,7 @@ function BuildValidationSchema(schema) {
 
 /**
  * Run Validation
- * 
+ *
  * TODO: Recursive Validation
  *
  * @param  {Neode} neode

@@ -20,6 +20,7 @@ describe('Services/MergeOn.js', () => {
             min: 3,
         },
         age: 'integer',
+        boolean: 'boolean',
 
         relationship: {
             type: 'relationship',
@@ -49,7 +50,7 @@ describe('Services/MergeOn.js', () => {
                     type: 'int',
                     default: Date.now
                 }
-            }, 
+            },
         },
 
         relationships: {
@@ -109,139 +110,142 @@ describe('Services/MergeOn.js', () => {
     });
 
     describe('::MergeOn', () => {
-        // describe('Properties', () => {
-        //     it('should throw an error when no merge fields are present', done => {
-        //         MergeOn(instance, model, merge_on, {})
-        //             .then(() => {
-        //                 assert(false, 'Error should be thrown');
-        //             })
-        //             .catch(e => {
-        //                 assert(true);
-        //             })
-        //             .then(() => done());
-        //     }).timeout(TIMEOUT);
+        describe('Properties', () => {
+            it('should throw an error when no merge fields are present', done => {
+                MergeOn(instance, model, merge_on, {})
+                    .then(() => {
+                        assert(false, 'Error should be thrown');
+                    })
+                    .catch(e => {
+                        assert(true);
 
-        //     it('should perform validation', done => {
-        //         MergeOn(instance, model, merge_on, {name: 'al'})
-        //             .then(r => {
-        //                 assert(false, 'Error should be thrown');
-        //             })
-        //             .catch(e => {
-        //                 expect(e.details).to.be.instanceOf(Object);
-        //                 expect(e.details.name).to.be.instanceOf(Array);
-        //             })
-        //             .then(() => done());
-        //     }).timeout(TIMEOUT);
+                        done();
+                    });
+            }).timeout(TIMEOUT);
 
-        //     it('should merge and generate default values', done => {
-        //         const data = {
-        //             name: 'Adam',
-        //             age: 30,
-        //         };
+            it('should perform validation', done => {
+                MergeOn(instance, model, merge_on, {name: 'al'})
+                    .then(() => {
+                        assert(false, 'Error should be thrown');
+                    })
+                    .catch(e => {
+                        expect(e.details).to.be.instanceOf(Array);
+                        expect(e.details[0].path[0]).to.equal('name');
+                    })
+                    .then(() => done());
+            }).timeout(TIMEOUT);
 
-        //         MergeOn(instance, model, merge_on, data)
-        //             .then(res => {
-        //                 expect(res).to.be.an.instanceOf(Node);
+            it('should merge and generate default values', done => {
+                const data = {
+                    name: 'Adam',
+                    age: 30,
+                    boolean: false,
+                };
 
-        //                 expect( res.get('name') ).to.equal(data.name);
-        //                 expect( res.get('age').toInt()) .to.equal(data.age);
+                MergeOn(instance, model, merge_on, data)
+                    .then(res => {
+                        expect(res).to.be.an.instanceOf(Node);
 
-        //                 assert( res.get('uuid').match(/^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/i) )
-        //             })
-        //             .then(() => done())
-        //             .catch(e => done(e));
-        //     }).timeout(TIMEOUT);
+                        expect( res.get('name') ).to.equal(data.name);
+                        expect( res.get('age').toInt()) .to.equal(data.age);
+                        expect( res.get('boolean')) .to.equal(data.boolean);
 
-        //     it('should not attempt to overwrite a primary key ', done => {
-        //         const name = 'Keep my primary key';
+                        assert( res.get('uuid').match(/^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/i) )
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
+            }).timeout(TIMEOUT);
 
-        //         MergeOn(instance, model, merge_on, { name })
-        //             .then(first => {
-        //                 return MergeOn(instance, model, merge_on, { name })
-        //                     .then(second => [ first, second ])
-        //             })
-        //             .then(( [first, second] ) => {
-        //                 expect( first.id() ).to.equal( second.id() );
-        //             })
-        //             .then(() => done())
-        //             .catch(e => done(e));
-        //     }).timeout(TIMEOUT);
-        // });
+            it('should not attempt to overwrite a primary key ', done => {
+                const name = 'Keep my primary key';
 
-        // describe('-> node', () => {
-        //     it('should create a relationship to a Node instance', done => {
-        //         const name = 'End';
+                MergeOn(instance, model, merge_on, { name })
+                    .then(first => {
+                        return MergeOn(instance, model, merge_on, { name })
+                            .then(second => [ first, second ])
+                    })
+                    .then(( [first, second] ) => {
+                        expect( first.id() ).to.equal( second.id() );
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
+            }).timeout(TIMEOUT);
+        });
 
-        //         MergeOn(instance, model, merge_on, { name })
-        //             .then(end_node => {
-        //                 return MergeOn(instance, model, merge_on, {
-        //                     name: 'Start',
-        //                     node: end_node
-        //                 })
-        //                     .then(res => {
-        //                         expect( res.get('name') ).to.equal('Start');
-        //                         expect( res.get('node').get('name') ).to.equal(name)
-        //                     })
-        //                     .then(() => done())
-        //                     .catch(e => done(e));
-        //             })
-        //     }).timeout(TIMEOUT);
+        describe('-> node', () => {
+            it('should create a relationship to a Node instance', done => {
+                const name = 'End';
 
-        //     it('should create a relationship to a single node by its primary key', done => {
-        //         const name = 'End node 2';
+                MergeOn(instance, model, merge_on, { name })
+                    .then(end_node => {
+                        return MergeOn(instance, model, merge_on, {
+                            name: 'Start',
+                            node: end_node
+                        })
+                            .then(res => {
+                                expect( res.get('name') ).to.equal('Start');
+                                expect( res.get('node').get('name') ).to.equal(name)
+                            })
+                            .then(() => done())
+                            .catch(e => done(e));
+                    })
+            }).timeout(TIMEOUT);
 
-        //         MergeOn(instance, model, merge_on, { name })
-        //             .then(end_node => {
-        //                 return MergeOn(instance, model, merge_on, {
-        //                     name: 'Start node 2',
-        //                     node: end_node.get('uuid'),
-        //                 })
-        //                 .then(res => {
-        //                     expect( res.get('name') ).to.equal('Start node 2');
-        //                     expect( res.get('node').get('name') ).to.equal(name)
-        //                 })
-        //                 .then(() => done())
-        //                 .catch(e => done(e));
-        //             });
-        //     }).timeout(TIMEOUT);
+            it('should create a relationship to a single node by its primary key', done => {
+                const name = 'End node 2';
 
-        //     it('should recursively create nodes', done => {
-        //         const data = {
-        //             name: 'Start node 3',
-        //             node: {
-        //                 name: 'End node 3',
-        //             },
-        //         };
+                MergeOn(instance, model, merge_on, { name })
+                    .then(end_node => {
+                        return MergeOn(instance, model, merge_on, {
+                            name: 'Start node 2',
+                            node: end_node.get('uuid'),
+                        })
+                        .then(res => {
+                            expect( res.get('name') ).to.equal('Start node 2');
+                            expect( res.get('node').get('name') ).to.equal(name)
+                        })
+                        .then(() => done())
+                        .catch(e => done(e));
+                    });
+            }).timeout(TIMEOUT);
 
-        //         MergeOn(instance, model, merge_on, data)
-        //             .then(res => {
-        //                 expect( res.get('name') ).to.equal('Start node 3');
-        //                 expect( res.get('node').get('name') ).to.equal('End node 3')
-        //             })
-        //             .then(() => done())
-        //             .catch(e => done(e));
-        //     }).timeout(TIMEOUT);
+            it('should recursively create nodes', done => {
+                const data = {
+                    name: 'Start node 3',
+                    node: {
+                        name: 'End node 3',
+                    },
+                };
 
-        //     it('should throw an error when you try to create a relationship to an ambiguous node', done => {
-        //         const data = {
-        //             name: 'Start',
-        //             relationshipToAnything: {
-        //                 name: 'End',
-        //             },
-        //         };
+                MergeOn(instance, model, merge_on, data)
+                    .then(res => {
+                        expect( res.get('name') ).to.equal('Start node 3');
+                        expect( res.get('node').get('name') ).to.equal('End node 3')
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
+            }).timeout(TIMEOUT);
 
-        //         MergeOn(instance, model, merge_on, data)
-        //             .then(res => {
-        //                 assert(false, 'Should throw an exception')
-        //             })
-        //             .catch(e => {
-        //                 const expected = 'A target defintion must be defined for relationshipToAnything on model MergeOnTest';
-        //                 expect( e.message ).to.equal(expected);
-        //             })
-        //             .then(() => done())
-        //             .catch(e => done(e));
-        //     });
-        // });
+            it('should throw an error when you try to create a relationship to an ambiguous node', done => {
+                const data = {
+                    name: 'Start',
+                    relationshipToAnything: {
+                        name: 'End',
+                    },
+                };
+
+                MergeOn(instance, model, merge_on, data)
+                    .then(res => {
+                        assert(false, 'Should throw an exception')
+                    })
+                    .catch(e => {
+                        const expected = 'A target defintion must be defined for relationshipToAnything on model MergeOnTest';
+                        expect( e.message ).to.equal(expected);
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
+            });
+        });
 
         describe('-> nodes', () => {
             it('should create relationships to an array of Node instances', done => {
@@ -433,9 +437,9 @@ describe('Services/MergeOn.js', () => {
                     .then(end_node => {
                         return MergeOn(instance, model, merge_on, {
                             name: 'Rel Start 1',
-                            relationships: [{ 
+                            relationships: [{
                                 since: 100,
-                                otherEnd: end_node 
+                                otherEnd: end_node
                             }]
                         })
                         .then(res => {

@@ -44,6 +44,10 @@ var _Builder = require('./Query/Builder');
 
 var _Builder2 = _interopRequireDefault(_Builder);
 
+var _Collection = require('./Collection');
+
+var _Collection2 = _interopRequireDefault(_Collection);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -122,7 +126,7 @@ var Neode = function () {
             }).forEach(function (file) {
                 var model = file.replace('.js', '');
                 var path = directory + '/' + file;
-                var schema = require(path);
+                var schema = require("" + path);
 
                 return _this2.model(model, schema);
             });
@@ -336,6 +340,9 @@ var Neode = function () {
                     session.close();
                 }
 
+                err.query = query;
+                err.params = params;
+
                 throw err;
             });
         }
@@ -373,7 +380,7 @@ var Neode = function () {
     }, {
         key: 'writeSession',
         value: function writeSession() {
-            return this.session(_neo4jDriver2.default.WRITE);
+            return this.driver.session(_neo4jDriver2.default.WRITE);
         }
 
         /**
@@ -385,8 +392,10 @@ var Neode = function () {
     }, {
         key: 'transaction',
         value: function transaction() {
+            var mode = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : _neo4jDriver2.default.WRITE;
+
             var session = this.driver.session();
-            var tx = session.beginTransaction();
+            var tx = session.beginTransaction(mode);
 
             // Create an 'end' function to commit & close the session
             // TODO: Clean up
@@ -552,6 +561,19 @@ var Neode = function () {
         key: 'hydrateFirst',
         value: function hydrateFirst(res, alias, definition) {
             return this.factory.hydrateFirst(res, alias, definition);
+        }
+
+        /**
+         * Turn an array into a Collection
+         *
+         * @param  {Array} array An array
+         * @return {Collection}
+         */
+
+    }, {
+        key: 'toCollection',
+        value: function toCollection(array) {
+            return new _Collection2.default(this, array);
         }
     }], [{
         key: 'fromEnv',

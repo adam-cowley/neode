@@ -10,9 +10,10 @@ declare class Neode {
    * @param  {String} username
    * @param  {String} password
    * @param  {Bool}   enterprise
+   * @param  {Object} config
    * @return {Neode}
    */
-  constructor(connection_string: string, username: string, password: string, enterprise ?: boolean);
+  constructor(connection_string: string, username: string, password: string, enterprise?: boolean, config?: object);
 
 
   /**
@@ -270,40 +271,187 @@ declare namespace Neode {
 
   type PropertyType = string | number | boolean;
 
-  type PropertyTypes = 'uuid' | 'number' | 'string' | 'boolean' | 'DateTime' | 'Point';
+  type TemporalPropertyTypes = 'datetime' | 'date' | 'time' | 'localdate' | 'localtime' | 'duration'
+  type NumberPropertyTypes = 'number' | 'int' | 'integer' | 'float'
+  type RelationshipPropertyTypes = 'relationship' | 'relationships'
+  type NodesPropertyTypes = 'node' | 'nodes'
+  type StringPropertyTypes = 'string' | 'uuid'
+  type PropertyTypes = TemporalPropertyTypes | NumberPropertyTypes
+                        | RelationshipPropertyTypes | StringPropertyTypes | NodesPropertyTypes
+                        | 'boolean' | 'Point';
 
   type Direction = 'direction_in' | 'direction_out' | 'direction_both' | 'in' | 'out';
 
-  type NodeProperty = PropertyTypes | {
-      type:       PropertyTypes,
-      primary?:   boolean,
-      required?:  boolean,
-      unique?:    boolean,
-      indexed?:   boolean,
-      hidden?:    boolean,
-      readonly?:  boolean,
-  };
+  interface BaseNodeProperties {
+    primary?:   boolean
+    required?:  boolean
+    unique?:    boolean
+    indexed?:   boolean
+    hidden?:    boolean
+    readonly?:  boolean
+    default?:   any
+  }
 
-  type RelationshipProperty = {
-      type:       'relationship',
-      target:     string,
-      relationship: string,
-      required?:  boolean,
-      eager?:     boolean,
-      default?:   any,
-      direction:  Direction,
-      cascade?:   'detach' | 'delete';
-      properties?: {
-          [index: string]: PropertyTypes
-      }
-  };
+  interface BaseNumberNodeProperties extends BaseNodeProperties {
+    /**
+     * Minimum value of the number
+     */
+    min: number
+
+    /**
+     * Maximum value of the number
+     */
+    max: number
+
+    /**
+     * Is the number an integer
+     */
+    integer: boolean
+
+    /**
+     * Can the number handle positive value
+     */
+    positive: boolean
+
+    /**
+     * Can the number handle negative value
+     */
+    negative: boolean
+
+    /**
+     * The number has to be a multiple of
+     */
+    multiple: number
+  }
+
+  interface NumberNodeProperties extends BaseNumberNodeProperties {
+    type: 'number'
+  }
+  interface IntNodeProperties extends BaseNumberNodeProperties {
+    type: 'int'
+  }
+  interface IntegerNodeProperties extends BaseNumberNodeProperties {
+    type: 'integer'
+  }
+  interface FloatNodeProperties extends BaseNumberNodeProperties {
+    type: 'float'
+
+    /**
+     * Precision, decimal count
+     */
+    precision: number
+  }
+
+  interface StringNodeProperties extends BaseNodeProperties {
+    type: 'string'
+
+    regex: RegExp | {
+      pattern: RegExp
+      invert: boolean
+      name: string
+    }
+
+    /**
+     * Replace parts of the string
+     */
+    replace: {
+      /**
+       * RegExp pattern
+       */
+      pattern: RegExp
+
+      /**
+       * What should replace the pattern
+       */
+      replace: string
+    }
+
+    /**
+     * Should the string be in a valid email format
+     */
+    email: boolean | {
+      /**
+       * tld Domain whitelist (e.g ['com', 'fr'])
+       */
+      tldWhitelist: string[]
+    }
+  }
+
+  interface BaseRelationshipNodeProperties extends BaseNodeProperties {
+    /**
+     * Neo4J Relationship name (e.g: ACTED_IN)
+     */
+    relationship: string
+
+    /**
+     * Target model name
+     */
+    target: string
+
+    /**
+     * Is the relation required to be fetch
+     */
+    required?: boolean
+
+    /**
+     * Load the relation with the parent object
+     */
+    eager?: boolean
+
+    /**
+     * Default value
+     */
+    default?: any
+
+    /**
+     * Relationship direction
+     */
+    direction: Direction
+
+    /**
+     * Behaviour when deleting the parent object
+     */
+    cascade?: 'detach' | 'delete'
+
+    /**
+     * Relationship attached properties
+     */
+    properties?: {
+        [index: string]: PropertyTypes
+    }
+  }
+
+  interface RelationshipsNodeProperties extends BaseRelationshipNodeProperties {
+    type: 'relationships'
+  }
+  interface RelationshipNodeProperties extends BaseRelationshipNodeProperties {
+    type: 'relationship'
+  }
+
+  interface NodesNodeProperties extends BaseRelationshipNodeProperties {
+    type: 'nodes'
+  }
+  
+  interface NodeNodeProperties extends BaseRelationshipNodeProperties {
+    type: 'node'
+  }
+
+  interface OtherNodeProperties extends BaseNodeProperties {
+    type: PropertyTypes
+  }
+
+  type NodeProperty = PropertyTypes
+                      | NumberNodeProperties | IntNodeProperties | IntegerNodeProperties | FloatNodeProperties
+                      | RelationshipNodeProperties | RelationshipsNodeProperties
+                      | NodeNodeProperties | NodesNodeProperties
+                      | StringNodeProperties | OtherNodeProperties;
 
   export type SchemaObject = {
-      [index: string]: NodeProperty | RelationshipProperty
+      [index: string]: NodeProperty
   };
 
   export type RelationshipSchema = {
-      [index: string]: RelationshipProperty
+      [index: string]: BaseRelationshipNodeProperties
   };
 
 
@@ -357,7 +505,7 @@ declare namespace Neode {
      * Add a where condition to the current statement.
      *
      * @param  {...mixed} args Argumenta
-     * @return {Builder}         
+     * @return {Builder}
      */
     where(...args: Array<string>): Builder;
 
@@ -366,7 +514,7 @@ declare namespace Neode {
      *
      * @param  {String} alias
      * @param  {Int}    value
-     * @return {Builder}       
+     * @return {Builder}
      */
     whereId(alias: string, value: number): Builder;
 
@@ -611,7 +759,8 @@ declare namespace Neode {
      * Add a new relationship
      *
      * @param  {String} name                Reference of Relationship
-     * @param  {String} relationship        Internal Relationship type
+     * @param  {String} type                Internal Relationship type
+     * @param  {String} relationship        Internal Relationship name
      * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
      * @param  {String|Model|null} target   Target type definition for the
      * @param  {Object} schema              Property Schema
@@ -619,7 +768,8 @@ declare namespace Neode {
      * @param  {Bool|String} cascade        Cascade delete policy for this relationship
      * @return {Relationship}
      */
-    relationship(name: string, relationship: string, direction?: Neode.Direction, target?: string | Model<T>, schema?: Neode.SchemaObject, eager?: boolean, cascade?: boolean | string): Relationship;
+     relationship(name: string, type: string, relationship: string, direction?: Neode.Direction, target?: string | Model<T>, schema?: Neode.SchemaObject, eager?: boolean, cascade?: boolean | string): Relationship
+    
 
     /**
      * Get all defined Relationships  for this Model
@@ -939,6 +1089,15 @@ declare namespace Neode {
      */
     map<U>(fn: (value: Node<any>, index: number, array: Array<Node<any>>) => U): Array<U>;
 
+    /**
+     * Find node with function
+     *
+     * @param  {Function} fn
+     * @return {mixed}
+     */
+    find<U>(fn: (value: Node<any>, index: number, array: Array<Node<any>>) => U): Node<U>;
+    
+    
     /**
      * Run a function on all values
      * @param  {Function} fn

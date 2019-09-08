@@ -38,7 +38,7 @@ function _possibleConstructorReturn(self, call) { if (!self) { throw new Referen
 
 function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-/** 
+/**
  * Node Container
  */
 var Node = function (_Entity) {
@@ -72,9 +72,9 @@ var Node = function (_Entity) {
         return _this;
     }
 
-    /** 
+    /**
      * Get the Model for this Node
-     * 
+     *
      * @return {Model}
      */
 
@@ -99,9 +99,9 @@ var Node = function (_Entity) {
 
         /**
          * Set an eager value on the fly
-         * 
-         * @param  {String} key 
-         * @param  {Mixed}  value 
+         *
+         * @param  {String} key
+         * @param  {Mixed}  value
          * @return {Node}
          */
 
@@ -145,6 +145,8 @@ var Node = function (_Entity) {
     }, {
         key: 'relateTo',
         value: function relateTo(node, type) {
+            var _this3 = this;
+
             var properties = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
             var force_create = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;
 
@@ -154,7 +156,11 @@ var Node = function (_Entity) {
                 return Promise.reject(new Error('Cannot find relationship with type ' + type));
             }
 
-            return (0, _RelateTo2.default)(this._neode, this, node, relationship, properties, force_create);
+            return (0, _RelateTo2.default)(this._neode, this, node, relationship, properties, force_create).then(function (rel) {
+                _this3._eager.delete(type);
+
+                return rel;
+            });
         }
 
         /**
@@ -166,7 +172,7 @@ var Node = function (_Entity) {
     }, {
         key: 'toJson',
         value: function toJson() {
-            var _this3 = this;
+            var _this4 = this;
 
             var output = {
                 _id: this.id(),
@@ -179,8 +185,8 @@ var Node = function (_Entity) {
                     return;
                 }
 
-                if (_this3._properties.has(key)) {
-                    output[key] = _this3.valueToJson(property, _this3._properties.get(key));
+                if (_this4._properties.has(key)) {
+                    output[key] = _this4.valueToJson(property, _this4._properties.get(key));
                 } else if (_neo4jDriver.v1.temporal.isDateTime(output[key])) {
                     output[key] = new Date(output[key].toString());
                 } else if (_neo4jDriver.v1.spatial.isPoint(output[key])) {
@@ -213,14 +219,14 @@ var Node = function (_Entity) {
             return Promise.all(this._model.eager().map(function (rel) {
                 var key = rel.name();
 
-                if (_this3._eager.has(rel.name())) {
+                if (_this4._eager.has(rel.name())) {
                     // Call internal toJson function on either a Node or NodeCollection
-                    return _this3._eager.get(rel.name()).toJson().then(function (value) {
+                    return _this4._eager.get(rel.name()).toJson().then(function (value) {
                         return { key: key, value: value };
                     });
                 }
             }))
-            // Remove Empty 
+            // Remove Empty
             .then(function (eager) {
                 return eager.filter(function (e) {
                     return !!e;
@@ -241,7 +247,7 @@ var Node = function (_Entity) {
 
         /**
          * Update the properties for this node
-         * 
+         *
          * @param {Object} properties  New properties
          * @return {Node}
          */
@@ -249,7 +255,7 @@ var Node = function (_Entity) {
     }, {
         key: 'update',
         value: function update(properties) {
-            var _this4 = this;
+            var _this5 = this;
 
             return (0, _UpdateNode2.default)(this._neode, this._model, this._identity, properties).then(function (properties) {
                 Object.entries(properties).forEach(function (_ref2) {
@@ -257,10 +263,10 @@ var Node = function (_Entity) {
                         key = _ref3[0],
                         value = _ref3[1];
 
-                    _this4._properties.set(key, value);
+                    _this5._properties.set(key, value);
                 });
             }).then(function () {
-                return _this4;
+                return _this5;
             });
         }
     }]);

@@ -129,9 +129,9 @@ export default class Builder {
 
     /**
      * Generate a unique key and add the value to the params object
-     * 
-     * @param {String} key 
-     * @param {Mixed} value 
+     *
+     * @param {String} key
+     * @param {Mixed} value
      */
     _addWhereParameter(key, value) {
         let attempt = 1;
@@ -155,7 +155,7 @@ export default class Builder {
      * Add a where condition to the current statement.
      *
      * @param  {...mixed} args Arguments
-     * @return {Builder}         
+     * @return {Builder}
      */
     where(...args) {
         if (!args.length || !args[0]) return this;
@@ -196,7 +196,7 @@ export default class Builder {
      *
      * @param  {String} alias
      * @param  {Int}    value
-     * @return {Builder}       
+     * @return {Builder}
      */
     whereId(alias, value) {
         const param = this._addWhereParameter(`${alias}_id`, neo4j.int(value));
@@ -210,7 +210,7 @@ export default class Builder {
      * Add a raw where clause
      *
      * @param  {String} clause
-     * @return {Builder}       
+     * @return {Builder}
      */
     whereRaw(clause) {
         this._where.append(new WhereRaw(clause));
@@ -220,9 +220,9 @@ export default class Builder {
 
     /**
      * A negative where clause
-     * 
-     * @param {*} args 
-     * @return {Builder}       
+     *
+     * @param {*} args
+     * @return {Builder}
      */
     whereNot(...args) {
         this.where(...args);
@@ -234,10 +234,10 @@ export default class Builder {
 
     /**
      * Between clause
-     * 
-     * @param {String} alias 
-     * @param {Mixed} floor 
-     * @param {Mixed} ceiling 
+     *
+     * @param {String} alias
+     * @param {Mixed} floor
+     * @param {Mixed} ceiling
      * @return {Builder}
      */
     whereBetween(alias, floor, ceiling) {
@@ -251,10 +251,10 @@ export default class Builder {
 
     /**
      * Negative Between clause
-     * 
-     * @param {String} alias 
-     * @param {Mixed} floor 
-     * @param {Mixed} ceiling 
+     *
+     * @param {String} alias
+     * @param {Mixed} floor
+     * @param {Mixed} ceiling
      * @return {Builder}
      */
     whereNotBetween(alias, floor, ceiling) {
@@ -316,9 +316,9 @@ export default class Builder {
     }
 
     /**
-     * Convert a map of properties into an Array of 
-     * 
-     * @param {Object|null} properties 
+     * Convert a map of properties into an Array of
+     *
+     * @param {Object|null} properties
      */
     _convertPropertyMap(alias, properties) {
         if ( properties ) {
@@ -353,7 +353,7 @@ export default class Builder {
 
     /**
      * Set a property
-     * 
+     *
      * @param {String|Object} property   Property in {alias}.{property} format
      * @param {Mixed}         value      Value
      * @param {String}        operator   Operator
@@ -366,12 +366,16 @@ export default class Builder {
             });
         }
         else {
-            const alias = `set_${this._set_count}`;
-            this._params[ alias ] = value;
+            if ( value !== undefined ) {
+                const alias = `set_${this._set_count}`;
+                this._params[ alias ] = value;
 
-            this._set_count++;
+                this._set_count++;
 
-            this._current.set(this._quoteKey(property), alias);
+                this._current.set(this._quoteKey(property), alias);
+            } else {
+                this._current.setRaw(property);
+            }
         }
 
         return this;
@@ -380,14 +384,14 @@ export default class Builder {
 
     /**
      * Set a property
-     * 
+     *
      * @param {String|Object} property   Property in {alias}.{property} format
      * @param {Mixed}         value      Value
      * @param {String}        operator   Operator
      */
     onCreateSet(property, value, operator = '=') {
         // Support a map of properties
-        if ( !value && property instanceof Object ) {
+        if ( value === undefined && property instanceof Object ) {
             Object.keys(property).forEach(key => {
                 this.onCreateSet(key, property[ key ]);
             });
@@ -407,14 +411,14 @@ export default class Builder {
 
     /**
      * Set a property
-     * 
+     *
      * @param {String|Object} property   Property in {alias}.{property} format
      * @param {Mixed}         value      Value
      * @param {String}        operator   Operator
      */
     onMatchSet(property, value, operator = '=') {
         // Support a map of properties
-        if ( !value && property instanceof Object ) {
+        if ( value === undefined && property instanceof Object ) {
             Object.keys(property).forEach(key => {
                 this.onMatchSet(key, property[ key ]);
             });
@@ -432,10 +436,10 @@ export default class Builder {
     }
 
     /**
-     * Remove properties or labels in {alias}.{property} 
+     * Remove properties or labels in {alias}.{property}
      * or {alias}:{Label} format
-     * 
-     * @param {[String]} items 
+     *
+     * @param {[String]} items
      */
     remove(...items) {
         this._current.remove(items);
@@ -560,9 +564,9 @@ export default class Builder {
         return this;
     }
 
-    /** 
+    /**
      * Build the pattern without any keywords
-     * 
+     *
      * @return {String}
      */
     pattern() {

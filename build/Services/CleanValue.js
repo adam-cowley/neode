@@ -31,7 +31,7 @@ function CleanValue(config, value) {
 
         case 'int':
         case 'integer':
-            value = parseInt(value);
+            value = _neo4jDriver.v1.int(parseInt(value));
             break;
 
         case 'bool':

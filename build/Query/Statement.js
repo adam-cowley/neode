@@ -125,6 +125,13 @@ var Statement = function () {
             return this;
         }
     }, {
+        key: 'setRaw',
+        value: function setRaw(items) {
+            this._set = this._set.concat(items);
+
+            return this;
+        }
+    }, {
         key: 'onCreateSet',
         value: function onCreateSet(key, value) {
             var operator = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '=';
