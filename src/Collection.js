@@ -4,7 +4,7 @@ export default class Collection {
      * @constructor
      * @param  {Neode} neode    Neode Instance
      * @param  {Node[]} values  Array of Node
-     * @return {Collectiob}
+     * @return {Collection}
      */
     constructor(neode, values) {
         this._neode = neode;
