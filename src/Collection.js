@@ -57,7 +57,7 @@ export default class Collection {
         return this._values.map(fn);
     }
 
-     /**
+    /**
      * Find value in collection
      *
      * @param  {Function} fn

@@ -1,6 +1,7 @@
 import {assert, expect} from 'chai';
 import Create from '../../src/Services/Create';
 import Node from '../../src/Node';
+import { v1 as neo4j } from 'neo4j-driver';
 
 const TIMEOUT = 10000;
 
@@ -27,13 +28,19 @@ describe('Services/Create.js', () => {
             type: 'datetime',
             default: Date.now,
         },
+        point: {
+            type: 'point',
+            default: {
+                latitude: 51.506164642,
+                longitude: -0.124832834,
+            },
+        },
 
         relationship: {
             type: 'relationship',
             relationship: 'RELATIONSHIP',
             target: label,
             direction: 'out',
-            properties: {},
             eager: true,
             alias: 'otherEnd',
             properties: {
@@ -48,7 +55,6 @@ describe('Services/Create.js', () => {
             relationship: 'THEN_TO',
             target: label,
             direction: 'out',
-            properties: {},
             eager: true,
             alias: 'leaf',
             properties: {
@@ -56,7 +62,7 @@ describe('Services/Create.js', () => {
                     type: 'int',
                     default: Date.now
                 }
-            }, 
+            },
         },
         relationships: {
             type: 'relationships',
@@ -141,6 +147,36 @@ describe('Services/Create.js', () => {
                         expect( res.get('enabled') ).to.equal(false);
                         expect( res.get('age').toInt()) .to.equal(data.age);
                         assert( res.get('uuid').match(/^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/i) )
+
+                        expect( res.get('point') ).to.be.an.instanceof(neo4j.types.Point);
+                        expect( res.get('point').x ).to.equal(schema.point.default.longitude);
+                        expect( res.get('point').y ).to.equal(schema.point.default.latitude);
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
+            }).timeout(TIMEOUT);
+
+            it('should accept valid values', done => {
+                const data = {
+                    name: 'James',
+                    age: 21,
+                    point: {
+                        latitude: 51.555775,
+                        longitude: -1.779718,
+                    }
+                };
+
+                Create(instance, model, data)
+                    .then(res => {
+                        expect(res).to.be.an.instanceOf(Node);
+                        expect( res.get('name') ).to.equal(data.name);
+                        expect( res.get('enabled') ).to.equal(false);
+                        expect( res.get('age').toInt()) .to.equal(data.age);
+                        assert( res.get('uuid').match(/^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/i) )
+
+                        expect( res.get('point') ).to.be.an.instanceof(neo4j.types.Point);
+                        expect( res.get('point').x ).to.equal(data.point.longitude);
+                        expect( res.get('point').y ).to.equal(data.point.latitude);
                     })
                     .then(() => done())
                     .catch(e => done(e));
@@ -412,9 +448,9 @@ describe('Services/Create.js', () => {
                     .then(end_node => {
                         return Create(instance, model, {
                             name: 'Start',
-                            relationships: [{ 
+                            relationships: [{
                                 since: 100,
-                                otherEnd: end_node 
+                                otherEnd: end_node
                             }]
                         })
                         .then(res => {

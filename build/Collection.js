@@ -70,11 +70,11 @@ var Collection = function () {
         }
 
         /**
-        * Find value in collection
-        *
-        * @param  {Function} fn
-        * @return {mixed}
-        */
+         * Find value in collection
+         *
+         * @param  {Function} fn
+         * @return {mixed}
+         */
 
     }, {
         key: "find",

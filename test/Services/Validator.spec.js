@@ -3,6 +3,7 @@ import {assert, expect} from 'chai';
 import Validator from '../../src/Services/Validator';
 import Node from '../../src/Node';
 import { ERROR_VALIDATION } from '../../src/ValidationError';
+import { v1 as neo4j } from 'neo4j-driver';
 
 
 describe('Services/Validator.js', () => {
@@ -18,7 +19,7 @@ describe('Services/Validator.js', () => {
 
     describe('All', () => {
         describe('valid', () => {
-            it('should allow a whitelist of values', () => {
+            it('should allow a whitelist of values', done => {
                 const model = instance.model('ValidatorTest', {
                     value: {
                         type: 'string',
@@ -27,19 +28,22 @@ describe('Services/Validator.js', () => {
                 });
 
                 Validator(instance, model, { value: 'D' })
-                    .then(res => {
+                    .then(() => {
                         expect(false).to.equal(true, 'Should fail validation');
                     })
                     .catch(e => {
                         expect(e.message).to.equal(ERROR_VALIDATION);
-                        expect(e.details).to.be.an('object');
-                        expect(e.details.value).to.be.an('array');
+
+                        const value = e.details.find(e => e.path.includes('value'));
+                        expect(value).to.be.an('object');
                     })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
 
         describe('required', () => {
-            it('should require that a value be provided', () => {
+            it('should require that a value be provided', done => {
                 const model = instance.model('ValidatorTest', {
                     required: {
                         type: 'string',
@@ -52,20 +56,27 @@ describe('Services/Validator.js', () => {
                 });
 
                 Validator(instance, model, {})
-                    .then(res => {
+                    .then(() => {
                         expect(false).to.equal(true, 'Should fail validation');
                     })
                     .catch(e => {
                         expect(e.message).to.equal(ERROR_VALIDATION);
-                        expect(e.details).to.be.an('object');
-                        expect(e.details).contains.key('required');
-                        expect(e.details).not.contains.key('notRequired');
+
+                        expect(
+                            e.details.find(e => e.path.includes('required'))
+                        ).to.be.an('object');
+
+                        expect(
+                            e.details.find(e => e.path.includes('notRequired'))
+                        ).to.be.undefined;
                     })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
 
         describe('optional', () => {
-            it('should a value to be undefined', () => {
+            it('should a value to be undefined', done => {
                 const model = instance.model('ValidatorTest', {
                     optional: {
                         type: 'string',
@@ -77,14 +88,16 @@ describe('Services/Validator.js', () => {
                     .then(res => {
                         expect(res.optional).to.be.undefined;
                     })
-                    .catch(e => {
+                    .catch(() => {
                         assert(false, 'error should not be thrown');
-                    });
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
 
         describe('forbidden', () => {
-            it('should forbid values', () => {
+            it('should forbid values', done => {
                 const model = instance.model('ValidatorTest', {
                     value: {
                         type: 'string',
@@ -93,19 +106,23 @@ describe('Services/Validator.js', () => {
                 });
 
                 Validator(instance, model, { value: 'smoking' })
-                    .then(res => {
+                    .then(() => {
                         assert(false, 'value should be forbidden');
                     })
                     .catch(e => {
                         expect(e.message).to.equal(ERROR_VALIDATION);
-                        expect(e.details).to.be.an('object');
-                        expect(e.details).contains.key('value');
-                    });
+
+                        expect(
+                            e.details.find(e => e.path.includes('value'))
+                        ).to.be.an('object');
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
 
         describe('strip', () => {
-            it('should strip a value', () => {
+            it('should strip a value', done => {
                 const model = instance.model('ValidatorTest', {
                     value: {
                         type: 'string',
@@ -115,18 +132,20 @@ describe('Services/Validator.js', () => {
 
                 Validator(instance, model, { value: 'value     ' })
                     .then(res => {
-                        expect(res).to.not.contain.key('value')
+                        expect(res).to.not.contain.key('value');
                     })
                     .catch(e => {
-                        assert(false, e.message)
-                    });
+                        assert(false, e.message);
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
     });
 
     describe('Boolean', () => {
         describe('falsy', () => {
-            it('should convert values to false', () => {
+            it('should convert values to false', done => {
                 const model = instance.model('ValidatorTest', {
                     falsy: {
                         type: 'boolean',
@@ -136,16 +155,18 @@ describe('Services/Validator.js', () => {
 
                 Validator(instance, model, { falsy: 'no' })
                     .then(res => {
-                        expect(res.falsy).to.be.false
+                        expect(res.falsy).to.be.false;
                     })
                     .catch(e => {
-                        assert(false, e.message)
-                    });
+                        assert(false, e.message);
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
 
         describe('truthy', () => {
-            it('should convert values to truthy', () => {
+            it('should convert values to truthy', done => {
                 const model = instance.model('ValidatorTest', {
                     truthy: {
                         type: 'boolean',
@@ -155,16 +176,18 @@ describe('Services/Validator.js', () => {
 
                 Validator(instance, model, { truthy: 'yes' })
                     .then(res => {
-                        expect(res.truthy).to.be.true
+                        expect(res.truthy).to.be.true;
                     })
                     .catch(e => {
-                        assert(false, e.message)
-                    });
+                        assert(false, e.message);
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
 
         describe('insensitive', () => {
-            it('should convert values to truthy', () => {
+            it('should convert values to truthy', done => {
                 const model = instance.model('ValidatorTest', {
                     truthy: {
                         type: 'boolean',
@@ -174,11 +197,13 @@ describe('Services/Validator.js', () => {
 
                 Validator(instance, model, { truthy: 'y' })
                     .then(res => {
-                        expect(res.truthy).to.be.true
+                        expect(res.truthy).to.be.true;
                     })
                     .catch(e => {
-                        assert(false, e.message)
-                    });
+                        assert(false, e.message);
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
     });
@@ -194,7 +219,7 @@ describe('Services/Validator.js', () => {
 
         describe('DateTime', () => {
             describe('after', () => {
-                it('should accept a date as a minimum value', () => {
+                it('should accept a date as a minimum value', done => {
                     const model = instance.model('ValidatorTest', {
                         date: {
                             type: 'datetime',
@@ -202,16 +227,21 @@ describe('Services/Validator.js', () => {
                         },
                     });
 
-                    Validator(instance, model, { date: new Date('2017-01-01') })
-                        .then(res => {
+                    Validator(instance, model, { date: neo4j.types.DateTime.fromStandardDate( new Date('2017-01-01') ) })
+                        .then(() => {
                             assert(false, 'Should fail validation');
                         })
                         .catch(e => {
-                            expect(e.details).to.contain.key('date');
-                        });
+                            const date = e.details.find(e => e.path.includes('date'));
+
+                            expect(date).to.be.an('object');
+                            expect(date.message).to.contain('after minimum');
+                        })
+                        .then(() => done())
+                        .catch(e => done(e));
                 });
 
-                it('should accept `now` as a minimum value', () => {
+                it('should accept `now` as a minimum value', done => {
                     const model = instance.model('ValidatorTest', {
                         date: {
                             type: 'datetime',
@@ -219,56 +249,69 @@ describe('Services/Validator.js', () => {
                         },
                     });
 
-                    Validator(instance, model, { date: new Date('2017-01-01') })
-                        .then(res => {
+                    Validator(instance, model, { date: neo4j.types.DateTime.fromStandardDate( new Date('2017-01-01') ) })
+                        .then(() => {
                             assert(false, 'Should fail validation');
                         })
                         .catch(e => {
-                            expect(e.details).to.contain.key('date');
-                        });
-                });
+                            const date = e.details.find(e => e.path.includes('date'));
 
-                it('should accept valid string', () => {
-                    const model = instance.model('ValidatorTest', {
-                        date: {
-                            type: 'datetime',
-                            after: '2018-01-01',
-                        },
-                    });
-
-                    Validator(instance, model, { date: '2019-01-01' })
-                        .then(res => {
-                            expect(res.date).to.be.an.instanceOf(Date);
-                            expect( res.date.getTime() ).to.equal( new Date('2019-01-01').getTime() );
+                            expect(date).to.be.an('object');
+                            expect(date.message).to.contain('after minimum');
                         })
-                        .catch(e => {
-                            expect(false, e.message);
-                        });
+                        .then(() => done())
+                        .catch(e => done(e));
                 });
 
-                it('should accept valid date', () => {
-                    const model = instance.model('ValidatorTest', {
-                        date: {
-                            type: 'datetime',
-                            after: '2018-01-01',
-                        },
-                    });
+                // TODO: Removed.  This should be handled by CleanValues and not the validator.
+                // it('should accept valid string', done => {
+                //     const model = instance.model('ValidatorTest', {
+                //         date: {
+                //             type: 'datetime',
+                //             after: '2018-01-01',
+                //         },
+                //     });
 
-                    const date = new Date('2019-01-01');
+                //     Validator(instance, model, { date: '2019-01-01' })
+                //         .then(res => {
+                //             console.log('>>',res);
 
-                    Validator(instance, model, { date })
-                        .then(res => {
-                            expect(res.date).to.be.an.instanceOf(Date);
-                            expect(res.date.getTime()).to.equal( date.getTime() );
-                        })
-                        .catch(e => {
-                            expect(false, e.message);
-                        });
-                });
+                //             expect(res.date).to.be.an.instanceOf(Date);
+                //             expect( res.date.getTime() ).to.equal( new Date('2019-01-01').getTime() );
+                //         })
+                //         .catch(e => {
+                //             console.log(e)
+                //             expect(false, e.message);
+                //         })
+                //         .then(() => done())
+                //         .catch(e => done(e));
+                // });
+
+                // it('should accept valid date', done => {
+                //     const model = instance.model('ValidatorTest', {
+                //         date: {
+                //             type: 'datetime',
+                //             after: '2018-01-01',
+                //         },
+                //     });
+
+                //     const date = new Date('2019-01-01');
+
+                //     Validator(instance, model, { date })
+                //         .then(res => {
+                //             expect(res.date).to.be.an.instanceOf(Date);
+                //             expect(res.date.getTime()).to.equal( date.getTime() );
+                //         })
+                //         .catch(e => {
+                //             assert(false, e.message);
+                //         })
+                //         .then(() => done())
+                //         .catch(e => done(e));
+                // });
             });
 
             describe('before', () => {
-                it('should accept a date as a minimum value', () => {
+                it('should accept a date as a minimum value', done => {
                     const model = instance.model('ValidatorTest', {
                         date: {
                             type: 'datetime',
@@ -276,16 +319,21 @@ describe('Services/Validator.js', () => {
                         },
                     });
 
-                    Validator(instance, model, { date: '2018-01-01' })
-                        .then(res => {
+                    Validator(instance, model, { date: neo4j.types.DateTime.fromStandardDate( new Date('2018-01-01') ) })
+                        .then(() => {
                             assert(false, 'Should fail validation');
                         })
                         .catch(e => {
-                            expect(e.details).to.contain.key('date');
-                        });
+                            const date = e.details.find(e => e.path.includes('date'));
+
+                            expect(date).to.be.an('object');
+                            expect(date.message).to.contain('after minimum');
+                        })
+                        .then(() => done())
+                        .catch(e => done(e));
                 });
 
-                it('should accept `now` as a minimum value', () => {
+                it('should accept `now` as a minimum value', done => {
                     const model = instance.model('ValidatorTest', {
                         date: {
                             type: 'datetime',
@@ -293,16 +341,20 @@ describe('Services/Validator.js', () => {
                         },
                     });
 
-                    Validator(instance, model, { date: new Date('2020-01-01') })
-                        .then(res => {
+                    Validator(instance, model, { date: neo4j.types.DateTime.fromStandardDate( new Date('2020-01-01') ) })
+                        .then(() => {
                             assert(false, 'Should fail validation');
                         })
                         .catch(e => {
-                            expect(e.details).to.contain.key('date');
-                        });
+                            const date = e.details.find(e => e.path.includes('date'));
+                            expect(date).to.be.an('object');
+                            expect(date.message).to.contain('after minimum');
+                        })
+                        .then(() => done())
+                        .catch(e => done(e));
                 });
 
-                it('should accept valid string', () => {
+                it('should accept valid string', done => {
                     const model = instance.model('ValidatorTest', {
                         date: {
                             type: 'datetime',
@@ -310,17 +362,19 @@ describe('Services/Validator.js', () => {
                         },
                     });
 
-                    Validator(instance, model, { date: '2019-01-01' })
+                    Validator(instance, model, { date: neo4j.types.DateTime.fromStandardDate( new Date('2019-01-01') ) })
                         .then(res => {
-                            expect(res.date).to.be.an.instanceOf(Date);
-                            expect( res.date.getTime() ).to.equal( new Date('2019-01-01').getTime() );
+                            expect( res.date ).to.be.an.instanceOf(neo4j.types.DateTime);
+                            expect( new Date( res.date.toString() ).getTime() ).to.equal( (new Date('2019-01-01')).getTime() );
                         })
                         .catch(e => {
-                            expect(false, e.message);
-                        });
+                            assert(false, e.message);
+                        })
+                        .then(() => done())
+                        .catch(e => done(e));
                 });
 
-                it('should accept valid date', () => {
+                it('should accept valid date', done => {
                     const model = instance.model('ValidatorTest', {
                         date: {
                             type: 'datetime',
@@ -328,16 +382,16 @@ describe('Services/Validator.js', () => {
                         },
                     });
 
-                    const date = new Date('2019-01-01');
-
-                    Validator(instance, model, { date })
+                    Validator(instance, model, { date: neo4j.types.DateTime.fromStandardDate( new Date('2019-01-01') ) })
                         .then(res => {
-                            expect(res.date).to.be.an.instanceOf(Date);
-                            expect(res.date.getTime()).to.equal( date.getTime() );
+                            expect( res.date ).to.be.an.instanceOf(neo4j.types.DateTime);
+                            expect( new Date( res.date.toString() ).getTime() ).to.equal( (new Date('2019-01-01')).getTime() );
                         })
                         .catch(e => {
-                            expect(false, e.message);
-                        });
+                            assert(false, e.message);
+                        })
+                        .then(() => done())
+                        .catch(e => done(e));
                 });
             });
         });
@@ -353,7 +407,7 @@ describe('Services/Validator.js', () => {
 
     describe('Numbers', () => {
         describe('min', () => {
-            it('should validate a minimum value', () => {
+            it('should validate a minimum value', done => {
                 const model = instance.model('ValidatorTest', {
                     number: {
                         type: 'integer',
@@ -362,17 +416,23 @@ describe('Services/Validator.js', () => {
                 });
 
                 Validator(instance, model, { number: 5 })
-                    .then(res => {
-                        assert(false, 'Should fail validation')
+                    .then(() => {
+                        assert(false, 'Should fail validation');
                     })
                     .catch(e => {
-                        expect(e.details).to.contain.key('number');
-                    });
+                        expect(e.message).to.equal(ERROR_VALIDATION);
+
+                        const value = e.details.find(e => e.path.includes('number'));
+                        expect(value).to.be.an('object');
+                        expect(value.message).to.contain('larger than');
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
 
         describe('max', () => {
-            it('should validate a max value', () => {
+            it('should validate a max value', done => {
                 const model = instance.model('ValidatorTest', {
                     number: {
                         type: 'integer',
@@ -381,17 +441,21 @@ describe('Services/Validator.js', () => {
                 });
 
                 Validator(instance, model, { number: 20 })
-                    .then(res => {
+                    .then(() => {
                         assert(false, 'Should fail validation')
                     })
                     .catch(e => {
-                        expect(e.details).to.contain.key('number');
-                    });
+                        const value = e.details.find(e => e.path.includes('number'));
+                        expect(value).to.be.an('object');
+                        expect(value.message).to.contain('less than');
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
 
         describe('precision', () => {
-            it('should convert a number to ', () => {
+            it('should convert a number to ', done => {
                 const model = instance.model('ValidatorTest', {
                     number: {
                         type: 'float',
@@ -405,12 +469,14 @@ describe('Services/Validator.js', () => {
                     })
                     .catch(e => {
                         assert(false, e.message);
-                    });
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
 
         describe('multiple', () => {
-            it('should validate a multiple of provided value', () => {
+            it('should validate a multiple of provided value', done => {
                 const model = instance.model('ValidatorTest', {
                     number: {
                         type: 'int',
@@ -418,18 +484,21 @@ describe('Services/Validator.js', () => {
                     },
                 });
 
-                Validator(instance, model, { number: 3 })
-                    .then(res => {
+                Validator(instance, model, { number: neo4j.int(3) })
+                    .then(() => {
                         assert(false, 'Should fail validation')
                     })
                     .catch(e => {
-                        expect(e.details).to.contain.key('number');
-                    });
+                        const value = e.details.find(e => e.path.includes('number'));
+                        expect(value).to.be.an('object');
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
 
         describe('positive', () => {
-            it('should reject a negative number', () => {
+            it('should reject a negative number', done => {
                 const model = instance.model('ValidatorTest', {
                     number: {
                         type: 'float',
@@ -438,15 +507,18 @@ describe('Services/Validator.js', () => {
                 });
 
                 Validator(instance, model, { number: -3 })
-                    .then(res => {
+                    .then(() => {
                         assert(false, 'Should fail validation')
                     })
                     .catch(e => {
-                        expect(e.details).to.contain.key('number');
-                    });
+                        const value = e.details.find(e => e.path.includes('number'));
+                        expect(value).to.be.an('object');
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
 
-            it('should accept a positive number', () => {
+            it('should accept a positive number', done => {
                 const model = instance.model('ValidatorTest', {
                     number: {
                         type: 'float',
@@ -460,12 +532,14 @@ describe('Services/Validator.js', () => {
                     })
                     .catch(e => {
                         assert(false, e.message);
-                    });
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
 
         describe('negative', () => {
-            it('should reject a positive number', () => {
+            it('should reject a positive number', done => {
                 const model = instance.model('ValidatorTest', {
                     number: {
                         type: 'float',
@@ -474,15 +548,18 @@ describe('Services/Validator.js', () => {
                 });
 
                 Validator(instance, model, { number: 3 })
-                    .then(res => {
+                    .then(() => {
                         assert(false, 'Should fail validation')
                     })
                     .catch(e => {
-                        expect(e.details).to.contain.key('number');
-                    });
+                        const value = e.details.find(e => e.path.includes('number'));
+                        expect(value).to.be.an('object');
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
 
-            it('should accept a negative number', () => {
+            it('should accept a negative number', done => {
                 const model = instance.model('ValidatorTest', {
                     number: {
                         type: 'float',
@@ -496,14 +573,16 @@ describe('Services/Validator.js', () => {
                     })
                     .catch(e => {
                         assert(false, e.message);
-                    });
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
     });
 
     describe('Strings', () => {
         describe('regex', () => {
-            it('should validate regex expression', () => {
+            it('should validate regex expression', done => {
                 const model = instance.model('ValidatorTest', {
                     regex: {
                         type: 'string',
@@ -512,15 +591,18 @@ describe('Services/Validator.js', () => {
                 });
 
                 Validator(instance, model, { regex: 20 })
-                    .then(res => {
+                    .then(() => {
                         assert(false, 'Should fail validation')
                     })
                     .catch(e => {
-                        expect(e.details).to.contain.key('regex');
-                    });
+                        const value = e.details.find(e => e.path.includes('regex'));
+                        expect(value).to.be.an('object');
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
 
-            it('should validate regex expression with options', () => {
+            it('should validate regex expression with options', done => {
                 const model = instance.model('ValidatorTest', {
                     regex: {
                         type: 'string',
@@ -533,15 +615,18 @@ describe('Services/Validator.js', () => {
                 });
 
                 Validator(instance, model, { regex: 20 })
-                    .then(res => {
+                    .then(() => {
                         assert(false, 'Should fail validation')
                     })
                     .catch(e => {
-                        expect(e.details).to.contain.key('regex');
-                    });
+                        const value = e.details.find(e => e.path.includes('regex'));
+                        expect(value).to.be.an('object');
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
 
-            it('should accept valid string', () => {
+            it('should accept valid string', done => {
                 const model = instance.model('ValidatorTest', {
                     regex: {
                         type: 'string',
@@ -559,7 +644,10 @@ describe('Services/Validator.js', () => {
                     })
                     .catch(e => {
                         assert(false, e.message)
-                    });
+                    })
+
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
 
@@ -580,14 +668,14 @@ describe('Services/Validator.js', () => {
                         expect(res.replace).to.equal('XdXm');
                     })
                     .catch(e => {
-                        assert(false, e.message)
+                        assert(false, e.message);
                     });
             });
 
         });
 
         describe('email', () => {
-            it('should validate option as boolean', () => {
+            it('should validate option as boolean', done => {
                 const model = instance.model('ValidatorTest', {
                     email: {
                         type: 'string',
@@ -596,15 +684,18 @@ describe('Services/Validator.js', () => {
                 });
 
                 Validator(instance, model, { email: 'invalid' })
-                    .then(res => {
+                    .then(() => {
                         assert(false, 'Should fail validation')
                     })
                     .catch(e => {
-                        expect(e.details).to.contain.key('email');
-                    });
+                        const value = e.details.find(e => e.path.includes('email'));
+                        expect(value).to.be.an('object');
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
 
-            it('should validate option with configuration', () => {
+            it('should validate option with configuration', done => {
                 const model = instance.model('ValidatorTest', {
                     email: {
                         type: 'string',
@@ -620,13 +711,15 @@ describe('Services/Validator.js', () => {
                     })
                     .catch(e => {
                         assert(false, e.message);
-                    });
+                    })
+                    .then(() => done())
+                    .catch(e => done(e));
             });
         });
     });
 
     describe('UUID', () => {
-        it('should reject an invalid uuid v4', () => {
+        it('should reject an invalid uuid v4', done => {
             const model = instance.model('ValidatorTest', {
                 uuid: {
                     type: 'uuid',
@@ -634,15 +727,18 @@ describe('Services/Validator.js', () => {
             });
 
             Validator(instance, model, { uuid: 'invalid' })
-                .then(res => {
+                .then(() => {
                     assert(false, 'Should fail validation')
                 })
                 .catch(e => {
-                    expect(e.details).to.contain.key('uuid');
-                });
+                    const value = e.details.find(e => e.path.includes('uuid'));
+                    expect(value).to.be.an('object');
+                })
+                .then(() => done())
+                .catch(e => done(e));
         });
 
-        it('should accept a valid uuidv4', () => {
+        it('should accept a valid uuidv4', done => {
             const model = instance.model('ValidatorTest', {
                 uuid: {
                     type: 'uuid',
@@ -655,12 +751,14 @@ describe('Services/Validator.js', () => {
                 })
                 .catch(e => {
                     assert(false, e.message);
-                });
+                })
+                .then(() => done())
+                .catch(e => done(e));
         });
     });
 
     describe('Nodes', () => {
-        it('should accept a string', () => {
+        it('should accept a string', done => {
             const model = instance.model('ValidatorTest', {
                 node: {
                     type: 'node',
@@ -668,15 +766,17 @@ describe('Services/Validator.js', () => {
             });
 
             Validator(instance, model, { node: 'valid' })
-                .then(res => {
+                .then(() => {
                     assert(true);
                 })
                 .catch(e => {
                     assert(false, e.message);
-                });
+                })
+                .then(() => done())
+                .catch(e => done(e));
         });
 
-        it('should accept an object', () => {
+        it('should accept an object', done => {
             const model = instance.model('ValidatorTest', {
                 node: {
                     type: 'node',
@@ -684,15 +784,17 @@ describe('Services/Validator.js', () => {
             });
 
             Validator(instance, model, { node: {id: 'invalid'} })
-                .then(res => {
+                .then(() => {
                     assert(true);
                 })
                 .catch(e => {
                     assert(false, e.message);
-                });
+                })
+                .then(() => done())
+                .catch(e => done(e));
         });
 
-        it('should accept a node', () => {
+        it('should accept a node', done => {
             const model = instance.model('ValidatorTest', {
                 node: {
                     type: 'node',
@@ -700,17 +802,19 @@ describe('Services/Validator.js', () => {
             });
 
             Validator(instance, model, { node: new Node })
-                .then(res => {
+                .then(() => {
                     assert(true);
                 })
                 .catch(e => {
                     assert(false, e.message);
-                });
+                })
+                .then(() => done())
+                .catch(e => done(e));
         });
     });
 
     describe('Relationships', () => {
-        it('should accept a string', () => {
+        it('should accept a string', done => {
             const model = instance.model('ValidatorTest', {
                 relationship: {
                     type: 'relationship',
@@ -726,15 +830,17 @@ describe('Services/Validator.js', () => {
                     node: '1234',
                 }
             })
-                .then(res => {
+                .then(() => {
                     assert(true);
                 })
                 .catch(e => {
                     assert(false, e.message);
-                });
+                })
+                .then(() => done())
+                .catch(e => done(e));
         });
 
-        it('should accept an aliased string', () => {
+        it('should accept an aliased string', done => {
             const model = instance.model('ValidatorTest', {
                 relationship: {
                     type: 'relationship',
@@ -756,10 +862,12 @@ describe('Services/Validator.js', () => {
                 })
                 .catch(e => {
                     assert(false, e.message);
-                });
+                })
+                .then(() => done())
+                .catch(e => done(e));
         });
 
-        it('should accept an object', () => {
+        it('should accept an object', done => {
             const model = instance.model('ValidatorTest', {
                 relationship: {
                     type: 'relationship',
@@ -775,10 +883,12 @@ describe('Services/Validator.js', () => {
                 })
                 .catch(e => {
                     assert(false, e.message);
-                });
+                })
+                .then(() => done())
+                .catch(e => done(e));
         });
 
-        it('should accept an aliased object', () => {
+        it('should accept an aliased object', done => {
             const model = instance.model('ValidatorTest', {
                 relationship: {
                     type: 'relationship',
@@ -795,10 +905,12 @@ describe('Services/Validator.js', () => {
                 })
                 .catch(e => {
                     assert(false, e.message);
-                });
+                })
+                .then(() => done())
+                .catch(e => done(e));
         });
 
-        it('should accept a node', () => {
+        it('should accept a node', done => {
             const model = instance.model('ValidatorTest', {
                 relationship: {
                     type: 'relationship',
@@ -809,15 +921,17 @@ describe('Services/Validator.js', () => {
             });
 
             Validator(instance, model, { relationship: {prop: 'value', node: new Node }})
-                .then(res => {
+                .then(() => {
                     assert(true);
                 })
                 .catch(e => {
                     assert(false, e.message);
-                });
+                })
+                .then(() => done())
+                .catch(e => done(e));
         });
 
-        it('should require a relationship', () => {
+        it('should require a relationship', done => {
             const model = instance.model('ValidatorTest', {
                 relationship: {
                     type: 'relationship',
@@ -828,12 +942,51 @@ describe('Services/Validator.js', () => {
             });
 
             Validator(instance, model, { relationship: {prop: 'value', node: new Node }})
-                .then(res => {
+                .then(() => {
                     assert(true);
                 })
                 .catch(e => {
                     assert(false, e.message);
-                });
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+    });
+
+
+    describe('Spatial', () => {
+        it('should fail if latitude and longitude are passed', done => {
+            const model = instance.model('ValidatorTest', {
+                point: {
+                    type: 'point',
+                },
+            });
+
+            Validator(instance, model, { point: { latitude: 37.795972, longitude: -122.407994} })
+                .then(() => {
+                    assert(false, 'Should fail validation');
+                })
+                .catch(e => {
+                    const value = e.details.find(e => e.path.includes('point'));
+
+                    expect(value).to.be.an('object');
+                    expect(value.message).to.contain('Point');
+                })
+
+                .then(() => done())
+                .catch(e => done(e));;
+        });
+
+        it('should pass is valid point is passed', done => {
+            const model = instance.model('ValidatorTest', {
+                point: {
+                    type: 'point',
+                },
+            });
+
+            Validator(instance, model, { point: new neo4j.types.Point(4326, 37.795972, -122.407994) })
+                .then(() => done())
+                .catch(e => done(e));
         });
     });
 

@@ -117,7 +117,7 @@ export function addNodeToStatement(neode, builder, alias, model, properties, ali
             builder.with(...aliases);
 
             if ( ! relationship.target() ) {
-                throw new Error(`A target defintion must be defined for ${key} on model ${model.name()}`)
+                throw new Error(`A target defintion must be defined for ${key} on model ${model.name()}`);
             }
             else if ( Array.isArray( relationship.target() ) ) {
                 throw new Error(`You cannot create a node with the ambiguous relationship: ${key} on model ${model.name()}`);
