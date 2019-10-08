@@ -35,6 +35,18 @@ describe('Collection.js', () => {
         });
     });
 
+    describe('::[Symbol.iterator]', () => {
+        it('should be iterable', () => {
+            const output = [];
+
+            for ( let value of values ) {
+                output.push(value);
+            }
+
+            expect( output ).to.deep.equal( values );
+        });
+    });
+
     describe('::first', () => {
         it('should get the first item in the collection', () => {
             expect(collection.first()).to.equal(values[0]);
