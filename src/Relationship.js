@@ -114,7 +114,7 @@ export default class Relationship extends Entity {
     update(properties) {
         // TODO: Temporary fix, add the properties to the properties map
         // Sorry, but it's easier than hacking the validator
-        this._model.properties().forEach(property => {
+        this._definition.properties().forEach(property => {
             const name = property.name();
 
             if ( property.required() && !properties.hasOwnProperty(name) ) {

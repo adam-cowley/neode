@@ -169,7 +169,7 @@ var Relationship = function (_Entity) {
 
             // TODO: Temporary fix, add the properties to the properties map
             // Sorry, but it's easier than hacking the validator
-            this._model.properties().forEach(function (property) {
+            this._definition.properties().forEach(function (property) {
                 var name = property.name();
 
                 if (property.required() && !properties.hasOwnProperty(name)) {
