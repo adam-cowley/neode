@@ -10,15 +10,13 @@ var _Builder = require('../Query/Builder');
 
 var _Builder2 = _interopRequireDefault(_Builder);
 
-var _Factory = require('../Factory');
-
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 var MAX_EAGER_DEPTH = exports.MAX_EAGER_DEPTH = 10;
 
 /**
  * Add a recursive cascade deletion
- * 
+ *
  * @param {Neode}            neode          Neode instance
  * @param {Builder}          builder        Query Builder
  * @param {String}           alias          Alias of node
@@ -44,7 +42,7 @@ function addCascadeDeleteNode(neode, builder, from_alias, relationship, aliases,
                 break;
 
             // case 'detach':
-            //     addDetachNode(neode, builder, node_alias, relationship, aliases);        
+            //     addDetachNode(neode, builder, node_alias, relationship, aliases);
             //     break;
         }
     });
@@ -55,7 +53,7 @@ function addCascadeDeleteNode(neode, builder, from_alias, relationship, aliases,
 
 /**
  * Delete the relationship to the other node
- * 
+ *
  * @param {Neode}            neode          Neode instance
  * @param {Builder}          builder        Query Builder
  * @param {String}           from_alias     Alias of node at start of the match
@@ -78,7 +76,7 @@ function addDetachNode(neode, builder, from_alias, relationship, aliases) {
 
 /**
  * Cascade Delete a Node
- * 
+ *
  * @param {Neode}   neode       Neode instance
  * @param {Integer} identity    Neo4j internal ID of node to delete
  * @param {Model}   model       Model definition
@@ -88,9 +86,9 @@ function DeleteNode(neode, identity, model) {
     var to_depth = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : MAX_EAGER_DEPTH;
 
     var alias = 'this';
-    var to_delete = [];
+    // const to_delete = [];
     var aliases = [alias];
-    var depth = 1;
+    // const depth = 1;
 
     var builder = new _Builder2.default(neode).match(alias, model).whereId(alias, identity);
 

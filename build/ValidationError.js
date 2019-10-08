@@ -15,13 +15,14 @@ var ERROR_VALIDATION = exports.ERROR_VALIDATION = 'ERROR_VALIDATION';
 var ValidationError = function (_Error) {
     _inherits(ValidationError, _Error);
 
-    function ValidationError(details, input) {
+    function ValidationError(details, input, _joiError) {
         _classCallCheck(this, ValidationError);
 
         var _this = _possibleConstructorReturn(this, (ValidationError.__proto__ || Object.getPrototypeOf(ValidationError)).call(this, ERROR_VALIDATION, 422));
 
         _this.details = details;
         _this.input = input;
+        _this._joiError = _joiError;
         return _this;
     }
 

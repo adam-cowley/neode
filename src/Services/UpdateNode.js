@@ -2,9 +2,9 @@ import Validator from './Validator';
 
 export default function UpdateNode(neode, model, identity, properties) {
     const query = `
-        MATCH (node) 
-        WHERE id(node) = {identity} 
-        SET node += {properties} 
+        MATCH (node)
+        WHERE id(node) = {identity}
+        SET node += {properties}
         RETURN properties(node) as properties
     `;
 

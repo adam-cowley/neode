@@ -48,8 +48,8 @@ export default class Collection {
     map(fn) {
         return this._values.map(fn);
     }
-    
-     /**
+
+    /**
      * Find value in collection
      *
      * @param  {Function} fn

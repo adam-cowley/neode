@@ -40,7 +40,8 @@ var joi_options = {
     abortEarly: false
 };
 
-var ignore = ['type', 'default'];
+// TODO: Move these to constants and validate the model schemas a bit better
+var ignore = ['labels', 'type', 'default', 'alias', 'properties', 'primary', 'relationship', 'target', 'direction', 'eager', 'hidden', 'readonly', 'index', 'unique'];
 var booleans = ['optional', 'forbidden', 'strip', 'positive', 'negative', 'port', 'integer', 'iso', 'isoDate', 'insensitive', 'required', 'truncate', 'creditCard', 'alphanum', 'token', 'hex', 'hostname', 'lowercase', 'uppercase'];
 var booleanOrOptions = ['email', 'ip', 'uri', 'base64', 'normalize', 'hex'];
 
@@ -61,7 +62,7 @@ var temporal = _joi2.default.extend({
                 params.after = new Date();
             }
 
-            if (params.after > value) {
+            if (params.after > new Date(value.toString())) {
                 return this.createError('temporal.after', { v: value }, state, options);
             }
 
@@ -77,7 +78,7 @@ var temporal = _joi2.default.extend({
                 params.after = new Date();
             }
 
-            if (params.after < value) {
+            if (params.after < new Date(value.toString())) {
                 return this.createError('temporal.after', { v: value }, state, options);
             }
 
@@ -86,17 +87,62 @@ var temporal = _joi2.default.extend({
     }]
 });
 
-// {
-//     lat: Joi.number(),
-//     long: Joi.number()
-//   }).and('lat', 'long')
+// TODO: Ugly
+var neoInteger = _joi2.default.extend({
+    // base: Joi.number(),
+    base: _joi2.default.alternatives().try([_joi2.default.number().integer(), _joi2.default.object().type(_neo4jDriver.v1.types.Integer)]),
+    name: 'integer',
+    language: {
+        before: 'Value before minimum expected value',
+        after: 'Value after minimum expected value'
+    },
+    rules: [{
+        name: 'min',
+        params: {
+            min: _joi2.default.number()
+        },
+        validate: function validate(params, value, state, options) {
+            var compare = value instanceof _neo4jDriver.v1.types.Integer ? value.toNumber() : value;
+
+            if (params.min > compare) {
+                return this.createError('number.min', { limit: params.min }, state, options);
+            }
+
+            return value;
+        }
+    }, {
+        name: 'max',
+        params: {
+            max: _joi2.default.number()
+        },
+        validate: function validate(params, value, state, options) {
+            var compare = value instanceof _neo4jDriver.v1.types.Integer ? value.toNumber() : value;
+
+            if (params.max < compare) {
+                return this.createError('number.max', { limit: params.max }, state, options);
+            }
+
+            return value;
+        }
+    }, {
+        name: 'multiple',
+        params: {
+            multiple: _joi2.default.number()
+        },
+        validate: function validate(params, value, state, options) {
+            var compare = value instanceof _neo4jDriver.v1.types.Integer ? value.toNumber() : value;
+
+            if (compare % params.multiple != 0) {
+                return this.createError('number.multiple', { multiple: params.max }, state, options);
+            }
+
+            return value;
+        }
+    }]
+});
 
 var point = _joi2.default.extend({
-    base: _joi2.default.object().keys({
-        latitude: _joi2.default.number().required(),
-        longitude: _joi2.default.number().required(),
-        height: _joi2.default.number().optional()
-    }).and('latitude', 'longitude'),
+    base: _joi2.default.object().type(_neo4jDriver.v1.types.Point),
     name: 'point'
 });
 
@@ -118,11 +164,15 @@ function BuildValidationSchema(schema) {
     var output = {};
 
     Object.keys(schema).forEach(function (key) {
+        // Ignore Labels
+        if (key == 'labels') return;
+
         var config = typeof schema[key] == 'string' ? { type: schema[key] } : schema[key];
 
         var validation = false;
 
         switch (config.type) {
+
             // TODO: Recursive creation, validate nodes and relationships
             case 'node':
                 validation = nodeSchema();
@@ -178,7 +228,7 @@ function BuildValidationSchema(schema) {
 
             case 'int':
             case 'integer':
-                validation = _joi2.default.alternatives().try([_joi2.default.number().integer(), _joi2.default.object().type(_neo4jDriver.v1.types.Integer)]);
+                validation = neoInteger.integer();
                 break;
 
             case 'float':
@@ -221,6 +271,8 @@ function BuildValidationSchema(schema) {
                 }
             } else if (ignore.indexOf(validator) == -1 && validation[validator]) {
                 validation = validation[validator](options);
+            } else if (ignore.indexOf(validator) == -1 && booleans.indexOf(validator) == -1) {
+                throw new Error('Not sure how to validate ' + validator + ' on ' + key);
             }
         });
 
@@ -246,7 +298,7 @@ function Validator(neode, model, properties) {
     return new Promise(function (resolve, reject) {
         _joi2.default.validate(properties, schema, joi_options, function (err, validated) {
             if (err) {
-                return reject(err);
+                return reject(new _ValidationError2.default(err.details, properties, err));
             }
 
             return resolve(validated);

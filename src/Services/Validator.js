@@ -11,7 +11,23 @@ const joi_options = {
     abortEarly:false
 };
 
-const ignore = ['type', 'default'];
+// TODO: Move these to constants and validate the model schemas a bit better
+const ignore = [
+    'labels',
+    'type',
+    'default',
+    'alias',
+    'properties',
+    'primary',
+    'relationship',
+    'target',
+    'direction',
+    'eager',
+    'hidden',
+    'readonly',
+    'index',
+    'unique',
+];
 const booleans = [
     'optional',
     'forbidden',
@@ -63,7 +79,7 @@ const temporal = Joi.extend({
                     params.after = new Date();
                 }
 
-                if ( params.after > value ) {
+                if ( params.after > new Date( value.toString()) ) {
                     return this.createError('temporal.after', { v: value }, state, options);
                 }
 
@@ -83,7 +99,7 @@ const temporal = Joi.extend({
                     params.after = new Date();
                 }
 
-                if ( params.after < value ) {
+                if ( params.after < new Date( value.toString()) ) {
                     return this.createError('temporal.after', { v: value }, state, options);
                 }
 
@@ -93,17 +109,66 @@ const temporal = Joi.extend({
     ],
 });
 
-// {
-//     lat: Joi.number(),
-//     long: Joi.number()
-//   }).and('lat', 'long')
+// TODO: Ugly
+const neoInteger = Joi.extend({
+    // base: Joi.number(),
+    base: Joi.alternatives().try([ Joi.number().integer(), Joi.object().type(neo4j.types.Integer) ]),
+    name: 'integer',
+    language: {
+        before: 'Value before minimum expected value',
+        after: 'Value after minimum expected value',
+    },
+    rules: [
+        {
+            name: 'min',
+            params: {
+                min: Joi.number(),
+            },
+            validate(params, value, state, options) {
+                const compare = value instanceof neo4j.types.Integer ? value.toNumber() : value;
+
+                if ( params.min > compare ) {
+                    return this.createError('number.min', { limit: params.min, }, state, options);
+                }
+
+                return value;
+            }
+        },
+        {
+            name: 'max',
+            params: {
+                max: Joi.number(),
+            },
+            validate(params, value, state, options) {
+                const compare = value instanceof neo4j.types.Integer ? value.toNumber() : value;
+
+                if ( params.max < compare ) {
+                    return this.createError('number.max', { limit: params.max, }, state, options);
+                }
+
+                return value;
+            }
+        },
+        {
+            name: 'multiple',
+            params: {
+                multiple: Joi.number(),
+            },
+            validate(params, value, state, options) {
+                const compare = value instanceof neo4j.types.Integer ? value.toNumber() : value;
+
+                if ( compare % params.multiple != 0 ) {
+                    return this.createError('number.multiple', { multiple: params.max, }, state, options);
+                }
+
+                return value;
+            }
+        },
+    ]
+});
 
 const point = Joi.extend({
-    base: Joi.object().keys({
-        latitude: Joi.number().required(),
-        longitude: Joi.number().required(),
-        height: Joi.number().optional()
-    }).and('latitude', 'longitude'),
+    base: Joi.object().type(neo4j.types.Point),
     name: 'point',
 });
 
@@ -134,11 +199,15 @@ function BuildValidationSchema(schema) {
     let output = {};
 
     Object.keys(schema).forEach(key => {
+        // Ignore Labels
+        if ( key == 'labels' ) return;
+
         const config = typeof schema[ key ] == 'string' ? {type: schema[ key ]} : schema[ key ];
 
         let validation = false;
 
         switch (config.type) {
+
             // TODO: Recursive creation, validate nodes and relationships
             case 'node':
                 validation = nodeSchema();
@@ -196,7 +265,7 @@ function BuildValidationSchema(schema) {
 
             case 'int':
             case 'integer':
-                validation = Joi.alternatives().try([ Joi.number().integer(), Joi.object().type(neo4j.types.Integer) ]);
+                validation = neoInteger.integer();
                 break;
 
             case 'float':
@@ -246,6 +315,9 @@ function BuildValidationSchema(schema) {
             else if (ignore.indexOf(validator) == -1 && validation[validator]) {
                 validation = validation[validator](options);
             }
+            else if (ignore.indexOf(validator) == -1 && booleans.indexOf(validator) == -1 ) {
+                throw new Error(`Not sure how to validate ${validator} on ${key}`);
+            }
         });
 
         output[ key ] = validation;
@@ -270,7 +342,7 @@ export default function Validator(neode, model, properties) {
     return new Promise((resolve, reject) => {
         Joi.validate(properties, schema, joi_options, (err, validated) => {
             if (err) {
-                return reject(err);
+                return reject( new ValidationError(err.details, properties, err) );
             }
 
             return resolve(validated);

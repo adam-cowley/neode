@@ -5,7 +5,6 @@ jdk:
   - oraclejdk8
 
 env:
-  - NEO4J_VERSION="3.4.15"
   - NEO4J_VERSION="3.5.11"
 
 before_install:
