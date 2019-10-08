@@ -27,6 +27,7 @@ const ignore = [
     'readonly',
     'index',
     'unique',
+    'cascade',
 ];
 const booleans = [
     'optional',
