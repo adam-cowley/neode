@@ -146,18 +146,18 @@ export default class RelationshipType {
         return this._cascade;
     }
 
-    /** 
+    /**
      * Get Properties defined for this relationship
-     * 
+     *
      * @return Map
      */
     properties() {
         return this._properties;
     }
 
-    /** 
+    /**
      * Get the alias given to the node
-     * 
+     *
      * @return {String}
      */
     nodeAlias() {

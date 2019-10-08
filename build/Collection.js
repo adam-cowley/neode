@@ -14,7 +14,7 @@ var Collection = function () {
      * @constructor
      * @param  {Neode} neode    Neode Instance
      * @param  {Node[]} values  Array of Node
-     * @return {Collectiob}
+     * @return {Collection}
      */
     function Collection(neode, values) {
         _classCallCheck(this, Collection);
@@ -31,8 +31,15 @@ var Collection = function () {
 
 
     _createClass(Collection, [{
-        key: "get",
+        key: Symbol.iterator,
 
+
+        /**
+         * Iterator
+         */
+        value: function value() {
+            return this._values.values();
+        }
 
         /**
          * Get a value by it's index
@@ -40,6 +47,9 @@ var Collection = function () {
          * @param  {Int} index
          * @return {Node}
          */
+
+    }, {
+        key: "get",
         value: function get(index) {
             return this._values[index];
         }

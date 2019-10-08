@@ -180,6 +180,16 @@ export default class Node extends Entity {
      * @return {Node}
      */
     update(properties) {
+        // TODO: Temporary fix, add the properties to the properties map
+        // Sorry, but it's easier than hacking the validator
+        this._model.properties().forEach(property => {
+            const name = property.name();
+
+            if ( property.required() && !properties.hasOwnProperty(name) ) {
+                properties[ name ] = this._properties.get( name );
+            }
+        });
+
         return UpdateNode(this._neode, this._model, this._identity, properties)
             .then(properties => {
                 Object.entries(properties).forEach(( [key, value] ) => {

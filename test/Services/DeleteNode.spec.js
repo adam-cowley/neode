@@ -1,12 +1,10 @@
-import {assert, expect} from 'chai';
-import DeleteNode from '../../src/Services/DeleteNode';
-import Node from '../../src/Node';
+/* eslint-disable no-undef */
+import {expect} from 'chai';
 
 const TIMEOUT = 10000;
 
 describe('Services/DeleteNode.js', () => {
     let instance;
-    let model;
 
     const label = 'DeleteTest';
     const schema = {
@@ -38,7 +36,8 @@ describe('Services/DeleteNode.js', () => {
 
     before(done => {
         instance = require('../instance')();
-        model = instance.model(label, schema);
+
+        instance.model(label, schema);
 
         instance.deleteAll(label).then(() => done());
     });
@@ -46,7 +45,7 @@ describe('Services/DeleteNode.js', () => {
     after(done => {
         instance.deleteAll(label)
             .then(() => {
-                return instance.close()
+                return instance.close();
             })
             .then(() => done());
     });
@@ -68,20 +67,20 @@ describe('Services/DeleteNode.js', () => {
                     name: 'Detach'
                 }
             })
-            .then(res => res.delete(2))
-            .then(res => {
-                return instance.cypher(`MATCH (n:${label}) RETURN n.name AS name ORDER BY name ASC`)
-                    .then(( {records} ) => {
-                        expect( records.length ).to.equal(2);
+                .then(res => res.delete(2))
+                .then(() => {
+                    return instance.cypher(`MATCH (n:${label}) RETURN n.name AS name ORDER BY name ASC`)
+                        .then(( {records} ) => {
+                            expect( records.length ).to.equal(2);
 
-                        const actual = records.map(r => r.get('name'));
-                        const expected = [ 'Detach', 'level 4' ];
+                            const actual = records.map(r => r.get('name'));
+                            const expected = [ 'Detach', 'level 4' ];
 
-                        expect( actual ).to.deep.equal( expected );
-                    })
-            })
-            .then(() => done())
-            .catch(e => done(e));    
+                            expect( actual ).to.deep.equal( expected );
+                        });
+                })
+                .then(() => done())
+                .catch(e => done(e));
         }).timeout(TIMEOUT);
     });
 

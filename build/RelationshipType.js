@@ -194,9 +194,9 @@ var RelationshipType = function () {
             return this._cascade;
         }
 
-        /** 
+        /**
          * Get Properties defined for this relationship
-         * 
+         *
          * @return Map
          */
 
@@ -206,9 +206,9 @@ var RelationshipType = function () {
             return this._properties;
         }
 
-        /** 
+        /**
          * Get the alias given to the node
-         * 
+         *
          * @return {String}
          */
 
