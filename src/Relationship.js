@@ -5,7 +5,7 @@ import { DIRECTION_IN, } from './RelationshipType';
 
 export default class Relationship extends Entity {
     /**
-     * 
+     *
      * @param {Neode}            neode          Neode instance
      * @param {RelationshipType} definition     Relationship type definition
      * @param {Integer}          identity       Identity
@@ -28,16 +28,16 @@ export default class Relationship extends Entity {
         this._node_alias = node_alias;
     }
 
-    /** 
+    /**
      * Get the definition for this relationship
-     * 
+     *
      * @return {Definition}
      */
     definition() {
         return this._definition;
     }
 
-    /** 
+    /**
      * Get the relationship type
      */
     type() {
@@ -46,7 +46,7 @@ export default class Relationship extends Entity {
 
     /**
      * Get the start node for this relationship
-     * 
+     *
      * @return {Node}
      */
     startNode() {
@@ -55,19 +55,19 @@ export default class Relationship extends Entity {
 
     /**
      * Get the start node for this relationship
-     * 
+     *
      * @return {Node}
      */
     endNode() {
         return this._end;
     }
 
-    /** 
+    /**
      * Get the node on the opposite end of the Relationship to the subject
      * (ie if direction is in, get the end node, otherwise get the start node)
      */
     otherNode() {
-        return this._definition.direction() == DIRECTION_IN 
+        return this._definition.direction() == DIRECTION_IN
             ? this.startNode()
             : this.endNode();
     }
@@ -107,11 +107,21 @@ export default class Relationship extends Entity {
 
     /**
      * Update the properties for this relationship
-     * 
+     *
      * @param {Object} properties  New properties
      * @return {Node}
      */
     update(properties) {
+        // TODO: Temporary fix, add the properties to the properties map
+        // Sorry, but it's easier than hacking the validator
+        this._model.properties().forEach(property => {
+            const name = property.name();
+
+            if ( property.required() && !properties.hasOwnProperty(name) ) {
+                properties[ name ] = this._properties.get( name );
+            }
+        });
+
         return UpdateRelationship(this._neode, this._definition, this._identity, properties)
             .then(properties => {
                 Object.entries(properties).forEach(( [key, value] ) => {

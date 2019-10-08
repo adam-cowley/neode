@@ -26,6 +26,7 @@ describe('Model.js', () => {
             type: 'string',
             index: true,
             unique: true,
+            required: true,
         },
         relationship: {
             type: 'relationship',
@@ -133,6 +134,19 @@ describe('Model.js', () => {
                 })
                 .then(node => {
                     expect( node.get('string') ).to.equal('new');
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+
+        it('should not throw an error if required properties are not included', done => {
+            instance.create(name, { string: 'old', number: 3 })
+                .then(node => {
+                    return node.update({ number: 4 });
+                })
+                .then(node => {
+                    expect( node.get('string') ).to.equal('old');
+                    expect( node.get('number') ).to.equal(4);
                 })
                 .then(() => done())
                 .catch(e => done(e));

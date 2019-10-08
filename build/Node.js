@@ -257,6 +257,16 @@ var Node = function (_Entity) {
         value: function update(properties) {
             var _this5 = this;
 
+            // TODO: Temporary fix, add the properties to the properties map
+            // Sorry, but it's easier than hacking the validator
+            this._model.properties().forEach(function (property) {
+                var name = property.name();
+
+                if (property.required() && !properties.hasOwnProperty(name)) {
+                    properties[name] = _this5._properties.get(name);
+                }
+            });
+
             return (0, _UpdateNode2.default)(this._neode, this._model, this._identity, properties).then(function (properties) {
                 Object.entries(properties).forEach(function (_ref2) {
                     var _ref3 = _slicedToArray(_ref2, 2),

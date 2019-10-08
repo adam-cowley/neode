@@ -34,7 +34,7 @@ var Relationship = function (_Entity) {
     _inherits(Relationship, _Entity);
 
     /**
-     * 
+     *
      * @param {Neode}            neode          Neode instance
      * @param {RelationshipType} definition     Relationship type definition
      * @param {Integer}          identity       Identity
@@ -60,9 +60,9 @@ var Relationship = function (_Entity) {
         return _this;
     }
 
-    /** 
+    /**
      * Get the definition for this relationship
-     * 
+     *
      * @return {Definition}
      */
 
@@ -73,7 +73,7 @@ var Relationship = function (_Entity) {
             return this._definition;
         }
 
-        /** 
+        /**
          * Get the relationship type
          */
 
@@ -85,7 +85,7 @@ var Relationship = function (_Entity) {
 
         /**
          * Get the start node for this relationship
-         * 
+         *
          * @return {Node}
          */
 
@@ -97,7 +97,7 @@ var Relationship = function (_Entity) {
 
         /**
          * Get the start node for this relationship
-         * 
+         *
          * @return {Node}
          */
 
@@ -107,7 +107,7 @@ var Relationship = function (_Entity) {
             return this._end;
         }
 
-        /** 
+        /**
          * Get the node on the opposite end of the Relationship to the subject
          * (ie if direction is in, get the end node, otherwise get the start node)
          */
@@ -157,7 +157,7 @@ var Relationship = function (_Entity) {
 
         /**
          * Update the properties for this relationship
-         * 
+         *
          * @param {Object} properties  New properties
          * @return {Node}
          */
@@ -166,6 +166,16 @@ var Relationship = function (_Entity) {
         key: 'update',
         value: function update(properties) {
             var _this3 = this;
+
+            // TODO: Temporary fix, add the properties to the properties map
+            // Sorry, but it's easier than hacking the validator
+            this._model.properties().forEach(function (property) {
+                var name = property.name();
+
+                if (property.required() && !properties.hasOwnProperty(name)) {
+                    properties[name] = _this3._properties.get(name);
+                }
+            });
 
             return (0, _UpdateRelationship2.default)(this._neode, this._definition, this._identity, properties).then(function (properties) {
                 Object.entries(properties).forEach(function (_ref) {
