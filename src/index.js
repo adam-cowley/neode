@@ -148,6 +148,21 @@ export default class Neode {
             this.models.set(name, model);
         }
 
+        if ( !this.models.has(name) ) {
+            const defined = this.models.keys();
+
+            let message = `Couldn't find a definition for "${name}".`;
+
+            if ( defined.length == 0 ) {
+                message += ' It looks like no models have been defined.';
+            }
+            else {
+                message += ` The models currently defined are [${ defined.join(', ') }]`;
+            }
+
+            throw new Error(message);
+        }
+
         return this.models.get(name);
     }
 

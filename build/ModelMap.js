@@ -33,14 +33,39 @@ var ModelMap = function () {
     }
 
     /**
-     * Getter
+     * Check if a model has been defined
      *
-     * @param  {String}
-     * @return {Model|false}
+     * @param  {String} key
+     * @return {bool}
      */
 
 
     _createClass(ModelMap, [{
+        key: 'has',
+        value: function has(key) {
+            return this.models.has(key);
+        }
+
+        /**
+         * Namesof the models defined.
+         *
+         * @return {Array<String>}
+         */
+
+    }, {
+        key: 'keys',
+        value: function keys() {
+            return [].concat(_toConsumableArray(this.models.keys()));
+        }
+
+        /**
+         * Getter
+         *
+         * @param  {String}
+         * @return {Model|false}
+         */
+
+    }, {
         key: 'get',
         value: function get(key) {
             return this.models.get(key);

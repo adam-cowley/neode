@@ -1,6 +1,6 @@
 {
   "name": "neode",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Neo4j OGM for NodeJS",
   "main": "build/index.js",
   "types": "types/index.d.ts",
@@ -27,7 +27,7 @@
     "@hapi/joi": "^15.1.0",
     "dotenv": "^4.0.0",
     "fsevents": "^2.1.0",
-    "neo4j-driver": "^1.7.5",
+    "neo4j-driver": "^1.7.6",
     "uuid": "^3.3.2"
   },
   "devDependencies": {

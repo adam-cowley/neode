@@ -174,6 +174,20 @@ var Neode = function () {
                 this.models.set(name, model);
             }
 
+            if (!this.models.has(name)) {
+                var defined = this.models.keys();
+
+                var message = 'Couldn\'t find a definition for "' + name + '".';
+
+                if (defined.length == 0) {
+                    message += ' It looks like no models have been defined.';
+                } else {
+                    message += ' The models currently defined are [' + defined.join(', ') + ']';
+                }
+
+                throw new Error(message);
+            }
+
             return this.models.get(name);
         }
 
