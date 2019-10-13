@@ -14,14 +14,14 @@ var _Builder2 = _interopRequireDefault(_Builder);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-var EAGER_ID = exports.EAGER_ID = '__EAGER_ID__';
+var EAGER_ID = exports.EAGER_ID = '__EAGER_ID__'; /* eslint-disable no-empty */
 var EAGER_LABELS = exports.EAGER_LABELS = '__EAGER_LABELS__';
 var EAGER_TYPE = exports.EAGER_TYPE = '__EAGER_TYPE__';
 var MAX_EAGER_DEPTH = exports.MAX_EAGER_DEPTH = 3;
 
 /**
  * Build a pattern to use in an eager load statement
- * 
+ *
  * @param {Neode} neode                 Neode instance
  * @param {Integer} depth               Maximum depth to stop at
  * @param {String} alias                Alias for the starting node
@@ -37,7 +37,11 @@ function eagerPattern(neode, depth, alias, rel) {
     var target = rel.target();
     var relationship_variable = alias + '_' + name + '_rel';
     var node_variable = alias + '_' + name + '_node';
-    var target_model = neode.model(target);
+
+    var target_model = undefined;
+    try {
+        target_model = neode.model(target);
+    } catch (e) {}
 
     // Build Pattern
     builder.match(alias).relationship(relationship, direction, relationship_variable).to(node_variable, target_model);
@@ -69,7 +73,7 @@ function eagerPattern(neode, depth, alias, rel) {
 /**
  * Produces a Cypher pattern for a consistant eager loading format for a
  * Node and any subsequent eagerly loaded models up to the maximum depth.
- * 
+ *
  * @param {Neode} neode     Neode instance
  * @param {Integer} depth   Maximum depth to traverse to
  * @param {String} alias    Alias of the node
@@ -103,7 +107,7 @@ function eagerNode(neode, depth, alias, model) {
 /**
  * Produces a Cypher pattern for a consistant eager loading format for a
  * Relationship and any subsequent eagerly loaded modules up to the maximum depth.
- * 
+ *
  * @param {Neode} neode     Neode instance
  * @param {Integer} depth   Maximum depth to traverse to
  * @param {String} alias    Alias of the node

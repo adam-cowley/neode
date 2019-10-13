@@ -13,6 +13,25 @@ export default class ModelMap {
     }
 
     /**
+     * Check if a model has been defined
+     *
+     * @param  {String} key
+     * @return {bool}
+     */
+    has(key) {
+        return this.models.has(key);
+    }
+
+    /**
+     * Namesof the models defined.
+     *
+     * @return {Array<String>}
+     */
+    keys() {
+        return [... this.models.keys() ];
+    }
+
+    /**
      * Getter
      *
      * @param  {String}

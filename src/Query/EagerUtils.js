@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 import Builder from './Builder';
 
 export const EAGER_ID = '__EAGER_ID__';
@@ -8,7 +9,7 @@ export const MAX_EAGER_DEPTH = 3;
 
 /**
  * Build a pattern to use in an eager load statement
- * 
+ *
  * @param {Neode} neode                 Neode instance
  * @param {Integer} depth               Maximum depth to stop at
  * @param {String} alias                Alias for the starting node
@@ -24,7 +25,12 @@ export function eagerPattern(neode, depth, alias, rel) {
     const target = rel.target();
     const relationship_variable = `${alias}_${name}_rel`;
     const node_variable = `${alias}_${name}_node`;
-    const target_model = neode.model( target );
+
+    let target_model = undefined;
+    try {
+        target_model = neode.model( target );
+    }
+    catch(e) {}
 
     // Build Pattern
     builder.match(alias)
@@ -61,7 +67,7 @@ export function eagerPattern(neode, depth, alias, rel) {
 /**
  * Produces a Cypher pattern for a consistant eager loading format for a
  * Node and any subsequent eagerly loaded models up to the maximum depth.
- * 
+ *
  * @param {Neode} neode     Neode instance
  * @param {Integer} depth   Maximum depth to traverse to
  * @param {String} alias    Alias of the node
@@ -95,7 +101,7 @@ export function eagerNode(neode, depth, alias, model) {
 /**
  * Produces a Cypher pattern for a consistant eager loading format for a
  * Relationship and any subsequent eagerly loaded modules up to the maximum depth.
- * 
+ *
  * @param {Neode} neode     Neode instance
  * @param {Integer} depth   Maximum depth to traverse to
  * @param {String} alias    Alias of the node
