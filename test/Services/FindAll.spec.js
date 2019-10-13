@@ -9,6 +9,7 @@ describe('Services/FindAll.js', () => {
     let instance;
     let model;
 
+    const other_label = 'FindAllEager';
     const label = 'FindAllTest';
     const schema = {
         uuid: {
@@ -24,7 +25,6 @@ describe('Services/FindAll.js', () => {
             relationship: 'RELATIONSHIP_TO_MODEL',
             target: label,
             direction: 'out',
-            properties: {},
             alias: 'node',
             properties: {
                 since: {
@@ -33,11 +33,11 @@ describe('Services/FindAll.js', () => {
                 }
             },
         },
-        relationshipToAnything: {
+        relationshipToOther: {
             type: 'relationship',
-            relationship: 'RELATIONSHIP_TO_MODEL',
+            relationship: 'RELATIONSHIP_TO_OTHER',
+            target: other_label,
             direction: 'out',
-            properties: {},
             eager: true,
             alias: 'node',
             properties: {
@@ -45,7 +45,7 @@ describe('Services/FindAll.js', () => {
                     type: 'int',
                     default: Date.now
                 }
-            }, 
+            },
         },
         forArray: {
             type: 'node',
@@ -53,16 +53,17 @@ describe('Services/FindAll.js', () => {
             target: label,
             direction: 'out',
         },
-        nodeToAnything: {
+        nodeToOther: {
             type: 'node',
-            relationship: 'RELATIONSHIP_TO_MODEL',
-
+            relationship: 'RELATIONSHIP_TO_OTHER',
+            target: other_label,
             direction: 'out',
             eager: true,
         },
         arrayOfRelationships: {
             type: 'nodes',
             relationship: [ 'RELATIONSHIP_TO_MODEL', 'FOR_ARRAY' ],
+            // target: other_label,
             direction: 'out',
             eager: true,
         },
@@ -70,6 +71,7 @@ describe('Services/FindAll.js', () => {
 
     before(() => {
         instance = require('../instance')();
+        instance.model(other_label, {id: 'number'});
         model = instance.model(label, schema);
     });
 
@@ -86,6 +88,7 @@ describe('Services/FindAll.js', () => {
     it('should find nodes filtered by properties', done => {
         const name = 'Filtered Node';
         const eager_name = 'Eager Node';
+        const other_id = 1;
         Create(instance, model, {
             name,
             relationshipsToModel: {
@@ -94,11 +97,14 @@ describe('Services/FindAll.js', () => {
                     name: eager_name,
                 },
             },
+            nodeToOther: {
+                id: other_id,
+            },
             forArray: {
                 name: 'For Array'
             },
         })
-            .then(res => {
+            .then(() => {
                 return FindAll(instance, model, { name })
                     .then(collection => {
                         expect(collection.length).to.equal(1);
@@ -109,13 +115,16 @@ describe('Services/FindAll.js', () => {
                         expect(first.get('name')).to.equal(name);
 
                         // Eager
-                        expect( first._eager.get('nodeToAnything').get('name') ).to.equal(eager_name);
-                        expect( first._eager.get('relationshipToAnything').otherNode().get('name') ).to.equal(eager_name);
+                        expect( first._eager.get('nodeToOther').get('id') ).to.equal(other_id);
+                        expect( first._eager.get('relationshipToOther').otherNode().get('id') ).to.equal(other_id);
                         expect( first._eager.get('arrayOfRelationships').length ).to.equal(2);
                     });
             })
             .then(() => done())
-            .catch(e => done(e));
+            .catch(e => {
+                console.log(e)
+                done(e)
+            });
     });
 
     it('should apply the alias to an order', done => {
