@@ -167,7 +167,7 @@ describe('Model.js', () => {
                         .then(res => {
                             expect( res.get('updated') ).to.be.true;
 
-                            return instance.cypher('MATCH ()-[r]->() WHERE id(r) = {id} RETURN r.updated AS updated', { id: res.identity() })
+                            return instance.cypher('MATCH ()-[r]->() WHERE id(r) = $id RETURN r.updated AS updated', { id: res.identity() })
                                 .then(( {records} ) => {
                                     expect( records[0].get('updated') ).to.be.true;
 
@@ -179,7 +179,7 @@ describe('Model.js', () => {
                     return relationship.delete();
                 })
                 .then(res => {
-                    return instance.cypher('MATCH ()-[r]->() WHERE id(r) = {id} RETURN r', { id: res.identity() })
+                    return instance.cypher('MATCH ()-[r]->() WHERE id(r) = $id RETURN r', { id: res.identity() })
                         .then(res => {
                             expect( res.records.length ).to.equal(0);
                         });

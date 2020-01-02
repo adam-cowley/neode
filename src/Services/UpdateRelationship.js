@@ -3,8 +3,8 @@ import Validator from './Validator';
 export default function UpdateRelationship(neode, model, identity, properties) {
     const query = `
         MATCH ()-[rel]->() 
-        WHERE id(rel) = {identity} 
-        SET rel += {properties} 
+        WHERE id(rel) = $identity
+        SET rel += $properties
         RETURN properties(rel) as properties
     `;
 

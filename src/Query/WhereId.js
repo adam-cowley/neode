@@ -12,6 +12,6 @@ export default class WhereId {
 
     toString() {
         const negative = this._negative ? 'NOT ' : '';
-        return `${negative}id(${this._alias}) = {${this._param}}`;
+        return `${negative}id(${this._alias}) = $${this._param}`;
     }
 }
