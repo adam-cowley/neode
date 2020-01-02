@@ -85,7 +85,7 @@ describe('Services/CleanValue.js', () => {
             expect(output.hour).to.equal(input.getHours());
             expect(output.minute).to.equal(input.getMinutes());
             expect(output.second).to.equal(input.getSeconds());
-            expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * 60);
+            expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * -60);
         });
 
         it('should handle a DateTime as a timestamp', () => {
@@ -100,7 +100,7 @@ describe('Services/CleanValue.js', () => {
             expect(output.hour).to.equal(input.getHours());
             expect(output.minute).to.equal(input.getMinutes());
             expect(output.second).to.equal(input.getSeconds());
-            expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * 60);
+            expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * -60);
         });
     });
 
@@ -145,7 +145,7 @@ describe('Services/CleanValue.js', () => {
             expect(output.minute).to.equal(input.getMinutes());
             expect(output.second).to.equal(input.getSeconds());
             expect(output.nanosecond).to.equal(input.getMilliseconds() * 1000000);
-            expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * 60);
+            expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * -60);
         });
 
         it('should handle a Time as a timestamp', () => {
@@ -158,7 +158,7 @@ describe('Services/CleanValue.js', () => {
             expect(output.minute).to.equal(input.getMinutes());
             expect(output.second).to.equal(input.getSeconds());
             expect(output.nanosecond).to.equal(input.getMilliseconds() * 1000000);
-            expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * 60);
+            expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * -60);
         });
     });
 
