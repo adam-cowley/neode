@@ -1,6 +1,6 @@
 {
   "name": "neode",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Neo4j OGM for NodeJS",
   "main": "build/index.js",
   "types": "types/index.d.ts",
