@@ -287,7 +287,7 @@ var Builder = function () {
                 var right = this._addWhereParameter(left, value);
 
                 this._params[right] = value;
-                this._where.append(new _Where2.default(left, operator, '{' + right + '}'));
+                this._where.append(new _Where2.default(left, operator, '$' + right));
             }
 
             return this;

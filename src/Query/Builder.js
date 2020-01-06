@@ -188,7 +188,7 @@ export default class Builder {
             const right = this._addWhereParameter(left, value);
 
             this._params[ right ] = value;
-            this._where.append(new Where(left, operator, `{${right}}`));
+            this._where.append(new Where(left, operator, `$${right}`));
         }
 
         return this;

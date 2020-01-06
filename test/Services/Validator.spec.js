@@ -341,7 +341,7 @@ describe('Services/Validator.js', () => {
                         },
                     });
 
-                    Validator(instance, model, { date: neo4j.types.DateTime.fromStandardDate( new Date('2020-01-01') ) })
+                    Validator(instance, model, { date: neo4j.types.DateTime.fromStandardDate( new Date('9999-01-01') ) })
                         .then(() => {
                             assert(false, 'Should fail validation');
                         })

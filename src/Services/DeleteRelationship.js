@@ -1,7 +1,7 @@
 export default function DeleteRelationship(neode, identity) {
     const query = `
         MATCH ()-[rel]->() 
-        WHERE id(rel) = {identity} 
+        WHERE id(rel) = $identity
         DELETE rel
     `;
 

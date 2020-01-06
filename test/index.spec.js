@@ -275,7 +275,7 @@ describe('index.js', () => {
                 })
                 .then(rel => {
                     return instance.cypher(
-                        'MATCH (start)-[rel]->(end) WHERE id(start) = {start} AND id(rel) = {rel} AND id(end) = {end} RETURN count(*) as count',
+                        'MATCH (start)-[rel]->(end) WHERE id(start) = $start AND id(rel) = $rel AND id(end) = $end RETURN count(*) as count',
                         {
                             start: rel.startNode().identity(),
                             rel: rel.identity(),
@@ -326,7 +326,7 @@ describe('index.js', () => {
                 })
                 .then(rel => {
                     return instance.cypher(
-                        `MATCH (start)-[:${ rel.type() }]->(end) WHERE id(start) = {start} AND id(end) = {end} RETURN count(*) as count`,
+                        `MATCH (start)-[:${ rel.type() }]->(end) WHERE id(start) = $start AND id(end) = $end RETURN count(*) as count`,
                         {
                             start: rel.startNode().identity(),
                             rel: rel.identity(),
