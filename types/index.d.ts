@@ -431,7 +431,7 @@ declare namespace Neode {
   interface NodesNodeProperties extends BaseRelationshipNodeProperties {
     type: 'nodes'
   }
-  
+
   interface NodeNodeProperties extends BaseRelationshipNodeProperties {
     type: 'node'
   }
@@ -769,7 +769,7 @@ declare namespace Neode {
      * @return {Relationship}
      */
      relationship(name: string, type: string, relationship: string, direction?: Neode.Direction, target?: string | Model<T>, schema?: Neode.SchemaObject, eager?: boolean, cascade?: boolean | string): Relationship
-    
+
 
     /**
      * Get all defined Relationships  for this Model
@@ -950,14 +950,21 @@ declare namespace Neode {
      *
      * @return Node
      */
-    from(): Node<any>;
+    startNode(): Node<any>;
 
     /**
      * Get destination node for this relationship
      *
      * @return Node
      */
-    to(): Node<any>;
+    endNode(): Node<any>;
+
+    /**
+     * Convert Relationship to Object
+     *
+     * @return {Promise}
+     */
+    toJson(): Promise<string>;
   }
 
   class Node<T> {
@@ -1096,8 +1103,8 @@ declare namespace Neode {
      * @return {mixed}
      */
     find<U>(fn: (value: Node<any>, index: number, array: Array<Node<any>>) => U): Node<U>;
-    
-    
+
+
     /**
      * Run a function on all values
      * @param  {Function} fn
