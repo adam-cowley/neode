@@ -986,14 +986,21 @@ declare namespace Neode {
      *
      * @return Node
      */
-    from(): Node<any>;
+    startNode(): Node<any>;
 
     /**
      * Get destination node for this relationship
      *
      * @return Node
      */
-    to(): Node<any>;
+    endNode(): Node<any>;
+
+    /**
+     * Convert Relationship to Object
+     *
+     * @return {Promise}
+     */
+    toJson(): Promise<string>;
   }
 
   class Node<T> {
