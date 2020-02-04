@@ -65,7 +65,7 @@ export default class Builder {
      *
      * @param  {String} alias           Alias in query
      * @param  {Model|String}  model    Model definition
-     * @param  {Object|null}   properties   Inline Properties
+     * @param  {Object}   [properties]   Inline Properties
      * @return {Builder}                Builder
      */
     match(alias, model, properties) {
@@ -198,7 +198,7 @@ export default class Builder {
      * Query on Internal ID
      *
      * @param  {String} alias
-     * @param  {Int}    value
+     * @param  {Number}    value
      * @return {Builder}
      */
     whereId(alias, value) {
@@ -456,7 +456,7 @@ export default class Builder {
     /**
      * Set Record Limit
      *
-     * @param  {Int} limit
+     * @param  {Number} limit
      * @return {Builder}
      */
     limit(limit) {
@@ -468,7 +468,7 @@ export default class Builder {
     /**
      * Set Records to Skip
      *
-     * @param  {Int} skip
+     * @param  {Number} skip
      * @return {Builder}
      */
     skip(skip) {
@@ -526,7 +526,7 @@ export default class Builder {
      * @param  {String|RelationshipType} relationship  Relationship name or RelationshipType object
      * @param  {String}                  direction     Direction of relationship DIRECTION_IN, DIRECTION_OUT
      * @param  {String|null}             alias         Relationship alias
-     * @param  {Int|String}              degrees        Number of traversdegreesals (1, "1..2", "0..2", "..3")
+     * @param  {Number|String}              degrees        Number of traversdegreesals (1, "1..2", "0..2", "..3")
      * @return {Builder}
      */
     relationship(relationship, direction, alias, degrees) {

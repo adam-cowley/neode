@@ -11,7 +11,7 @@ export const MAX_EAGER_DEPTH = 3;
  * Build a pattern to use in an eager load statement
  *
  * @param {Neode} neode                 Neode instance
- * @param {Integer} depth               Maximum depth to stop at
+ * @param {Number} depth               Maximum depth to stop at
  * @param {String} alias                Alias for the starting node
  * @param {RelationshipType} rel        Type of relationship
  */
@@ -69,7 +69,7 @@ export function eagerPattern(neode, depth, alias, rel) {
  * Node and any subsequent eagerly loaded models up to the maximum depth.
  *
  * @param {Neode} neode     Neode instance
- * @param {Integer} depth   Maximum depth to traverse to
+ * @param {Number} depth   Maximum depth to traverse to
  * @param {String} alias    Alias of the node
  * @param {Model} model     Node model
  */
@@ -103,7 +103,7 @@ export function eagerNode(neode, depth, alias, model) {
  * Relationship and any subsequent eagerly loaded modules up to the maximum depth.
  *
  * @param {Neode} neode     Neode instance
- * @param {Integer} depth   Maximum depth to traverse to
+ * @param {Number} depth   Maximum depth to traverse to
  * @param {String} alias    Alias of the node
  * @param {Model} model     Node model
  */

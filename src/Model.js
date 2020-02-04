@@ -143,8 +143,8 @@ export default class Model extends Queryable {
      * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
      * @param  {String|Model|null} target   Target type definition for the
      * @param  {Object} schema              Property Schema
-     * @param  {Bool} eager                 Should this relationship be eager loaded?
-     * @param  {Bool|String} cascade        Cascade delete policy for this relationship
+     * @param  {Boolean} eager                 Should this relationship be eager loaded?
+     * @param  {Boolean|String} cascade        Cascade delete policy for this relationship
      * @param  {String} node_alias          Alias to give to the node in the pattern comprehension
      * @return {Relationship}
      */

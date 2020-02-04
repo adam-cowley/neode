@@ -16,7 +16,7 @@ export default class ModelMap {
      * Check if a model has been defined
      *
      * @param  {String} key
-     * @return {bool}
+     * @return {Boolean}
      */
     has(key) {
         return this.models.has(key);

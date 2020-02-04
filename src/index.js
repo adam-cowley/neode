@@ -17,7 +17,7 @@ export default class Neode {
      * @param  {String} connection_string
      * @param  {String} username
      * @param  {String} password
-     * @param  {Bool}   enterprise
+     * @param  {Boolean}   enterprise
      * @param  {Object} config
      * @return {Neode}
      */
@@ -120,7 +120,7 @@ export default class Neode {
     /**
      * Set Enterprise Mode
      *
-     * @param {Bool} enterprise
+     * @param {Boolean} enterprise
      */
     setEnterprise(enterprise) {
         this._enterprise = enterprise;
@@ -129,7 +129,7 @@ export default class Neode {
     /**
      * Are we running in enterprise mode?
      *
-     * @return {Bool}
+     * @return {Boolean}
      */
     enterprise() {
         return this._enterprise;
@@ -420,8 +420,8 @@ export default class Neode {
      * @param  {String}              label
      * @param  {Object}              properties
      * @param  {String|Array|Object} order
-     * @param  {Int}                 limit
-     * @param  {Int}                 skip
+     * @param  {Number}                 limit
+     * @param  {Number}                 skip
      * @return {Promise}
      */
     all(label, properties, order, limit, skip) {
@@ -443,7 +443,7 @@ export default class Neode {
      * Find a Node by it's internal node ID
      *
      * @param  {String} model
-     * @param  {int}    id
+     * @param  {Number}    id
      * @return {Promise}
      */
     findById(label, id) {

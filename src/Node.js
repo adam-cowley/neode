@@ -15,7 +15,7 @@ export default class Node extends Entity {
      *
      * @param  {Neode}   neode        Neode Instance
      * @param  {Model}   model        Model definition
-     * @param  {Integer} identity     Internal Node ID
+     * @param  {Number} identity     Internal Node ID
      * @param  {Array}   labels       Node labels
      * @param  {Object}  properties   Property Map
      * @param  {Map}     eager        Eagerly loaded values
@@ -69,7 +69,7 @@ export default class Node extends Entity {
     /**
      * Delete this node from the Graph
      *
-     * @param {Integer} to_depth    Depth to delete to (Defaults to 10)
+     * @param {Number} to_depth    Depth to delete to (Defaults to 10)
      * @return {Promise}
      */
     delete(to_depth) {

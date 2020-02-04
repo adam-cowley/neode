@@ -8,7 +8,7 @@ export default class Relationship extends Entity {
      *
      * @param {Neode}            neode          Neode instance
      * @param {RelationshipType} definition     Relationship type definition
-     * @param {Integer}          identity       Identity
+     * @param {Number}          identity       Identity
      * @param {String}           relationship   Relationship type
      * @param {Map}              properties     Map of properties for the relationship
      * @param {Node}             start          Start Node

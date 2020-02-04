@@ -62,7 +62,7 @@ export default class Entity {
     /**
      * Get Internal Node ID
      *
-     * @return {int}
+     * @return {Number}
      */
     id() {
         return this._identity.toNumber();
@@ -71,7 +71,7 @@ export default class Entity {
     /**
      * Return internal ID as a Neo4j Integer
      *
-     * @return {Integer}
+     * @return {Number}
      */
     identity() {
         return this._identity;

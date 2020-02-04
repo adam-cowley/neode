@@ -10,7 +10,7 @@ export const MAX_EAGER_DEPTH = 10;
  * @param {String}           alias          Alias of node
  * @param {RelationshipType} relationship   relationship type definition
  * @param {Array}            aliases        Current aliases
- * @param {Integer}          to_depth       Maximum depth to delete to
+ * @param {Number}          to_depth       Maximum depth to delete to
  */
 function addCascadeDeleteNode(neode, builder, from_alias, relationship, aliases, to_depth) {
     if ( aliases.length > to_depth ) return;
@@ -68,9 +68,9 @@ function addDetachNode(neode, builder, from_alias, relationship, aliases) {
  * Cascade Delete a Node
  *
  * @param {Neode}   neode       Neode instance
- * @param {Integer} identity    Neo4j internal ID of node to delete
+ * @param {Number} identity    Neo4j internal ID of node to delete
  * @param {Model}   model       Model definition
- * @param {Integer} to_depth    Maximum deletion depth
+ * @param {Number} to_depth    Maximum deletion depth
  */
 export default function DeleteNode(neode, identity, model, to_depth = MAX_EAGER_DEPTH) {
     const alias = 'this';
