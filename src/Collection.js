@@ -14,7 +14,7 @@ export default class Collection {
     /**
      * Get length property
      *
-     * @return {Int}
+     * @return {Integer}
      */
     get length() {
         return this._values.length;
@@ -31,7 +31,7 @@ export default class Collection {
     /**
      * Get a value by it's index
      *
-     * @param  {Int} index
+     * @param  {Integer} index
      * @return {Node}
      */
     get(index) {

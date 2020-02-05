@@ -62,7 +62,7 @@ export default class Entity {
     /**
      * Get Internal Node ID
      *
-     * @return {int}
+     * @return {Integer}
      */
     id() {
         return this._identity.toNumber();

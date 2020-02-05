@@ -77,8 +77,8 @@ export default class Queryable {
      *
      * @param  {Object}              properties
      * @param  {String|Array|Object} order
-     * @param  {Int}                 limit
-     * @param  {Int}                 skip
+     * @param  {Integer}                 limit
+     * @param  {Integer}                 skip
      * @return {Promise}
      */
     all(properties, order, limit, skip) {
@@ -101,7 +101,7 @@ export default class Queryable {
      * Find a Node by it's internal node ID
      *
      * @param  {String} model
-     * @param  {int}    id
+     * @param  {Integer}    id
      * @return {Promise}
      */
     findById(id) {
@@ -126,10 +126,10 @@ export default class Queryable {
      * @param  {Object}              properties
      * @param  {String}              location_property
      * @param  {Object}              point
-     * @param  {Int}                 distance
+     * @param  {Integer}                 distance
      * @param  {String|Array|Object} order
-     * @param  {Int}                 limit
-     * @param  {Int}                 skip
+     * @param  {Integer}                 limit
+     * @param  {Integer}                 skip
      * @return {Promise}
      */
     withinDistance(location_property, point, distance, properties, order, limit, skip) {

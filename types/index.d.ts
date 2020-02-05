@@ -9,7 +9,7 @@ declare class Neode {
    * @param  {String} connection_string
    * @param  {String} username
    * @param  {String} password
-   * @param  {Bool}   enterprise
+   * @param  {Boolean}   enterprise
    * @param  {Object} config
    * @return {Neode}
    */
@@ -43,14 +43,14 @@ declare class Neode {
   /**
    * Set Enterprise Mode
    *
-   * @param {Bool} enterprise
+   * @param {Boolean} enterprise
    */
   setEnterprise(enterprise: boolean): void;
 
   /**
    * Are we running in enterprise mode?
    *
-   * @return {Bool}
+   * @return {Boolean}
    */
   enterprise(): boolean;
 
@@ -210,8 +210,8 @@ declare class Neode {
    * @param  {String}              label
    * @param  {Object}              properties
    * @param  {String|Array|Object} order
-   * @param  {Int}                 limit
-   * @param  {Int}                 skip
+   * @param  {Integer}                 limit
+   * @param  {Integer}                 skip
    * @return {Promise}
    */
   all(label: string, properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number): Promise<Neode.NodeCollection>;
@@ -229,7 +229,7 @@ declare class Neode {
    * Find a Node by it's internal node ID
    *
    * @param  {String} model
-   * @param  {int}    id
+   * @param  {Integer}    id
    * @return {Promise}
    */
   findById<T>(label: string, id: number): Promise<Neode.Node<T>>;
@@ -478,13 +478,14 @@ declare namespace Neode {
     /**
      * Match a Node by a definition
      *
-     * @param  {String} alias      Alias in query
-     * @param  {Model}  model      Model definition
-     * @return {Builder}           Builder
+     * @param  {String} alias         Alias in query
+     * @param  {Model|String}  model  Model definition
+     * @param  {Object} [properties]  Properties of searched node
+     * @return {Builder}              Builder
      */
-    match<T>(alias: string, model: Model<T>): Builder;
+    match<T>(alias: string, model?: Model<T>, properties?: object): Builder;
 
-    optionalMatch<T>(alias: string, model: Model<T>): Builder;
+    optionalMatch<T>(alias: string, model: Model<T>, properties?: object): Builder;
 
     /**
      * Add a 'with' statement to the query
@@ -504,20 +505,55 @@ declare namespace Neode {
     /**
      * Add a where condition to the current statement.
      *
-     * @param  {...mixed} args Argumenta
+     * @param  {...*} args Arguments
      * @return {Builder}
      */
-    where(...args: Array<string>): Builder;
+    where(...args: Array<string|object>): Builder;
 
     /**
      * Query on Internal ID
      *
      * @param  {String} alias
-     * @param  {Int}    value
+     * @param  {Integer} value
      * @return {Builder}
      */
     whereId(alias: string, value: number): Builder;
 
+    /**
+     * Add a raw where clause
+     *
+     * @param  {String} clause
+     * @return {Builder}
+     */
+    whereRaw(clause: string): Builder;
+
+    /**
+     * A negative where clause
+     *
+     * @param {*} args
+     * @return {Builder}
+     */
+    whereNot(...args: any): Builder;
+
+    /**
+     * Between clause
+     *
+     * @param {String} alias
+     * @param {Mixed} floor
+     * @param {Mixed} ceiling
+     * @return {Builder}
+     */
+    whereBetween(alias, floor, ceiling): Builder;
+
+    /**
+     * Negative Between clause
+     *
+     * @param {String} alias
+     * @param {Mixed} floor
+     * @param {Mixed} ceiling
+     * @return {Builder}
+     */
+    whereNotBetween(alias, floor, ceiling): Builder;
     /**
      * Set Delete fields
      *
@@ -535,6 +571,36 @@ declare namespace Neode {
     detachDelete(...args: Array<string>): Builder;
 
     /**
+     * Start a Create Statement by alias/definition
+     *
+     * @param  {String} alias               Alias in query
+     * @param  {Model|String}  model        Model definition
+     * @param  {Object}   [properties]      Inline Properties
+     * @return {Builder}                    Builder
+     */
+    create(alias: string, model: Model<any>, properties?: object): Builder;
+
+    /**
+     * Start a Merge Statement by alias/definition
+     *
+     * @param  {String}        alias        Alias in query
+     * @param  {Model|String}  model        Model definition
+     * @param  {Object}   [properties]   Inline Properties
+     * @return {Builder}                    Builder
+     */
+    merge(alias: string, model: Model<any>, properties?: object): Builder;
+
+    /**
+     * Set a property
+     *
+     * @param {String|Object} property   Property in {alias}.{property} format
+     * @param {Mixed}         value      Value:q
+     *Q
+     * @param {String}        operator   Operator
+     */
+    set(property, value, operator?: string): Builder;
+
+    /**
      * Set Return fields
      *
      * @param  {...mixed} args
@@ -545,7 +611,7 @@ declare namespace Neode {
     /**
      * Set Record Limit
      *
-     * @param  {Int} limit
+     * @param  {Integer} limit
      * @return {Builder}
      */
     limit(limit: number): Builder;
@@ -553,7 +619,7 @@ declare namespace Neode {
     /**
      * Set Records to Skip
      *
-     * @param  {Int} skip
+     * @param  {Integer} skip
      * @return {Builder}
      */
     skip(skip: number): Builder;
@@ -572,7 +638,7 @@ declare namespace Neode {
      * @param  {String|RelationshipType} relationship  Relationship name or RelationshipType object
      * @param  {String}                  direction     Direction of relationship DIRECTION_IN, DIRECTION_OUT
      * @param  {String|null}             alias         Relationship alias
-     * @param  {Int|String}              traversals    Number of traversals (1, "1..2", "0..2", "..3")
+     * @param  {Integer|String}              traversals    Number of traversals (1, "1..2", "0..2", "..3")
      * @return {Builder}
      */
     relationship(relationship: string | RelationshipType, direction: Neode.Direction, alias: string | null, traversals: number | string): Builder;
@@ -660,8 +726,8 @@ declare namespace Neode {
      *
      * @param  {Object}              properties
      * @param  {String|Array|Object} order
-     * @param  {Int}                 limit
-     * @param  {Int}                 skip
+     * @param  {Integer}                 limit
+     * @param  {Integer}                 skip
      * @return {Promise}
      */
     all(properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number): Promise<NodeCollection>;
@@ -677,7 +743,7 @@ declare namespace Neode {
     /**
      * Find a Node by it's internal node ID
      *
-     * @param  {int}    id
+     * @param  {Integer}    id
      * @return {Promise}
      */
     findById(id: number): Promise<Node<T>>;
@@ -698,10 +764,10 @@ declare namespace Neode {
      * @param  {Object}              properties
      * @param  {String}              location_property
      * @param  {Object}              point
-     * @param  {Int}                 distance
+     * @param  {Integer}                 distance
      * @param  {String|Array|Object} order
-     * @param  {Int}                 limit
-     * @param  {Int}                 skip
+     * @param  {Integer}                 limit
+     * @param  {Integer}                 skip
      * @return {Promise}
      */
     withinDistance(location_property: string, point: {x: number, y: number, z?: number} | {latitude: number, longitude: number, height?: number}, distance: number, properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number): Promise<NodeCollection>;
@@ -764,8 +830,8 @@ declare namespace Neode {
      * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
      * @param  {String|Model|null} target   Target type definition for the
      * @param  {Object} schema              Property Schema
-     * @param  {Bool} eager                 Should this relationship be eager loaded?
-     * @param  {Bool|String} cascade        Cascade delete policy for this relationship
+     * @param  {Boolean} eager                 Should this relationship be eager loaded?
+     * @param  {Boolean|String} cascade        Cascade delete policy for this relationship
      * @return {Relationship}
      */
      relationship(name: string, type: string, relationship: string, direction?: Neode.Direction, target?: string | Model<T>, schema?: Neode.SchemaObject, eager?: boolean, cascade?: boolean | string): Relationship
@@ -830,8 +896,8 @@ declare namespace Neode {
      * @param  {String} direction           Direction of Node (Use constants DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH)
      * @param  {String|Model|null} target   Target type definition for the
      * @param  {Object} schema              Relationship definition schema
-     * @param  {Bool} eager                 Should this relationship be eager loaded?
-     * @param  {Bool|String} cascade        Cascade delete policy for this relationship
+     * @param  {Boolean} eager                 Should this relationship be eager loaded?
+     * @param  {Boolean|String} cascade        Cascade delete policy for this relationship
      * @return {Relationship}
      */
     constructor(type: string, relationship: string, direction: Neode.Direction, target: string | Model<any> | null, schema?: Neode.RelationshipSchema, eager?: boolean, cascade?: boolean | string);
@@ -881,7 +947,7 @@ declare namespace Neode {
     /**
      * Should this relationship be eagerly loaded?
      *
-     * @return {bool}
+     * @return {Boolean}
      */
     eager(): boolean;
 
@@ -918,7 +984,7 @@ declare namespace Neode {
     /**
      * Get Internal Relationship ID
      *
-     * @return {int}
+     * @return {Integer}
      */
     id(): number;
 
@@ -940,7 +1006,7 @@ declare namespace Neode {
      * Get a property for this relationship
      *
      * @param  {String} property Name of property
-     * @param  {or}     default  Default value to supply if none exists
+     * @param  {or}     [or]  Default value to supply if none exists
      * @return {mixed}
      */
     get<T>(property: string, or?: T): T;
@@ -950,21 +1016,14 @@ declare namespace Neode {
      *
      * @return Node
      */
-    startNode(): Node<any>;
+    from(): Node<any>;
 
     /**
      * Get destination node for this relationship
      *
      * @return Node
      */
-    endNode(): Node<any>;
-
-    /**
-     * Convert Relationship to Object
-     *
-     * @return {Promise}
-     */
-    toJson(): Promise<string>;
+    to(): Node<any>;
   }
 
   class Node<T> {
@@ -989,7 +1048,7 @@ declare namespace Neode {
     /**
      * Get Internal Node ID
      *
-     * @return {int}
+     * @return {Integer}
      */
     id(): number;
 
@@ -1004,10 +1063,10 @@ declare namespace Neode {
      * Get a property for this node
      *
      * @param  {String} property Name of property
-     * @param  {or}     default  Default value to supply if none exists
+     * @param  {or}     [or]  Default value to supply if none exists
      * @return {mixed}
      */
-    get<U>(property: string, or ?: U): U;
+    get<U>(property: string, or?: U): U;
 
     /**
      * Get all properties for this node
@@ -1062,21 +1121,21 @@ declare namespace Neode {
      * @constructor
      * @param  {Neode} neode    Neode Instance
      * @param  {Node[]} values  Array of Node
-     * @return {Collectiob}
+     * @return {Collection}
      */
     constructor(neode: Neode, values: Array<Node<any>>);
 
     /**
      * Get length property
      *
-     * @return {Int}
+     * @return {Integer}
      */
     length: number;
 
     /**
      * Get a value by it's index
      *
-     * @param  {Int} index
+     * @param  {Integer} index
      * @return {Node}
      */
     get(index: number): Node<any>;
