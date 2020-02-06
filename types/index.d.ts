@@ -641,15 +641,16 @@ declare namespace Neode {
      * @param  {Integer|String}              traversals    Number of traversals (1, "1..2", "0..2", "..3")
      * @return {Builder}
      */
-    relationship(relationship: string | RelationshipType, direction: Neode.Direction, alias: string | null, traversals: number | string): Builder;
+    relationship(relationship: string | RelationshipType, direction: Neode.Direction, alias: string | null, traversals?: number | string): Builder;
 
     /**
      * Complete a relationship
      * @param  {String} alias Alias
-     * @param  {Model} model  Model definition
+     * @param  {Model} [model]  Model definition
+     * @param  {Object} [properties]  Node properties
      * @return {Builder}
      */
-    to<T>(alias: string, model: Model<T>): Builder;
+    to<T>(alias: string, model?: Model<T>, properties?: object): Builder;
 
     /**
      * Complete the relationship statement to point to anything
