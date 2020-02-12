@@ -12,6 +12,10 @@ exports.valueToCypher = valueToCypher;
 
 var _neo4jDriver = require('neo4j-driver');
 
+var _neo4jDriver2 = _interopRequireDefault(_neo4jDriver);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 /**
@@ -22,11 +26,11 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
  * @return {Mixed}
  */
 function _valueToJson(property, value) {
-    if (_neo4jDriver.v1.isInt(value)) {
+    if (_neo4jDriver2.default.isInt(value)) {
         return value.toNumber();
-    } else if (_neo4jDriver.v1.temporal.isDate(value) || _neo4jDriver.v1.temporal.isDateTime(value) || _neo4jDriver.v1.temporal.isTime(value) || _neo4jDriver.v1.temporal.isLocalDateTime(value) || _neo4jDriver.v1.temporal.isLocalTime(value) || _neo4jDriver.v1.temporal.isDuration(value)) {
+    } else if (_neo4jDriver2.default.temporal.isDate(value) || _neo4jDriver2.default.temporal.isDateTime(value) || _neo4jDriver2.default.temporal.isTime(value) || _neo4jDriver2.default.temporal.isLocalDateTime(value) || _neo4jDriver2.default.temporal.isLocalTime(value) || _neo4jDriver2.default.temporal.isDuration(value)) {
         return value.toString();
-    } else if (_neo4jDriver.v1.spatial.isPoint(value)) {
+    } else if (_neo4jDriver2.default.spatial.isPoint(value)) {
         switch (value.srid.toString()) {
             // SRID values: @https://neo4j.com/docs/developer-manual/current/cypher/functions/spatial/
             case '4326':
@@ -60,7 +64,7 @@ function _valueToJson(property, value) {
 exports.valueToJson = _valueToJson;
 function valueToCypher(property, value) {
     if (property.convertToInteger() && value !== null && value !== undefined) {
-        value = _neo4jDriver.v1.int(value);
+        value = _neo4jDriver2.default.int(value);
     }
 
     return value;

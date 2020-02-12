@@ -1,7 +1,7 @@
 import Collection from './Collection';
 import Node from './Node';
 import Relationship from './Relationship';
-import { v1 as neo4j } from 'neo4j-driver';
+import neo4j from 'neo4j-driver';
 
 import { EAGER_ID, EAGER_LABELS, EAGER_TYPE, } from './Query/EagerUtils';
 import { DIRECTION_IN, } from './RelationshipType';

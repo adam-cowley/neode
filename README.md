@@ -42,11 +42,13 @@ npm i --save dotenv
 
 ```
 // .env
-NEO4J_PROTOCOL=bolt
+NEO4J_PROTOCOL=neo4j
 NEO4J_HOST=localhost
 NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=neo4j
 NEO4J_PORT=7687
+NEO4J_DATABASE=neo4j
+NEO4J_ENCRYPTION=ENCRYPTION_OFF
 ```
 
 ```javascript

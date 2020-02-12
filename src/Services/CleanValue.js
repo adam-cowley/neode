@@ -1,5 +1,5 @@
 /* eslint-disable */
-import { v1 as neo4j } from 'neo4j-driver';
+import neo4j from 'neo4j-driver';
 
 const temporal = [
     'date',

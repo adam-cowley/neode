@@ -4,7 +4,7 @@ import Model from '../Model';
 import Node from '../Node';
 import RelationshipType, { DEFAULT_ALIAS } from '../RelationshipType';
 import ValidationError from '../ValidationError';
-import { v1 as neo4j } from 'neo4j-driver';
+import neo4j from 'neo4j-driver';
 
 const joi_options = {
     allowUnknown:true,

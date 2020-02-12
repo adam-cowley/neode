@@ -1,7 +1,7 @@
 import { assert, expect } from 'chai';
 import Builder, { mode } from '../../src/Query/Builder';
 import WhereStatement from '../../src/Query/WhereStatement';
-import Integer from 'neo4j-driver/lib/v1/integer';
+import { int } from 'neo4j-driver';
 import RelationshipType from '../../src/RelationshipType';
 
 describe('Query/Builder.js', () => {
@@ -57,7 +57,7 @@ describe('Query/Builder.js', () => {
                 'RETURN',
                 'this'
             ].join('\n');
-            const expected_params = { where_this_id: new Integer(1) };
+            const expected_params = { where_this_id: int(1) };
 
             expect(query).to.equal(expected);
             expect(params).to.deep.equal(expected_params);
@@ -85,7 +85,7 @@ describe('Query/Builder.js', () => {
                 'this,that'
             ].join('\n');
 
-            const expected_params = { where_this_id: new Integer(1), where_that_id: new Integer(2) };
+            const expected_params = { where_this_id: int(1), where_that_id: int(2) };
 
             expect(query).to.equal(expected);
             expect(params).to.deep.equal(expected_params);
@@ -334,7 +334,7 @@ describe('Query/Builder.js', () => {
                 'this,that'
             ].join('\n');
 
-            const expected_params = { where_this_id: new Integer(1), where_that_id: new Integer(2) };
+            const expected_params = { where_this_id: int(1), where_that_id: int(2) };
 
             expect(query).to.equal(expected);
             expect(params).to.deep.equal(expected_params);

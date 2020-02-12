@@ -27,7 +27,7 @@ var WhereId = function () {
         key: 'toString',
         value: function toString() {
             var negative = this._negative ? 'NOT ' : '';
-            return negative + 'id(' + this._alias + ') = {' + this._param + '}';
+            return negative + 'id(' + this._alias + ') = $' + this._param;
         }
     }]);
 

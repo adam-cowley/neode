@@ -20,6 +20,8 @@ var _Relationship2 = _interopRequireDefault(_Relationship);
 
 var _neo4jDriver = require('neo4j-driver');
 
+var _neo4jDriver2 = _interopRequireDefault(_neo4jDriver);
+
 var _EagerUtils = require('./Query/EagerUtils');
 
 var _RelationshipType = require('./RelationshipType');
@@ -114,7 +116,7 @@ var Factory = function () {
             var _this2 = this;
 
             // Is there no better way to check this?!
-            if (_neo4jDriver.v1.isInt(record.identity) && Array.isArray(record.labels)) {
+            if (_neo4jDriver2.default.isInt(record.identity) && Array.isArray(record.labels)) {
                 var _Object$assign;
 
                 record = Object.assign({}, record.properties, (_Object$assign = {}, _defineProperty(_Object$assign, _EagerUtils.EAGER_ID, record.identity), _defineProperty(_Object$assign, _EagerUtils.EAGER_LABELS, record.labels), _Object$assign));
