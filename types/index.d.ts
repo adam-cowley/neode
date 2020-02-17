@@ -1,4 +1,4 @@
-import {} from 'neo4j-driver';
+import * as neo4j from 'neo4j-driver';
 
 declare class Neode {
   schema: Neode.Schema;
@@ -30,7 +30,7 @@ declare class Neode {
    * @param  {Object} models   Map of models with their schema.  ie {Movie: {...}}
    * @return {Neode}
    */
-  with(models: {[index: string]: Neode.SchemaObject}): Neode;
+  with(models: { [index: string]: Neode.SchemaObject }): Neode;
 
   /**
    * Scan a directory for Models
@@ -125,7 +125,7 @@ declare class Neode {
    * @param  {Boolean} force_create   Force the creation a new relationship? If false, the relationship will be merged
    * @return {Promise}
    */
-  relate<T,U>(from: Neode.Node<T>, to: Neode.Node<U>, type: string, properties: Neode.RelationshipSchema, force_create ?: boolean): Promise<Neode.Relationship>;
+  relate<T, U>(from: Neode.Node<T>, to: Neode.Node<U>, type: string, properties: Neode.RelationshipSchema, force_create?: boolean): Promise<Neode.Relationship>;
 
   /**
    * Run an explicitly defined Read query
@@ -134,7 +134,7 @@ declare class Neode {
    * @param  {Object} params
    * @return {Promise}
    */
-  readCypher(query: string, params: object): Promise<neo4j.StatementResult>;
+  readCypher(query: string, params: object): Promise<neo4j.QueryResult>;
 
   /**
    * Run an explicitly defined Write query
@@ -143,7 +143,7 @@ declare class Neode {
    * @param  {Object} params
    * @return {Promise}
    */
-  writeCypher(query: string, params: object): Promise<neo4j.StatementResult>;
+  writeCypher(query: string, params: object): Promise<neo4j.QueryResult>;
 
   /**
    * Run a Cypher query
@@ -152,7 +152,7 @@ declare class Neode {
    * @param  {Object} params
    * @return {Promise}
    */
-  cypher(query: string, params: object, session?: neo4j.Session): Promise<neo4j.StatementResult>;
+  cypher(query: string, params: object, session?: neo4j.Session): Promise<neo4j.QueryResult>;
 
   /**
    * Create a new Session in the Neo4j Driver.
@@ -188,7 +188,7 @@ declare class Neode {
    * @type {Array}
    * @return {Promise}
    */
-  batch(queries?: Array<{query: string | object, params?: object | string}>): Promise<any>;
+  batch(queries?: Array<{ query: string | object, params?: object | string }>): Promise<any>;
 
   /**
    * Close Driver
@@ -242,7 +242,7 @@ declare class Neode {
    * @param  {mixed}  value   Value
    * @return {Promise}
    */
-  first<T>(label: string, key: string | {[key: string]: any}, value: any): Promise<Neode.Node<T>>;
+  first<T>(label: string, key: string | { [key: string]: any }, value: any): Promise<Neode.Node<T>>;
 
   /**
    * Hydrate a set of nodes and return a NodeCollection
@@ -252,7 +252,7 @@ declare class Neode {
    * @param  {Definition|null} definition     Force Definition
    * @return {NodeCollection}
    */
-  hydrate<T>(res: neo4j.StatementResult, alias: string, definition?: Neode.Model<T>): Neode.NodeCollection;
+  hydrate<T>(res: neo4j.QueryResult, alias: string, definition?: Neode.Model<T>): Neode.NodeCollection;
 
   /**
    * Hydrate the first record in a result set
@@ -261,7 +261,7 @@ declare class Neode {
    * @param  {String} alias  Alias of Node to pluck
    * @return {Node}
    */
-  hydrateFirst<T>(res: neo4j.StatementResult, alias: string, definition?: Neode.Model<T>): Neode.Node<T>;
+  hydrateFirst<T>(res: neo4j.QueryResult, alias: string, definition?: Neode.Model<T>): Neode.Node<T>;
 
 }
 
@@ -277,19 +277,19 @@ declare namespace Neode {
   type NodesPropertyTypes = 'node' | 'nodes'
   type StringPropertyTypes = 'string' | 'uuid'
   type PropertyTypes = TemporalPropertyTypes | NumberPropertyTypes
-                        | RelationshipPropertyTypes | StringPropertyTypes | NodesPropertyTypes
-                        | 'boolean' | 'Point';
+    | RelationshipPropertyTypes | StringPropertyTypes | NodesPropertyTypes
+    | 'boolean' | 'Point';
 
   type Direction = 'direction_in' | 'direction_out' | 'direction_both' | 'in' | 'out';
 
   interface BaseNodeProperties {
-    primary?:   boolean
-    required?:  boolean
-    unique?:    boolean
-    indexed?:   boolean
-    hidden?:    boolean
-    readonly?:  boolean
-    default?:   any
+    primary?: boolean
+    required?: boolean
+    unique?: boolean
+    indexed?: boolean
+    hidden?: boolean
+    readonly?: boolean
+    default?: any
   }
 
   interface BaseNumberNodeProperties extends BaseNodeProperties {
@@ -417,7 +417,7 @@ declare namespace Neode {
      * Relationship attached properties
      */
     properties?: {
-        [index: string]: PropertyTypes
+      [index: string]: PropertyTypes
     }
   }
 
@@ -441,17 +441,17 @@ declare namespace Neode {
   }
 
   type NodeProperty = PropertyTypes
-                      | NumberNodeProperties | IntNodeProperties | IntegerNodeProperties | FloatNodeProperties
-                      | RelationshipNodeProperties | RelationshipsNodeProperties
-                      | NodeNodeProperties | NodesNodeProperties
-                      | StringNodeProperties | OtherNodeProperties;
+    | NumberNodeProperties | IntNodeProperties | IntegerNodeProperties | FloatNodeProperties
+    | RelationshipNodeProperties | RelationshipsNodeProperties
+    | NodeNodeProperties | NodesNodeProperties
+    | StringNodeProperties | OtherNodeProperties;
 
   export type SchemaObject = {
-      [index: string]: NodeProperty
+    [index: string]: NodeProperty
   };
 
   export type RelationshipSchema = {
-      [index: string]: BaseRelationshipNodeProperties
+    [index: string]: BaseRelationshipNodeProperties
   };
 
 
@@ -598,14 +598,14 @@ declare namespace Neode {
      * @param  {...String} output References to output
      * @return {Object}           Object containing `query` and `params` property
      */
-    build(): {query: string, params: object};
+    build(): { query: string, params: object };
 
     /**
      * Execute the query
      *
      * @return {Promise}
      */
-    execute(mode?: Mode): Promise<neo4j.StatementResult>;
+    execute(mode?: Mode): Promise<neo4j.QueryResult>;
   }
 
   class Queryable<T> {
@@ -704,7 +704,7 @@ declare namespace Neode {
      * @param  {Int}                 skip
      * @return {Promise}
      */
-    withinDistance(location_property: string, point: {x: number, y: number, z?: number} | {latitude: number, longitude: number, height?: number}, distance: number, properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number): Promise<NodeCollection>;
+    withinDistance(location_property: string, point: { x: number, y: number, z?: number } | { latitude: number, longitude: number, height?: number }, distance: number, properties?: object, order?: string | Array<any> | object, limit?: number, skip?: number): Promise<NodeCollection>;
   }
 
   class Model<T> extends Queryable<T> {
@@ -729,7 +729,7 @@ declare namespace Neode {
      *
      * @return {Map}
      */
-    properties(): Map<string,any>;
+    properties(): Map<string, any>;
 
     /**
      * Set Labels
@@ -768,7 +768,7 @@ declare namespace Neode {
      * @param  {Bool|String} cascade        Cascade delete policy for this relationship
      * @return {Relationship}
      */
-     relationship(name: string, type: string, relationship: string, direction?: Neode.Direction, target?: string | Model<T>, schema?: Neode.SchemaObject, eager?: boolean, cascade?: boolean | string): Relationship
+    relationship(name: string, type: string, relationship: string, direction?: Neode.Direction, target?: string | Model<T>, schema?: Neode.SchemaObject, eager?: boolean, cascade?: boolean | string): Relationship
 
 
     /**
@@ -776,7 +776,7 @@ declare namespace Neode {
      *
      * @return {Map}
      */
-    relationships(): Map<string,RelationshipType>;
+    relationships(): Map<string, RelationshipType>;
 
     /**
      * Get relationships defined as Eager relationships
@@ -977,7 +977,7 @@ declare namespace Neode {
      * @param  {Map}   eager  Eagerly loaded values
      * @return {Node}
      */
-    constructor(neode: Neode, model: Model<T>, node: neo4j.Node, eager?: Map<string,NodeCollection>);
+    constructor(neode: Neode, model: Model<T>, node: neo4j.Node, eager?: Map<string, NodeCollection>);
 
     /**
      * Model definition for this node
@@ -1007,7 +1007,7 @@ declare namespace Neode {
      * @param  {or}     default  Default value to supply if none exists
      * @return {mixed}
      */
-    get<U>(property: string, or ?: U): U;
+    get<U>(property: string, or?: U): U;
 
     /**
      * Get all properties for this node
@@ -1039,7 +1039,7 @@ declare namespace Neode {
      * @param  {Boolean} force_create   Force the creation a new relationship? If false, the relationship will be merged
      * @return {Promise}
      */
-    relateTo(node: Node<any>, type: string, properties ?: object, force_create ?: boolean): Promise<Relationship>;
+    relateTo(node: Node<any>, type: string, properties?: object, force_create?: boolean): Promise<Relationship>;
 
     /**
      * When converting to string, return this model's primary key
@@ -1117,7 +1117,7 @@ declare namespace Neode {
      *
      * @return {Promise}
      */
-    toJson():Promise<object>;
+    toJson(): Promise<object>;
 
   }
 
