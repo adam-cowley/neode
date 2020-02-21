@@ -61,12 +61,14 @@ var Neode = function () {
      * @param  {String} username
      * @param  {String} password
      * @param  {Bool}   enterprise
+     * @param  {String} database
      * @param  {Object} config
      * @return {Neode}
      */
     function Neode(connection_string, username, password) {
         var enterprise = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;
-        var config = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : {};
+        var database = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : 'neo4j';
+        var config = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : {};
 
         _classCallCheck(this, Neode);
 
@@ -75,6 +77,8 @@ var Neode = function () {
         this.models = new _ModelMap2.default(this);
         this.schema = new _Schema2.default(this);
         this.factory = new _Factory2.default(this);
+
+        this.database = database;
 
         this.setEnterprise(enterprise);
     }
@@ -132,6 +136,18 @@ var Neode = function () {
             });
 
             return this;
+        }
+
+        /**
+         * Set the default database for all future connections
+         * 
+         * @param {String} database 
+         */
+
+    }, {
+        key: 'setDatabase',
+        value: function setDatabase(database) {
+            this.database = database;
         }
 
         /**
@@ -382,7 +398,10 @@ var Neode = function () {
     }, {
         key: 'readSession',
         value: function readSession() {
-            return this.driver.session(_neo4jDriver2.default.READ);
+            return this.driver.session({
+                database: this.database,
+                defaultAccessMode: _neo4jDriver2.default.session.READ
+            });
         }
 
         /**
@@ -394,7 +413,10 @@ var Neode = function () {
     }, {
         key: 'writeSession',
         value: function writeSession() {
-            return this.driver.session(_neo4jDriver2.default.WRITE);
+            return this.driver.session({
+                database: this.database,
+                defaultAccessMode: _neo4jDriver2.default.session.WRITE
+            });
         }
 
         /**
@@ -599,11 +621,14 @@ var Neode = function () {
             var password = process.env.NEO4J_PASSWORD;
             var enterprise = process.env.NEO4J_ENTERPRISE === 'true';
 
+            // Multi-database
+            var database = process.env.NEO4J_DATABASE || 'neo4j';
+
             // Build additional config
             var config = {};
 
             var settings = {
-                NEO4J_ENCRYPTED: 'encrypted',
+                NEO4J_ENCRYPTION: 'encrypted',
                 NEO4J_TRUST: 'trust',
                 NEO4J_TRUSTED_CERTIFICATES: 'trustedCertificates',
                 NEO4J_KNOWN_HOSTS: 'knownHosts',
@@ -632,7 +657,7 @@ var Neode = function () {
                 }
             });
 
-            return new Neode(connection_string, username, password, enterprise, config);
+            return new Neode(connection_string, username, password, enterprise, database, config);
         }
     }]);
 

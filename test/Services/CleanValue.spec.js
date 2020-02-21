@@ -1,6 +1,6 @@
 import {assert, expect} from 'chai';
 import CleanValue from '../../src/Services/CleanValue';
-import { v1 as neo4j } from 'neo4j-driver';
+import neo4j from 'neo4j-driver';
 
 describe('Services/CleanValue.js', () => {
 

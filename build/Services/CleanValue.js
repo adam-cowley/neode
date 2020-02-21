@@ -7,6 +7,10 @@ exports.default = CleanValue;
 
 var _neo4jDriver = require('neo4j-driver');
 
+var _neo4jDriver2 = _interopRequireDefault(_neo4jDriver);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
 var temporal = ['date', 'datetime', 'time', 'localdatetime', 'localtime'];
 
 /**
@@ -31,7 +35,7 @@ function CleanValue(config, value) {
 
         case 'int':
         case 'integer':
-            value = _neo4jDriver.v1.int(parseInt(value));
+            value = _neo4jDriver2.default.int(parseInt(value));
             break;
 
         case 'bool':
@@ -44,23 +48,23 @@ function CleanValue(config, value) {
             break;
 
         case 'date':
-            value = value instanceof Date ? _neo4jDriver.v1.types.Date.fromStandardDate(value) : value;
+            value = value instanceof Date ? _neo4jDriver2.default.types.Date.fromStandardDate(value) : value;
             break;
 
         case 'datetime':
-            value = value instanceof Date ? _neo4jDriver.v1.types.DateTime.fromStandardDate(value) : value;
+            value = value instanceof Date ? _neo4jDriver2.default.types.DateTime.fromStandardDate(value) : value;
             break;
 
         case 'localdatetime':
-            value = value instanceof Date ? _neo4jDriver.v1.types.LocalDateTime.fromStandardDate(value) : value;
+            value = value instanceof Date ? _neo4jDriver2.default.types.LocalDateTime.fromStandardDate(value) : value;
             break;
 
         case 'time':
-            value = value instanceof Date ? _neo4jDriver.v1.types.Time.fromStandardDate(value) : value;
+            value = value instanceof Date ? _neo4jDriver2.default.types.Time.fromStandardDate(value) : value;
             break;
 
         case 'localtime':
-            value = value instanceof Date ? _neo4jDriver.v1.types.LocalTime.fromStandardDate(value) : value;
+            value = value instanceof Date ? _neo4jDriver2.default.types.LocalTime.fromStandardDate(value) : value;
             break;
 
         case 'point':
@@ -68,18 +72,18 @@ function CleanValue(config, value) {
             if (isNaN(value.x)) {
                 // WGS 84
                 if (isNaN(value.height)) {
-                    value = new _neo4jDriver.v1.types.Point(4326, // WGS 84 2D
+                    value = new _neo4jDriver2.default.types.Point(4326, // WGS 84 2D
                     value.longitude, value.latitude);
                 } else {
-                    value = new _neo4jDriver.v1.types.Point(4979, // WGS 84 3D
+                    value = new _neo4jDriver2.default.types.Point(4979, // WGS 84 3D
                     value.longitude, value.latitude, value.height);
                 }
             } else {
                 if (isNaN(value.z)) {
-                    value = new _neo4jDriver.v1.types.Point(7203, // Cartesian 2D
+                    value = new _neo4jDriver2.default.types.Point(7203, // Cartesian 2D
                     value.x, value.y);
                 } else {
-                    value = new _neo4jDriver.v1.types.Point(9157, // Cartesian 3D
+                    value = new _neo4jDriver2.default.types.Point(9157, // Cartesian 3D
                     value.x, value.y, value.z);
                 }
             }

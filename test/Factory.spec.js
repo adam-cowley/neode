@@ -5,7 +5,7 @@ import Model from '../src/Model';
 import Node from '../src/Node';
 import Relationship from '../src/Relationship';
 import { EAGER_ID, EAGER_LABELS, EAGER_TYPE, eagerNode, } from '../src/Query/EagerUtils';
-import { v1 as neo4j } from 'neo4j-driver';
+import neo4j from 'neo4j-driver';
 import RelationshipType from '../src/RelationshipType';
 
 describe('Factory.js', () => {
@@ -67,8 +67,8 @@ describe('Factory.js', () => {
             instance.create('FactoryTest', { id: 1 }),
             instance.create('FactoryTest', { id: 2 })
         ])
-        .then(() => done())
-        .catch(e => done(e));
+            .then(() => done())
+            .catch(e => done(e));
     });
 
     after(done => {

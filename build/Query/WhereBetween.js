@@ -28,7 +28,7 @@ var WhereBetween = function () {
         value: function toString() {
             var negative = this._negative ? 'NOT ' : '';
 
-            return negative + '{' + this._floor + '} <= ' + this._alias + ' <= {' + this._ceiling + '}';
+            return negative + '$' + this._floor + ' <= ' + this._alias + ' <= $' + this._ceiling;
         }
     }]);
 

@@ -1,7 +1,7 @@
 import {assert, expect} from 'chai';
 import Create from '../../src/Services/Create';
 import Node from '../../src/Node';
-import { v1 as neo4j } from 'neo4j-driver';
+import neo4j from 'neo4j-driver';
 
 const TIMEOUT = 10000;
 

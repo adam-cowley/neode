@@ -1,4 +1,4 @@
-import { v1 as neo4j } from 'neo4j-driver';
+import neo4j from 'neo4j-driver';
 import Entity from './Entity';
 import UpdateNode from './Services/UpdateNode';
 import DeleteNode from './Services/DeleteNode';

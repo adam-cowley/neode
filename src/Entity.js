@@ -1,5 +1,5 @@
 /* eslint indent: 0 */
-import { v1 as neo4j } from 'neo4j-driver';
+import neo4j from 'neo4j-driver';
 
 /**
  * Convert a raw property into a JSON friendly format

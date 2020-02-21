@@ -3,7 +3,7 @@ import {assert, expect} from 'chai';
 import Validator from '../../src/Services/Validator';
 import Node from '../../src/Node';
 import { ERROR_VALIDATION } from '../../src/ValidationError';
-import { v1 as neo4j } from 'neo4j-driver';
+import neo4j from 'neo4j-driver';
 
 
 describe('Services/Validator.js', () => {
