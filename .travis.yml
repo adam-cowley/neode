@@ -5,7 +5,7 @@ jdk:
   - oraclejdk8
 
 env:
-  - NEO4J_VERSION="3.5.11"
+  - NEO4J_VERSION="4.0.0"
 
 before_install:
   - wget dist.neo4j.org/neo4j-enterprise-$NEO4J_VERSION-unix.tar.gz

@@ -1,4 +1,4 @@
-import {} from 'neo4j-driver';
+import { QueryResult, Node, Relationship, Session, Transaction, Integer } from 'neo4j-driver';
 
 declare class Neode {
   schema: Neode.Schema;
@@ -134,7 +134,7 @@ declare class Neode {
    * @param  {Object} params
    * @return {Promise}
    */
-  readCypher(query: string, params: object): Promise<neo4j.StatementResult>;
+  readCypher(query: string, params: object): Promise<QueryResult>;
 
   /**
    * Run an explicitly defined Write query
@@ -143,7 +143,7 @@ declare class Neode {
    * @param  {Object} params
    * @return {Promise}
    */
-  writeCypher(query: string, params: object): Promise<neo4j.StatementResult>;
+  writeCypher(query: string, params: object): Promise<QueryResult>;
 
   /**
    * Run a Cypher query
@@ -152,35 +152,35 @@ declare class Neode {
    * @param  {Object} params
    * @return {Promise}
    */
-  cypher(query: string, params: object, session?: neo4j.Session): Promise<neo4j.StatementResult>;
+  cypher(query: string, params: object, session?: Session): Promise<QueryResult>;
 
   /**
    * Create a new Session in the Neo4j Driver.
    *
    * @return {Session}
    */
-  session(): neo4j.Session;
+  session(): Session;
 
   /**
    * Create an explicit Read Session
    *
    * @return {Session}
    */
-  readSession(): neo4j.Session;
+  readSession(): Session;
 
   /**
    * Create an explicit Write Session
    *
    * @return {Session}
    */
-  writeSession(): neo4j.Session;
+  writeSession(): Session;
 
   /**
    * Create a new Transaction
    *
    * @return {Transaction}
    */
-  transaction(): neo4j.Transaction;
+  transaction(): Transaction;
 
   /**
    * Run a batch of queries within a transaction
@@ -252,7 +252,7 @@ declare class Neode {
    * @param  {Definition|null} definition     Force Definition
    * @return {NodeCollection}
    */
-  hydrate<T>(res: neo4j.StatementResult, alias: string, definition?: Neode.Model<T>): Neode.NodeCollection;
+  hydrate<T>(res: QueryResult, alias: string, definition?: Neode.Model<T>): Neode.NodeCollection;
 
   /**
    * Hydrate the first record in a result set
@@ -261,7 +261,7 @@ declare class Neode {
    * @param  {String} alias  Alias of Node to pluck
    * @return {Node}
    */
-  hydrateFirst<T>(res: neo4j.StatementResult, alias: string, definition?: Neode.Model<T>): Neode.Node<T>;
+  hydrateFirst<T>(res: QueryResult, alias: string, definition?: Neode.Model<T>): Neode.Node<T>;
 
 }
 
@@ -605,7 +605,7 @@ declare namespace Neode {
      *
      * @return {Promise}
      */
-    execute(mode?: Mode): Promise<neo4j.StatementResult>;
+    execute(mode?: Mode): Promise<QueryResult>;
   }
 
   class Queryable<T> {
@@ -906,7 +906,7 @@ declare namespace Neode {
      * @param  {Node}             to            End node for the relationship
      * @return {Relationship}
      */
-    constructor(neode: Neode, type: RelationshipType, relationship: neo4j.Relationship, from: Node<any>, to: Node<any>);
+    constructor(neode: Neode, type: RelationshipType, relationship: Relationship, from: Node<any>, to: Node<any>);
 
     /**
      * Relationship Type definition for this node
@@ -927,7 +927,7 @@ declare namespace Neode {
      *
      * @return {Integer}
      */
-    idInt(): neo4j.Integer;
+    idInt(): Integer;
 
     /**
      * Get Properties for this Relationship
@@ -977,7 +977,7 @@ declare namespace Neode {
      * @param  {Map}   eager  Eagerly loaded values
      * @return {Node}
      */
-    constructor(neode: Neode, model: Model<T>, node: neo4j.Node, eager?: Map<string,NodeCollection>);
+    constructor(neode: Neode, model: Model<T>, node: Node, eager?: Map<string,NodeCollection>);
 
     /**
      * Model definition for this node
@@ -998,7 +998,7 @@ declare namespace Neode {
      *
      * @return {Integer}
      */
-    idInt(): neo4j.Integer;
+    idInt(): Integer;
 
     /**
      * Get a property for this node
