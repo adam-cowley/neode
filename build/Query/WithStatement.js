@@ -1,33 +1,37 @@
-'use strict';
+"use strict";
 
 Object.defineProperty(exports, "__esModule", {
-    value: true
+  value: true
 });
-
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+exports["default"] = void 0;
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var WithStatement = function () {
-    function WithStatement() {
-        _classCallCheck(this, WithStatement);
+function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
 
-        for (var _len = arguments.length, args = Array(_len), _key = 0; _key < _len; _key++) {
-            args[_key] = arguments[_key];
-        }
+function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
 
-        this._with = args;
+var WithStatement = /*#__PURE__*/function () {
+  function WithStatement() {
+    _classCallCheck(this, WithStatement);
+
+    for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
+      args[_key] = arguments[_key];
     }
 
-    _createClass(WithStatement, [{
-        key: 'toString',
-        value: function toString() {
-            var vars = this._with.join(',');
-            return 'WITH ' + vars;
-        }
-    }]);
+    this._with = args;
+  }
 
-    return WithStatement;
+  _createClass(WithStatement, [{
+    key: "toString",
+    value: function toString() {
+      var vars = this._with.join(',');
+
+      return 'WITH ' + vars;
+    }
+  }]);
+
+  return WithStatement;
 }();
 
-exports.default = WithStatement;
+exports["default"] = WithStatement;

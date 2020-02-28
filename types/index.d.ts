@@ -1,4 +1,4 @@
-import { QueryResult, Node, Relationship, Session, Transaction, Integer } from 'neo4j-driver';
+import { QueryResult, Node as Neo4jNode, Relationship, Session, Transaction, Integer } from 'neo4j-driver';
 
 declare class Neode {
   schema: Neode.Schema;
@@ -977,7 +977,7 @@ declare namespace Neode {
      * @param  {Map}   eager  Eagerly loaded values
      * @return {Node}
      */
-    constructor(neode: Neode, model: Model<T>, node: Node, eager?: Map<string,NodeCollection>);
+    constructor(neode: Neode, model: Model<T>, node: Neo4jNode, eager?: Map<string,NodeCollection>);
 
     /**
      * Model definition for this node

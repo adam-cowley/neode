@@ -1,33 +1,37 @@
-'use strict';
+"use strict";
 
 Object.defineProperty(exports, "__esModule", {
-    value: true
+  value: true
 });
-
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+exports["default"] = void 0;
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var WithDistinctStatement = function () {
-    function WithDistinctStatement() {
-        _classCallCheck(this, WithDistinctStatement);
+function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
 
-        for (var _len = arguments.length, args = Array(_len), _key = 0; _key < _len; _key++) {
-            args[_key] = arguments[_key];
-        }
+function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
 
-        this._with = args;
+var WithDistinctStatement = /*#__PURE__*/function () {
+  function WithDistinctStatement() {
+    _classCallCheck(this, WithDistinctStatement);
+
+    for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
+      args[_key] = arguments[_key];
     }
 
-    _createClass(WithDistinctStatement, [{
-        key: 'toString',
-        value: function toString() {
-            var vars = this._with.join(',');
-            return 'WITH DISTINCT ' + vars;
-        }
-    }]);
+    this._with = args;
+  }
 
-    return WithDistinctStatement;
+  _createClass(WithDistinctStatement, [{
+    key: "toString",
+    value: function toString() {
+      var vars = this._with.join(',');
+
+      return 'WITH DISTINCT ' + vars;
+    }
+  }]);
+
+  return WithDistinctStatement;
 }();
 
-exports.default = WithDistinctStatement;
+exports["default"] = WithDistinctStatement;
