@@ -78,7 +78,7 @@ NEO4J_DISABLE_LOSSLESS_INTEGERS=false
 
 #### Loading `with` Models
 
-You can use the `with()` method to load multipe models at once.
+You can use the `with()` method to load multiple models at once.
 
 ```javascript
 const neode = require('neode')
