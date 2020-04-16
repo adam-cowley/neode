@@ -125,8 +125,8 @@ export default class Neode {
 
     /**
      * Set the default database for all future connections
-     * 
-     * @param {String} database 
+     *
+     * @param {String} database
      */
     setDatabase(database) {
         this.database = database;
@@ -481,6 +481,28 @@ export default class Neode {
      */
     first(label, key, value) {
         return this.models.get(label).first(key, value);
+    }
+
+    /**
+     * Hydrate a set of nodes and return a Collection
+     *
+     * @param  {Object}          res            Neo4j result set
+     * @param  {String}          alias          Alias of node to pluck
+     * @return {Collection}
+     */
+    hydrateResult(res, alias) {
+        return this.factory.hydrateResult(res, alias);
+    }
+
+    /**
+     * Hydrate a set of nodes and return a Collection
+     *
+     * @param  {Object}          res            Neo4j result set
+     * @param  {String}          alias          Alias of node to pluck
+     * @return {Collection}
+     */
+    hydrateResults(res, alias) {
+        return this.factory.hydrateResults(res, alias);
     }
 
     /**

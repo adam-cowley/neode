@@ -115,8 +115,8 @@ var Neode = /*#__PURE__*/function () {
     }
     /**
      * Set the default database for all future connections
-     * 
-     * @param {String} database 
+     *
+     * @param {String} database
      */
 
   }, {
@@ -517,6 +517,32 @@ var Neode = /*#__PURE__*/function () {
     key: "first",
     value: function first(label, key, value) {
       return this.models.get(label).first(key, value);
+    }
+    /**
+     * Hydrate a set of nodes and return a Collection
+     *
+     * @param  {Object}          res            Neo4j result set
+     * @param  {String}          alias          Alias of node to pluck
+     * @return {Collection}
+     */
+
+  }, {
+    key: "hydrateResult",
+    value: function hydrateResult(res, alias) {
+      return this.factory.hydrateResult(res, alias);
+    }
+    /**
+     * Hydrate a set of nodes and return a Collection
+     *
+     * @param  {Object}          res            Neo4j result set
+     * @param  {String}          alias          Alias of node to pluck
+     * @return {Collection}
+     */
+
+  }, {
+    key: "hydrateResults",
+    value: function hydrateResults(res, alias) {
+      return this.factory.hydrateResults(res, alias);
     }
     /**
      * Hydrate a set of nodes and return a Collection

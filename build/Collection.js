@@ -64,6 +64,20 @@ var Collection = /*#__PURE__*/function () {
       return this._values[0];
     }
     /**
+     * Add value in collection
+     *
+     * @param  {mixed} value
+     * @return {Collection}
+     */
+
+  }, {
+    key: "add",
+    value: function add(value) {
+      this._values.push(value);
+
+      return this;
+    }
+    /**
      * Map a function to all values
      *
      * @param  {Function} fn
