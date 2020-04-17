@@ -13,7 +13,7 @@ function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _d
 
 /**
  *  Container holding information for a property.
- * 
+ *
  * TODO: Schema validation to enforce correct data types
  */
 var Property = /*#__PURE__*/function () {
@@ -29,7 +29,8 @@ var Property = /*#__PURE__*/function () {
     }
 
     this._name = name;
-    this._schema = schema; // TODO: Clean Up
+    this._schema = schema;
+    this._serialization = {}; // TODO: Clean Up
 
     Object.keys(schema).forEach(function (key) {
       _this['_' + key] = schema[key];
@@ -79,7 +80,12 @@ var Property = /*#__PURE__*/function () {
   }, {
     key: "hidden",
     value: function hidden() {
-      return this._hidden;
+      return this._serialization.hidden || false;
+    }
+  }, {
+    key: "groups",
+    value: function groups() {
+      return this._serialization.groups || [];
     }
   }, {
     key: "readonly",

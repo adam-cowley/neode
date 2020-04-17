@@ -23,7 +23,7 @@ const ignore = [
     'target',
     'direction',
     'eager',
-    'hidden',
+    'serialization',
     'readonly',
     'index',
     'unique',

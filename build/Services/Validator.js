@@ -32,7 +32,7 @@ var joi_options = {
   abortEarly: false
 }; // TODO: Move these to constants and validate the model schemas a bit better
 
-var ignore = ['labels', 'type', 'default', 'alias', 'properties', 'primary', 'relationship', 'target', 'direction', 'eager', 'hidden', 'readonly', 'index', 'unique', 'cascade'];
+var ignore = ['labels', 'type', 'default', 'alias', 'properties', 'primary', 'relationship', 'target', 'direction', 'eager', 'serialization', 'readonly', 'index', 'unique', 'cascade'];
 var booleans = ['optional', 'forbidden', 'strip', 'positive', 'negative', 'port', 'integer', 'iso', 'isoDate', 'insensitive', 'required', 'truncate', 'creditCard', 'alphanum', 'token', 'hex', 'hostname', 'lowercase', 'uppercase'];
 var booleanOrOptions = ['email', 'ip', 'uri', 'base64', 'normalize', 'hex'];
 

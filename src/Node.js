@@ -110,7 +110,7 @@ export default class Node extends Entity {
      *
      * @return {Promise}
      */
-    toJson() {
+    toJson(group) {
         const output = {
             _id: this.id(),
             _labels: this.labels(),
@@ -119,6 +119,10 @@ export default class Node extends Entity {
         // Properties
         this._model.properties().forEach((property, key) => {
             if ( property.hidden() ) {
+                return;
+            }
+
+            if ( group && (property.groups().length > 0 && property.groups().indexOf(group) === -1) ) {
                 return;
             }
 
@@ -156,7 +160,7 @@ export default class Node extends Entity {
 
             if ( this._eager.has( rel.name() ) ) {
                 // Call internal toJson function on either a Node or NodeCollection
-                return this._eager.get( rel.name() ).toJson()
+                return this._eager.get( rel.name() ).toJson(group)
                     .then(value => {
                         return { key, value };
                     });

@@ -170,7 +170,7 @@ var Node = /*#__PURE__*/function (_Entity) {
 
   }, {
     key: "toJson",
-    value: function toJson() {
+    value: function toJson(group) {
       var _this4 = this;
 
       var output = {
@@ -180,6 +180,10 @@ var Node = /*#__PURE__*/function (_Entity) {
 
       this._model.properties().forEach(function (property, key) {
         if (property.hidden()) {
+          return;
+        }
+
+        if (group && property.groups().length > 0 && property.groups().indexOf(group) === -1) {
           return;
         }
 
@@ -233,7 +237,7 @@ var Node = /*#__PURE__*/function (_Entity) {
 
         if (_this4._eager.has(rel.name())) {
           // Call internal toJson function on either a Node or NodeCollection
-          return _this4._eager.get(rel.name()).toJson().then(function (value) {
+          return _this4._eager.get(rel.name()).toJson(group).then(function (value) {
             return {
               key: key,
               value: value

@@ -1,6 +1,6 @@
 /**
  *  Container holding information for a property.
- * 
+ *
  * TODO: Schema validation to enforce correct data types
  */
 export default class Property {
@@ -11,6 +11,7 @@ export default class Property {
 
         this._name = name;
         this._schema = schema;
+        this._serialization = {};
 
         // TODO: Clean Up
         Object.keys(schema).forEach(key => {
@@ -51,7 +52,11 @@ export default class Property {
     }
 
     hidden() {
-        return this._hidden;
+        return this._serialization.hidden || false;
+    }
+
+    groups() {
+        return this._serialization.groups || [];
     }
 
     readonly() {

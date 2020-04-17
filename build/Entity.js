@@ -124,7 +124,7 @@ var Entity = /*#__PURE__*/function () {
       var output = {};
       var model = this._model || this._definition;
       model.properties().forEach(function (property, key) {
-        if (!property.hidden() && _this._properties.has(key)) {
+        if (_this._properties.has(key)) {
           output[key] = _this.valueToJson(property, _this._properties.get(key));
         }
       });

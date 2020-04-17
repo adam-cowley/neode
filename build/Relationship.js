@@ -132,7 +132,7 @@ var Relationship = /*#__PURE__*/function (_Entity) {
 
   }, {
     key: "toJson",
-    value: function toJson() {
+    value: function toJson(group) {
       var _this2 = this;
 
       var output = {
@@ -143,6 +143,10 @@ var Relationship = /*#__PURE__*/function (_Entity) {
 
       definition.properties().forEach(function (property, key) {
         if (property.hidden()) {
+          return;
+        }
+
+        if (group && property.groups().length > 0 && property.groups().indexOf(group) === -1) {
           return;
         }
 
