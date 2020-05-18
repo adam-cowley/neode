@@ -18,7 +18,7 @@ const temporal = [
 */
 export default function CleanValue(config, value) {
     // Convert temporal to a native date?
-    if ( temporal.indexOf( config.type.toLowerCase() ) > -1 && typeof value == 'number' ) {
+    if ( temporal.indexOf( config.type.toLowerCase() ) > -1 && (typeof value == 'number' || typeof value == 'string') ) {
         value = new Date(value)
     }
 
