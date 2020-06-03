@@ -15,6 +15,8 @@ var _DeleteNode = _interopRequireDefault(require("./Services/DeleteNode"));
 
 var _RelateTo = _interopRequireDefault(require("./Services/RelateTo"));
 
+var _DetachFrom = _interopRequireDefault(require("./Services/DetachFrom"));
+
 var _RelationshipType = _interopRequireDefault(require("./RelationshipType"));
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { "default": obj }; }
@@ -171,6 +173,22 @@ var Node = /*#__PURE__*/function (_Entity) {
 
         return rel;
       });
+    }
+    /**
+     * Detach this node to another
+     *
+     * @param  {Node} node Node to detach from
+     * @return {Promise}
+     */
+
+  }, {
+    key: "detachFrom",
+    value: function detachFrom(other) {
+      if (!(other instanceof Node)) {
+        return Promise.reject(new Error("Cannot find node with type ".concat(other)));
+      }
+
+      return (0, _DetachFrom["default"])(this._neode, this, other);
     }
     /**
      * Convert Node to a JSON friendly Object

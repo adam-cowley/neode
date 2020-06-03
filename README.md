@@ -484,6 +484,21 @@ Promise.all([
 
 **Note:** when creating a relationship defined as `in` (`DIRECTION_IN`), from `from()` and `to()` properties will be inversed regardless of which model the relationship is created by.
 
+### Detaching two nodes
+You can detach two nodes by calling the `detachFrom()` method.
+
+```javascript
+model.detachFrom(other)
+```
+```javascript
+Promise.all([
+    instance.create('Person', {name: 'Adam'}),
+    instance.create('Person', {name: 'Joe'})
+])
+.then(([adam, joe]) => {
+    adam.detachFrom(joe) // Adam does not know Joe
+});
+
 ### Deleting a node
 You can delete a Node instance directly by calling the `delete()` method.
 
