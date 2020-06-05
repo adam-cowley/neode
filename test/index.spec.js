@@ -357,6 +357,30 @@ describe('index.js', () => {
         });
     });
 
+    describe('::detachFrom', () => {
+        it('should detach two nodes', (done) => {
+            Promise.all([
+                instance.create(label, {name: 'From'}),
+                instance.create(label, {name: 'To'}),
+            ])
+                .then(([from, to]) => from.detachFrom(to))
+                .then(([from, to]) => {
+                    return instance.cypher(
+                        'MATCH (start)-[rel]->(end) WHERE id(start) = $start AND id(end) = $end RETURN count(*) as count',
+                        {
+                            start: from.identity(),
+                            end: to.identity(),
+                        }
+                    )
+                        .then(res => {
+                            expect(res.records[0].get('count').toNumber()).to.equal(0);
+                        });
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+    });
+
     describe('::query', () => {
         it('should return a query builder', () => {
             const query = instance.query();
