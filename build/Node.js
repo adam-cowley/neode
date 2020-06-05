@@ -17,6 +17,8 @@ var _RelateTo = _interopRequireDefault(require("./Services/RelateTo"));
 
 var _DetachFrom = _interopRequireDefault(require("./Services/DetachFrom"));
 
+var _Detach = _interopRequireDefault(require("./Services/Detach"));
+
 var _RelationshipType = _interopRequireDefault(require("./RelationshipType"));
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { "default": obj }; }
@@ -189,6 +191,28 @@ var Node = /*#__PURE__*/function (_Entity) {
       }
 
       return (0, _DetachFrom["default"])(this._neode, this, other);
+    }
+    /**
+     * Detach this node from a given relationship to an optional node
+     * @param  {String} type  Type of Relationship definition
+     * @param  {Node}   other Node to detach from
+     * @return {Promise}
+     */
+
+  }, {
+    key: "detach",
+    value: function detach(type, other) {
+      var relationship = this._model.relationships().get(type);
+
+      if (!(relationship instanceof _RelationshipType["default"])) {
+        return Promise.reject(new Error("Cannot find relationship with type ".concat(type)));
+      }
+
+      if (other && !(other instanceof Node)) {
+        return Promise.reject(new Error("Cannot find node with type ".concat(other)));
+      }
+
+      return (0, _Detach["default"])(this._neode, this, relationship, other);
     }
     /**
      * Convert Node to a JSON friendly Object

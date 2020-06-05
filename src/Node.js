@@ -4,6 +4,7 @@ import UpdateNode from './Services/UpdateNode';
 import DeleteNode from './Services/DeleteNode';
 import RelateTo from './Services/RelateTo';
 import DetachFrom from './Services/DetachFrom';
+import Detach from './Services/Detach';
 import RelationshipType from './RelationshipType';
 
 /**
@@ -118,6 +119,26 @@ export default class Node extends Entity {
         }
 
         return DetachFrom(this._neode, this, other);
+    }
+
+    /**
+     * Detach this node from a given relationship to an optional node
+     * @param  {String} type  Type of Relationship definition
+     * @param  {Node}   other Node to detach from
+     * @return {Promise}
+     */
+    detach(type, other) {
+        const relationship = this._model.relationships().get(type);
+
+        if (!(relationship instanceof RelationshipType)) {
+            return Promise.reject(new Error(`Cannot find relationship with type ${type}`));
+        }
+
+        if (other && !(other instanceof Node)) {
+            return Promise.reject(new Error(`Cannot find node with type ${other}`));
+        }
+
+        return Detach(this._neode, this, relationship, other);
     }
 
     /**

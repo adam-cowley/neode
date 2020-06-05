@@ -21,6 +21,22 @@ describe('index.js', () => {
                 test: 'boolean',
             },
         },
+        detach_test_1: {
+            type: 'relationship',
+            relationship: 'DETACH_TEST_1',
+            direction: 'OUT',
+            properties: {
+                test: 'boolean',
+            }
+        },
+        detach_test_2: {
+            type: 'relationship',
+            relationship: 'DETACH_TEST_2',
+            direction: 'OUT',
+            properties: {
+                test: 'boolean',
+            }
+        }
     };
     let instance;
 
@@ -354,6 +370,202 @@ describe('index.js', () => {
                             done();
                         });
                 })
+        });
+    });
+
+    describe('::detach', () => {
+        it('should detach a node from all nodes with specified relationship', (done) => {
+            const relationshipType = 'detach_test_1';
+
+            Promise.all([
+                instance.create(label, {name: 'From'}),
+                instance.create(label, {name: 'To1'}),
+                instance.create(label, {name: 'To2'})
+            ])
+                .then(([from, to1, to2]) => {
+                    return instance.relate(from, to1, relationshipType)
+                        .then(() => instance.relate(from, to2, relationshipType))
+                        .then((rel) => [from, rel]);
+                })
+                .then(([from, rel]) => {
+                    return from.detach(relationshipType)
+                        .then(() => [from, rel]);
+                })
+                .then(([from, rel]) => {
+                    return instance.cypher(
+                        `MATCH (start)-[rel:${rel.type()}]->(end) WHERE id(start) = $start RETURN count(*) as count`,
+                        {
+                            start: from.identity()
+                        }
+                    )
+                        .then(res => {
+                            expect(res.records[0].get('count').toNumber()).to.equal(0);
+                        });
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+
+        it('should only detach a node with specified relationship and leaves other relationship types attached', (done) => {
+            const relationshipType1 = 'detach_test_1';
+            const relationshipType2 = 'detach_test_2';
+
+            Promise.all([
+                instance.create(label, {name: 'From'}),
+                instance.create(label, {name: 'To'})
+            ])
+                .then(([from, to]) => {
+                    return instance.relate(from, to, relationshipType1)
+                        .then(() => instance.relate(from, to, relationshipType2))
+                        .then((rel) => [from, rel]);
+                })
+                .then(([from, rel]) => {
+                    // only delete relationshipType2, not relationshipType1
+                    return from.detach(relationshipType2)
+                        .then(() => [from, rel]);
+                })
+                .then(([from, rel]) => {
+                    return instance.cypher(
+                        `MATCH (start)-[rel:${rel.type()}]->(end) WHERE id(start) = $start RETURN count(*) as count`,
+                        {
+                            start: from.identity()
+                        }
+                    )
+                        .then(res => {
+                            expect(res.records[0].get('count').toNumber()).to.equal(0);
+                            return from;
+                        });
+                })
+                .then((from) => {
+                    return instance.cypher(
+                        `MATCH (start)-[rel]->(end) WHERE id(start) = $start RETURN count(*) as count`,
+                        {
+                            start: from.identity()
+                        }
+                    )
+                        .then(res => {
+                            // we have 1 match with relationshipType1. This has not been deleted
+                            expect(res.records[0].get('count').toNumber()).to.equal(1);
+                        });
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+
+        it('should only detach a node with specified relationship and node', (done) => {
+            Promise.all([
+                instance.create(label, {name: 'Adam'}),
+                instance.create(label, {name: 'Jay'}),
+                instance.create(label, {name: 'Peter'})
+            ])
+                .then(([adam, jay, peter]) => {
+                    return instance.relate(adam, jay, 'detach_test_1')
+                        .then(() => instance.relate(adam, peter, 'detach_test_1'))
+                        .then((rel) => [adam, jay, peter, rel]);
+                })
+                .then(([adam, jay, peter, rel]) => {
+                    // only delete relationship to node jay
+                    return adam.detach('detach_test_1', jay)
+                        .then(() => [adam, jay, peter, rel]);
+                })
+                .then(([adam, jay, peter, rel]) => {
+                    return instance.cypher(
+                        `MATCH (start)-[rel:${rel.type()}]->(end) WHERE id(start) = $start AND id(end) = $end RETURN count(*) as count`, {
+                            start: adam.identity(),
+                            end: jay.identity()
+                        }
+                    )
+                        .then(res => {
+                            expect(res.records[0].get('count').toNumber()).to.equal(0);
+                            return [adam, peter, rel];
+                        });
+                })
+                .then(([adam, peter, rel]) => {
+                    return instance.cypher(
+                        `MATCH (start)-[rel:${rel.type()}]->(end) WHERE id(start) = $start AND id(end) = $end RETURN count(*) as count`,
+                        {
+                            start: adam.identity(),
+                            end: peter.identity()
+                        }
+                    )
+                        .then(res => {
+                            // we have 1 match with node peter
+                            expect(res.records[0].get('count').toNumber()).to.equal(1);
+                        });
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+
+        it('should return the from node only when to node is not specified', (done) => {
+            const relationshipType = 'detach_test_1';
+
+            Promise.all([
+                instance.create(label, {name: 'From'}),
+                instance.create(label, {name: 'To'})
+            ])
+                .then(([from, to]) => {
+                    return instance.relate(from, to, relationshipType)
+                        .then(() => [from]);
+                })
+                .then(([from]) => from.detach(relationshipType))
+                .then(([from, to]) => {
+                    expect(from instanceof Node).to.equal(true);
+                    expect(to).to.equal(undefined);
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+
+        it('should return the from and to nodes when both are specified', (done) => {
+            const relationshipType = 'detach_test_1';
+
+            Promise.all([
+                instance.create(label, {name: 'From'}),
+                instance.create(label, {name: 'To'})
+            ])
+                .then(([from, to]) => {
+                    return instance.relate(from, to, relationshipType)
+                        .then(() => [from, to]);
+                })
+                .then(([from, to]) => from.detach(relationshipType, to))
+                .then(([from, to]) => {
+                    expect(from instanceof Node).to.equal(true);
+                    expect(to instanceof Node).to.equal(true);
+                })
+                .then(() => done())
+                .catch(e => done(e));
+        });
+
+        it('should throw an error for an unknown relationship type', done => {
+            Promise.all([
+                instance.create(label, {name: 'From'}),
+                instance.create(label, {name: 'To'}),
+            ])
+                .then(([from, to]) => {
+                    return from.detach('unknown', to)
+                        .then(() => {
+                            assert(false, 'Error should be thrown on unknown relationship type');
+                        })
+                        .catch(() => {
+                            done();
+                        });
+                });
+        });
+
+        it('should throw an error for an unknown node type', done => {
+            Promise.all([
+                instance.create(label, {name: 'From'})
+            ])
+                .then(([from]) => {
+                    return from.detach('detach_test_1', 'unknown_node')
+                        .then(() => {
+                            assert(false, 'Error should be thrown on unknown node type');
+                        })
+                        .catch(() => {
+                            done();
+                        });
+                });
         });
     });
 

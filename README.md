@@ -498,6 +498,29 @@ Promise.all([
 .then(([adam, joe]) => {
     adam.detachFrom(joe) // Adam does not know Joe
 });
+### Detaching nodes with specified relationship type
+You can detach two nodes by calling the `detach()` method.
+
+```javascript
+model.detach(type [, other])
+```
+```javascript
+Promise.all([
+    instance.create('Person', {name: 'Adam'}),
+    instance.create('Person', {name: 'Joe'})
+])
+.then(([adam, joe]) => {
+    return adam.relateTo(joe, 'knows', {since: 2010}); // Adam knows Joe
+        .then(() => [adam, joe]);
+});
+.then(([adam, joe]) => {
+    adam.detachFrom('knows', joe); // Adam does not know Joe
+})
+// OR
+.then(([adam]) => {
+    adam.detachFrom('knows'); // Adam does not know anyone
+});
+```
 
 ### Deleting a node
 You can delete a Node instance directly by calling the `delete()` method.
