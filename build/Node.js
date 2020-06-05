@@ -177,9 +177,8 @@ var Node = /*#__PURE__*/function (_Entity) {
       });
     }
     /**
-     * Detach this node to another
-     *
-     * @param  {Node} node Node to detach from
+     * Detach this node from another
+     * @param  {Node} other Node to detach from
      * @return {Promise}
      */
 

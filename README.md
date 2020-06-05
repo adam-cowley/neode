@@ -496,8 +496,14 @@ Promise.all([
     instance.create('Person', {name: 'Joe'})
 ])
 .then(([adam, joe]) => {
-    adam.detachFrom(joe) // Adam does not know Joe
+    return adam.relateTo(joe, 'knows', {since: 2010}); // Adam knows Joe
+        .then(() => [adam, joe]);
 });
+.then(([adam, joe]) => {
+    adam.detachFrom(joe); // Adam does not know Joe
+});
+```
+
 ### Detaching nodes with specified relationship type
 You can detach two nodes by calling the `detach()` method.
 

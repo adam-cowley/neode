@@ -575,6 +575,10 @@ describe('index.js', () => {
                 instance.create(label, {name: 'From'}),
                 instance.create(label, {name: 'To'}),
             ])
+                .then(([from, to]) => {
+                    return instance.relate(from, to, 'detach_test_1')
+                        .then(() => [from, to]);
+                })
                 .then(([from, to]) => from.detachFrom(to))
                 .then(([from, to]) => {
                     return instance.cypher(
@@ -590,6 +594,22 @@ describe('index.js', () => {
                 })
                 .then(() => done())
                 .catch(e => done(e));
+        });
+
+        it('should throw an error for an unknown relationship type', done => {
+            Promise.all([
+                instance.create(label, {name: 'From'}),
+                instance.create(label, {name: 'To'})
+            ])
+                .then(([from, to]) => {
+                    return from.detachFrom('unknown', to)
+                        .then(() => {
+                            assert(false, 'Error should be thrown on unknown relationship type');
+                        })
+                        .catch(() => {
+                            done();
+                        });
+                });
         });
     });
 
