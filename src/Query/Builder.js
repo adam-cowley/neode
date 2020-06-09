@@ -135,7 +135,7 @@ export default class Builder {
      */
     _addWhereParameter(key, value) {
         let attempt = 1;
-        let base = `where_${key.replace(/[^a-z0-9]+/, '_')}`;
+        let base = `where_${key.replace(/[^a-z0-9]+/g, '_')}`;
 
         // Try to create a unique key
         let variable = base;
