@@ -1,6 +1,6 @@
 /**
  *  Container holding information for a property.
- * 
+ *
  * TODO: Schema validation to enforce correct data types
  */
 export default class Property {
@@ -50,8 +50,12 @@ export default class Property {
         return this._primary || this._protected;
     }
 
-    hidden() {
-        return this._hidden;
+    hidden(group) {
+        if ( Array.isArray(this._hidden) && this._hidden.indexOf(group) !== -1) {
+            return true;
+        }
+
+        return this._hidden || false;
     }
 
     readonly() {

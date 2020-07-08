@@ -614,3 +614,40 @@ Dropping the schema will remove all indexes and constraints created by Neode.  A
 instance.schema.drop()
     .then(() => console.log('Schema dropped!'))
 ```
+
+## Serialization
+You can use the asynchrone function toJson() to serialize any node or relation obtained with a query.
+
+### Basic use
+```javascript
+instance.findById('Person', 1)
+    .then(person => return person.toJson())
+    .then(jsonPerson => console.log(jsonPerson));
+```
+
+### Hide elements
+You can choose to hide any property during serialization by using the "hidden" property in your scheme. It is also possible to control advanced use cases by passing a serialization group to the toJson() function.
+
+```javascript
+// models/Person.js
+module.exports = {
+  id: {
+    type: 'uuid',
+    primary: true
+  },
+  propertyToHide: {
+    type: 'string',
+    hidden: true
+  },
+  propertyOnlyForAdmin: {
+    type: 'string',
+    hidden: ['anonymous_user', 'basic_user']
+  }
+}
+```
+
+```javascript
+instance.findById('Person', 1)
+    .then(person => return person.toJson('anonymous_user'))
+    .then(jsonPerson => console.log(jsonPerson)); // propertyToHide and propertyOnlyForAdmin properties will not be visible
+```

@@ -187,6 +187,8 @@ export default class Model extends Queryable {
 
     /**
      * Get array of hidden fields
+     * Please note only properties always hidden are returned from this method
+     * Hidden values depanding on serialization context are not taken into account
      *
      * @return {String[]}
      */

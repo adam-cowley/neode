@@ -28,6 +28,10 @@ describe('Model.js', () => {
             unique: true,
             required: true,
         },
+        stringToHide: {
+            type: 'string',
+            hidden: ['toHide']
+        },
         relationship: {
             type: 'relationship',
             relationship: 'RELATIONSHIP',
@@ -100,6 +104,9 @@ describe('Model.js', () => {
 
             expect( model.properties().get('number').readonly() ).to.equal(true);
             expect( model.properties().get('number').hidden() ).to.equal(true);
+
+            expect( model.properties().get('stringToHide').hidden('toHide') ).to.equal(true);
+            expect( model.properties().get('stringToHide').hidden('anyOtherGroup') ).to.equal(false);
 
             expect( model.hidden() ).to.deep.equal(['number']);
 
