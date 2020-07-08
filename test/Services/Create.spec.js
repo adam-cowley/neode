@@ -163,7 +163,8 @@ describe('Services/Create.js', () => {
                     point: {
                         latitude: 51.555775,
                         longitude: -1.779718,
-                    }
+                    },
+                    dob: (new Date()).toISOString(),
                 };
 
                 Create(instance, model, data)
@@ -173,6 +174,7 @@ describe('Services/Create.js', () => {
                         expect( res.get('enabled') ).to.equal(false);
                         expect( res.get('age').toInt()) .to.equal(data.age);
                         assert( res.get('uuid').match(/^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/i) )
+                        expect( res.get('dob') ).to.be.an.instanceOf(neo4j.types.DateTime)
 
                         expect( res.get('point') ).to.be.an.instanceof(neo4j.types.Point);
                         expect( res.get('point').x ).to.equal(data.point.longitude);

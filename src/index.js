@@ -22,7 +22,7 @@ export default class Neode {
      * @param  {Object} config
      * @return {Neode}
      */
-    constructor(connection_string, username, password, enterprise = false, database = 'neo4j', config = {}) {
+    constructor(connection_string, username, password, enterprise = false, database = undefined, config = {}) {
         const auth = username && password ? neo4j.auth.basic(username, password) : null;
         this.driver = new neo4j.driver(connection_string, auth, config);
         this.models = new ModelMap(this);
@@ -125,8 +125,8 @@ export default class Neode {
 
     /**
      * Set the default database for all future connections
-     * 
-     * @param {String} database 
+     *
+     * @param {String} database
      */
     setDatabase(database) {
         this.database = database;
@@ -322,20 +322,22 @@ export default class Neode {
     /**
      * Create a new Session in the Neo4j Driver.
      *
+     * @param {String} database
      * @return {Session}
      */
-    session() {
-        return this.readSession();
+    session(database = this.database) {
+        return this.readSession(database);
     }
 
     /**
      * Create an explicit Read Session
      *
+     * @param {String} database
      * @return {Session}
      */
-    readSession() {
+    readSession(database = this.database) {
         return this.driver.session({
-            database: this.database,
+            database,
             defaultAccessMode: neo4j.session.READ,
         });
     }
@@ -343,11 +345,12 @@ export default class Neode {
     /**
      * Create an explicit Write Session
      *
+     * @param {String} database
      * @return {Session}
      */
-    writeSession() {
+    writeSession(database = this.database) {
         return this.driver.session({
-            database: this.database,
+            database,
             defaultAccessMode: neo4j.session.WRITE,
         });
     }
@@ -357,8 +360,8 @@ export default class Neode {
      *
      * @return {Transaction}
      */
-    transaction(mode = neo4j.WRITE) {
-        const session = this.driver.session();
+    transaction(mode = neo4j.WRITE, database = this.database) {
+        const session = this.driver.session(database);
         const tx = session.beginTransaction(mode);
 
         // Create an 'end' function to commit & close the session

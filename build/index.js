@@ -49,7 +49,7 @@ var Neode = /*#__PURE__*/function () {
    */
   function Neode(connection_string, username, password) {
     var enterprise = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;
-    var database = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : 'neo4j';
+    var database = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : undefined;
     var config = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : {};
 
     _classCallCheck(this, Neode);
@@ -115,8 +115,8 @@ var Neode = /*#__PURE__*/function () {
     }
     /**
      * Set the default database for all future connections
-     * 
-     * @param {String} database 
+     *
+     * @param {String} database
      */
 
   }, {
@@ -336,39 +336,45 @@ var Neode = /*#__PURE__*/function () {
     /**
      * Create a new Session in the Neo4j Driver.
      *
+     * @param {String} database
      * @return {Session}
      */
 
   }, {
     key: "session",
     value: function session() {
-      return this.readSession();
+      var database = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : this.database;
+      return this.readSession(database);
     }
     /**
      * Create an explicit Read Session
      *
+     * @param {String} database
      * @return {Session}
      */
 
   }, {
     key: "readSession",
     value: function readSession() {
+      var database = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : this.database;
       return this.driver.session({
-        database: this.database,
+        database: database,
         defaultAccessMode: _neo4jDriver["default"].session.READ
       });
     }
     /**
      * Create an explicit Write Session
      *
+     * @param {String} database
      * @return {Session}
      */
 
   }, {
     key: "writeSession",
     value: function writeSession() {
+      var database = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : this.database;
       return this.driver.session({
-        database: this.database,
+        database: database,
         defaultAccessMode: _neo4jDriver["default"].session.WRITE
       });
     }
@@ -382,7 +388,8 @@ var Neode = /*#__PURE__*/function () {
     key: "transaction",
     value: function transaction() {
       var mode = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : _neo4jDriver["default"].WRITE;
-      var session = this.driver.session();
+      var database = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : this.database;
+      var session = this.driver.session(database);
       var tx = session.beginTransaction(mode); // Create an 'end' function to commit & close the session
       // TODO: Clean up
 

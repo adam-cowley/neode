@@ -10,10 +10,11 @@ declare class Neode {
    * @param  {String} username
    * @param  {String} password
    * @param  {Bool}   enterprise
+   * @param  {String} database
    * @param  {Object} config
    * @return {Neode}
    */
-  constructor(connection_string: string, username: string, password: string, enterprise?: boolean, config?: object);
+  constructor(connection_string: string, username: string, password: string, enterprise?: boolean, database?: string, config?: object);
 
 
   /**
@@ -157,6 +158,7 @@ declare class Neode {
   /**
    * Create a new Session in the Neo4j Driver.
    *
+   * @param {String} database
    * @return {Session}
    */
   session(): Session;
@@ -164,23 +166,27 @@ declare class Neode {
   /**
    * Create an explicit Read Session
    *
+   * @param {String} database
    * @return {Session}
    */
-  readSession(): Session;
+  readSession(database?: string): Session;
 
   /**
    * Create an explicit Write Session
    *
+   * @param {String} database
    * @return {Session}
    */
-  writeSession(): Session;
+  writeSession(database?: string): Session;
 
   /**
    * Create a new Transaction
    *
+   * @param {String} mode
+   * @param {String} database
    * @return {Transaction}
    */
-  transaction(): Transaction;
+  transaction(mode?: string, database?: string): Transaction;
 
   /**
    * Run a batch of queries within a transaction

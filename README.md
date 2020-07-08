@@ -78,7 +78,7 @@ NEO4J_DISABLE_LOSSLESS_INTEGERS=false
 
 #### Loading `with` Models
 
-You can use the `with()` method to load multipe models at once.
+You can use the `with()` method to load multiple models at once.
 
 ```javascript
 const neode = require('neode')
@@ -226,12 +226,12 @@ Validation is provided by the [Joi](https://github.com/hapijs/joi/) library.  Ce
 | creditCard | Boolean | Requires the number to be a credit card number (Using Luhn Algorithm).
 | length | Number | Exact string length
 | regex | Object | Regular expression rule | `{ pattern: /([A-Z]+)/, invert: true, name: 'myRule'}`
-| replace | Object | Replace in value | `{ pattern: /(^[A-Z]+)/, replace: '-' }` 
+| replace | Object | Replace in value | `{ pattern: /(^[A-Z]+)/, replace: '-' }`
 | alphanum | Boolean | Requires the string value to only contain a-z, A-Z, and 0-9.
 | token | Boolean | Requires the string value to only contain a-z, A-Z, 0-9, and underscore _.
-| email | Boolean/Object | 
-| ip | Boolean/Object | 
-| uri | Boolean/Object | 
+| email | Boolean/Object |
+| ip | Boolean/Object |
+| uri | Boolean/Object |
 | guid  | Boolean
 | hex | Boolean/Object
 | base64 | Boolean/Object
@@ -322,7 +322,7 @@ instance.cypher(query, params)
 ```
 
 ```javascript
-instance.cypher('MATCH (p:Person {name: {name}}) RETURN p', {name: "Adam"})
+instance.cypher('MATCH (p:Person {name: $name}) RETURN p', {name: "Adam"})
     .then(res => {
         console.log(res.records.length);
     })
@@ -337,9 +337,9 @@ instance.batch(queries)
 
 ```javascript
 instance.batch([
-    {query: 'CREATE (p:Person {name: {name}}) RETURN p', params: {name: "Adam"}},
-    {query: 'CREATE (p:Person {name: {name}}) RETURN p', params: {name: "Joe"}},
-    {query: 'MATCH (first:Person {name: {first_name}}), (second:Person {name:{second_name}}) CREATE (first)-[:KNOWS]->(second)', params: {name: "Joe"}}
+    {query: 'CREATE (p:Person {name: $name}) RETURN p', params: {name: "Adam"}},
+    {query: 'CREATE (p:Person {name: $name}) RETURN p', params: {name: "Joe"}},
+    {query: 'MATCH (first:Person {name: $first_name}), (second:Person {name: $second_name}) CREATE (first)-[:KNOWS]->(second)', params: {name: "Joe"}}
 ])
     .then(res => {
         console.log(res.records.length);
@@ -483,6 +483,21 @@ Promise.all([
 ```
 
 **Note:** when creating a relationship defined as `in` (`DIRECTION_IN`), from `from()` and `to()` properties will be inversed regardless of which model the relationship is created by.
+
+### Detaching two nodes
+You can detach two nodes by calling the `detachFrom()` method.
+
+```javascript
+model.detachFrom(other)
+```
+```javascript
+Promise.all([
+    instance.create('Person', {name: 'Adam'}),
+    instance.create('Person', {name: 'Joe'})
+])
+.then(([adam, joe]) => {
+    adam.detachFrom(joe) // Adam does not know Joe
+});
 
 ### Deleting a node
 You can delete a Node instance directly by calling the `delete()` method.

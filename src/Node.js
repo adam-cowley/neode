@@ -3,6 +3,7 @@ import Entity from './Entity';
 import UpdateNode from './Services/UpdateNode';
 import DeleteNode from './Services/DeleteNode';
 import RelateTo from './Services/RelateTo';
+import DetachFrom from './Services/DetachFrom';
 import RelationshipType from './RelationshipType';
 
 /**
@@ -103,6 +104,20 @@ export default class Node extends Entity {
 
                 return rel;
             });
+    }
+
+    /**
+     * Detach this node to another
+     *
+     * @param  {Node} node Node to detach from
+     * @return {Promise}
+     */
+    detachFrom(other) {
+        if (!(other instanceof Node)) {
+            return Promise.reject(new Error(`Cannot find node with type ${other}`));
+        }
+
+        return DetachFrom(this._neode, this, other);
     }
 
     /**
