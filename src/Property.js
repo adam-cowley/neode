@@ -51,8 +51,8 @@ export default class Property {
     }
 
     hidden(group) {
-        if ( Array.isArray(this._hidden) && this._hidden.indexOf(group) !== -1) {
-            return true;
+        if ( Array.isArray(this._hidden) ) {
+            return (this._hidden.indexOf(group) !== -1);
         }
 
         return this._hidden || false;

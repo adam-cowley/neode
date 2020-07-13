@@ -27,9 +27,6 @@ describe('Model.js', () => {
             index: true,
             unique: true,
             required: true,
-        },
-        stringToHide: {
-            type: 'string',
             hidden: ['toHide']
         },
         relationship: {
@@ -85,7 +82,7 @@ describe('Model.js', () => {
             expect( model.primaryKey() ).to.deep.equal('uuid');
 
             // Check Properties
-            const props = ['uuid', 'boolean', 'number', 'string', 'stringToHide', 'int', 'integer'];
+            const props = ['uuid', 'boolean', 'number', 'string', 'int', 'integer'];
             expect( model.properties().size ).to.equal( props.length );
 
             props.forEach(name => {
@@ -101,12 +98,11 @@ describe('Model.js', () => {
 
             expect( model.properties().get('string').indexed() ).to.equal(true);
             expect( model.properties().get('string').unique() ).to.equal(true);
-
+            expect( model.properties().get('string').hidden('toHide') ).to.equal(true);
+            expect( model.properties().get('string').hidden('anyOtherGroup') ).to.equal(false);
+            
             expect( model.properties().get('number').readonly() ).to.equal(true);
             expect( model.properties().get('number').hidden() ).to.equal(true);
-
-            expect( model.properties().get('stringToHide').hidden('toHide') ).to.equal(true);
-            expect( model.properties().get('stringToHide').hidden('anyOtherGroup') ).to.equal(false);
 
             expect( model.hidden() ).to.deep.equal(['number']);
 
