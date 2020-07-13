@@ -85,7 +85,7 @@ describe('Model.js', () => {
             expect( model.primaryKey() ).to.deep.equal('uuid');
 
             // Check Properties
-            const props = ['uuid', 'boolean', 'number', 'string', 'int', 'integer'];
+            const props = ['uuid', 'boolean', 'number', 'string', 'stringToHide', 'int', 'integer'];
             expect( model.properties().size ).to.equal( props.length );
 
             props.forEach(name => {
