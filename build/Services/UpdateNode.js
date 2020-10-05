@@ -12,7 +12,7 @@ var _CleanValue = _interopRequireDefault(require("./CleanValue"));
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { "default": obj }; }
 
 function UpdateNode(neode, model, identity, properties) {
-  var query = "\n        MATCH (node)\n        WHERE id(node) = $identity\n        SET node += $properties\n        RETURN properties(node) as properties\n    "; // Clean up values
+  var query = "\n        MATCH (node)\n        WHERE id(node) = $identity\n        SET node += $properties\n        WITH node\n\n        UNWIND keys($properties) AS key\n        RETURN key, node[key] AS value\n    "; // Clean up values
 
   var schema = model.schema();
   Object.keys(schema).forEach(function (key) {
@@ -29,7 +29,12 @@ function UpdateNode(neode, model, identity, properties) {
       identity: identity,
       properties: properties
     }).then(function (res) {
-      return res.records[0].get('properties');
+      return res.records.map(function (row) {
+        return {
+          key: row.get('key'),
+          value: row.get('value')
+        };
+      });
     });
   });
 }
