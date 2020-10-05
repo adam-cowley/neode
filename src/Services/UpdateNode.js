@@ -6,7 +6,10 @@ export default function UpdateNode(neode, model, identity, properties) {
         MATCH (node)
         WHERE id(node) = $identity
         SET node += $properties
-        RETURN properties(node) as properties
+        WITH node
+
+        UNWIND keys($properties) AS key
+        RETURN key, node[key] AS value
     `;
 
     // Clean up values
@@ -25,7 +28,7 @@ export default function UpdateNode(neode, model, identity, properties) {
         .then(properties => {
             return neode.writeCypher(query, { identity, properties })
                 .then(res => {
-                    return res.records[0].get('properties');
+                    return res.records.map(row => ({ key: row.get('key'), value: row.get('value') }))
                 });
         });
 }

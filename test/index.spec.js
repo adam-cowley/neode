@@ -468,6 +468,7 @@ describe('index.js', () => {
         });
     });
 
+
     describe('::cypher', () => {
         it('should execute a function as part of a session', (done) => {
             const session = instance.session();
