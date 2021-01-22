@@ -603,15 +603,29 @@ export default class Builder {
     execute(query_mode = mode.WRITE) {
         const { query, params } = this.build();
 
+        let session
+
         switch (query_mode) {
             case mode.WRITE:
-                return this._neode.writeCypher(query, params);
+                session = this._neode.writeSession()
 
-            case mode.READ:
-                return this._neode.readCypher(query, params);
+                return session.writeTransaction(tx => tx.run(query, params))
+                    .then(res => {
+                        session.close()
+
+                        return res
+                    })
+
 
             default:
-                return this._neode.cypher(query, params);
+                session = this._neode.readSession()
+
+                return session.readTransaction(tx => tx.run(query, params))
+                    .then(res => {
+                        session.close()
+
+                        return res
+                    })
         }
     }
 
