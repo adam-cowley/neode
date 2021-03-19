@@ -817,8 +817,9 @@ declare namespace Neode {
 
     /**
      * Neode will install the schema created by the constraints defined in your Node definitions.
+     * @return {Promise}
      */
-    install(): void;
+    install(): Promise<any>;
 
     /**
      * Dropping the schema will remove all indexes and constraints created by Neode.
