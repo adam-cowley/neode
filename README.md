@@ -55,7 +55,7 @@ NEO4J_ENCRYPTION=ENCRYPTION_OFF
 // index.js
 import Neode from 'neode';
 
-const instance = new Neode.fromEnv();
+const instance = Neode.fromEnv();
 ```
 
 #### Additional Driver Config
@@ -477,7 +477,7 @@ Promise.all([
 .then(([adam, joe]) => {
     adam.relateTo(joe, 'knows', {since: 2010})
         .then(res => {
-            console.log(rel.from().get('name'), ' has known ', rel.to().get('name'), 'since', rel.get('since'));  // Adam has known Joe since 2010
+            console.log(res.startNode().get('name'), ' has known ', res.endNode().get('name'), 'since', res.get('since'));  // Adam has known Joe since 2010
         });
 });
 ```
