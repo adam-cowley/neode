@@ -81,7 +81,7 @@ declare class Neode {
    * @param  {Object} properties
    * @return {Node}
    */
-  create<T>(model: string, properties: object): Neode.Node<T>;
+  create<T>(model: string, properties: object): Promise<Neode.Node<T>>;
 
   /**
    * Merge a node based on the defined indexes
