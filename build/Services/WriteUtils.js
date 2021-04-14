@@ -246,7 +246,7 @@ function addRelationshipToStatement(neode, builder, alias, rel_alias, target_ali
       } // Create the Relationship
 
 
-  builder[mode](alias).relationship(relationship.relationship(), relationship.direction(), rel_alias).to(target_alias); // Set Relationship Properties
+  builder[mode](alias).relationship(relationship.relationship(), relationship.direction(), rel_alias).to(target_alias).with(_toConsumableArray(aliases)); // Set Relationship Properties
 
   relationship.properties().forEach(function (property) {
     var name = property.name();
@@ -298,5 +298,5 @@ function addNodeRelationshipToStatement(neode, builder, alias, rel_alias, target
       } // Create the Relationship
 
 
-  builder[mode](alias).relationship(relationship.relationship(), relationship.direction(), rel_alias).to(target_alias);
+  builder[mode](alias).relationship(relationship.relationship(), relationship.direction(), rel_alias).to(target_alias).with(_toConsumableArray(aliases));
 }
