@@ -491,6 +491,28 @@ export default class Neode {
      *
      * @param  {Object}          res            Neo4j result set
      * @param  {String}          alias          Alias of node to pluck
+     * @return {Collection}
+     */
+    hydrateResult(res, alias) {
+        return this.factory.hydrateResult(res, alias);
+    }
+
+    /**
+     * Hydrate a set of nodes and return a Collection
+     *
+     * @param  {Object}          res            Neo4j result set
+     * @param  {String}          alias          Alias of node to pluck
+     * @return {Collection}
+     */
+    hydrateResults(res, alias) {
+        return this.factory.hydrateResults(res, alias);
+    }
+
+    /**
+     * Hydrate a set of nodes and return a Collection
+     *
+     * @param  {Object}          res            Neo4j result set
+     * @param  {String}          alias          Alias of node to pluck
      * @param  {Definition|null} definition     Force Definition
      * @return {Collection}
      */

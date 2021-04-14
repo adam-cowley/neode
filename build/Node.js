@@ -116,6 +116,18 @@ var Node = /*#__PURE__*/function (_Entity) {
       return this;
     }
     /**
+     * Set an eager value on the fly
+     *
+     * @param  {String} key
+     * @return {Mixed}
+     */
+
+  }, {
+    key: "getEager",
+    value: function getEager(key) {
+      return this._eager.get(key);
+    }
+    /**
      * Delete this node from the Graph
      *
      * @param {Integer} to_depth    Depth to delete to (Defaults to 10)

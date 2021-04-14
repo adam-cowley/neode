@@ -15,6 +15,159 @@ export default class Factory {
      */
     constructor(neode) {
         this._neode = neode;
+        this._objectsById = [];
+        this._objectsAliases = [];
+        this._objectsResult = [];
+    }
+
+    /**
+     * Hydrate all nodes and relations from a result set, return first result
+     *
+     * @param  {Object} res    Neo4j Result
+     * @param  {String} alias  Alias of Node to pluck first
+     * @return {Node}
+     */
+    hydrateResult(res, alias) {
+        const results = this.hydrateResults(res, alias);
+
+        if (results.length > 0) {
+            return results[0];
+        }
+
+        return null;
+    }
+
+    /**
+     * Hydrate all nodes and relations from a result set, based on schema
+     *
+     * @param  {Object} res    Neo4j Result
+     * @param  {String} alias  Alias of Node to pluck first
+     * @return {Node}
+     */
+    hydrateResults(res, alias) {
+        this._objectsById = [];
+        this._objectsAliases = [];
+        this._objectsResult = [];
+
+        res.records.forEach((record) => {
+            this._visitedAliases = [];
+            this.hydrateRecord(record, alias);
+            this.hydrateRecordEagers(record, alias);
+        });
+
+        return this._objectsResult;
+    }
+
+    /**
+     * Hydrate nodes and relations from a record result, based on schema
+     *
+     * @param  {Object} record Neo4j Result Line
+     * @param  {String} alias  Alias of Node to pluck first
+     * @return {Node}
+     */
+    hydrateRecord(record, alias) {
+        record.keys.forEach((key) => {
+            const node = record.get(key);
+
+            if (node !== undefined && (node.constructor.name == "Node")) {
+                if (this._objectsById[node.identity.toNumber()] !== undefined) {
+                    return;
+                }
+
+                const entity = this.hydrateNode(node);
+                this._objectsById[node.identity.toNumber()] = entity;
+                this._objectsAliases[node.identity.toNumber()] = key;
+
+                if (key == alias) {
+                    this._objectsResult.push(entity);
+                }
+            }
+        });
+    }
+
+    /**
+     * Hydrate nodes and relations from a record result, based on schema
+     *
+     * @param  {Object} record Neo4j Result Line
+     * @param  {String} alias  Alias of reference Node
+     * @return {Node}
+     */
+    hydrateRecordEagers(record, alias) {
+        record.keys.forEach((key) => {
+            const relation = record.get(key);
+
+            if (relation === undefined || (relation.constructor.name !== "Relationship")) {
+                return;
+            }
+
+            if (this._objectsById[relation.identity.toNumber()] !== undefined) {
+                return;
+            }
+
+            let referenceNode = null;
+            let otherNode = null;
+            if (record.get(alias).identity.toNumber() == relation.start.toNumber()) {
+                referenceNode = this._objectsById[relation.start.toNumber()];
+                otherNode = this._objectsById[relation.end.toNumber()];
+            } else if (record.get(alias).identity.toNumber() == relation.end.toNumber()) {
+                referenceNode = this._objectsById[relation.end.toNumber()];
+                otherNode = this._objectsById[relation.start.toNumber()];
+            } else {
+                return;
+            }
+
+            const definition = this.getDefinition(null, referenceNode.labels())
+            definition.eager().forEach(eager => {
+                if (relation.type != eager.relationship()) {
+                    return;
+                }
+
+                if (otherNode.labels().indexOf(eager.target()) == -1) {
+                    return;
+                }
+
+                let refEager = null;
+                const name = eager.name();
+
+                switch (eager.type()) {
+                    case 'node':
+                        referenceNode.setEager(name, otherNode);
+                        break;
+
+                    case 'nodes':
+                        refEager = referenceNode.getEager(name);
+                        if (refEager === undefined) {
+                            refEager = new Collection(this._neode);
+                            referenceNode.setEager(name, refEager);
+                        }
+
+                        refEager.add(otherNode);
+                        break;
+
+                    case 'relationship':
+                        referenceNode.setEager(name, this.hydrateRelationship(eager, relation, referenceNode));
+                        break;
+
+                    case 'relationships':
+                        refEager = referenceNode.getEager(name);
+                        if (refEager === undefined) {
+                            refEager = new Collection(this._neode);
+                            referenceNode.setEager(name, refEager);
+                        }
+
+                        refEager.add(this.hydrateRelationship(eager, relation, referenceNode));
+                        break;
+                }
+            });
+
+            this._objectsById[relation.identity.toNumber()] = relation;
+            this._visitedAliases.push(alias);
+
+            const otherAlias = this._objectsAliases[otherNode.id()];
+            if (this._visitedAliases.indexOf(otherAlias) == -1) {
+                this.hydrateRecordEagers(record, otherAlias);
+            }
+        });
     }
 
     /**
@@ -57,8 +210,21 @@ export default class Factory {
      * @param  {Array} labels
      * @return {Model}
      */
-    getDefinition(labels) {
-        return this._neode.models.getByLabels(labels);
+    getDefinition(definition, labels) {
+        // Get Definition from
+        if ( !definition ) {
+            definition = this._neode.models.getByLabels(labels);
+        }
+        else if ( typeof definition === 'string' ) {
+            definition = this._neode.models.get(definition);
+        }
+
+        // Helpful error message if nothing could be found
+        if ( !definition ) {
+            throw new Error(`No model definition found for labels ${ JSON.stringify(labels) }`);
+        }
+
+        return definition;
     }
 
     /**
@@ -81,18 +247,8 @@ export default class Factory {
         const identity = record[ EAGER_ID ];
         const labels = record[ EAGER_LABELS ];
 
-        // Get Definition from
-        if ( !definition ) {
-            definition = this.getDefinition(labels);
-        }
-        else if ( typeof definition === 'string' ) {
-            definition = this._neode.models.get(definition);
-        }
-
-        // Helpful error message if nothing could be found
-        if ( !definition ) {
-            throw new Error(`No model definition found for labels ${ JSON.stringify(labels) }`);
-        }
+        // Get Definition
+        definition = this.getDefinition(definition, labels);
 
         // Get Properties
         const properties = new Map;
@@ -148,9 +304,6 @@ export default class Factory {
         // Get Internals
         const identity = record[ EAGER_ID ];
         const type = record[ EAGER_TYPE ];
-
-        // Get Definition from
-        // const definition = this.getDefinition(labels);
 
         // Get Properties
         const properties = new Map;

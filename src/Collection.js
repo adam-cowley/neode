@@ -48,6 +48,18 @@ export default class Collection {
     }
 
     /**
+     * Add value in collection
+     *
+     * @param  {mixed} value
+     * @return {Collection}
+     */
+    add(value) {
+        this._values.push(value);
+
+        return this;
+    }
+
+    /**
      * Map a function to all values
      *
      * @param  {Function} fn
