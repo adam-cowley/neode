@@ -244,7 +244,10 @@ var Builder = /*#__PURE__*/function () {
       if (!args.length || !args[0]) return this; // If 2 character length, it should be straight forward where
 
       if (args.length == 2) {
-        args = [args[0], _Where.OPERATOR_EQUALS, args[1]];
+        if (Array.isArray(args[1]))
+          args = [args[0], 'IN', args[1]];
+        else
+          args = [args[0], _Where.OPERATOR_EQUALS, args[1]];
       } // If only one argument, treat it as a single string
 
 
