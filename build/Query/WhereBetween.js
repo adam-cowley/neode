@@ -11,27 +11,30 @@ function _defineProperties(target, props) { for (var i = 0; i < props.length; i+
 
 function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
 
-var WithStatement = /*#__PURE__*/function () {
-  function WithStatement() {
-    _classCallCheck(this, WithStatement);
+var WhereBetween = /*#__PURE__*/function () {
+  function WhereBetween(alias, floor, ceiling) {
+    _classCallCheck(this, WhereBetween);
 
-    for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
-      args[_key] = arguments[_key];
-    }
-
-    this._with = args;
+    this._alias = alias;
+    this._floor = floor;
+    this._ceiling = ceiling;
+    this._negative = false;
   }
 
-  _createClass(WithStatement, [{
+  _createClass(WhereBetween, [{
+    key: "setNegative",
+    value: function setNegative() {
+      this._negative = true;
+    }
+  }, {
     key: "toString",
     value: function toString() {
-      var vars = this._with.join(',');
-
-      return 'WITH ' + vars;
+      var negative = this._negative ? 'NOT ' : '';
+      return "".concat(negative, "$").concat(this._floor, " <= ").concat(this._alias, " <= $").concat(this._ceiling);
     }
   }]);
 
-  return WithStatement;
+  return WhereBetween;
 }();
 
-exports["default"] = WithStatement;
+exports["default"] = WhereBetween;

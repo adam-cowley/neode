@@ -1,6 +1,6 @@
 import {assert, expect} from 'chai';
 import CleanValue from '../../src/Services/CleanValue';
-import { v1 as neo4j } from 'neo4j-driver';
+import neo4j from 'neo4j-driver';
 
 describe('Services/CleanValue.js', () => {
 
@@ -17,7 +17,7 @@ describe('Services/CleanValue.js', () => {
         const expected = parseInt(1.2);
         const output = CleanValue({ type: 'int' }, input);
 
-        expect(output).to.equal(expected);
+        expect(output.toNumber()).to.equal(expected);
     });
 
     it('should handle an integer', () => {
@@ -25,7 +25,7 @@ describe('Services/CleanValue.js', () => {
         const expected = parseInt(1.2);
         const output = CleanValue({ type: 'integer' }, input);
 
-        expect(output).to.equal(expected);
+        expect(output.toNumber()).to.equal(expected);
     });
 
     it('should handle a boolean', () => {
@@ -48,69 +48,159 @@ describe('Services/CleanValue.js', () => {
         expect(output).to.equal(expected);
     });
 
-    it('should handle a Date', () => {
-        const input = new Date();
-        const output = CleanValue({ type: 'date' }, input);
+    describe('Date', () => {
+        it('should handle a Date', () => {
+            const input = new Date();
+            const output = CleanValue({ type: 'date' }, input);
 
-        expect(output).to.be.an.instanceOf(neo4j.types.Date);
+            expect(output).to.be.an.instanceOf(neo4j.types.Date);
 
-        expect(output.year).to.equal(input.getFullYear());
-        expect(output.month).to.equal(input.getMonth()+1);
-        expect(output.day).to.equal(input.getDate());
+            expect(output.year).to.equal(input.getFullYear());
+            expect(output.month).to.equal(input.getMonth()+1);
+            expect(output.day).to.equal(input.getDate());
+        });
+
+        it('should handle a Date from a timestamp', () => {
+            const input = new Date;
+            const output = CleanValue({ type: 'date' }, input.getTime());
+
+            expect(output).to.be.an.instanceOf(neo4j.types.Date);
+
+            expect(output.year).to.equal(input.getFullYear());
+            expect(output.month).to.equal(input.getMonth()+1);
+            expect(output.day).to.equal(input.getDate());
+        });
     });
 
-    it('should handle a DateTime', () => {
-        const input = new Date();
-        const output = CleanValue({ type: 'datetime' }, input);
+    describe('DateTime', () => {
+        it('should handle a DateTime', () => {
+            const input = new Date();
+            const output = CleanValue({ type: 'datetime' }, input);
 
-        expect(output).to.be.an.instanceOf(neo4j.types.DateTime);
+            expect(output).to.be.an.instanceOf(neo4j.types.DateTime);
 
-        expect(output.year).to.equal(input.getFullYear());
-        expect(output.month).to.equal(input.getMonth()+1);
-        expect(output.day).to.equal(input.getDate());
-        expect(output.hour).to.equal(input.getHours());
-        expect(output.minute).to.equal(input.getMinutes());
-        expect(output.second).to.equal(input.getSeconds());
-        expect(output.timeZoneOffsetSeconds).to.equal(input.getTimezoneOffset() * 60);
+            expect(output.year).to.equal(input.getFullYear());
+            expect(output.month).to.equal(input.getMonth()+1);
+            expect(output.day).to.equal(input.getDate());
+            expect(output.hour).to.equal(input.getHours());
+            expect(output.minute).to.equal(input.getMinutes());
+            expect(output.second).to.equal(input.getSeconds());
+            // expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * -60);
+        });
+
+        it('should handle a DateTime as a timestamp', () => {
+            const input = new Date();
+            const output = CleanValue({ type: 'datetime' }, input.getTime());
+
+            expect(output).to.be.an.instanceOf(neo4j.types.DateTime);
+
+            expect(output.year).to.equal(input.getFullYear());
+            expect(output.month).to.equal(input.getMonth()+1);
+            expect(output.day).to.equal(input.getDate());
+            expect(output.hour).to.equal(input.getHours());
+            expect(output.minute).to.equal(input.getMinutes());
+            expect(output.second).to.equal(input.getSeconds());
+            // expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * -60);
+        });
+
+        it('should handle a DateTime as text', () => {
+            const input = new Date();
+            const output = CleanValue({ type: 'datetime' }, input.toISOString());
+
+            expect(output).to.be.an.instanceOf(neo4j.types.DateTime);
+
+            expect(output.year).to.equal(input.getFullYear());
+            expect(output.month).to.equal(input.getMonth()+1);
+            expect(output.day).to.equal(input.getDate());
+            expect(output.hour).to.equal(input.getHours());
+            expect(output.minute).to.equal(input.getMinutes());
+            expect(output.second).to.equal(input.getSeconds());
+            // expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * -60);
+        });
     });
 
-    it('should handle a LocalDateTime', () => {
-        const input = new Date();
-        const output = CleanValue({ type: 'LocalDateTime' }, input);
+    describe('LocalDateTime', () => {
+        it('should handle a LocalDateTime', () => {
+            const input = new Date();
+            const output = CleanValue({ type: 'LocalDateTime' }, input);
 
-        expect(output).to.be.an.instanceOf(neo4j.types.LocalDateTime);
+            expect(output).to.be.an.instanceOf(neo4j.types.LocalDateTime);
 
-        expect(output.year).to.equal(input.getFullYear());
-        expect(output.month).to.equal(input.getMonth()+1);
-        expect(output.day).to.equal(input.getDate());
-        expect(output.hour).to.equal(input.getHours());
-        expect(output.minute).to.equal(input.getMinutes());
-        expect(output.second).to.equal(input.getSeconds());
+            expect(output.year).to.equal(input.getFullYear());
+            expect(output.month).to.equal(input.getMonth()+1);
+            expect(output.day).to.equal(input.getDate());
+            expect(output.hour).to.equal(input.getHours());
+            expect(output.minute).to.equal(input.getMinutes());
+            expect(output.second).to.equal(input.getSeconds());
+        });
+
+        it('should handle a LocalDateTime as a timestamp', () => {
+            const input = new Date();
+            const output = CleanValue({ type: 'LocalDateTime' }, input.getTime());
+
+            expect(output).to.be.an.instanceOf(neo4j.types.LocalDateTime);
+
+            expect(output.year).to.equal(input.getFullYear());
+            expect(output.month).to.equal(input.getMonth()+1);
+            expect(output.day).to.equal(input.getDate());
+            expect(output.hour).to.equal(input.getHours());
+            expect(output.minute).to.equal(input.getMinutes());
+            expect(output.second).to.equal(input.getSeconds());
+        });
     });
 
-    it('should handle a Time', () => {
-        const input = new Date();
-        const output = CleanValue({ type: 'time' }, input);
+    describe('Time', () => {
+        it('should handle a Time', () => {
+            const input = new Date();
+            const output = CleanValue({ type: 'time' }, input);
 
-        expect(output).to.be.an.instanceOf(neo4j.types.Time);
+            expect(output).to.be.an.instanceOf(neo4j.types.Time);
 
-        expect(output.hour).to.equal(input.getHours());
-        expect(output.minute).to.equal(input.getMinutes());
-        expect(output.second).to.equal(input.getSeconds());
-        expect(output.nanosecond).to.equal(input.getMilliseconds() * 1000000);
-        expect(output.timeZoneOffsetSeconds).to.equal(input.getTimezoneOffset() * 60);
+            expect(output.hour).to.equal(input.getHours());
+            expect(output.minute).to.equal(input.getMinutes());
+            expect(output.second).to.equal(input.getSeconds());
+            expect(output.nanosecond).to.equal(input.getMilliseconds() * 1000000);
+            // expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * -60);
+        });
+
+        it('should handle a Time as a timestamp', () => {
+            const input = new Date();
+            const output = CleanValue({ type: 'time' }, input.getTime());
+
+            expect(output).to.be.an.instanceOf(neo4j.types.Time);
+
+            expect(output.hour).to.equal(input.getHours());
+            expect(output.minute).to.equal(input.getMinutes());
+            expect(output.second).to.equal(input.getSeconds());
+            expect(output.nanosecond).to.equal(input.getMilliseconds() * 1000000);
+            // expect(output.timeZoneOffsetSeconds).to.equal(Math.abs(input.getTimezoneOffset()) * -60);
+        });
     });
 
-    it('should handle a LocalTime', () => {
-        const input = new Date();
-        const output = CleanValue({ type: 'localtime' }, input);
+    describe('LocalTime', () => {
+        it('should handle a LocalTime', () => {
+            const input = new Date();
+            const output = CleanValue({ type: 'localtime' }, input);
 
-        expect(output).to.be.an.instanceOf(neo4j.types.LocalTime);
+            expect(output).to.be.an.instanceOf(neo4j.types.LocalTime);
 
-        expect(output.hour).to.equal(input.getHours());
-        expect(output.minute).to.equal(input.getMinutes());
-        expect(output.second).to.equal(input.getSeconds());
-        expect(output.nanosecond).to.equal(input.getMilliseconds() * 1000000);
+            expect(output.hour).to.equal(input.getHours());
+            expect(output.minute).to.equal(input.getMinutes());
+            expect(output.second).to.equal(input.getSeconds());
+            expect(output.nanosecond).to.equal(input.getMilliseconds() * 1000000);
+        });
+
+        it('should handle a LocalTime', () => {
+            const input = new Date();
+            const output = CleanValue({ type: 'localtime' }, input.getTime());
+
+            expect(output).to.be.an.instanceOf(neo4j.types.LocalTime);
+
+            expect(output.hour).to.equal(input.getHours());
+            expect(output.minute).to.equal(input.getMinutes());
+            expect(output.second).to.equal(input.getSeconds());
+            expect(output.nanosecond).to.equal(input.getMilliseconds() * 1000000);
+        });
     });
 
     describe('Points', () => {
@@ -158,5 +248,5 @@ describe('Services/CleanValue.js', () => {
             expect(output.z).to.equal(input.z);
         });
     });
-    
+
 });

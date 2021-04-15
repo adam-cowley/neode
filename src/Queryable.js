@@ -1,3 +1,4 @@
+import Builder from './Query/Builder';
 import Create from './Services/Create';
 import DeleteAll from './Services/DeleteAll';
 import FindAll from './Services/FindAll';
@@ -15,6 +16,15 @@ export default class Queryable {
      */
     constructor(neode) {
         this._neode = neode;
+    }
+
+    /**
+     * Return a new Query Builder
+     *
+     * @return {Builder}
+     */
+    query() {
+        return new Builder(this._neode);
     }
 
     /**

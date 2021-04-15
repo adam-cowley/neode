@@ -1,13 +1,12 @@
-'use strict';
+"use strict";
 
 Object.defineProperty(exports, "__esModule", {
-    value: true
+  value: true
 });
-exports.default = DeleteAll;
+exports["default"] = DeleteAll;
+
 // TODO : Delete Dependencies
-
 function DeleteAll(neode, model) {
-    var query = 'MATCH (node:' + model.labels().join(':') + ') DETACH DELETE node';
-
-    return neode.writeCypher(query);
+  var query = "MATCH (node:".concat(model.labels().join(':'), ") DETACH DELETE node");
+  return neode.writeCypher(query);
 }

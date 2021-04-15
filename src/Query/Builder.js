@@ -5,6 +5,7 @@ import Statement from './Statement';
 import Property from './Property';
 import WhereStatement from './WhereStatement';
 import Where, {OPERATOR_EQUALS} from './Where';
+import WhereBetween from './WhereBetween';
 import WhereId from './WhereId';
 import WhereRaw from './WhereRaw';
 import WithStatement from './WithStatement';
@@ -127,10 +128,34 @@ export default class Builder {
     }
 
     /**
+     * Generate a unique key and add the value to the params object
+     *
+     * @param {String} key
+     * @param {Mixed} value
+     */
+    _addWhereParameter(key, value) {
+        let attempt = 1;
+        let base = `where_${key.replace(/[^a-z0-9]+/g, '_')}`;
+
+        // Try to create a unique key
+        let variable = base;
+
+        while ( typeof this._params[ variable ] != "undefined" ) {
+            attempt++;
+
+            variable = `${base}_${attempt}`;
+        }
+
+        this._params[ variable ] = value;
+
+        return variable;
+    }
+
+    /**
      * Add a where condition to the current statement.
      *
      * @param  {...mixed} args Arguments
-     * @return {Builder}         
+     * @return {Builder}
      */
     where(...args) {
         if (!args.length || !args[0]) return this;
@@ -160,10 +185,10 @@ export default class Builder {
         }
         else {
             const [left, operator, value] = args;
-            const right = `where_${left}`.replace(/([^a-z0-9_]+)/i, '_');
+            const right = this._addWhereParameter(left, value);
 
             this._params[ right ] = value;
-            this._where.append(new Where(left, operator, `{${right}}`));
+            this._where.append(new Where(left, operator, `$${right}`));
         }
 
         return this;
@@ -174,12 +199,10 @@ export default class Builder {
      *
      * @param  {String} alias
      * @param  {Int}    value
-     * @return {Builder}       
+     * @return {Builder}
      */
     whereId(alias, value) {
-        const param = `where_id_${alias}`;
-
-        this._params[ param ] = neo4j.int(value);
+        const param = this._addWhereParameter(`${alias}_id`, neo4j.int(value));
 
         this._where.append(new WhereId(alias, param));
 
@@ -190,10 +213,57 @@ export default class Builder {
      * Add a raw where clause
      *
      * @param  {String} clause
-     * @return {Builder}       
+     * @return {Builder}
      */
     whereRaw(clause) {
         this._where.append(new WhereRaw(clause));
+
+        return this;
+    }
+
+    /**
+     * A negative where clause
+     *
+     * @param {*} args
+     * @return {Builder}
+     */
+    whereNot(...args) {
+        this.where(...args);
+
+        this._where.last().setNegative();
+
+        return this;
+    }
+
+    /**
+     * Between clause
+     *
+     * @param {String} alias
+     * @param {Mixed} floor
+     * @param {Mixed} ceiling
+     * @return {Builder}
+     */
+    whereBetween(alias, floor, ceiling) {
+        const floor_alias = this._addWhereParameter(`${alias}_floor`, floor);
+        const ceiling_alias = this._addWhereParameter(`${alias}_ceiling`, ceiling);
+
+        this._where.append(new WhereBetween(alias, floor_alias, ceiling_alias));
+
+        return this;
+    }
+
+    /**
+     * Negative Between clause
+     *
+     * @param {String} alias
+     * @param {Mixed} floor
+     * @param {Mixed} ceiling
+     * @return {Builder}
+     */
+    whereNotBetween(alias, floor, ceiling) {
+        this.whereBetween(alias, floor, ceiling);
+
+        this._where.last().setNegative();
 
         return this;
     }
@@ -240,9 +310,9 @@ export default class Builder {
     }
 
     /**
-     * Convert a map of properties into an Array of 
-     * 
-     * @param {Object|null} properties 
+     * Convert a map of properties into an Array of
+     *
+     * @param {Object|null} properties
      */
     _convertPropertyMap(alias, properties) {
         if ( properties ) {
@@ -277,11 +347,12 @@ export default class Builder {
 
     /**
      * Set a property
-     * 
+     *
      * @param {String|Object} property   Property in {alias}.{property} format
      * @param {Mixed}         value      Value
+     * @param {String}        operator   Operator
      */
-    set(property, value) {
+    set(property, value, operator = '=') {
         // Support a map of properties
         if ( !value && property instanceof Object ) {
             Object.keys(property).forEach(key => {
@@ -289,12 +360,16 @@ export default class Builder {
             });
         }
         else {
-            const alias = `set_${this._set_count}`;
-            this._params[ alias ] = value;
+            if ( value !== undefined ) {
+                const alias = `set_${this._set_count}`;
+                this._params[ alias ] = value;
 
-            this._set_count++;
+                this._set_count++;
 
-            this._current.set(property, alias);
+                this._current.set(property, alias, operator);
+            } else {
+                this._current.setRaw(property);
+            }
         }
 
         return this;
@@ -303,13 +378,14 @@ export default class Builder {
 
     /**
      * Set a property
-     * 
+     *
      * @param {String|Object} property   Property in {alias}.{property} format
      * @param {Mixed}         value      Value
+     * @param {String}        operator   Operator
      */
-    onCreateSet(property, value) {
+    onCreateSet(property, value, operator = '=') {
         // Support a map of properties
-        if ( !value && property instanceof Object ) {
+        if ( value === undefined && property instanceof Object ) {
             Object.keys(property).forEach(key => {
                 this.onCreateSet(key, property[ key ]);
             });
@@ -320,7 +396,7 @@ export default class Builder {
 
             this._set_count++;
 
-            this._current.onCreateSet(property, alias);
+            this._current.onCreateSet(property, alias, operator);
         }
 
         return this;
@@ -329,13 +405,14 @@ export default class Builder {
 
     /**
      * Set a property
-     * 
+     *
      * @param {String|Object} property   Property in {alias}.{property} format
      * @param {Mixed}         value      Value
+     * @param {String}        operator   Operator
      */
-    onMatchSet(property, value) {
+    onMatchSet(property, value, operator = '=') {
         // Support a map of properties
-        if ( !value && property instanceof Object ) {
+        if ( value === undefined && property instanceof Object ) {
             Object.keys(property).forEach(key => {
                 this.onMatchSet(key, property[ key ]);
             });
@@ -346,17 +423,17 @@ export default class Builder {
 
             this._set_count++;
 
-            this._current.onMatchSet(property, alias);
+            this._current.onMatchSet(property, alias, operator);
         }
 
         return this;
     }
 
     /**
-     * Remove properties or labels in {alias}.{property} 
+     * Remove properties or labels in {alias}.{property}
      * or {alias}:{Label} format
-     * 
-     * @param {[String]} items 
+     *
+     * @param {[String]} items
      */
     remove(...items) {
         this._current.remove(items);
@@ -449,11 +526,11 @@ export default class Builder {
      * @param  {String|RelationshipType} relationship  Relationship name or RelationshipType object
      * @param  {String}                  direction     Direction of relationship DIRECTION_IN, DIRECTION_OUT
      * @param  {String|null}             alias         Relationship alias
-     * @param  {Int|String}              traversals    Number of traversals (1, "1..2", "0..2", "..3")
+     * @param  {Int|String}              degrees        Number of traversdegreesals (1, "1..2", "0..2", "..3")
      * @return {Builder}
      */
-    relationship(relationship, direction, alias, traversals) {
-        this._current.relationship(relationship, direction, alias, traversals);
+    relationship(relationship, direction, alias, degrees) {
+        this._current.relationship(relationship, direction, alias, degrees);
 
         return this;
     }
@@ -466,7 +543,7 @@ export default class Builder {
      * @return {Builder}
      */
     to(alias, model, properties) {
-        this._current.match( new Match(alias, model, this._convertPropertyMap(properties) ) );
+        this._current.match( new Match(alias, model, this._convertPropertyMap(alias, properties) ) );
 
         return this;
     }
@@ -482,9 +559,9 @@ export default class Builder {
         return this;
     }
 
-    /** 
+    /**
      * Build the pattern without any keywords
-     * 
+     *
      * @return {String}
      */
     pattern() {
@@ -526,12 +603,29 @@ export default class Builder {
     execute(query_mode = mode.WRITE) {
         const { query, params } = this.build();
 
+        let session
+
         switch (query_mode) {
             case mode.WRITE:
-                return this._neode.writeCypher(query, params);
+                session = this._neode.writeSession()
+
+                return session.writeTransaction(tx => tx.run(query, params))
+                    .then(res => {
+                        session.close()
+
+                        return res
+                    })
+
 
             default:
-                return this._neode.cypher(query, params);
+                session = this._neode.readSession()
+
+                return session.readTransaction(tx => tx.run(query, params))
+                    .then(res => {
+                        session.close()
+
+                        return res
+                    })
         }
     }
 

@@ -5,7 +5,7 @@ import Model from '../src/Model';
 import Node from '../src/Node';
 import Relationship from '../src/Relationship';
 import { EAGER_ID, EAGER_LABELS, EAGER_TYPE, eagerNode, } from '../src/Query/EagerUtils';
-import { v1 as neo4j } from 'neo4j-driver';
+import neo4j from 'neo4j-driver';
 import RelationshipType from '../src/RelationshipType';
 
 describe('Factory.js', () => {
@@ -29,9 +29,9 @@ describe('Factory.js', () => {
                 relationship: 'RELATIONSHIP',
                 target: 'AnotherFactoryTest',
                 direction: 'out',
-                
+
                 eager: true,
-    
+
                 properties: {
                     prop: 'float',
                 },
@@ -42,7 +42,7 @@ describe('Factory.js', () => {
                 target: 'AnotherFactoryTest',
                 alias: 'alias',
                 direction: 'in',
-    
+
                 eager: true,
             },
             node: {
@@ -50,7 +50,7 @@ describe('Factory.js', () => {
                 relationship: 'NODE',
                 target: 'AnotherFactoryTest',
                 direction: 'out',
-    
+
                 eager: true,
             },
             nodes: {
@@ -58,7 +58,7 @@ describe('Factory.js', () => {
                 relationship: 'NODES',
                 target: 'AnotherFactoryTest',
                 direction: 'in',
-    
+
                 eager: true,
             },
         });
@@ -67,8 +67,8 @@ describe('Factory.js', () => {
             instance.create('FactoryTest', { id: 1 }),
             instance.create('FactoryTest', { id: 2 })
         ])
-        .then(() => done())
-        .catch(e => done(e));
+            .then(() => done())
+            .catch(e => done(e));
     });
 
     after(done => {
@@ -91,7 +91,7 @@ describe('Factory.js', () => {
             expect(output).to.equal(false);
         });
     });
-        
+
     describe('::hydrateFirst', () => {
         it('should return false on invalid result', () => {
             expect( factory.hydrateFirst(false) ).to.equal(false);
@@ -103,11 +103,11 @@ describe('Factory.js', () => {
 
         it('should hydrate alias from first result', done => {
             instance.cypher(`
-                MATCH (n:FactoryTest) 
-                RETURN n { 
-                    .*, 
-                    ${EAGER_ID}: id(n), 
-                    ${EAGER_LABELS}: labels(n) 
+                MATCH (n:FactoryTest)
+                RETURN n {
+                    .*,
+                    ${EAGER_ID}: id(n),
+                    ${EAGER_LABELS}: labels(n)
                 } ORDER BY n.id ASC LIMIT 1
             `)
                 .then(res => {
@@ -126,11 +126,11 @@ describe('Factory.js', () => {
 
         it('should hydrate alias from first result with specific model definition', done => {
             instance.cypher(`
-                MATCH (n:FactoryTest) 
-                RETURN n { 
-                    .*, 
-                    ${EAGER_ID}: id(n), 
-                    ${EAGER_LABELS}: labels(n) 
+                MATCH (n:FactoryTest)
+                RETURN n {
+                    .*,
+                    ${EAGER_ID}: id(n),
+                    ${EAGER_LABELS}: labels(n)
                 } ORDER BY n.id ASC LIMIT 1
             `)
                 .then(res => {
@@ -148,7 +148,7 @@ describe('Factory.js', () => {
         });
 
     });
-            
+
     describe('::hydrate', () => {
         it('should return false on invalid result', () => {
             expect( factory.hydrate(false) ).to.equal(false);
@@ -163,11 +163,11 @@ describe('Factory.js', () => {
 
         it('should hydrate alias', done => {
             instance.cypher(`
-                MATCH (n:FactoryTest) 
-                RETURN n { 
-                    .*, 
-                    ${EAGER_ID}: id(n), 
-                    ${EAGER_LABELS}: labels(n) 
+                MATCH (n:FactoryTest)
+                RETURN n {
+                    .*,
+                    ${EAGER_ID}: id(n),
+                    ${EAGER_LABELS}: labels(n)
                 } ORDER BY n.id ASC
             `)
                 .then(res => {
@@ -189,11 +189,11 @@ describe('Factory.js', () => {
 
         it('should hydrate alias from first result with specific model definition', done => {
             instance.cypher(`
-                MATCH (n:FactoryTest) 
-                RETURN n { 
-                    .*, 
-                    ${EAGER_ID}: id(n), 
-                    ${EAGER_LABELS}: labels(n) 
+                MATCH (n:FactoryTest)
+                RETURN n {
+                    .*,
+                    ${EAGER_ID}: id(n),
+                    ${EAGER_LABELS}: labels(n)
                 } ORDER BY n.id ASC
             `)
                 .then(res => {
@@ -220,7 +220,7 @@ describe('Factory.js', () => {
                 CREATE (t)<-[:RELATIONSHIPS]-(:AnotherFactoryTest {id: 5})
                 CREATE (t)-[:NODE]->(:AnotherFactoryTest {id: 6})
                 CREATE (t)<-[:NODES]-(:AnotherFactoryTest {id: 7})
-        
+
                 RETURN ${eagerNode(instance, 3, 't', alt_model)}
             `)
                 .then(res => {
@@ -266,14 +266,6 @@ describe('Factory.js', () => {
                     return relationship.toJson();
                 })
                 .then(json => {
-                    const expected = {
-                        _type: 'RELATIONSHIP',
-                        prop: 1.234,
-                        // node: {
-                        //     id: 4
-                        // }
-                    };
-
                     expect(json).to.deep.include({
                         _type: 'RELATIONSHIP',
                         prop: 1.234,
@@ -283,9 +275,12 @@ describe('Factory.js', () => {
                         id: 4,
                     });
                 })
+                .then(() => {
+                    return instance.cypher(`MATCH (n:AnotherFactoryTest) WHERE n.id IN [3, 4, 5, 6, 7] DETACH DELETE n`);
+                })
                 .then(() => done())
                 .catch(e => done(e))
-    
+
         });
 
         it('should convert and hydrate a native node', done => {
@@ -303,13 +298,11 @@ describe('Factory.js', () => {
                     expect( first.model() ).be.an.instanceOf(Model);
                     expect( first.model().name() ).to.equal('AnotherFactoryTest');
                     expect( first.get('id').toNumber() ).to.equal(8);
+
+                    return first.delete();
                 })
                 .then(() => done())
                 .catch(e => done(e));
-        })
-
-
+        });
     });
-        
-
 });

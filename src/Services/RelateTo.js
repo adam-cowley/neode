@@ -9,7 +9,7 @@ import Validator from './Validator';
 
 export default function RelateTo(neode, from, to, relationship, properties, force_create = false) {
     return GenerateDefaultValues(neode, relationship, properties)
-        .then(properties => Validator(neode, relationship, properties))
+        .then(properties => Validator(neode, relationship.schema(), properties))
         .then(properties => {
             const direction_in = relationship.direction() == DIRECTION_IN ? '<' : '';
             const direction_out = relationship.direction() == DIRECTION_OUT ? '>' : '';
@@ -25,7 +25,7 @@ export default function RelateTo(neode, from, to, relationship, properties, forc
                 set += 'SET ';
                 set += Object.keys(properties).map(key => {
                     params[`set_${key}`] = properties[ key ];
-                    return `rel.${key} = {set_${key}}`;
+                    return `rel.${key} = $set_${key}`;
                 }).join(', ');
             }
 
@@ -33,8 +33,8 @@ export default function RelateTo(neode, from, to, relationship, properties, forc
 
             const query = `
                 MATCH (from), (to)
-                WHERE id(from) = {from_id}
-                AND id(to) = {to_id}
+                WHERE id(from) = $from_id
+                AND id(to) = $to_id
                 ${mode} (from)${direction_in}-[rel:${type}]-${direction_out}(to)
                 ${set}
                 RETURN rel

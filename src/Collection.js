@@ -4,7 +4,7 @@ export default class Collection {
      * @constructor
      * @param  {Neode} neode    Neode Instance
      * @param  {Node[]} values  Array of Node
-     * @return {Collectiob}
+     * @return {Collection}
      */
     constructor(neode, values) {
         this._neode = neode;
@@ -19,6 +19,14 @@ export default class Collection {
     get length() {
         return this._values.length;
     }
+
+    /**
+     * Iterator
+     */
+    [Symbol.iterator]() {
+        return this._values.values();
+    }
+
 
     /**
      * Get a value by it's index
@@ -47,6 +55,16 @@ export default class Collection {
      */
     map(fn) {
         return this._values.map(fn);
+    }
+
+    /**
+     * Find value in collection
+     *
+     * @param  {Function} fn
+     * @return {mixed}
+     */
+    find(fn) {
+        return this._values.find(fn);
     }
 
     /**

@@ -59,7 +59,7 @@ export default class Statement {
         return this;
     }
 
-    relationship(relationship, direction, alias, traversals) {
+    relationship(relationship, direction, alias, degrees) {
         if ( relationship instanceof RelationshipType ) {
             const rel = relationship;
 
@@ -67,25 +67,31 @@ export default class Statement {
             direction = rel.direction();
         }
 
-        this._pattern.push(new Relationship(relationship, direction, alias, traversals));
+        this._pattern.push(new Relationship(relationship, direction, alias, degrees));
 
         return this;
     }
 
-    set(key, value) {
-        this._set.push( new Property(key, value) );
+    set(key, value, operator = '=') {
+        this._set.push( new Property(key, value, operator) );
+
+        return this;
+    }
+    
+    setRaw(items) {
+        this._set = this._set.concat(items);
 
         return this;
     }
 
-    onCreateSet(key, value) {
-        this._on_create_set.push( new Property(key, value) );
+    onCreateSet(key, value, operator = '=') {
+        this._on_create_set.push( new Property(key, value, operator) );
 
         return this;
     }
 
-    onMatchSet(key, value) {
-        this._on_match_set.push( new Property(key, value) );
+    onMatchSet(key, value, operator = '=') {
+        this._on_match_set.push( new Property(key, value, operator) );
 
         return this;
     }

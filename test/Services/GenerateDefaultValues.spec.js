@@ -74,8 +74,6 @@ describe('Services/GenerateDefaultValues.js', () => {
                 })
                 .catch(e => done(e));
         });
-
-        
     });
 
 });

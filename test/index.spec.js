@@ -5,11 +5,8 @@ import Node from '../src/Node';
 import Collection from '../src/Collection';
 import Property from '../src/Property';
 import Builder from '../src/Query/Builder';
-import neo4j from 'neo4j-driver';
-import {Driver} from 'neo4j-driver/lib/v1/driver';
-import {session as nativesession} from 'neo4j-driver/lib/v1/session';
 import Relationship from '../src/Relationship';
-import TransactionError, { ERROR_TRANSACTION_FAILED } from '../src/TransactionError';
+import { ERROR_TRANSACTION_FAILED } from '../src/TransactionError';
 
 describe('index.js', () => {
     const label = 'IndexTest';
@@ -32,20 +29,21 @@ describe('index.js', () => {
     after(done => {
         instance.cypher(`MATCH (n:${label}) DETACH DELETE n`)
             .then(() => instance.close())
-            .then(() => done());
+            .then(() => done())
+            .catch(e => done(e));
     });
-
 
     it('should instantiate', () => {
         expect(instance).to.be.an.instanceOf(Neode);
-        expect(instance.driver).to.be.an.instanceOf(Driver);
+        // expect(instance.driver).to.be.an.instanceOf(neo4j.driver);
     });
 
     it('should instantiate with enterprise mode', () => {
-        const enterprise = new Neode('bolt://localhost:3000', 'username', 'password', true);
+        const enterprise = new Neode('bolt://localhost:3000', 'username', 'password', true, 'defaultdb');
 
         expect(enterprise).to.be.an.instanceOf(Neode);
         expect(enterprise.enterprise()).to.equal(true);
+        expect(enterprise.database).to.equal('defaultdb');
     });
 
     it('should load models using `with` and return self', () => {
@@ -106,7 +104,7 @@ describe('index.js', () => {
         it('should handle a batch of queries', (done) => {
             const queries = [
                 'MATCH (n) RETURN count(n)',
-                {query: 'MATCH (n) WHERE n.name = {name} RETURN n', params: {name: 'name'}}
+                {query: 'MATCH (n) WHERE n.name = $name RETURN n', params: {name: 'name'}}
             ];
 
             instance.batch(queries)
@@ -260,35 +258,35 @@ describe('index.js', () => {
                 instance.create(label, {name: 'From'}),
                 instance.create(label, {name: 'To'}),
             ])
-            .then(([from, to]) => {
-                return instance.relate(from, to, 'relate_test', props)
-                    .then(rel => {
-                        expect(rel).to.be.instanceof(Relationship);
-                        expect(rel.get('test')).to.equal( props.test );
+                .then(([from, to]) => {
+                    return instance.relate(from, to, 'relate_test', props)
+                        .then(rel => {
+                            expect(rel).to.be.instanceof(Relationship);
+                            expect(rel.get('test')).to.equal( props.test );
 
-                        return rel;
-                    })
-                    .then(rel => {
-                        expect( rel.properties() ).to.deep.equal(props);
+                            return rel;
+                        })
+                        .then(rel => {
+                            expect( rel.properties() ).to.deep.equal(props);
 
-                        return rel;
-                    });
-            })
-            .then(rel => {
-                return instance.cypher(
-                    'MATCH (start)-[rel]->(end) WHERE id(start) = {start} AND id(rel) = {rel} AND id(end) = {end} RETURN count(*) as count',
-                    {
-                        start: rel.startNode().identity(),
-                        rel: rel.identity(),
-                        end: rel.endNode().identity(),
-                    }
-                )
-                    .then(res => {
-                        expect( res.records[0].get('count').toNumber() ).to.equal(1);
-                    });
-            })
-            .then(() => done())
-            .catch(e => done(e));
+                            return rel;
+                        });
+                })
+                .then(rel => {
+                    return instance.cypher(
+                        'MATCH (start)-[rel]->(end) WHERE id(start) = $start AND id(rel) = $rel AND id(end) = $end RETURN count(*) as count',
+                        {
+                            start: rel.startNode().identity(),
+                            rel: rel.identity(),
+                            end: rel.endNode().identity(),
+                        }
+                    )
+                        .then(res => {
+                            expect( res.records[0].get('count').toNumber() ).to.equal(1);
+                        });
+                })
+                .then(() => done())
+                .catch(e => done(e));
         });
 
         it('should create a second relationship when forced', (done) => {
@@ -297,49 +295,49 @@ describe('index.js', () => {
                 instance.create(label, {name: 'From'}),
                 instance.create(label, {name: 'To'}),
             ])
-            .then(([from, to]) => {
-                return instance.relate(from, to, 'relate_test', props)
-                    .then(rel => {
-                        expect(rel).to.be.instanceof(Relationship);
-                        expect(rel.get('test')).to.equal( props.test );
+                .then(([from, to]) => {
+                    return instance.relate(from, to, 'relate_test', props)
+                        .then(rel => {
+                            expect(rel).to.be.instanceof(Relationship);
+                            expect(rel.get('test')).to.equal( props.test );
 
-                        return rel;
-                    })
-                    .then(rel => {
-                        expect( rel.properties() ).to.deep.equal(props);
+                            return rel;
+                        })
+                        .then(rel => {
+                            expect( rel.properties() ).to.deep.equal(props);
 
-                        return rel;
-                    });
-            })
-            .then(rel => {
-                return instance.relate(rel.startNode(), rel.endNode(), 'relate_test', props, true)
-                    .then(rel => {
-                        expect(rel).to.be.instanceof(Relationship);
-                        expect(rel.get('test')).to.equal( props.test );
+                            return rel;
+                        });
+                })
+                .then(rel => {
+                    return instance.relate(rel.startNode(), rel.endNode(), 'relate_test', props, true)
+                        .then(rel => {
+                            expect(rel).to.be.instanceof(Relationship);
+                            expect(rel.get('test')).to.equal( props.test );
 
-                        return rel;
-                    })
-                    .then(rel => {
-                        expect( rel.properties() ).to.deep.equal(props);
+                            return rel;
+                        })
+                        .then(rel => {
+                            expect( rel.properties() ).to.deep.equal(props);
 
-                        return rel;
-                    });
-            })
-            .then(rel => {
-                return instance.cypher(
-                    `MATCH (start)-[:${ rel.type() }]->(end) WHERE id(start) = {start} AND id(end) = {end} RETURN count(*) as count`,
-                    {
-                        start: rel.startNode().identity(),
-                        rel: rel.identity(),
-                        end: rel.endNode().identity(),
-                    }
-                )
-                    .then(res => {
-                        expect( res.records[0].get('count').toNumber() ).to.equal(2);
-                    });
-            })
-            .then(() => done())
-            .catch(e => done(e));
+                            return rel;
+                        });
+                })
+                .then(rel => {
+                    return instance.cypher(
+                        `MATCH (start)-[:${ rel.type() }]->(end) WHERE id(start) = $start AND id(end) = $end RETURN count(*) as count`,
+                        {
+                            start: rel.startNode().identity(),
+                            rel: rel.identity(),
+                            end: rel.endNode().identity(),
+                        }
+                    )
+                        .then(res => {
+                            expect( res.records[0].get('count').toNumber() ).to.equal(2);
+                        });
+                })
+                .then(() => done())
+                .catch(e => done(e));
         });
 
         it('should throw an error for an unknown relationship type', done => {
@@ -347,15 +345,39 @@ describe('index.js', () => {
                 instance.create(label, {name: 'From'}),
                 instance.create(label, {name: 'To'}),
             ])
-            .then(([from, to]) => {
-                return instance.relate(from, to, 'unknown')
-                    .then(rel => {
-                        assert(false, 'Error should be thrown on unknown relationship type');
-                    })
-                    .catch(e => {
-                        done();
-                    });
-            })
+                .then(([from, to]) => {
+                    return instance.relate(from, to, 'unknown')
+                        .then(rel => {
+                            assert(false, 'Error should be thrown on unknown relationship type');
+                        })
+                        .catch(e => {
+                            done();
+                        });
+                })
+        });
+    });
+
+    describe('::detachFrom', () => {
+        it('should detach two nodes', (done) => {
+            Promise.all([
+                instance.create(label, {name: 'From'}),
+                instance.create(label, {name: 'To'}),
+            ])
+                .then(([from, to]) => from.detachFrom(to))
+                .then(([from, to]) => {
+                    return instance.cypher(
+                        'MATCH (start)-[rel]->(end) WHERE id(start) = $start AND id(end) = $end RETURN count(*) as count',
+                        {
+                            start: from.identity(),
+                            end: to.identity(),
+                        }
+                    )
+                        .then(res => {
+                            expect(res.records[0].get('count').toNumber()).to.equal(0);
+                        });
+                })
+                .then(() => done())
+                .catch(e => done(e));
         });
     });
 
@@ -364,12 +386,6 @@ describe('index.js', () => {
             const query = instance.query();
 
             expect(query).to.be.an.instanceOf(Builder);
-        });
-    });
-
-    describe('::close', () => {
-        it('should close the neo4j connection', () => {
-            const output = instance.close();
         });
     });
 
@@ -452,6 +468,7 @@ describe('index.js', () => {
         });
     });
 
+
     describe('::cypher', () => {
         it('should execute a function as part of a session', (done) => {
             const session = instance.session();
@@ -470,5 +487,12 @@ describe('index.js', () => {
         //     done();
         // });
     });
+
+    // TODO: Killing queries, reinstate?
+    // describe('::close', () => {
+    //     it('should close the neo4j connection', () => {
+    //         const output = instance.close();
+    //     });
+    // });
 
 });

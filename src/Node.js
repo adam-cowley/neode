@@ -1,10 +1,12 @@
+import neo4j from 'neo4j-driver';
 import Entity from './Entity';
 import UpdateNode from './Services/UpdateNode';
 import DeleteNode from './Services/DeleteNode';
 import RelateTo from './Services/RelateTo';
+import DetachFrom from './Services/DetachFrom';
 import RelationshipType from './RelationshipType';
 
-/** 
+/**
  * Node Container
  */
 export default class Node extends Entity {
@@ -34,9 +36,9 @@ export default class Node extends Entity {
         this._deleted = false;
     }
 
-    /** 
+    /**
      * Get the Model for this Node
-     * 
+     *
      * @return {Model}
      */
     model() {
@@ -54,9 +56,9 @@ export default class Node extends Entity {
 
     /**
      * Set an eager value on the fly
-     * 
-     * @param  {String} key 
-     * @param  {Mixed}  value 
+     *
+     * @param  {String} key
+     * @param  {Mixed}  value
      * @return {Node}
      */
     setEager(key, value) {
@@ -96,7 +98,26 @@ export default class Node extends Entity {
             return Promise.reject( new Error(`Cannot find relationship with type ${type}`) );
         }
 
-        return RelateTo(this._neode, this, node, relationship, properties, force_create);
+        return RelateTo(this._neode, this, node, relationship, properties, force_create)
+            .then(rel => {
+                this._eager.delete(type);
+
+                return rel;
+            });
+    }
+
+    /**
+     * Detach this node to another
+     *
+     * @param  {Node} node Node to detach from
+     * @return {Promise}
+     */
+    detachFrom(other) {
+        if (!(other instanceof Node)) {
+            return Promise.reject(new Error(`Cannot find node with type ${other}`));
+        }
+
+        return DetachFrom(this._neode, this, other);
     }
 
     /**
@@ -119,6 +140,29 @@ export default class Node extends Entity {
             if ( this._properties.has(key) ) {
                 output[ key ] = this.valueToJson(property, this._properties.get( key ));
             }
+            else if (neo4j.temporal.isDateTime(output[key])) {
+                output[key] = new Date(output[key].toString());
+            }
+            else if (neo4j.spatial.isPoint(output[key])) {
+                switch (output[key].srid.toString()) {
+                    // SRID values: @https://neo4j.com/docs/developer-manual/current/cypher/functions/spatial/
+                    case '4326': // WGS 84 2D
+                        output[key] = {longitude: output[key].x, latitude: output[key].y};
+                        break;
+
+                    case '4979': // WGS 84 3D
+                        output[key] = {longitude: output[key].x, latitude: output[key].y, height: output[key].z};
+                        break;
+
+                    case '7203': // Cartesian 2D
+                        output[key] = {x: output[key].x, y: output[key].y};
+                        break;
+
+                    case '9157': // Cartesian 3D
+                        output[key] = {x: output[key].x, y: output[key].y, z: output[key].z};
+                        break;
+                }
+            }
         });
 
         // Eager Promises
@@ -133,29 +177,40 @@ export default class Node extends Entity {
                     });
             }
         }) )
-            // Remove Empty 
+            // Remove Empty
             .then(eager => eager.filter( e => !!e ))
 
             // Assign to Output
             .then(eager => {
                 eager.forEach(({ key, value }) => output[ key ] = value);
-                
+
                 return output;
             });
     }
 
     /**
      * Update the properties for this node
-     * 
+     *
      * @param {Object} properties  New properties
      * @return {Node}
      */
     update(properties) {
+
+        // TODO: Temporary fix, add the properties to the properties map
+        // Sorry, but it's easier than hacking the validator
+        this._model.properties().forEach(property => {
+            const name = property.name();
+
+            if ( property.required() && !properties.hasOwnProperty(name) ) {
+                properties[ name ] = this._properties.get( name );
+            }
+        });
+
         return UpdateNode(this._neode, this._model, this._identity, properties)
             .then(properties => {
-                Object.entries(properties).forEach(( [key, value] ) => {
-                    this._properties.set( key, value );
-                });
+                properties.map(({ key, value }) => {
+                    this._properties.set(key, value)
+                })
             })
             .then(() => {
                 return this;

@@ -37,7 +37,7 @@ function InstallSchema(neode) {
     neode.models.forEach((model, label) => {
         model.properties().forEach(property => {
             // Constraints
-            if (property.unique()) {
+            if (property.primary() || property.unique()) {
                 queries.push(UniqueConstraintCypher(label, property.name()));
             }
 
@@ -76,7 +76,7 @@ function DropSchema(neode) {
         });
     });
 
-    const session = neode.session();
+    const session = neode.writeSession();
 
     return new Promise((resolve, reject) => {
         runAsync(session, queries, resolve, reject);

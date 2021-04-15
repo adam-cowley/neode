@@ -42,18 +42,20 @@ npm i --save dotenv
 
 ```
 // .env
-NEO4J_PROTOCOL=bolt
+NEO4J_PROTOCOL=neo4j
 NEO4J_HOST=localhost
 NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=neo4j
 NEO4J_PORT=7687
+NEO4J_DATABASE=neo4j
+NEO4J_ENCRYPTION=ENCRYPTION_OFF
 ```
 
 ```javascript
 // index.js
 import Neode from 'neode';
 
-const instance = new Neode.fromEnv();
+const instance = Neode.fromEnv();
 ```
 
 #### Additional Driver Config
@@ -76,7 +78,7 @@ NEO4J_DISABLE_LOSSLESS_INTEGERS=false
 
 #### Loading `with` Models
 
-You can use the `with()` method to load multipe models at once.
+You can use the `with()` method to load multiple models at once.
 
 ```javascript
 const neode = require('neode')
@@ -130,7 +132,7 @@ instance.model('Person', {
     },
     name: {
         type: 'name',
-        indexed: true, // Creates an Index
+        index: true, // Creates an Index
     },
     age: 'number' // Simple schema definition of property : type
 });
@@ -145,6 +147,11 @@ The following property types are supported:
 - `int`
 - `integer`
 - `float`
+- `uuid`
+- `node`
+- `nodes`
+- `relationship`
+- `relationships`
 - Temporal
   - `date`
   - `time`
@@ -152,11 +159,6 @@ The following property types are supported:
   - `localtime`
   - `localdatetime`
   - `duration`
-  - `uuid`
-  - `node`
-  - `nodes`
-  - `relationship`
-  - `relationships`
 - Spatial
   - `point`
   - `distance`
@@ -195,12 +197,8 @@ Validation is provided by the [Joi](https://github.com/hapijs/joi/) library.  Ce
 
 | option | type | description | example |
 | -- | -- | -- | -- |
-| min | String | Date string or `now` to compare to the current date
-| max | String 
-| greater
-| less
-| iso | Requires the string value to be in valid ISO 8601 date format.
-| timestamp | Requires the value to be a timestamp - `unix` or `javascript`
+| before | String | `Date`, date string or `"now"` to compare to the current date
+| after | String | `Date`, date string or `"now"` to compare to the current date
 
 
 ##### Numbers (number, int, integer, float)
@@ -228,12 +226,12 @@ Validation is provided by the [Joi](https://github.com/hapijs/joi/) library.  Ce
 | creditCard | Boolean | Requires the number to be a credit card number (Using Luhn Algorithm).
 | length | Number | Exact string length
 | regex | Object | Regular expression rule | `{ pattern: /([A-Z]+)/, invert: true, name: 'myRule'}`
-| replace | Object | Replace in value | `{ pattern: /(^[A-Z]+)/, replace: '-' }` 
+| replace | Object | Replace in value | `{ pattern: /(^[A-Z]+)/, replace: '-' }`
 | alphanum | Boolean | Requires the string value to only contain a-z, A-Z, and 0-9.
 | token | Boolean | Requires the string value to only contain a-z, A-Z, 0-9, and underscore _.
-| email | Boolean/Object | 
-| ip | Boolean/Object | 
-| uri | Boolean/Object | 
+| email | Boolean/Object |
+| ip | Boolean/Object |
+| uri | Boolean/Object |
 | guid  | Boolean
 | hex | Boolean/Object
 | base64 | Boolean/Object
@@ -250,11 +248,11 @@ Validation is provided by the [Joi](https://github.com/hapijs/joi/) library.  Ce
 Relationships can be created in the schema or defined retrospectively.
 
 ```javascript
-instance.model(label).relationship(type, relationship, direction, label, schema);
+instance.model(label).relationship(type, relationship, direction, target, schema, eager, cascade, node_alias);
 ```
 
 ```javascript
-instance.model('Person').relationship('knows', 'KNOWS', 'out', 'Person', {
+instance.model('Person').relationship('knows', 'relationship', 'KNOWS', 'out', 'Person', {
     since: {
         type: 'number',
         required: true,
@@ -324,14 +322,14 @@ instance.cypher(query, params)
 ```
 
 ```javascript
-instance.cypher('MATCH (p:Person {name: {name}}) RETURN p', {name: "Adam"})
+instance.cypher('MATCH (p:Person {name: $name}) RETURN p', {name: "Adam"})
     .then(res => {
         console.log(res.records.length);
     })
 ```
 
 ### Running a Batch
-Batch queries run within their own transaction.  Transactions can be sent as either a string or an object containing `query` and `param` propertes.
+Batch queries run within their own transaction.  Transactions can be sent as either a string or an object containing `query` and `param` properties.
 
 ```
 instance.batch(queries)
@@ -339,9 +337,9 @@ instance.batch(queries)
 
 ```javascript
 instance.batch([
-    {query: 'CREATE (p:Person {name: {name}}) RETURN p', params: {name: "Adam"}},
-    {query: 'CREATE (p:Person {name: {name}}) RETURN p', params: {name: "Joe"}},
-    {query: 'MATCH (first:Person {name: {first_name}}), (second:Person {name:{second_name}}) CREATE (first)-[:KNOWS]->(second)', params: {name: "Joe"}}
+    {query: 'CREATE (p:Person {name: $name}) RETURN p', params: {name: "Adam"}},
+    {query: 'CREATE (p:Person {name: $name}) RETURN p', params: {name: "Joe"}},
+    {query: 'MATCH (first:Person {name: $first_name}), (second:Person {name: $second_name}) CREATE (first)-[:KNOWS]->(second)', params: {name: "Joe"}}
 ])
     .then(res => {
         console.log(res.records.length);
@@ -479,12 +477,27 @@ Promise.all([
 .then(([adam, joe]) => {
     adam.relateTo(joe, 'knows', {since: 2010})
         .then(res => {
-            console.log(rel.from().get('name'), ' has known ', rel.to().get('name'), 'since', rel.get('since'));  // Adam has known Joe since 2010
+            console.log(res.startNode().get('name'), ' has known ', res.endNode().get('name'), 'since', res.get('since'));  // Adam has known Joe since 2010
         });
 });
 ```
 
 **Note:** when creating a relationship defined as `in` (`DIRECTION_IN`), from `from()` and `to()` properties will be inversed regardless of which model the relationship is created by.
+
+### Detaching two nodes
+You can detach two nodes by calling the `detachFrom()` method.
+
+```javascript
+model.detachFrom(other)
+```
+```javascript
+Promise.all([
+    instance.create('Person', {name: 'Adam'}),
+    instance.create('Person', {name: 'Joe'})
+])
+.then(([adam, joe]) => {
+    adam.detachFrom(joe) // Adam does not know Joe
+});
 
 ### Deleting a node
 You can delete a Node instance directly by calling the `delete()` method.

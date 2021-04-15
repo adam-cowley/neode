@@ -1,3 +1,4 @@
+/* eslint-disable */
 import neode from './neode';
 import Person from './Person';
 
@@ -22,7 +23,7 @@ Promise.all([
     console.log('adam', adam.id(), adam.get('person_id'), adam.get('name'));
     console.log('joe', joe.id(), joe.get('person_id'), joe.get('name'));
 
-    return adam.relateTo(joe, 'knows', {since: 2010});
+    return adam.relateTo(joe, 'knows', {since: new Date('2017-01-02 12:34:56')});
 })
 
 /**
@@ -39,8 +40,8 @@ Promise.all([
  */
 .then(rel => {
     return Promise.all([
-        rel.from().delete(),
-        rel.to().delete()
+        rel.startNode().delete(),
+        rel.endNode().delete()
     ]);
 })
 

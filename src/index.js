@@ -7,6 +7,7 @@ import ModelMap from './ModelMap';
 import Schema from './Schema';
 import TransactionError from './TransactionError';
 import Builder from './Query/Builder';
+import Collection from './Collection';
 
 export default class Neode {
 
@@ -17,15 +18,18 @@ export default class Neode {
      * @param  {String} username
      * @param  {String} password
      * @param  {Bool}   enterprise
+     * @param  {String} database
      * @param  {Object} config
      * @return {Neode}
      */
-    constructor(connection_string, username, password, enterprise = false, config = {}) {
+    constructor(connection_string, username, password, enterprise = false, database = undefined, config = {}) {
         const auth = username && password ? neo4j.auth.basic(username, password) : null;
         this.driver = new neo4j.driver(connection_string, auth, config);
         this.models = new ModelMap(this);
         this.schema = new Schema(this);
         this.factory = new Factory(this);
+
+        this.database = database;
 
         this.setEnterprise(enterprise);
     }
@@ -44,11 +48,14 @@ export default class Neode {
         const password = process.env.NEO4J_PASSWORD;
         const enterprise = process.env.NEO4J_ENTERPRISE === 'true';
 
+        // Multi-database
+        const database = process.env.NEO4J_DATABASE || 'neo4j';
+
         // Build additional config
         const config = {};
 
         const settings = {
-            NEO4J_ENCRYPTED: 'encrypted',
+            NEO4J_ENCRYPTION: 'encrypted',
             NEO4J_TRUST: 'trust',
             NEO4J_TRUSTED_CERTIFICATES: 'trustedCertificates',
             NEO4J_KNOWN_HOSTS: 'knownHosts',
@@ -71,14 +78,14 @@ export default class Neode {
                     value = value.split(',');
                 }
                 else if ( key == "disableLosslessIntegers" ) {
-                    value = !!value;
+                    value = value === 'true';
                 }
 
                 config[ key ] = value;
             }
         });
 
-        return new Neode(connection_string, username, password, enterprise, config);
+        return new Neode(connection_string, username, password, enterprise, database, config);
     }
 
     /**
@@ -108,12 +115,21 @@ export default class Neode {
             .forEach(file => {
                 const model = file.replace('.js', '');
                 const path = directory +'/'+ file;
-                const schema = require(path);
+                const schema = require("" + path);
 
                 return this.model(model, schema);
             });
 
         return this;
+    }
+
+    /**
+     * Set the default database for all future connections
+     *
+     * @param {String} database
+     */
+    setDatabase(database) {
+        this.database = database;
     }
 
     /**
@@ -145,6 +161,21 @@ export default class Neode {
         if ( schema instanceof Object) {
             const model = new Model(this, name, schema);
             this.models.set(name, model);
+        }
+
+        if ( !this.models.has(name) ) {
+            const defined = this.models.keys();
+
+            let message = `Couldn't find a definition for "${name}".`;
+
+            if ( defined.length == 0 ) {
+                message += ' It looks like no models have been defined.';
+            }
+            else {
+                message += ` The models currently defined are [${ defined.join(', ') }]`;
+            }
+
+            throw new Error(message);
         }
 
         return this.models.get(name);
@@ -281,6 +312,9 @@ export default class Neode {
                     session.close();
                 }
 
+                err.query = query;
+                err.params = params;
+
                 throw err;
             });
     }
@@ -288,28 +322,37 @@ export default class Neode {
     /**
      * Create a new Session in the Neo4j Driver.
      *
+     * @param {String} database
      * @return {Session}
      */
-    session() {
-        return this.readSession();
+    session(database = this.database) {
+        return this.readSession(database);
     }
 
     /**
      * Create an explicit Read Session
      *
+     * @param {String} database
      * @return {Session}
      */
-    readSession() {
-        return this.driver.session(neo4j.READ);
+    readSession(database = this.database) {
+        return this.driver.session({
+            database,
+            defaultAccessMode: neo4j.session.READ,
+        });
     }
 
     /**
      * Create an explicit Write Session
      *
+     * @param {String} database
      * @return {Session}
      */
-    writeSession() {
-        return this.session(neo4j.WRITE);
+    writeSession(database = this.database) {
+        return this.driver.session({
+            database,
+            defaultAccessMode: neo4j.session.WRITE,
+        });
     }
 
     /**
@@ -317,9 +360,9 @@ export default class Neode {
      *
      * @return {Transaction}
      */
-    transaction() {
-        const session = this.driver.session();
-        const tx = session.beginTransaction();
+    transaction(mode = neo4j.WRITE, database = this.database) {
+        const session = this.driver.session(database);
+        const tx = session.beginTransaction(mode);
 
         // Create an 'end' function to commit & close the session
         // TODO: Clean up
@@ -464,6 +507,16 @@ export default class Neode {
      */
     hydrateFirst(res, alias, definition) {
         return this.factory.hydrateFirst(res, alias, definition);
+    }
+
+    /**
+     * Turn an array into a Collection
+     *
+     * @param  {Array} array An array
+     * @return {Collection}
+     */
+    toCollection(array) {
+        return new Collection(this, array);
     }
 
 }
