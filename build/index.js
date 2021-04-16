@@ -59,6 +59,7 @@ var Neode = /*#__PURE__*/function () {
     this.models = new _ModelMap["default"](this);
     this.schema = new _Schema["default"](this);
     this.factory = new _Factory["default"](this);
+    this._transactionOgm = undefined;
     this.database = database;
     this.setEnterprise(enterprise);
   }
@@ -72,14 +73,14 @@ var Neode = /*#__PURE__*/function () {
 
   _createClass(Neode, [{
     key: "with",
-
+    value:
     /**
      * Define multiple models
      *
      * @param  {Object} models   Map of models with their schema.  ie {Movie: {...}}
      * @return {Neode}
      */
-    value: function _with(models) {
+    function _with(models) {
       var _this = this;
 
       Object.keys(models).forEach(function (model) {
@@ -347,16 +348,103 @@ var Neode = /*#__PURE__*/function () {
       return this.readSession(database);
     }
     /**
+     * init begin Transaction
+     * @returns {void}
+     */
+
+  }, {
+    key: "beginTransaction",
+    value: function beginTransaction() {
+      if (this.isTransactionOgm) {
+        throw "you could not start a new transaction because you did not close the old one";
+      }
+
+      var session = this.writeSession();
+      var txc = session.beginTransaction();
+      this._transactionOgm = {
+        session: session,
+        txc: txc
+      };
+    }
+    /**
+     *
+     * @return {boolean}
+     */
+
+  }, {
+    key: "isTransactionOgm",
+    get: function get() {
+      return !!this._transactionOgm;
+    }
+    /**
+     * get session transactions
+     * @returns {{Transaction|Session}}
+     */
+
+  }, {
+    key: "transactionOgm",
+    get: function get() {
+      if (!this._transactionOgm) {
+        throw "You did not initiate begin transaction";
+      }
+
+      return this._transactionOgm;
+    }
+    /**
+     * commit transactions
+     * @returns {Promise}
+     */
+
+  }, {
+    key: "commit",
+    value: function commit() {
+      return this.transactionOgm.txc.commit();
+    }
+    /**
+     * rollback transaction
+     * @returns {Promise}
+     */
+
+  }, {
+    key: "rollback",
+    value: function rollback() {
+      return this.transactionOgm.txc.rollback();
+    }
+    /**
+     * close session transactions
+     * @returns {Promise}
+     */
+
+  }, {
+    key: "closeBeginTransaction",
+    value: function closeBeginTransaction() {
+      var _this3 = this;
+
+      return new Promise(function (resolve, reject) {
+        _this3.transactionOgm.session.close().then(function () {
+          _this3._transactionOgm = undefined;
+          return resolve();
+        })["catch"](function () {
+          return reject("impossible to close session");
+        });
+      });
+    }
+    /**
      * Create an explicit Read Session
      *
      * @param {String} database
-     * @return {Session}
+     * @return {Session|Transaction}
      */
 
   }, {
     key: "readSession",
     value: function readSession() {
       var database = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : this.database;
+
+      if (this.isTransactionOgm) {
+        return this._transactionOgm.txc;
+      }
+
       return this.driver.session({
         database: database,
         defaultAccessMode: _neo4jDriver["default"].session.READ
@@ -366,13 +454,18 @@ var Neode = /*#__PURE__*/function () {
      * Create an explicit Write Session
      *
      * @param {String} database
-     * @return {Session}
+     * @return {Session|Transaction}
      */
 
   }, {
     key: "writeSession",
     value: function writeSession() {
       var database = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : this.database;
+
+      if (this.isTransactionOgm) {
+        return this._transactionOgm.txc;
+      }
+
       return this.driver.session({
         database: database,
         defaultAccessMode: _neo4jDriver["default"].session.WRITE

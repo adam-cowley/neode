@@ -28,7 +28,7 @@ export default class Neode {
         this.models = new ModelMap(this);
         this.schema = new Schema(this);
         this.factory = new Factory(this);
-
+        this._transactionOgm = undefined;
         this.database = database;
 
         this.setEnterprise(enterprise);
@@ -330,12 +330,82 @@ export default class Neode {
     }
 
     /**
+     * init begin Transaction
+     * @returns {void}
+     */
+    beginTransaction(){
+        if(this.isTransactionOgm){
+            throw "you could not start a new transaction because you did not close the old one";
+        }
+        const session = this.writeSession();
+        const txc = session.beginTransaction();
+        this._transactionOgm = {session, txc};
+    }
+
+    /**
+     *
+     * @return {boolean}
+     */
+    get isTransactionOgm(){
+        return !!this._transactionOgm;
+    }
+
+
+    /**
+     * get session transactions
+     * @returns {{Transaction|Session}}
+     */
+    get transactionOgm(){
+        if(!this._transactionOgm){
+            throw "You did not initiate begin transaction";
+        }
+        return this._transactionOgm;
+    }
+
+    /**
+     * commit transactions
+     * @returns {Promise}
+     */
+    commit(){
+        return this.transactionOgm.txc.commit();
+    }
+
+    /**
+     * rollback transaction
+     * @returns {Promise}
+     */
+    rollback(){
+        return this.transactionOgm.txc.rollback();
+    }
+
+    /**
+     * close session transactions
+     * @returns {Promise}
+     */
+    closeBeginTransaction(){
+        return new Promise(((resolve, reject) => {
+            this.transactionOgm.session.close()
+                .then(() => {
+                    this._transactionOgm = undefined;
+                    return resolve();
+                })
+                .catch(() => {
+                    return reject("impossible to close session");
+                })
+            ;
+        }));
+    }
+
+    /**
      * Create an explicit Read Session
      *
      * @param {String} database
-     * @return {Session}
+     * @return {Session|Transaction}
      */
     readSession(database = this.database) {
+        if(this.isTransactionOgm){
+            return this._transactionOgm.txc;
+        }
         return this.driver.session({
             database,
             defaultAccessMode: neo4j.session.READ,
@@ -346,9 +416,12 @@ export default class Neode {
      * Create an explicit Write Session
      *
      * @param {String} database
-     * @return {Session}
+     * @return {Session|Transaction}
      */
     writeSession(database = this.database) {
+        if(this.isTransactionOgm){
+            return this._transactionOgm.txc;
+        }
         return this.driver.session({
             database,
             defaultAccessMode: neo4j.session.WRITE,

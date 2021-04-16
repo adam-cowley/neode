@@ -428,6 +428,21 @@ instance.create('Person', {
     console.log(adam.get('name')); // 'Adam'
 });
 ```
+#### Commit et Rollback
+
+```javascript
+try{
+  instance.beginTransaction();
+  await instance.create('Person', {name: 'Adam'});
+  await instance.create('Person', {name: 'JuJu'})
+  await instance.create('Person', {name: 'Toto'})
+  await instance.commit();
+}catch (e) {
+  await instance.rollback();
+}finally{
+  await instance.closeBeginTransaction();
+}
+```
 
 ### Merging a Node
 Nodes are merged based on the indexes and constraints.
