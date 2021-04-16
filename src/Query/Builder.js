@@ -603,29 +603,30 @@ export default class Builder {
     execute(query_mode = mode.WRITE) {
         const { query, params } = this.build();
 
-        let session
+        if(this._neode.isTransactionOgm){
+            return this._neode.transactionOgm.txc.run(query, params);
+        }
+
+        let session;
 
         switch (query_mode) {
             case mode.WRITE:
-                session = this._neode.writeSession()
-
+                session = this._neode.writeSession();
                 return session.writeTransaction(tx => tx.run(query, params))
                     .then(res => {
-                        session.close()
-
-                        return res
-                    })
+                        session.close();
+                        return res;
+                    });
 
 
             default:
-                session = this._neode.readSession()
+                session = this._neode.readSession();
 
                 return session.readTransaction(tx => tx.run(query, params))
                     .then(res => {
-                        session.close()
-
-                        return res
-                    })
+                        session.close();
+                        return res;
+                    });
         }
     }
 

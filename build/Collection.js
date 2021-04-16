@@ -32,11 +32,16 @@ var Collection = /*#__PURE__*/function () {
 
 
   _createClass(Collection, [{
-    key: Symbol.iterator,
-
+    key: "length",
+    get: function get() {
+      return this._values.length;
+    }
     /**
      * Iterator
      */
+
+  }, {
+    key: Symbol.iterator,
     value: function value() {
       return this._values.values();
     }
@@ -110,11 +115,6 @@ var Collection = /*#__PURE__*/function () {
       return Promise.all(this._values.map(function (value) {
         return value.toJson();
       }));
-    }
-  }, {
-    key: "length",
-    get: function get() {
-      return this._values.length;
     }
   }]);
 

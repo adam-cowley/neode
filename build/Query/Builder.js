@@ -59,7 +59,7 @@ function _arrayWithHoles(arr) { if (Array.isArray(arr)) return arr; }
 
 function _construct(Parent, args, Class) { if (_isNativeReflectConstruct()) { _construct = Reflect.construct; } else { _construct = function _construct(Parent, args, Class) { var a = [null]; a.push.apply(a, args); var Constructor = Function.bind.apply(Parent, a); var instance = new Constructor(); if (Class) _setPrototypeOf(instance, Class.prototype); return instance; }; } return _construct.apply(null, arguments); }
 
-function _isNativeReflectConstruct() { if (typeof Reflect === "undefined" || !Reflect.construct) return false; if (Reflect.construct.sham) return false; if (typeof Proxy === "function") return true; try { Date.prototype.toString.call(Reflect.construct(Date, [], function () {})); return true; } catch (e) { return false; } }
+function _isNativeReflectConstruct() { if (typeof Reflect === "undefined" || !Reflect.construct) return false; if (Reflect.construct.sham) return false; if (typeof Proxy === "function") return true; try { Boolean.prototype.valueOf.call(Reflect.construct(Boolean, [], function () {})); return true; } catch (e) { return false; } }
 
 function _setPrototypeOf(o, p) { _setPrototypeOf = Object.setPrototypeOf || function _setPrototypeOf(o, p) { o.__proto__ = p; return o; }; return _setPrototypeOf(o, p); }
 
@@ -213,7 +213,7 @@ var Builder = /*#__PURE__*/function () {
     key: "_addWhereParameter",
     value: function _addWhereParameter(key, value) {
       var attempt = 1;
-      var base = "where_".concat(key.replace(/[^a-z0-9]+/, '_')); // Try to create a unique key
+      var base = "where_".concat(key.replace(/[^a-z0-9]+/g, '_')); // Try to create a unique key
 
       var variable = base;
 
@@ -757,15 +757,30 @@ var Builder = /*#__PURE__*/function () {
           query = _this$build.query,
           params = _this$build.params;
 
+      if (this._neode.isTransactionOgm) {
+        return this._neode.transactionOgm.txc.run(query, params);
+      }
+
+      var session;
+
       switch (query_mode) {
         case mode.WRITE:
-          return this._neode.writeCypher(query, params);
-
-        case mode.READ:
-          return this._neode.readCypher(query, params);
+          session = this._neode.writeSession();
+          return session.writeTransaction(function (tx) {
+            return tx.run(query, params);
+          }).then(function (res) {
+            session.close();
+            return res;
+          });
 
         default:
-          return this._neode.cypher(query, params);
+          session = this._neode.readSession();
+          return session.readTransaction(function (tx) {
+            return tx.run(query, params);
+          }).then(function (res) {
+            session.close();
+            return res;
+          });
       }
     }
   }]);

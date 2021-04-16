@@ -90,13 +90,13 @@ var Entity = /*#__PURE__*/function () {
 
   _createClass(Entity, [{
     key: "id",
-
+    value:
     /**
      * Get Internal Node ID
      *
      * @return {int}
      */
-    value: function id() {
+    function id() {
       return this._identity.toNumber();
     }
     /**
