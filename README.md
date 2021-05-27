@@ -315,10 +315,12 @@ instance.extend('Person', 'Actor', {
 
 ## Reading
 
-### Running a Cypher Query
+### Running a read Cypher Query
 
 ```
 instance.cypher(query, params)
+// As instance.cypher is an alias for instance.readCypher. This does the same:
+instance.readCypher(query, params)
 ```
 
 ```javascript
@@ -413,6 +415,21 @@ instance.first('Person', {name: 'Adam', age: 29})
 
 
 ## Writing
+
+### Running a write Cypher Query
+
+```
+instance.writeCypher(query, params)
+```
+
+```javascript
+instance.writeCypher(`CALL db.index.fulltext.createNodeIndex(
+ "fullTextName",
+ ["Person, Movie"],
+ ["name", "description"],
+ { eventually_consistent: "true" }
+);`).then(res => console.log('Full-text index created'))
+```
 
 ### Creating a Node
 ```javascript
