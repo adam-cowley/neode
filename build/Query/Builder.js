@@ -213,7 +213,7 @@ var Builder = /*#__PURE__*/function () {
     key: "_addWhereParameter",
     value: function _addWhereParameter(key, value) {
       var attempt = 1;
-      var base = "where_".concat(key.replace(/[^a-z0-9]+/, '_')); // Try to create a unique key
+      var base = "where_".concat(key.replace(/[^a-z0-9]+/g, '_')); // Try to create a unique key
 
       var variable = base;
 
@@ -757,15 +757,26 @@ var Builder = /*#__PURE__*/function () {
           query = _this$build.query,
           params = _this$build.params;
 
+      var session;
+
       switch (query_mode) {
         case mode.WRITE:
-          return this._neode.writeCypher(query, params);
-
-        case mode.READ:
-          return this._neode.readCypher(query, params);
+          session = this._neode.writeSession();
+          return session.writeTransaction(function (tx) {
+            return tx.run(query, params);
+          }).then(function (res) {
+            session.close();
+            return res;
+          });
 
         default:
-          return this._neode.cypher(query, params);
+          session = this._neode.readSession();
+          return session.readTransaction(function (tx) {
+            return tx.run(query, params);
+          }).then(function (res) {
+            session.close();
+            return res;
+          });
       }
     }
   }]);
