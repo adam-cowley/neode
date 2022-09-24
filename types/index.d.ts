@@ -1037,6 +1037,15 @@ declare namespace Neode {
     delete(): Promise<Node<T>>;
 
     /**
+     * Detach this node to another
+     *
+     * @param  {Node} node Node to detach from
+     * @return {Promise}
+     */
+     // TODO I do not know what this returns
+    detachFrom(other): Promise<any>;
+
+    /**
      * Relate this node to another based on the type
      *
      * @param  {Node}   node            Node to relate to
