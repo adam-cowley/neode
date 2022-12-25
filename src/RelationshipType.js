@@ -6,6 +6,7 @@ export const DIRECTION_BOTH = 'DIRECTION_BOTH';
 
 export const ALT_DIRECTION_IN = 'IN';
 export const ALT_DIRECTION_OUT = 'OUT';
+export const ALT_DIRECTION_BOTH = 'BOTH';
 
 export const DEFAULT_ALIAS = 'node';
 
@@ -91,6 +92,9 @@ export default class RelationshipType {
         }
         else if ( direction == ALT_DIRECTION_OUT ) {
             direction = DIRECTION_OUT;
+        }
+        else if ( direction == ALT_DIRECTION_BOTH ) {
+            direction = DIRECTION_BOTH;
         }
         else if ( [ DIRECTION_IN, DIRECTION_OUT, DIRECTION_BOTH ].indexOf(direction) == -1 ) {
             direction = DIRECTION_OUT;
