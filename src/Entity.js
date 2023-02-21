@@ -88,7 +88,7 @@ export default class Entity {
         const model = this._model || this._definition;
 
         model.properties().forEach((property, key) => {
-            if ( !property.hidden() && this._properties.has(key) ) {
+            if ( this._properties.has(key) ) {
                 output[ key ] = this.valueToJson(property, this._properties.get( key ));
             }
         });

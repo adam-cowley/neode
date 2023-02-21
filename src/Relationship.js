@@ -77,7 +77,7 @@ export default class Relationship extends Entity {
      *
      * @return {Promise}
      */
-    toJson() {
+    toJson(group) {
         const output = {
             _id: this.id(),
             _type: this.type(),
@@ -87,7 +87,7 @@ export default class Relationship extends Entity {
 
         // Properties
         definition.properties().forEach((property, key) => {
-            if ( property.hidden() ) {
+            if ( property.hidden(group) ) {
                 return;
             }
 
