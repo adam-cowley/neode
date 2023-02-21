@@ -1039,11 +1039,10 @@ declare namespace Neode {
     /**
      * Detach this node to another
      *
-     * @param  {Node} node Node to detach from
-     * @return {Promise}
+     * @param  {Node<any>} other Node to detach from
+     * @return {Promise<[Node<any>, Node<any>]>}
      */
-     // TODO I do not know what this returns
-    detachFrom(other): Promise<any>;
+    detachFrom(other: Node<any>): Promise<[Node<any>, Node<any>]>;
 
     /**
      * Relate this node to another based on the type
