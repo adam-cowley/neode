@@ -1037,7 +1037,7 @@ declare namespace Neode {
     delete(): Promise<Node<T>>;
 
     /**
-     * Detach this node to another
+     * Detach this node from another
      *
      * @param  {Node<any>} other Node to detach from
      * @return {Promise<[Node<any>, Node<any>]>}
@@ -1076,7 +1076,7 @@ declare namespace Neode {
      * @constructor
      * @param  {Neode} neode    Neode Instance
      * @param  {Node[]} values  Array of Node
-     * @return {Collectiob}
+     * @return {Collection}
      */
     constructor(neode: Neode, values: Array<Node<any>>);
 
@@ -1086,6 +1086,11 @@ declare namespace Neode {
      * @return {Int}
      */
     length: number;
+
+    /**
+     * Iterator
+     */
+    [Symbol.iterator](): IterableIterator<Node<any>>;
 
     /**
      * Get a value by it's index
