@@ -1,7 +1,7 @@
 
 
 function UniqueConstraintCypher(label, property, mode = 'CREATE') {
-    return `${mode} CONSTRAINT ON (model:${label}) ASSERT model.${property} IS UNIQUE`;
+    return `${mode} CONSTRAINT FOR (model:${label}) REQUIRE model.${property} IS UNIQUE`;
 }
 
 function ExistsConstraintCypher(label, property, mode = 'CREATE') {
