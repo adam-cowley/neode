@@ -46,7 +46,10 @@ jobs:
 
       - run: pnpm typecheck
 
-      - run: pnpm test:coverage
+      # Coverage thresholds are calibrated on the unit suite (89.5/86.5/93.2).
+      # The integration project needs a database and the package project needs
+      # dist/ — both are covered by the dedicated jobs below.
+      - run: pnpm test:coverage --project unit
 
       - run: pnpm build
 
@@ -55,7 +58,8 @@ jobs:
       - run: pnpm check:package
 
   # Real Neo4j servers via Testcontainers, over the supported server line.
-  # Relate (embedded, zero-setup) runs on every commit too.
+  # Relate (embedded) needs its FFI client built locally (cargo build -p
+  # relate-ffi) — it is exercised by local runs, not CI.
   integration:
     runs-on: ubuntu-latest
     strategy:
@@ -73,9 +77,6 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-
-      - name: Integration tests (Relate embedded backend)
-        run: pnpm test:integration
 
       - name: Integration tests (Neo4j ${{ matrix.neo4j }} via Testcontainers)
         run: pnpm test:integration
