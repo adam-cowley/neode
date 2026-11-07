@@ -1,8 +1,4 @@
 {
   "mode": "pre",
-  "tag": "next",
-  "initialVersions": {
-    "neode": "1.0.0"
-  },
-  "changesets": []
+  "tag": "next"
 }
