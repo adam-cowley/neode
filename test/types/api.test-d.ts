@@ -9,6 +9,7 @@ import type { WithMethods } from '../../src/entity-methods.js'
 import { Builder } from '../../src/query/index.js'
 import { NodeEntity, Property } from '../../src/decorators/index.js'
 import type { Newable } from '../../src/meta/newable.js'
+import type { FactoryBuilder } from '../../src/services/factory.service.js'
 
 @NodeEntity()
 class TypePerson {
@@ -60,5 +61,15 @@ describe('public API type inference', () => {
     const model = getModelByName('TypeSchemaProbe')
 
     expectTypeOf(model).toExtend<Newable | undefined>()
+  })
+
+  it('factory builders type create/make overrides against the model (NTS-167)', () => {
+    const builder = {} as unknown as FactoryBuilder<TypePerson>
+
+    expectTypeOf(builder.create).parameter(0).toEqualTypeOf<Partial<TypePerson> | undefined>()
+    expectTypeOf(builder.make).parameter(0).toEqualTypeOf<Partial<TypePerson> | undefined>()
+
+    expectTypeOf(builder.create).returns.toEqualTypeOf<Promise<TypePerson | TypePerson[]>>()
+    expectTypeOf(builder.make).returns.toEqualTypeOf<Promise<TypePerson | TypePerson[]>>()
   })
 })

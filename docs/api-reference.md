@@ -987,16 +987,36 @@ Both return `BulkChunk<T>` = `{ count, entities }` per chunk. Prefer the facade 
 ## Factories & seeding
 
 ```typescript
-import { FactoryBuilder } from 'neode'
+import { FactoryBuilder, Seeder, runSeeders, seededRandom } from 'neode'
 
 const users = await neode
   .factory('User')
   .count(10)
   .with('posts', { count: 2, properties: { title: 'Seeded' } })
   .create({ role: 'admin' })
+
+// Unsaved instances (no database round-trip): overrides > default > fake
+const drafts = await neode.factory('User').count(3).make({ role: 'admin' })
+
+// Compose another factory: runs per created user, related via the explicit relate path
+const people = await neode.factory(Person).has(neode.factory(Pet).count(2), 'pets').create()
+
+// Idempotent seeding: mergeOn matches on rerun instead of duplicating
+class RolesSeeder extends Seeder {
+  async seed(neode: Neode) {
+    await neode.mergeOn(Role, { name: 'admin' }, { description: 'Administrator' })
+  }
+}
+
+await runSeeders(neode, [new RolesSeeder()])
+
+// Deterministic fakes: same seed, same sequence, reproducible fixtures
+const random = seededRandom(42)
 ```
 
-`neode.factory(model)` returns a chainable `FactoryBuilder`: `.count(n)`, `.with(relationshipName, spec)` and `.create(overrides?)` seed fake data through the library's normal create/relate services, so validation, defaults, timestamps and relationship logic all apply. Precedence on create: explicit value > `default` > `fake`. Unique properties with a `fake` generator are retried until the values are distinct within one batch. `FactoryWithSpec` types one `.with()` call: `{ count, properties? }` — `properties` a static map or a function of the target's index.
+`neode.factory(model)` returns a chainable `FactoryBuilder`: `.count(n)`, `.with(relationshipName, spec)`, `.has(otherFactory, relationshipName)`, `.make(overrides?)` (unsaved) and `.create(overrides?)` seed fake data through the library's normal create/relate services, so validation, defaults, timestamps and relationship logic all apply. Precedence: explicit value > `default` > `fake`. Unique properties with a `fake` generator are retried until the values are distinct within one batch. `FactoryWithSpec` types one `.with()` call: `{ count, properties? }` — `properties` a static map or a function of the target's index. `.make()` rejects relationship seeding (`.with()` / `.has()`), which needs saved nodes. `.has()` runs the child factory once per created instance and relates every child through `relate()` (MERGE).
+
+`Seeder` is the base class for seeders — implement `seed(neode)` and write with `neode.mergeOn(model, match, set)` / `neode.merge(model, properties)` so reruns update rather than duplicate; `runSeeders(neode, seeders)` runs them in order. `seededRandom(seed)` is a deterministic PRNG for use inside `fake` generators, so fixtures are reproducible across runs.
 
 ## Testing & ops
 
