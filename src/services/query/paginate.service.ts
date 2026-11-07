@@ -18,6 +18,12 @@ Property the cursor keyset defaults to when orderBy is not given
 const DEFAULT_CURSOR_PROPERTY = 'createdAt'
 
 /**
+Page size lazy() walks with when the caller does not pick one — the
+paginate() facade default
+*/
+const DEFAULT_LAZY_LIMIT = 25
+
+/**
 Property -> direction pagination (the classic form):
 paginate(model, filter, { page, limit, order? })
 */
@@ -99,6 +105,62 @@ export interface CursorPage<T> {
   nextCursor: string | number | undefined
 
   hasMore: boolean
+}
+
+/**
+Non-paginated `{ items, total }` read (Prisma's findManyAndCount)
+*/
+export interface ManyAndCount<T> {
+  items: T[]
+  total: number
+}
+
+/**
+findManyAndCount() options — they trim the data read only; `total`
+always counts the whole filter (Prisma parity)
+*/
+export interface FindManyAndCountOptions {
+  /**
+  Order spec, as accepted by all()/get()
+  */
+  order?: OrderSpec
+
+  /**
+  Cap on the items returned (total is unaffected)
+  */
+  limit?: number
+
+  /**
+  Rows to skip before the first returned item (total is unaffected)
+  */
+  skip?: number
+}
+
+/**
+lazy() options — the keyset walk behind cursor pagination
+*/
+export interface StreamOptions {
+  /**
+  Page size (default 25)
+  */
+  limit?: number
+
+  /**
+  Property to keyset on (default 'createdAt')
+  */
+  orderBy?: string
+}
+
+/**
+Cursor walk options with explicit undefineds — chunk()/lazy() forward
+optional fields into cursorPage() (CursorPaginateOptions with
+exactOptionalPropertyTypes rejects explicit undefined)
+*/
+interface CursorWalkOptions {
+  limit: number
+  orderBy?: string | undefined
+  after?: string | number | undefined
+  before?: string | number | undefined
 }
 
 // Property type -> Cypher cast function for cursor comparisons
@@ -236,7 +298,7 @@ export class PaginateService extends QueryService {
     constructor: new (...arguments_: never[]) => T,
     schema: EntitySchema,
     filter: Record<string, unknown>,
-    options: CursorPaginateOptions,
+    options: CursorWalkOptions,
     limit: number,
   ): Promise<CursorPage<T>> {
     if (options.after !== undefined && options.before !== undefined) {
@@ -348,6 +410,40 @@ export class PaginateService extends QueryService {
     return { items, nextCursor, hasMore }
   }
 
+  /**
+  Every keyset page of a walk, one autocommit read per page — the shared
+  walk behind chunk() and lazy(). One page of rows is held at a time, so
+  memory stays flat on large reads; an early for-await break finalises
+  the generator with nothing left open (no session spans pages).
+  */
+  private async *pages<T>(
+    constructor: new (...arguments_: never[]) => T,
+    schema: EntitySchema,
+    filter: Record<string, unknown>,
+    limit: number,
+    orderBy?: string,
+  ): AsyncGenerator<T[]> {
+    let after: string | number | undefined
+    let hasMore = true
+
+    while (hasMore) {
+      const page = await this.cursorPage<T>(
+        constructor,
+        schema,
+        filter,
+        { limit, orderBy, after },
+        limit,
+      )
+
+      // A dropped boundary node leaves the cursor undefined (hydrate
+      // filters non-node rows) — stop the walk rather than restart it
+      hasMore = page.hasMore && page.nextCursor !== undefined
+      after = page.nextCursor
+
+      yield page.items
+    }
+  }
+
   async paginate<T>(
     constructor: new (...arguments_: never[]) => T,
     schema: EntitySchema,
@@ -365,6 +461,90 @@ export class PaginateService extends QueryService {
     }
 
     return this.cursorPage<T>(constructor, schema, filter, options, limit)
+  }
+
+  /**
+  Non-paginated read (NTS-166): every entity matching the filter plus
+  its total in one call — one data read + one COUNT read. paginate()'s
+  offset mode covers page reads ({ page, limit }); this is the
+  non-paginated variant. Options trim the data read only.
+  */
+  async findManyAndCount<T>(
+    constructor: new (...arguments_: never[]) => T,
+    schema: EntitySchema,
+    filter: Record<string, unknown> = {},
+    options: FindManyAndCountOptions = {},
+  ): Promise<ManyAndCount<T>> {
+    const data = new Builder()
+
+    data.match(THIS_NODE, schema.getLabels())
+    applyFilter(data, schema, filter)
+
+    if (options.order !== undefined) {
+      applyOrder(data, options.order)
+    }
+
+    const items = await this.return<T>(constructor, schema, data, options.skip, options.limit)
+
+    const count = new Builder()
+
+    count.match(THIS_NODE, schema.getLabels())
+    applyFilter(count, schema, filter)
+    count.return(`count(${THIS_NODE}) AS total`)
+
+    const built = count.build()
+    const output = await this.runner.run(built.query, built.params)
+
+    return { items, total: Number(output.records[0]?.get('total') ?? 0) }
+  }
+
+  /**
+  Walk a large read in chunks (NTS-166): `callback` receives every page
+  of `size` items in keyset order; return false from the callback to
+  stop early. Resolves to the number of items delivered.
+  */
+  async chunk<T>(
+    constructor: new (...arguments_: never[]) => T,
+    schema: EntitySchema,
+    filter: Record<string, unknown>,
+    size: number,
+    callback: (items: T[]) => unknown,
+    options: { orderBy?: string } = {},
+  ): Promise<number> {
+    const limit = requireLimit(size)
+
+    let delivered = 0
+
+    for await (const items of this.pages<T>(constructor, schema, filter, limit, options.orderBy)) {
+      delivered += items.length
+
+      if (callback(items) === false) {
+        break
+      }
+    }
+
+    return delivered
+  }
+
+  /**
+  Async iterator over a large read (NTS-166), paging by keyset under the
+  hood so memory stays flat at one page. Breaking out of the for-await
+  loop stops the walk cleanly — each page is its own autocommit read, so
+  no session is left open.
+  */
+  async *lazy<T>(
+    constructor: new (...arguments_: never[]) => T,
+    schema: EntitySchema,
+    filter: Record<string, unknown> = {},
+    options: StreamOptions = {},
+  ): AsyncGenerator<T> {
+    const limit = requireLimit(options.limit ?? DEFAULT_LAZY_LIMIT)
+
+    for await (const items of this.pages<T>(constructor, schema, filter, limit, options.orderBy)) {
+      for (const item of items) {
+        yield item
+      }
+    }
   }
 }
 
