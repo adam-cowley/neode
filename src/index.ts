@@ -35,7 +35,7 @@ export type {
 } from './meta/schema-definition.interface.js'
 
 // Query builder
-export { Builder, Direction, toDirection, expr, caseExpr } from './query/index.js'
+export { Builder, Direction, toDirection, expr, caseExpr, RawExpression } from './query/index.js'
 export type { INeode } from './neode.interface.js'
 
 // Hydration of raw query results (P4.11 parity)

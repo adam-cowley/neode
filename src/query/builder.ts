@@ -2,6 +2,7 @@ import { Match } from './match.js'
 import { NeodeError } from '../errors/index.js'
 import { Order } from './order.js'
 import { Property } from './property.js'
+import { RawExpression } from './expressions.js'
 import { Relationship } from './relationship.js'
 import { Statement } from './statement.js'
 import { Where, OPERATOR_EQUALS } from './where.js'
@@ -73,7 +74,9 @@ current segment and are flushed into it when the next segment starts or
 when `build()` is called.
 
 All user values are passed as query parameters - the generated query
-contains only aliases.
+contains only aliases. The one exception is `RawExpression` property
+values (NTS-460), which render verbatim into patterns; bind the values
+they reference via `param(name, value)`.
 */
 export class Builder {
   private readonly params: BuilderParameters = {}
@@ -144,7 +147,10 @@ export class Builder {
 
   /**
   Convert a map of properties into inline pattern properties,
-  adding each value to the query parameters
+  adding each value to the query parameters. `RawExpression` values
+  render verbatim instead (NTS-460) — the channel for variable
+  references and expressions in patterns; bind their values via
+  `param(name, value)` and reference them as `$name`.
   */
   private convertPropertyMap(
     alias: string | undefined,
@@ -155,6 +161,10 @@ export class Builder {
     }
 
     return Object.entries(properties).map(([key, value]) => {
+      if (value instanceof RawExpression) {
+        return new Property(key, value.toString(), '=', true)
+      }
+
       const propertyAlias = `${String(alias)}_${key}`
 
       this.params[propertyAlias] = value
@@ -708,7 +718,10 @@ export class Builder {
   }
 
   /**
-  Start a `MERGE` statement
+  Start a `MERGE` statement. Property values bind as parameters;
+  `RawExpression` values render verbatim into the pattern — the channel
+  for merging on a FOREACH-bound variable (`{ slug: new RawExpression('slug') }`)
+  or an expression (NTS-460).
   */
   merge(alias: string, labels?: string | string[] | false, properties?: BuilderParameters): this {
     this.whereStatement('WHERE')
@@ -917,20 +930,27 @@ export class Builder {
   }
 
   /**
-  Add a relationship pattern to the current statement
-  
+  Add a relationship pattern to the current statement, optionally
+  carrying inline pattern properties — parameterised for plain values,
+  rendered verbatim for `RawExpression` values (NTS-460), e.g.
+  `relationship('PROVIDED_ANSWER', 'out', 'r', undefined, { correct: row.correct })`.
+
   @param type  Relationship type, or array of types
   @param direction  Direction of the relationship
   @param alias  Relationship alias
   @param degrees  Number of traversals (1, "1..2", "0..2", "..3")
+  @param properties  Inline pattern properties
   */
   relationship(
     type?: string | string[],
     direction?: string,
     alias?: string,
     degrees?: number | string,
+    properties?: BuilderParameters,
   ): this {
-    this.activeStatement.match(new Relationship(type, direction, alias, degrees))
+    this.activeStatement.match(
+      new Relationship(type, direction, alias, degrees, this.convertPropertyMap(alias, properties)),
+    )
 
     return this
   }
