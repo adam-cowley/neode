@@ -2,27 +2,12 @@ import { Builder, type EntityMatchCriteria } from '../../query/index.js'
 import { INTERNAL_ID, THIS_NODE } from '../../constants.js'
 import { matchCriteriaForEntity } from '../../utilities.js'
 import type { GraphNode, QueryOutput } from '../../driver/types.js'
-import { PropertyType, isProjectedProperty } from '../../meta/property-schema.js'
+import { NON_VALUE_TYPES, isProjectedProperty } from '../../meta/property-schema.js'
 import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { validate } from '../../validation/index.js'
 import { QueryService } from './query.service.js'
 import { isGraphNode } from '../type-guards.js'
 import { applyEmbeddings, applyInTransforms } from '../write-utilities.js'
-
-/**
-Property types that reference entities or internals — never plain values
-*/
-const NON_VALUE_TYPES = new Set<PropertyType>([
-  PropertyType.INTERNAL_ID,
-  PropertyType.ALL_PROPERTIES,
-  PropertyType.ONE_TO_ONE,
-  PropertyType.ONE_TO_MANY,
-  PropertyType.START_NODE,
-  PropertyType.END_NODE,
-  PropertyType.OTHER_NODE,
-  PropertyType.NODE,
-  PropertyType.RELATIONSHIP,
-])
 
 export class UpdateService extends QueryService {
   /**

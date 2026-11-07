@@ -50,6 +50,7 @@ import { type BulkChunk, type BulkOptions, BulkService } from './services/query/
 import { CreateService } from './services/query/create.service.js'
 import { type DeleteOptions, DeleteService } from './services/query/delete.service.js'
 import { type DetachResult, DetachService } from './services/query/detach.service.js'
+import { diffDirty, isTracked } from './dirty.js'
 import { FindService } from './services/query/find.service.js'
 import { FindByIdService } from './services/query/find-by-id.service.js'
 import { GetService, type OrderSpec } from './services/query/get.service.js'
@@ -643,10 +644,23 @@ export class Neode implements INeode {
 
     const schema = this.getSchema(entityConstructor)
 
+    // NTS-157: tracked (hydrated) instances write only their dirty
+    // scalar properties; a clean instance is a no-op — no transaction,
+    // no query, no lifecycle events
+    const dirtyKeys = diffDirty(schema, entity)
+
+    if (isTracked(entity) && dirtyKeys.length === 0) {
+      return entity
+    }
+
     const { hydrated: saved, created } = await this.inWriteTransaction(async (tx) => {
       const mergeService = new MergeService(tx.getRunner())
 
-      const { elementId, created: wasCreated } = await mergeService.save(entity, schema)
+      const { elementId, created: wasCreated } = await mergeService.save(
+        entity,
+        schema,
+        dirtyKeys.length > 0 ? new Set(dirtyKeys) : undefined,
+      )
 
       const findService = new FindByIdService(tx.getRunner())
 

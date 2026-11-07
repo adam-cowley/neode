@@ -72,6 +72,23 @@ export const ProjectedPropertyTypes: PropertyType[] = [
 ]
 
 /**
+Property types that reference entities or internals — never plain values:
+never written by the update path (UpdateService) and never snapshotted
+for dirty tracking (NTS-157)
+*/
+export const NON_VALUE_TYPES = new Set<PropertyType>([
+  PropertyType.INTERNAL_ID,
+  PropertyType.ALL_PROPERTIES,
+  PropertyType.ONE_TO_ONE,
+  PropertyType.ONE_TO_MANY,
+  PropertyType.START_NODE,
+  PropertyType.END_NODE,
+  PropertyType.OTHER_NODE,
+  PropertyType.NODE,
+  PropertyType.RELATIONSHIP,
+])
+
+/**
 Property types that map onto Neo4j temporal values
 */
 export type DefaultValue = (model: object, schema: EntitySchema) => unknown
