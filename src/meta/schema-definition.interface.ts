@@ -74,9 +74,106 @@ export interface TransformConfig {
 }
 
 /**
+Validation rules accepted on a property definition (neode's Joi rule
+names, ported in src/validation/rule-table.ts). Every non-metamodel key
+of a map-schema property definition travels to the validator as a rule
+(mergeProperty persists it via PropertySchema#setRules), so these are the
+keys the published map API accepts alongside the structural options.
+
+Rules are applied on top of the property's base type: a rule the base
+type does not support throws at validation time (rule-table's
+failUnsupported), and boolean rules must be exactly `true`.
+*/
+export interface ValidationRules {
+  /**
+  Minimum (number value or string length)
+  */
+  min?: number
+  /**
+  Maximum (number value or string length)
+  */
+  max?: number
+  /**
+  Exact string length
+  */
+  length?: number
+  /**
+  Maximum number of decimal places
+  */
+  precision?: number
+  /**
+  Value must be a multiple of this
+  */
+  multiple?: number
+  positive?: true
+  negative?: true
+  port?: true
+  integer?: true
+  /**
+  ISO 8601 date or datetime string
+  */
+  iso?: true
+  isoDate?: true
+  optional?: true
+  forbidden?: true
+  strip?: true
+  /**
+  Requires `max` — strings over the limit are truncated instead of failing
+  */
+  truncate?: true
+  /**
+  Case-insensitive matching for `valid` / `invalid` / `allow`
+  */
+  insensitive?: true
+  creditCard?: true
+  alphanum?: true
+  token?: true
+  hostname?: true
+  lowercase?: true
+  uppercase?: true
+  truthy?: true
+  falsy?: true
+  email?: true
+  ip?: true
+  uri?: true
+  base64?: true | { paddingRequired?: boolean }
+  /**
+  Unicode normalisation form, 'NFC' by default
+  */
+  normalize?: true | { form?: string }
+  hex?: true | { prefix?: boolean; byteAligned?: boolean }
+  regex?: RegExp | { pattern: RegExp; name?: string; invert?: boolean }
+  replace?: { pattern: string | RegExp; replace?: string }
+  /**
+  Value must be before this boundary ('now' resolves at validation time)
+  */
+  before?: string | number | Date
+  /**
+  Value must be after this boundary ('now' resolves at validation time)
+  */
+  after?: string | number | Date
+  guid?: true | { version?: 'uuidv4' }
+  trim?: boolean
+  /**
+  Accepted values bypass every other check (Joi semantics)
+  */
+  allow?: unknown
+  valid?: unknown
+  invalid?: unknown
+  /**
+  Accepted for Joi parity — coercion never happens, so this is a no-op
+  */
+  strict?: boolean
+  /**
+  Accepted for Joi parity — '' is always treated as unset
+  */
+  empty?: boolean
+}
+
+/**
 Full form property definition, mirroring neode's schema object options.
 */
-export interface PropertyDefinition {
+export interface PropertyDefinition extends ValidationRules {
   type: PropertyTypeName
   /**
   Free-text explanation of the property for LLM-agent-facing ontology

@@ -41,10 +41,11 @@
   },
   "include": [
     "src/**/*.ts",
-    // The migration-guide snippet mirror — type-checks docs/migration-guide.md
-    // snippets under `tsc --noEmit`. The other test/types files are vitest
-    // typecheck-only (they do not pass plain tsc settings).
-    "test/types/migration-guide-snippets.test-d.ts",
+    // All type tests — including the migration-guide snippet mirror
+    // (test/types/migration-guide-snippets.test-d.ts) — type-check under
+    // plain `tsc --noEmit`. NTS-493 repaired the api.test-d.ts assertions
+    // to match the real API, so the whole directory passes tsc.
+    "test/types/**/*.test-d.ts",
     "examples/cookbook/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]

@@ -7,6 +7,10 @@ export {
   classifyError,
   isTransientError,
 } from './errors/index.js'
+export { ValidationError } from './validation/validation-error.js'
+export type { ValidationDetail } from './validation/validation-error.js'
+export { TransactionError } from './transaction/errors.js'
+export type { BatchStatementError } from './transaction/errors.js'
 export { Repository } from './repository/index.js'
 export { TransactionalService } from './transaction/transactional.service.js'
 export { registerRepository, getRepository, resolveRepository } from './meta/repositories.js'
@@ -32,6 +36,7 @@ export type {
   RelationshipDefinition,
   SchemaDefinition,
   SchemaDefinitionEntry,
+  ValidationRules,
 } from './meta/schema-definition.interface.js'
 
 // Query builder
