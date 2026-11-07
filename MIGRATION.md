@@ -1,4 +1,4 @@
-# Migrating to @neode/beta 1.0 (modern TypeScript stack)
+# Migrating to neode 1.0 (modern TypeScript stack)
 
 The 1.0 line is the modern-stack rewrite: strict TypeScript, standard
 (ES) decorators, dual ESM+CJS build, neo4j-driver 6 as a peer dependency.
@@ -39,10 +39,10 @@ dependency, no SWC transform in your build.
 `dist/` now ships `index.mjs` (ESM), `index.cjs` (CJS) and matching `.d.mts`
 / `.d.cts` types. The `exports` map routes each consumer correctly.
 
-- **Deep dist imports break**: `@neode/beta/dist/decorators` and similar
+- **Deep dist imports break**: `neode/dist/decorators` and similar
   paths no longer exist. Import from the package root — everything public is
   re-exported there.
-- CJS consumers: `require('@neode/beta')` returns the exports object — use
+- CJS consumers: `require('neode')` returns the exports object — use
   `.default` for the `Neode` class (same as 0.2).
 
 ## 3. neo4j-driver is a peer dependency

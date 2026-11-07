@@ -1,8 +1,8 @@
-# Migrating from neode 0.4.9 to neode-ogm
+# Migrating from neode 0.4.9 to neode 1.0
 
-neode-ogm is the continuation of neode, rebuilt on modern foundations: `neo4j-driver` 6, Node.js 20+, TypeScript-first, and a database-agnostic connection layer. The concepts are unchanged — models, properties, relationships, validation, eager loading — but the API surface has been tightened and several long-standing bugs are fixed.
+neode 1.0 is the continuation of neode, rebuilt on modern foundations: `neo4j-driver` 6, Node.js 20+, TypeScript-first, and a database-agnostic connection layer. The concepts are unchanged — models, properties, relationships, validation, eager loading — but the API surface has been tightened and several long-standing bugs are fixed.
 
-This guide covers everything that moved, plus what neode-ogm gives you that neode never had.
+This guide covers everything that moved, plus what neode 1.0 gives you that neode never had.
 
 - [Two ways in](#two-ways-in)
 - [Installation & connecting](#installation--connecting)
@@ -19,7 +19,7 @@ This guide covers everything that moved, plus what neode-ogm gives you that neod
 
 ### Path 1 — your existing schemas work as-is
 
-The map-based `model()` / `with()` / `withDirectory()` / `extend()` API is kept for parity. A neode 0.4.9 schema definition is a valid neode-ogm schema definition — same property type names, same option keys, same shorthand form:
+The map-based `model()` / `with()` / `withDirectory()` / `extend()` API is kept for parity. A neode 0.4.9 schema definition is a valid neode 1.0 schema definition — same property type names, same option keys, same shorthand form:
 
 ```typescript
 neode.model('Person', {
@@ -38,14 +38,14 @@ neode.model('Person', {
 
 Two schema-level differences to know about:
 
-- **`cascade` is not carried per relationship.** neode-ogm takes cascade as a _delete-time_ option instead — see [Cascade delete](#cascade-delete--and-detach--now-both-work). The `cascade` key in a map schema is accepted but ignored.
+- **`cascade` is not carried per relationship.** neode 1.0 takes cascade as a _delete-time_ option instead — see [Cascade delete](#cascade-delete--and-detach--now-both-work). The `cascade` key in a map schema is accepted but ignored.
 - **Relationship `properties` (edge properties) are parsed but not writable yet** — a generated relationship entity is needed for edge-property saves.
 
 ### Path 2 — the decorator API
 
 The decorator-first API is the recommended way to write new models: classes with `@NodeEntity`, typed properties, and IDE support. The mapping from neode concepts:
 
-| neode (map)                                                                    | neode-ogm (decorators)                                                                            |
+| neode (map)                                                                    | neode 1.0 (decorators)                                                                            |
 | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | `instance.model('Person', { … })`                                              | `@NodeEntity() class Person { … }`                                                                |
 | `person_id: { primary: true, type: 'uuid' }`                                   | `@Uuid({ primary: true }) id: string`                                                             |
@@ -61,10 +61,10 @@ Every decorator is listed in the [API reference](api-reference.md#entities--deco
 ## Installation & connecting
 
 ```bash
-npm install @neode/beta
+npm install neode@next
 ```
 
-neode took a Bolt URL and credentials in the constructor. neode-ogm takes a **ConnectionProvider** — build one with the factories:
+neode took a Bolt URL and credentials in the constructor. neode 1.0 takes a **ConnectionProvider** — build one with the factories:
 
 ```typescript
 // neode 0.4.9
@@ -72,12 +72,13 @@ const neode = new Neode('bolt://localhost:7687', 'username', 'password', true)
 ```
 
 ```typescript
-// neode-ogm
 import neo4j from 'neo4j-driver'
-import Neode, { fromEnv } from '@neode/beta'
+import Neode, { fromEnv } from 'neode'
 
+// Either:
 const neode = Neode.forDriver(driver, 'neo4j', true) // database, enterprise
-const neode = fromEnv() // NEO4J_* env vars
+// Or, from NEO4J_* env vars:
+const neode2 = fromEnv()
 ```
 
 Notes:
@@ -88,9 +89,9 @@ Notes:
 
 ## IDs: internal ids → elementId
 
-Neo4j 5+ replaced numeric internal node ids with `elementId` strings, and neode-ogm follows.
+Neo4j 5+ replaced numeric internal node ids with `elementId` strings, and neode 1.0 follows.
 
-|                                         | neode 0.4.9                     | neode-ogm                                                                       |
+|                                         | neode 0.4.9                     | neode 1.0                                                                       |
 | --------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------- |
 | Look up by internal id                  | `findById('Person', 123)`       | `findById(Person, '4:uuid:0')` — an elementId **string**                        |
 | Hydrate the internal id onto the entity | `node.id()` / `node.get('id')`… | declare `@InternalId() _id: string` — hydrated with the elementId on every read |
@@ -116,7 +117,7 @@ const byElId = await neode.findById(Person, saved._id) // elementId string
 
 neode's string-labelled facade is now class-based, and a few methods changed shape:
 
-| neode 0.4.9                                                 | neode-ogm                                                                                                                                 |
+| neode 0.4.9                                                 | neode 1.0                                                                                                                                 |
 | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `first('Person', 'name', 'Adam')`                           | `neode.getFirst(Person, { name: 'Adam' })`                                                                                                |
 | `first('Person', { name: 'Adam', age: 29 })`                | `neode.getFirst(Person, { name: 'Adam', age: 29 })`                                                                                       |
@@ -135,7 +136,7 @@ Two changes to the values coming back:
 
 ## Sessions → ConnectionProvider
 
-neode exposed raw driver sessions (`session()`, `readSession()`, `writeSession()`) and an implicit-session `cypher()`. neode-ogm replaces both with a database-agnostic port: the OGM opens and manages its own transactions through the `ConnectionProvider`, and you talk to it in Cypher or in transactions.
+neode exposed raw driver sessions (`session()`, `readSession()`, `writeSession()`) and an implicit-session `cypher()`. neode 1.0 replaces both with a database-agnostic port: the OGM opens and manages its own transactions through the `ConnectionProvider`, and you talk to it in Cypher or in transactions.
 
 ```typescript
 // One-off statements (implicit transactions)
@@ -155,7 +156,7 @@ await neode.inWriteTransaction(async (tx) => {
 })
 ```
 
-| neode 0.4.9                                               | neode-ogm                                                                                     |
+| neode 0.4.9                                               | neode 1.0                                                                                     |
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `instance.cypher(q, p)`                                   | `neode.readCypher(q, p)` / `neode.writeCypher(q, p)`                                          |
 | `instance.readSession()` / `writeSession()` / `session()` | `neode.readTransaction(db?)` / `writeTransaction(db?)` — or the `open*Transaction()` variants |
@@ -165,7 +166,7 @@ Inside a transaction, `tx` (a `TransactionalService`) offers the query surface �
 
 ## Validation: Joi rules → Zod, same names
 
-neode validated with [Joi](https://github.com/hapijs/joi); neode-ogm implements **the same rule names over [Zod](https://zod.dev)**, so your rule config ports unchanged. Rules live in the property config, in both definition styles:
+neode validated with [Joi](https://github.com/hapijs/joi); neode 1.0 implements **the same rule names over [Zod](https://zod.dev)**, so your rule config ports unchanged. Rules live in the property config, in both definition styles:
 
 ```typescript
 @Property({ type: 'string', min: 2, max: 50, email: true })
@@ -215,7 +216,7 @@ Improvements over neode:
 
 ## Cascade delete — and detach — now both work
 
-neode declared cascade behaviour per relationship in the schema (`cascade: 'delete' | 'detach'`), and its `detach` mode was broken. neode-ogm makes cascade a **delete-time option** that works, for every relationship declared on the model's schema:
+neode declared cascade behaviour per relationship in the schema (`cascade: 'delete' | 'detach'`), and its `detach` mode was broken. neode 1.0 makes cascade a **delete-time option** that works, for every relationship declared on the model's schema:
 
 ```typescript
 await neode.delete(adam) // plain DETACH DELETE — related nodes untouched
@@ -250,7 +251,7 @@ await neode.delete(adam, {
 
 - `save()` MERGEs on the primary key and re-hydrates the entity in place — idempotent for the same unique value.
 - `update()` is `+=` semantics: provided keys only, matched by primary key, then re-hydrated.
-- When a model declares no primary key, neode-ogm falls back to `<first label lowercased>_id` — the same default as neode.
+- When a model declares no primary key, neode 1.0 falls back to `<first label lowercased>_id` — the same default as neode.
 - Labels are always sorted and merged on write (`extend()` adds an extra label).
 - The query builder (`Builder`) is bundled in-tree — no separate package, and no `neo4j.Integer` coupling.
 - `@String` still exists for parity but is deprecated and shadows the global `String` type — prefer `@Property({ type: 'string' })`.

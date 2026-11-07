@@ -2,7 +2,7 @@
   "mode": "pre",
   "tag": "next",
   "initialVersions": {
-    "@neode/beta": "0.2.0"
+    "neode": "1.0.0"
   },
   "changesets": []
 }

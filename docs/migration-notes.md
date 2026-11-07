@@ -1,7 +1,7 @@
 # Migration Notes — neode-ogm (Phase 0 baseline)
 
 Recorded on branch `refactor/modern-stack`, tagged `legacy-final` (commit `a58eaa3`, v0.2.0).
-**Target of migration: this package (`@neode/beta`, `neode-ogm/`).** The legacy `neode/` package
+**Target of migration: this package (`neode`, `neode-ogm/`).** The legacy `neode/` package
 is out of scope (a stray migration attempt there was parked on `refactor/modern-stack` in that repo
 and can be discarded).
 
@@ -41,7 +41,7 @@ Integration uses the embedded Relate engine (`test/integration/setup.ts`), no ex
 
 ## package.json surface (today)
 
-- `name: @neode/beta`, `version: 0.2.0`
+- `name: neode`, `version: 0.2.0`
 - `main: dist/index.js` (CJS from tsc), `types: dist/index.d.ts`
 - `exports["."]`: types + default only (ESM-shaped — CJS consumers currently get ESM via
   `require` falling back? No: no `require` condition; CJS `require()` of this package resolves the

@@ -83,7 +83,7 @@ import Neode, {
   type GraphRelationship,
   type AccessMode,
   type RepositoryConstructor,
-} from '@neode/beta'
+} from 'neode'
 ```
 
 - [Entities & decorators](#entities--decorators)
@@ -478,7 +478,7 @@ await people.count({ age: 30 })
 ### Custom repositories
 
 ```typescript
-import { Repository, EntityRepository } from '@neode/beta'
+import { Repository, EntityRepository } from 'neode'
 
 @EntityRepository(Person)
 class PeopleRepository extends Repository<Person> {
@@ -581,7 +581,7 @@ await adam.save() // works at runtime on any hydrated instance
 **Typing caveat.** These methods are attached at hydration time, so TypeScript does not see them on your class. Use the `WithMethods<T>` helper for type-checking — the facade returns `Promise<T>` typed as your class, so cast once:
 
 ```typescript
-import type { WithMethods } from '@neode/beta'
+import type { WithMethods } from 'neode'
 
 const adam = (await neode.create(Person, { name: 'Adam' })) as WithMethods<Person>
 await adam.update({ age: 31 })
@@ -598,7 +598,7 @@ Notes:
 Facade queries return **plain arrays** of hydrated entities. `Collection<T>` is exported for when you want neode's wrapper: `length`, iteration (`for…of`, spread), `get(i)`, `first()`, `map(fn)`, `find(fn)`, `forEach(fn)`, `Collection.from(iterable)`.
 
 ```typescript
-import { toJson, valueToJson } from '@neode/beta'
+import { toJson, valueToJson } from 'neode'
 
 const json = toJson(person)
 // { _id: elementId, _labels: ['Person'], name: 'Adam', pets: [ … ] }

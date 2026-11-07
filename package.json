@@ -1,6 +1,6 @@
 {
-  "name": "@neode/beta",
-  "version": "0.2.0",
+  "name": "neode",
+  "version": "1.0.0-alpha.0",
   "description": "Decorator-based Object Graph Mapper for Neo4j and Cypher-compatible graph databases",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -58,12 +58,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/adam-cowley/neode-ogm.git"
+    "url": "git+https://github.com/adam-cowley/neode.git"
   },
   "bugs": {
-    "url": "https://github.com/adam-cowley/neode-ogm/issues"
+    "url": "https://github.com/adam-cowley/neode/issues"
   },
-  "homepage": "https://github.com/adam-cowley/neode-ogm#readme",
+  "homepage": "https://github.com/adam-cowley/neode#readme",
   "engines": {
     "node": ">=20"
   },

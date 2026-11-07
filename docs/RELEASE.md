@@ -2,11 +2,11 @@
 
 ## 1. Package name — DECISION PENDING
 
-The package currently publishes as **`@neode/beta`**. Before the first stable
+The package currently publishes as **`neode`**. Before the first stable
 release, pick the final name:
 
 - `@neode/ogm` — scoped, keeps the `@neode` org namespace (recommended)
-- `neode-ogm` — unscoped, clearer standalone discovery on npm
+- `neode 1.0` — unscoped, clearer standalone discovery on npm
 
 Changing the name means: update `package.json` `name`, `repository`/`bugs`/
 `homepage` URLs if the repo moves, and re-run the verification in §4.
@@ -35,7 +35,7 @@ the publish locally and in CI.
 1. `npm pack --dry-run` — confirm the tarball contains only `dist/**`
    (`.js`, `.d.ts`, `.d.ts.map`, `.js.map`), `package.json` and `LICENSE`/`README`.
 2. Install the packed tarball into a scratch project and check that
-   `import Neode from 'neode-ogm'` (or the scoped name) resolves and the
+   `import Neode from 'neode 1.0'` (or the scoped name) resolves and the
    decorators register an entity.
 3. Push a tag `v<version>` to run the CI `release` job. The job is inert
    unless the `NPM_TOKEN` secret is configured (repo Settings → Secrets →

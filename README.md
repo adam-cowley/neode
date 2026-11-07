@@ -1,6 +1,6 @@
-# neode-ogm
+# neode
 
-neode-ogm is a Neo4j OGM for Node.js designed to take care of the CRUD boilerplate involved with setting up a graph database project. Just install, define your models and go.
+neode is a Neo4j OGM for Node.js designed to take care of the CRUD boilerplate involved with setting up a graph database project. Just install, define your models and go.
 
 It runs against any Cypher-compatible engine: **Neo4j** (Community, Enterprise, Aura) and **Memgraph** over Bolt, or the embedded [Relate](https://github.com/relateapp/relate) engine in-process.
 
@@ -13,12 +13,14 @@ It runs against any Cypher-compatible engine: **Neo4j** (Community, Enterprise, 
 
 Coming from [neode](https://github.com/adam-cowley/neode) 0.4.9? Your existing map-based schemas keep working — read the [migration guide](docs/migration-guide.md).
 
+> **1.0 alpha.** This branch is the `1.0.0-alpha.0` prerelease line. Install it with the `next` dist-tag — `npm install neode` still gives you 0.4.9 until 1.0 goes stable.
+
 ## Getting Started
 
 ### Installation
 
 ```bash
-npm install @neode/beta
+npm install neode@next
 ```
 
 Requires Node.js 20 or newer (Neo4j 5.x / 2025.x servers, `neo4j-driver` 6).
@@ -28,7 +30,7 @@ Requires Node.js 20 or newer (Neo4j 5.x / 2025.x servers, `neo4j-driver` 6).
 ```typescript
 // index.ts
 import neo4j from 'neo4j-driver'
-import Neode from '@neode/beta'
+import Neode from 'neode'
 
 const driver = neo4j.driver('bolt://localhost:7687', neo4j.auth.basic('neo4j', 'password'))
 
@@ -45,7 +47,7 @@ NEO4J_DATABASE=neo4j
 ```
 
 ```typescript
-import { fromEnv } from '@neode/beta'
+import { fromEnv } from 'neode'
 
 const neode = fromEnv()
 ```
@@ -65,7 +67,7 @@ import {
   OneToMany,
   Direction,
   WithMethods,
-} from '@neode/beta'
+} from 'neode'
 
 @NodeEntity()
 export class Pet {
