@@ -30,7 +30,14 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
 
-    "noEmit": true
+    "noEmit": true,
+
+    // The cookbook scripts import 'neode' the way a consumer does; at type
+    // check time that resolves to the source, so the examples rot with the API
+    "paths": { "neode": ["./src/index.ts"] },
+    // Disambiguates the 'neode' paths resolution against this package's own
+    // exports map (TS2209); noEmit, so it never affects emitted output
+    "rootDir": "."
   },
   "include": [
     "src/**/*.ts",
@@ -38,7 +45,8 @@
     // (test/types/migration-guide-snippets.test-d.ts) — type-check under
     // plain `tsc --noEmit`. NTS-493 repaired the api.test-d.ts assertions
     // to match the real API, so the whole directory passes tsc.
-    "test/types/**/*.test-d.ts"
+    "test/types/**/*.test-d.ts",
+    "examples/cookbook/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }
