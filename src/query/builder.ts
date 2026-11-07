@@ -57,12 +57,15 @@ export class Builder {
   private subCount = 0
 
   /**
-  Whether the last opened segment is an updating clause (CREATE / MERGE).
-  Neo4j rejects a reading clause after an updating clause without an
-  intervening WITH ("WITH is required between CREATE and MATCH"), so
-  match() / optionalMatch() bridge the transition with `WITH *`.
+  Whether the last opened segment ended in an updating clause
+  (CREATE / MERGE) or a DELETE clause. Neo4j rejects a reading clause
+  directly after either — "WITH is required between CREATE and MATCH",
+  "WITH is required between DELETE and MATCH" (42N24) — so
+  match() / optionalMatch() bridge the transition with `WITH *`, which
+  preserves every in-scope variable.
   */
   private afterWriteClause = false
+  private afterDeleteClause = false
 
   /**
   The statement segment currently being built — every pattern method
@@ -200,17 +203,18 @@ export class Builder {
   }
 
   /**
-  Bridge an updating -> reading clause transition: Neo4j rejects a MATCH
-  directly after CREATE / MERGE ("WITH is required between CREATE and
-  MATCH"), so emit `WITH *` — it preserves every in-scope variable
+  Bridge an updating / DELETE -> reading clause transition: Neo4j rejects a
+  MATCH directly after CREATE / MERGE / DELETE without an intervening WITH,
+  so emit `WITH *` — it preserves every in-scope variable
   */
   private bridgeWriteToRead(): void {
-    if (!this.afterWriteClause) {
+    if (!this.afterWriteClause && !this.afterDeleteClause) {
       return
     }
 
     this.statements.push(new WithStatement(['*']))
     this.afterWriteClause = false
+    this.afterDeleteClause = false
   }
 
   /**
@@ -284,8 +288,10 @@ export class Builder {
     this.whereStatement('WHERE')
     this.statement()
 
-    // The user's own WITH satisfies the updating -> reading requirement
+    // The user's own WITH satisfies the updating / DELETE -> reading
+    // requirement
     this.afterWriteClause = false
+    this.afterDeleteClause = false
     this.statements.push(new WithStatement(variables))
 
     return this
@@ -299,6 +305,7 @@ export class Builder {
     this.statement()
 
     this.afterWriteClause = false
+    this.afterDeleteClause = false
     this.statements.push(new WithDistinctStatement(variables))
 
     return this
@@ -599,6 +606,11 @@ export class Builder {
   delete(...values: string[]): this {
     this.activeStatement.delete(...values)
 
+    // Updating clauses may follow each other directly, but a reading
+    // clause after a DELETE needs the WITH bridge (42N24)
+    this.afterDeleteClause = true
+    this.afterWriteClause = false
+
     return this
   }
 
@@ -607,6 +619,9 @@ export class Builder {
   */
   detachDelete(...values: string[]): this {
     this.activeStatement.detachDelete(...values)
+
+    this.afterDeleteClause = true
+    this.afterWriteClause = false
 
     return this
   }
@@ -618,6 +633,7 @@ export class Builder {
     this.whereStatement('WHERE')
     this.statement('CREATE')
     this.afterWriteClause = true
+    this.afterDeleteClause = false
 
     this.activeStatement.match(new Match(alias, labels, this.convertPropertyMap(alias, properties)))
 
@@ -631,6 +647,7 @@ export class Builder {
     this.whereStatement('WHERE')
     this.statement('MERGE')
     this.afterWriteClause = true
+    this.afterDeleteClause = false
 
     this.activeStatement.match(new Match(alias, labels, this.convertPropertyMap(alias, properties)))
 
