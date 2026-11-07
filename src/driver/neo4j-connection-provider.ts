@@ -7,13 +7,13 @@
   session as DriverSessionMode,
   type Transaction as DriverTransaction,
   Integer as DriverInteger,
-  DateTime as DriverDateTime,
-  Date as DriverDate,
-  Time as DriverTime,
-  LocalTime as DriverLocalTime,
-  LocalDateTime as DriverLocalDateTime,
-  Point as DriverPoint,
-  Duration as DriverDuration,
+  isDate,
+  isDateTime,
+  isDuration,
+  isLocalDateTime,
+  isLocalTime,
+  isPoint,
+  isTime,
 } from 'neo4j-driver'
 
 import type {
@@ -72,14 +72,17 @@ export function normalizeDriverValue(value: unknown): unknown {
   // Temporal / spatial types expose a toString that round-trips the value;
   // they are passed through as-is for now (deep value mapping lands with
   // the property-type layer) but their internal integers are normalized.
+  // The driver's duck-typed guards check identifier properties, so they also
+  // recognise instances from a second copy of neo4j-driver (pnpm/link
+  // setups) that `instanceof` would miss and mangle into plain objects.
   if (
-    value instanceof DriverDateTime ||
-    value instanceof DriverDate ||
-    value instanceof DriverTime ||
-    value instanceof DriverLocalTime ||
-    value instanceof DriverLocalDateTime ||
-    value instanceof DriverDuration ||
-    value instanceof DriverPoint
+    isDateTime(value) ||
+    isDate(value) ||
+    isTime(value) ||
+    isLocalTime(value) ||
+    isLocalDateTime(value) ||
+    isDuration(value) ||
+    isPoint(value)
   ) {
     return value
   }
