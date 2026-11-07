@@ -9,14 +9,23 @@ import {
 } from '../../src/driver/types'
 
 /**
- * Records the `database` argument without touching a server — proves the
- * facade's per-call override reaches the port. The named databases only
- * exist on Enterprise servers, and this is a wiring test: real execution
- * against named databases is covered by the server tests below.
+ * Wraps an inner provider (edition/close forward) while recording the
+ * `database` argument of every port call — proves the facade's per-call
+ * override reaches the port.
+ *
+ * Statements are NOT forwarded: the assertions here are on the threaded
+ * `database` argument only, and not forwarding keeps the fake database
+ * names hermetic on real servers (which reject unknown databases).
  */
 class RecordingProvider implements ConnectionProvider {
   readonly runDatabases: (string | undefined)[] = []
   readonly beginDatabases: (string | undefined)[] = []
+
+  private readonly noOpHandle: TransactionHandle = {
+    run: async () => ({ records: [] }),
+    commit: async () => {},
+    rollback: async () => {},
+  }
 
   constructor(private readonly inner: ConnectionProvider) {}
 
@@ -34,11 +43,7 @@ class RecordingProvider implements ConnectionProvider {
   async beginTransaction(mode?: AccessMode, database?: string): Promise<TransactionHandle> {
     this.beginDatabases.push(database)
 
-    return {
-      run: async () => ({ records: [] }),
-      commit: async () => {},
-      rollback: async () => {},
-    }
+    return this.noOpHandle
   }
 
   async edition() {
@@ -47,6 +52,28 @@ class RecordingProvider implements ConnectionProvider {
 
   async close() {
     return this.inner.close()
+  }
+}
+
+/** Create a scratch database on `system` and wait until it is online. */
+async function createDatabaseOnline(connection: ConnectionProvider, name: string): Promise<void> {
+  await connection.run(`CREATE DATABASE \`${name}\` IF NOT EXISTS`, undefined, 'WRITE', 'system')
+
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const show = await connection.run(
+      'SHOW DATABASES YIELD name, currentStatus',
+      undefined,
+      'READ',
+      'system',
+    )
+
+    const row = show.records.find((record) => record.get('name') === name)
+
+    if (row && row.get('currentStatus') === 'online') {
+      return
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500))
   }
 }
 
@@ -89,6 +116,35 @@ describe('multi-database wiring', () => {
     await explicit.rollback()
     expect(recording.beginDatabases[1]).toBe('explicit-db')
   })
+
+  // Regression test for adam-cowley/neode#182: batch and the transaction()
+  // callback form used the wrong database
+  it('threads the configured database into batch() and transaction()', async () => {
+    const recording = new RecordingProvider(backend.connection)
+    const neode = new Neode(recording)
+
+    // batch() honours the setDatabase default, then the per-call override
+    neode.setDatabase('batch-db')
+    await neode.batch(['RETURN 1 AS one'])
+    await neode.batch(['RETURN 1 AS one'], 'override-db')
+    expect(recording.beginDatabases[0]).toBe('batch-db')
+    expect(recording.beginDatabases[1]).toBe('override-db')
+
+    // transaction() (the inWriteTransaction callback form) honours both too
+    const committed = await neode.inWriteTransaction(async (tx) => {
+      await tx.writeCypher('RETURN 1 AS one')
+      await tx.commit()
+
+      return 'done'
+    })
+    expect(committed).toBe('done')
+    expect(recording.beginDatabases[2]).toBe('batch-db')
+
+    await neode.inWriteTransaction(async (tx) => {
+      await tx.commit()
+    }, 'tx-override-db')
+    expect(recording.beginDatabases[3]).toBe('tx-override-db')
+  })
 })
 
 describe('multi-database against the server', () => {
@@ -119,33 +175,10 @@ describe('multi-database against the server', () => {
       ctx.skip() // CREATE DATABASE requires Enterprise
     }
 
-    const name = 'ogm_multi_db_test'
+    const name = 'ogm-multi-db-test'
 
     try {
-      await backend.connection.run(
-        `CREATE DATABASE \`${name}\` IF NOT EXISTS`,
-        undefined,
-        'WRITE',
-        'system',
-      )
-
-      // Wait for the scratch database to come online
-      for (let attempt = 0; attempt < 30; attempt++) {
-        const show = await backend.connection.run(
-          'SHOW DATABASES YIELD name, currentStatus',
-          undefined,
-          'READ',
-          'system',
-        )
-
-        const row = show.records.find((record) => record.get('name') === name)
-
-        if (row && row.get('currentStatus') === 'online') {
-          break
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 500))
-      }
+      await createDatabaseOnline(backend.connection, name)
 
       const neode = new Neode(backend.connection)
       neode.setDatabase(name)
@@ -170,6 +203,72 @@ describe('multi-database against the server', () => {
       await backend.connection
         .run(`DROP DATABASE \`${name}\` IF EXISTS`, undefined, 'WRITE', 'system')
         .catch(() => {})
+    }
+  })
+
+  // Regression test for adam-cowley/neode#182: transaction() and batch()
+  // used to write to the wrong database
+  it('runs transaction() and batch() in the setDatabase target', async (ctx) => {
+    if (!backend.capabilities.multiDatabase || !isEnterprise(backend.capabilities)) {
+      ctx.skip() // CREATE DATABASE requires Enterprise
+    }
+
+    const name = 'ogm-multi-db-tx-batch'
+    const override = 'ogm-multi-db-tx-batch-override'
+
+    try {
+      await createDatabaseOnline(backend.connection, name)
+      await createDatabaseOnline(backend.connection, override)
+
+      const neode = new Neode(backend.connection)
+      neode.setDatabase(name)
+
+      // batch() honours the configured database…
+      await neode.batch(['CREATE (n:MultiDbProbe { name: "batch" })'])
+
+      // …transaction() too…
+      await neode.inWriteTransaction(async (tx) => {
+        await tx.writeCypher('CREATE (n:MultiDbProbe { name: "tx" })')
+        await tx.commit()
+      })
+
+      // …and the per-call override wins over setDatabase
+      await neode.batch(['CREATE (n:MultiDbProbe { name: "override" })'], override)
+
+      // Nothing landed on the default database
+      const onDefault = await backend.connection.run('MATCH (n:MultiDbProbe) RETURN count(n) AS n')
+
+      expect(onDefault.records[0].get('n')).toBe(0)
+
+      // Both configured-database writes are in the target…
+      const onTarget = await backend.connection.run(
+        'MATCH (n:MultiDbProbe) RETURN count(n) AS n',
+        undefined,
+        'WRITE',
+        name,
+      )
+
+      expect(onTarget.records[0].get('n')).toBe(2)
+
+      // …and the override's write is in its own database
+      const onOverride = await backend.connection.run(
+        'MATCH (n:MultiDbProbe) RETURN count(n) AS n',
+        undefined,
+        'WRITE',
+        override,
+      )
+
+      expect(onOverride.records[0].get('n')).toBe(1)
+    } finally {
+      // Clean the default database too, so a regression (writes landing
+      // there) does not leave probe nodes behind
+      await backend.connection.run('MATCH (n:MultiDbProbe) DETACH DELETE n').catch(() => {})
+
+      for (const db of [name, override]) {
+        await backend.connection
+          .run(`DROP DATABASE \`${db}\` IF EXISTS`, undefined, 'WRITE', 'system')
+          .catch(() => {})
+      }
     }
   })
 })
