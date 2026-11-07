@@ -11,3 +11,4 @@ logs/
 
 # Turbo
 .turbo/
+.husky/_
