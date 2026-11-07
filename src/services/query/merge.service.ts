@@ -9,6 +9,7 @@ import { isProjectedProperty } from '../../meta/property-schema.js'
 import type { RelationshipPropertySchema } from '../../meta/relationship-property-schema.js'
 import { getValueOrDefault, getValuesAsRecord, setPropertyInBuilder } from '../../utilities.js'
 import {
+  SERVER_TIMESTAMP,
   applyEmbeddings,
   applyFakeValues,
   applyInTransforms,
@@ -16,6 +17,7 @@ import {
   getOtherProperty,
   modelPropertyValues,
   setRelationshipEntityProperties,
+  timestampProperty,
 } from '../write-utilities.js'
 import { validate } from '../../validation/index.js'
 import { NeodeError } from '../../errors/index.js'
@@ -28,6 +30,30 @@ Properties used for merge matching: unique OR indexed
 */
 export function getMergeFields(schema: EntitySchema): PropertySchema[] {
   return schema.getProperties().filter((property) => property.isUnique() || property.isIndex())
+}
+
+/**
+Server-side timestamps on a MERGE (NTS-165): `createdAt` stamps on create
+only, `updatedAt` on create and on match. The expressions render after the
+MERGE pattern and before the plain SET clauses, so an explicitly written
+timestamp value in the same statement overrides the stamp.
+*/
+function stampMergeTimestamps(builder: Builder, schema: EntitySchema): void {
+  for (const kind of ['createdAt', 'updatedAt'] as const) {
+    const property = timestampProperty(schema, kind)
+
+    if (property === undefined) {
+      continue
+    }
+
+    const key = `${THIS_NODE}.${property.getKey()}`
+
+    builder.onCreateSetExpr(key, SERVER_TIMESTAMP)
+
+    if (kind === 'updatedAt') {
+      builder.onMatchSetExpr(key, SERVER_TIMESTAMP)
+    }
+  }
 }
 
 export class MergeService extends QueryService {
@@ -147,6 +173,11 @@ export class MergeService extends QueryService {
       builder.set(`${THIS_NODE}.${key}`, value)
     }
 
+    // Server-side timestamps (NTS-165): createdAt stamps on create,
+    // updatedAt on every write — an explicitly provided match/set value
+    // overrides the stamp in the same statement
+    stampMergeTimestamps(builder, schema)
+
     builder.return(THIS_NODE, `elementId(${THIS_NODE}) AS ${INTERNAL_ID}`)
 
     const { query, params } = builder.build()
@@ -227,6 +258,13 @@ export class MergeService extends QueryService {
       if (value !== undefined) {
         setPropertyInBuilder(builder, THIS_NODE, property, value)
       }
+    }
+
+    // Server-side timestamps (NTS-165): every real write stamps updatedAt
+    // (and createdAt when the merge creates). A tracked clean instance
+    // never reaches this point — the facade skips the write entirely.
+    if (dirtyKeys === undefined || dirtyKeys.size > 0) {
+      stampMergeTimestamps(builder, schema)
     }
 
     builder.return(THIS_NODE, `elementId(${THIS_NODE}) AS ${INTERNAL_ID}`)

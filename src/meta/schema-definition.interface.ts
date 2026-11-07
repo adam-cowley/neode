@@ -196,6 +196,16 @@ export interface PropertyDefinition extends ValidationRules {
   onCreateSet?: boolean
   onMatchSet?: boolean
   alwaysSet?: boolean
+  /**
+  Server-side timestamp (NTS-165): stamped with `datetime()` once on
+  create — the map-API form of `@CreatedAt`.
+  */
+  createdAt?: boolean
+  /**
+  Server-side timestamp (NTS-165): stamped with `datetime()` on create and
+  on every write — the map-API form of `@UpdatedAt`.
+  */
+  updatedAt?: boolean
   required?: boolean
   hidden?: boolean
   protected?: boolean

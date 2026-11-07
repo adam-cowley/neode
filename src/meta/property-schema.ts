@@ -112,6 +112,14 @@ export class PropertySchema {
   private fulltext = false
 
   /**
+  Server-side timestamps (NTS-165): @CreatedAt stamps `datetime()` once on
+  create, @UpdatedAt on every write — both written by the database, so
+  clocks never drift across clients
+  */
+  private createdAt = false
+  private updatedAt = false
+
+  /**
   Free-text explanation emitted by the agent ontology (NTS-445)
   */
   private description: string | undefined
@@ -385,6 +393,22 @@ export class PropertySchema {
 
   getAlwaysSet(): boolean {
     return this.alwaysSet
+  }
+
+  setCreatedAt(isCreatedAt = true): void {
+    this.createdAt = isCreatedAt
+  }
+
+  isCreatedAt(): boolean {
+    return this.createdAt
+  }
+
+  setUpdatedAt(isUpdatedAt = true): void {
+    this.updatedAt = isUpdatedAt
+  }
+
+  isUpdatedAt(): boolean {
+    return this.updatedAt
   }
 
   setFulltext(isFulltext = true): void {

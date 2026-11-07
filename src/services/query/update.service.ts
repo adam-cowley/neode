@@ -7,7 +7,12 @@ import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { validate } from '../../validation/index.js'
 import { QueryService } from './query.service.js'
 import { isGraphNode } from '../type-guards.js'
-import { applyEmbeddings, applyInTransforms } from '../write-utilities.js'
+import {
+  SERVER_TIMESTAMP,
+  applyEmbeddings,
+  applyInTransforms,
+  timestampProperty,
+} from '../write-utilities.js'
 
 export class UpdateService extends QueryService {
   /**
@@ -68,6 +73,8 @@ export class UpdateService extends QueryService {
             property.isProtected() ||
             property.isHidden() ||
             property.isReadonly() ||
+            // @CreatedAt is set once on create (NTS-165)
+            property.isCreatedAt() ||
             isProjectedProperty(property) ||
             NON_VALUE_TYPES.has(property.getType()),
         )
@@ -149,6 +156,15 @@ export class UpdateService extends QueryService {
 
     for (const property of vectorProperties) {
       builder.setVectorProperty(THIS_NODE, property.getKey(), set[property.getKey()])
+    }
+
+    // Server-side updatedAt stamp on every write (NTS-165) — an explicit
+    // value in `set` wins, and the nothing-to-write early return above
+    // leaves a no-op update's stamp alone too
+    const updatedAt = timestampProperty(schema, 'updatedAt')
+
+    if (updatedAt !== undefined && set[updatedAt.getKey()] === undefined) {
+      builder.setExpr(`${THIS_NODE}.${updatedAt.getKey()}`, SERVER_TIMESTAMP)
     }
 
     builder.return(THIS_NODE, `elementId(${THIS_NODE}) AS ${INTERNAL_ID}`)

@@ -1,4 +1,4 @@
-import { Builder, Direction } from '../query/index.js'
+import { Builder, Direction, RawExpression } from '../query/index.js'
 import { INTERNAL_ID, THIS_NODE } from '../constants.js'
 import type { Runner } from '../driver/types.js'
 import { getModel } from '../meta/index.js'
@@ -15,6 +15,40 @@ Maximum nesting depth when creating nested relationship targets
 (neode WriteUtils parity)
 */
 export const MAX_CREATE_DEPTH = 99
+
+/**
+Server-side timestamp expression (NTS-165): evaluated by the database, so
+clocks never drift across clients
+*/
+export const SERVER_TIMESTAMP = 'datetime()'
+
+/**
+The schema's @CreatedAt / @UpdatedAt property (NTS-165), or undefined —
+one of each per model (the same find-first contract as getPrimaryKey())
+*/
+export function timestampProperty(
+  schema: EntitySchema,
+  kind: 'createdAt' | 'updatedAt',
+): PropertySchema | undefined {
+  return schema
+    .getProperties()
+    .find((property) => (kind === 'createdAt' ? property.isCreatedAt() : property.isUpdatedAt()))
+}
+
+/**
+Stamp the create path's unstamped timestamp properties (NTS-165): the
+CREATE pattern renders `datetime()` verbatim for them (RawExpression), an
+explicitly provided value always wins
+*/
+function stampCreateTimestamps(schema: EntitySchema, properties: Record<string, unknown>): void {
+  for (const kind of ['createdAt', 'updatedAt'] as const) {
+    const property = timestampProperty(schema, kind)
+
+    if (property !== undefined && properties[property.getKey()] === undefined) {
+      properties[property.getKey()] = new RawExpression(SERVER_TIMESTAMP)
+    }
+  }
+}
 
 /**
 The relationship entity property holding the node at the far end of the
@@ -361,6 +395,10 @@ async function createNode(runner: Runner, schema: EntitySchema, model: object): 
       vectors.push({ key: property.getKey(), value })
     }
   }
+
+  // Server-side timestamps (NTS-165): unstamped @CreatedAt / @UpdatedAt
+  // properties render `datetime()` verbatim in the CREATE pattern
+  stampCreateTimestamps(schema, properties)
 
   const builder = new Builder()
 

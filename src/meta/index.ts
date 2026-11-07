@@ -30,6 +30,8 @@ const METAMODEL_KEYS = new Set([
   'onCreateSet',
   'onMatchSet',
   'alwaysSet',
+  'createdAt',
+  'updatedAt',
   'fulltext',
   'required',
   'hidden',
@@ -183,6 +185,15 @@ export function mergeProperty(
 
   if (Object.hasOwn(config, 'alwaysSet')) {
     property.setAlwaysSet(config.alwaysSet)
+  }
+
+  // Server-side timestamps (NTS-165)
+  if (Object.hasOwn(config, 'createdAt')) {
+    property.setCreatedAt(config.createdAt)
+  }
+
+  if (Object.hasOwn(config, 'updatedAt')) {
+    property.setUpdatedAt(config.updatedAt)
   }
 
   if (config.fulltext === true) {

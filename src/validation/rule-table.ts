@@ -78,6 +78,8 @@ const IGNORED_KEYS = new Set([
   'onCreateSet',
   'onMatchSet',
   'alwaysSet',
+  'createdAt',
+  'updatedAt',
 ])
 
 /**
