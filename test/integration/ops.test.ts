@@ -46,7 +46,8 @@ describe('runCypherScript (against the embedded backend)', () => {
     expect(results).toHaveLength(3)
 
     const names = results[2].records.map((record) => record.get('name'))
-    expect(names).toEqual(['Alice', 'Bob; the Builder'])
+    // No ORDER BY in the statement, so row order is the server's to choose.
+    expect([...names].sort()).toEqual(['Alice', 'Bob; the Builder'])
   })
 
   it('reports progress through onStatement', async () => {
