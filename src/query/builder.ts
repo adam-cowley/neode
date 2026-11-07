@@ -229,6 +229,10 @@ export class Builder {
   */
   statement(prefix?: string): this {
     if (this.current) {
+      // NTS-479: flush the open where clause into the outgoing segment —
+      // like match() / with() / create() / merge(), the pending clause
+      // belongs to the statement being closed, not the one being opened
+      this.whereStatement('WHERE')
       this.statements.push(this.current)
     }
 
