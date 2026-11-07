@@ -206,6 +206,14 @@ export interface PropertyDefinition extends ValidationRules {
   on every write — the map-API form of `@UpdatedAt`.
   */
   updatedAt?: boolean
+  /**
+  Optimistic locking (NTS-158): the integer property every write keeps in
+  sync — stamped 0 on create, incremented by 1 on every write addressed to
+  the node, and checked with `WHERE n.version = $expected` when the
+  instance carries the version it was hydrated with (a mismatch throws
+  `OptimisticLockError`). The map-API form of `@Version`.
+  */
+  version?: boolean
   required?: boolean
   hidden?: boolean
   protected?: boolean

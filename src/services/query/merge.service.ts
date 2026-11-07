@@ -8,8 +8,10 @@ import type { PropertySchema } from '../../meta/property-schema.js'
 import { isProjectedProperty } from '../../meta/property-schema.js'
 import type { RelationshipPropertySchema } from '../../meta/relationship-property-schema.js'
 import { getValueOrDefault, getValuesAsRecord, setPropertyInBuilder } from '../../utilities.js'
+import { elementIdOfEntity } from '../../element-id.js'
 import {
   SERVER_TIMESTAMP,
+  versionBump,
   applyEmbeddings,
   applyFakeValues,
   applyInTransforms,
@@ -18,9 +20,10 @@ import {
   modelPropertyValues,
   setRelationshipEntityProperties,
   timestampProperty,
+  versionProperty,
 } from '../write-utilities.js'
 import { validate } from '../../validation/index.js'
-import { NeodeError } from '../../errors/index.js'
+import { NeodeError, OptimisticLockError } from '../../errors/index.js'
 import { QueryService } from './query.service.js'
 import { isRecord } from '../type-guards.js'
 
@@ -30,6 +33,20 @@ Properties used for merge matching: unique OR indexed
 */
 export function getMergeFields(schema: EntitySchema): PropertySchema[] {
   return schema.getProperties().filter((property) => property.isUnique() || property.isIndex())
+}
+
+/**
+Options for MergeService.save
+*/
+export interface MergeSaveOptions {
+  /**
+  Optimistic locking (NTS-158): this save is a nested relationship-target
+  write reached through another node's save — the target's @Version is
+  neither checked nor bumped (SDN issue 2604 lesson: version never
+  cascades across related nodes). A genuinely created target still starts
+  at version 0.
+  */
+  nested?: boolean
 }
 
 /**
@@ -56,7 +73,79 @@ function stampMergeTimestamps(builder: Builder, schema: EntitySchema): void {
   }
 }
 
+/**
+Optimistic locking on a MERGE (NTS-158): a created node starts at version
+0. `bump` also increments on the match path — off when a guard statement
+already checked-and-incremented the version, or when the save is a nested
+relationship-target write (version never cascades).
+*/
+function stampMergeVersion(builder: Builder, schema: EntitySchema, shouldBump: boolean): void {
+  const property = versionProperty(schema)
+
+  if (property === undefined) {
+    return
+  }
+
+  const key = `${THIS_NODE}.${property.getKey()}`
+
+  builder.onCreateSetExpr(key, '0')
+
+  if (shouldBump) {
+    builder.onMatchSetExpr(key, versionBump(THIS_NODE, property.getKey()))
+  }
+}
+
 export class MergeService extends QueryService {
+  /**
+  Optimistic-lock guard (NTS-158): when the model declares @Version and the
+  instance carries the numeric version it was hydrated with, match the node
+  by elementId AND its stored version, incrementing it in the same
+  statement — the write lock the SET takes makes the check-and-increment
+  atomic, so a concurrent guarded save serialises behind this one. Zero
+  matched rows (version moved on, or the node is gone) throws
+  OptimisticLockError. Returns whether the guard ran.
+  */
+  private async guardVersion(model: object, schema: EntitySchema): Promise<boolean> {
+    const property = versionProperty(schema)
+
+    if (property === undefined) {
+      return false
+    }
+
+    const key = property.getKey()
+
+    const expectedVersion: unknown = Reflect.get(model, key)
+
+    if (typeof expectedVersion !== 'number') {
+      return false
+    }
+
+    const elementId = elementIdOfEntity(schema, model)
+
+    if (elementId === undefined) {
+      return false
+    }
+
+    const builder = new Builder()
+
+    builder
+      .match(THIS_NODE)
+      .whereId(THIS_NODE, elementId)
+      .whereRaw(`${THIS_NODE}.${key} = $expectedVersion`)
+      .setExpr(`${THIS_NODE}.${key}`, versionBump(THIS_NODE, key), { expectedVersion })
+      .return(THIS_NODE, `elementId(${THIS_NODE}) AS ${INTERNAL_ID}`)
+
+    const { query, params } = builder.build()
+
+    const result = await this.runner.run(query, params)
+
+    if (result.records.length === 0) {
+      throw new OptimisticLockError(schema.getLabels().join(':'))
+    }
+
+    return true
+  }
+
   private async relateNodes(
     fromId: string,
     toId: string,
@@ -178,6 +267,12 @@ export class MergeService extends QueryService {
     // overrides the stamp in the same statement
     stampMergeTimestamps(builder, schema)
 
+    // Optimistic locking (NTS-158): version starts at 0 on create and
+    // bumps by 1 on every matched write. mergeOn carries no expected
+    // version in its API, so it never guards — it only maintains the
+    // counter (a guarded write throws OptimisticLockError on mismatch).
+    stampMergeVersion(builder, schema, true)
+
     builder.return(THIS_NODE, `elementId(${THIS_NODE}) AS ${INTERNAL_ID}`)
 
     const { query, params } = builder.build()
@@ -189,10 +284,19 @@ export class MergeService extends QueryService {
     model: object,
     schema: EntitySchema,
     dirtyKeys?: ReadonlySet<string>,
+    options: MergeSaveOptions = {},
   ): Promise<{ elementId: string; created: boolean }> {
     if (!isRecord(model)) {
       throw new TypeError('save requires a model object')
     }
+
+    // Optimistic locking (NTS-158): a tracked instance carrying the version
+    // it was hydrated with checks-and-increments it atomically before the
+    // merge — zero matched rows means the node changed (or vanished) under
+    // another transaction. Nested relationship-target writes never guard
+    // or bump: version is per node only (SDN issue 2604 lesson).
+    const isVersionGuarded =
+      options.nested === true ? false : await this.guardVersion(model, schema)
 
     // Resolve embedding sugar (NTS-449): a vector property declared with
     // `from` + `provider` computes its vector from the source property
@@ -265,6 +369,13 @@ export class MergeService extends QueryService {
     // never reaches this point — the facade skips the write entirely.
     if (dirtyKeys === undefined || dirtyKeys.size > 0) {
       stampMergeTimestamps(builder, schema)
+    }
+
+    // Optimistic locking (NTS-158): version starts at 0 on create; the
+    // match-path bump only applies when no guard statement already
+    // incremented it and this is not a nested relationship-target write
+    if (dirtyKeys === undefined || dirtyKeys.size > 0) {
+      stampMergeVersion(builder, schema, !isVersionGuarded && options.nested !== true)
     }
 
     builder.return(THIS_NODE, `elementId(${THIS_NODE}) AS ${INTERNAL_ID}`)
@@ -354,7 +465,7 @@ export class MergeService extends QueryService {
 
               const otherSchema = getModel(otherEntity)
 
-              const saved = await this.save(otherModel, otherSchema)
+              const saved = await this.save(otherModel, otherSchema, undefined, { nested: true })
 
               await this.relateNodes(thisId, saved.elementId, relationship, targetSchema, element)
             }),
@@ -367,8 +478,9 @@ export class MergeService extends QueryService {
               throw new TypeError(`The value of relationship "${key}" must be an object to save`)
             }
 
-            // Save Node
-            const saved = await this.save(element, targetSchema)
+            // Save Node — a nested relationship-target write: the target's
+            // version is never guarded or bumped (NTS-158)
+            const saved = await this.save(element, targetSchema, undefined, { nested: true })
 
             // Relate the two nodes together
             await this.relateNodes(thisId, saved.elementId, relationship, targetSchema, element)

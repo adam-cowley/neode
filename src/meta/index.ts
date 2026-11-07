@@ -32,6 +32,7 @@ const METAMODEL_KEYS = new Set([
   'alwaysSet',
   'createdAt',
   'updatedAt',
+  'version',
   'fulltext',
   'required',
   'hidden',
@@ -194,6 +195,11 @@ export function mergeProperty(
 
   if (Object.hasOwn(config, 'updatedAt')) {
     property.setUpdatedAt(config.updatedAt)
+  }
+
+  // Optimistic locking (NTS-158)
+  if (Object.hasOwn(config, 'version')) {
+    property.setVersion(config.version)
   }
 
   if (config.fulltext === true) {
