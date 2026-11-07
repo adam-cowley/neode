@@ -18,7 +18,6 @@
 ### Patch Changes
 
 - 7f9102f: Fixes surfaced by the Neo4j Testcontainers CI job, where the embedded engine's Cypher dialect had been masking real-server behaviour:
-  
   - Cascade delete: emit `WITH` between a `DELETE` clause and the following `(OPTIONAL) MATCH` — real Neo4j rejects `DELETE` followed by `MATCH` with `42N24` (the embedded engine accepted it).
   - Schema install/drop and drift application: run DDL statements sequentially — Neo4j aborts concurrent schema writes (schema-lock contention), which made `installSchema()` flaky against real servers.
   - Schema install: skip property-type constraints (`typed: true`) unless the connection is flagged Enterprise — every attempt fails on Community and failed the whole install.
@@ -31,10 +30,9 @@
 - f98c30c: Query Builder: `statement(prefix)` now flushes the open where clause into the outgoing statement segment, like `match()` / `with()` / `create()` / `merge()` do — a pending `WHERE` no longer leaks into the following segment and renders after the wrong clause (NTS-479).
 - 38a325c: Query Builder: chaining `create()`/`merge()` and then `match()` now emits a `WITH *` between the updating and reading clauses — Neo4j rejects the query without it ("WITH is required between CREATE and MATCH") (NTS-485).
 - 56cde2e: Real-Neo4j fixes from the NTS-490 verification pass (both classes were masked by the embedded engine's tolerant Cypher dialect):
-  
   - Builder: bridge a DELETE clause and a following `(OPTIONAL) MATCH` with `WITH *` (42N24), matching the existing CREATE/MERGE bridging — previously only the cascade-delete service emitted the required `WITH` by hand, so any other delete-then-match composition built Cypher that real Neo4j 5 rejects.
   - Save/merge: un-set a property provided as `null` with `SET n.prop = null` instead of `DELETE n.prop` — real Neo4j 5 only allows DELETE on nodes and relationships (22NB1).
-  
+
   Pinned with unit snapshots and real-server regression tests for cascade delete, delete-then-read and null-property saves.
 - 751b293: Fix Builder rendering of a statement that mixes parameterised `onCreateSet()`/`onMatchSet()` items with expression items (`onCreateSetExpr()`/`onMatchSetExpr()`): all ON CREATE SET items of a statement now coalesce into a single `ON CREATE SET` clause (same for ON MATCH SET), instead of rendering two separate clauses which is invalid Cypher (NTS-491).
 - 37e8818: Query Builder: the `$subN_` rewrite applied to `call()` / `forEach()` / `countSubquery()` / `collectSubquery()` / `whereExistsSubquery()` sub-queries no longer touches `$name`-shaped text inside string literals or backtick-quoted identifiers, so quoted text like `'%s is $label'` survives verbatim instead of being corrupted into broken Cypher with phantom unbound `$subN_label` parameters (NTS-492).
