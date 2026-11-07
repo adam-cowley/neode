@@ -143,7 +143,8 @@ Indexes are declared on the model — `@Vector({ dimensions: 1536 })` for vector
 
 ## Docs
 
-| Document                                           | Contents                                                                                                                 |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| [docs/api-reference.md](docs/api-reference.md)     | Full API — decorators, map schemas, facade methods, transactions, events, repositories, validation, connection providers |
-| [docs/migration-guide.md](docs/migration-guide.md) | Migrating from neode 0.4.9 — IDs, facade signatures, sessions, batch, cascade, and what's new                            |
+| Document                                           | Contents                                                                                                                    |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| [docs/api-reference.md](docs/api-reference.md)     | Full API — decorators, map schemas, facade methods, transactions, events, repositories, validation, connection providers    |
+| [docs/migration-guide.md](docs/migration-guide.md) | Migrating from neode 0.4.9 — IDs, facade signatures, sessions, batch, cascade, and what's new                               |
+| [examples/cookbook/](examples/cookbook)            | Runnable script per capability — CRUD, relationships, eager loading & read models, validation, schema, search, transactions |
