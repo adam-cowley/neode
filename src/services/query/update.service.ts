@@ -52,7 +52,8 @@ export class UpdateService extends QueryService {
 
   `+=` semantics: only the provided keys are written. Primary key,
   protected, readonly and hidden properties are never overwritten, and
-  neither are relationship / node / internal-id properties. Required
+  neither are relationship / node / internal-id properties. Keys not
+  declared in the schema are ignored (create / merge parity). Required
   properties that would end up unset keep their current stored value
   (matching neode's Node#update, which re-reads required properties).
   */
@@ -92,10 +93,14 @@ export class UpdateService extends QueryService {
       guarded.add(relationship.getKey())
     }
 
-    // Provided keys only (`+=`); undefined means "not provided", null unsets
+    // Provided keys only (`+=`); undefined means "not provided", null unsets.
+    // Iterating the schema (merge parity) ignores undeclared keys
     const set: Record<string, unknown> = {}
 
-    for (const [key, value] of Object.entries(provided)) {
+    for (const property of schema.getProperties()) {
+      const key = property.getKey()
+      const value = provided[key]
+
       if (value === undefined || guarded.has(key)) {
         continue
       }

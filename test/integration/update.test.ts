@@ -157,6 +157,32 @@ describe('UpdateService', () => {
     expect(found?.id).toBe(saved.id)
   })
 
+  // NTS-487: keys not declared in the schema are ignored on update
+  // (create/merge parity) instead of written to the node
+  it('ignores keys that are not declared in the schema', async () => {
+    const saved = await backend.neode.save(Person.create('Adam', 30))
+
+    await update(schema, saved, { name: 'Ada', notInSchema: 'evil' })
+
+    const found = await backend.neode.find(Person, saved.id)
+
+    // Declared keys still update...
+    expect(found?.name).toBe('Ada')
+
+    // ...and the undeclared key never reaches the node
+    const raw = await backend.neode.readCypher(
+      'MATCH (p:Person { id: $id }) RETURN properties(p) AS props',
+      {
+        id: saved.id,
+      },
+    )
+
+    const props = raw.records[0]?.get('props') as Record<string, unknown>
+
+    expect(props.name).toBe('Ada')
+    expect(props).not.toHaveProperty('notInSchema')
+  })
+
   it('refills a required property provided as null from its stored value', async () => {
     const saved = await backend.neode.save(Person.create('Adam'))
 
