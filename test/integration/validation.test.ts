@@ -116,6 +116,33 @@ describe('validation wired into the write paths', () => {
     expect(found?.email).toBe('adam@example.com')
   })
 
+  // NTS-487: validation is enforced on the TransactionalService mirror —
+  // statements run inside a transaction validate their inputs like the
+  // facade does, and the failure rolls the transaction back
+  it('rejects an invalid tx.update value and rolls the transaction back', async () => {
+    const saved = await backend.neode.save(ValidatedPerson.create('Adam', 'adam@example.com'))
+
+    const promise = backend.neode.inWriteTransaction(async (tx) => {
+      try {
+        const updated = await tx.update(saved, { email: 'not-an-email' })
+
+        await tx.commit()
+
+        return updated
+      } catch (error) {
+        await tx.rollback()
+
+        throw error
+      }
+    })
+
+    await expect(promise).rejects.toThrow(ValidationError)
+
+    const found = await backend.neode.find(ValidatedPerson, saved.id)
+
+    expect(found?.email).toBe('adam@example.com')
+  })
+
   it('rejects an invalid mergeOn set value', async () => {
     await expect(
       backend.neode.mergeOn(ValidatedPerson, { name: 'Adam' }, { email: 'not-an-email' }),
