@@ -156,6 +156,29 @@ describe('QueryBuilder', () => {
       expect(query).toBe('MATCH (n:Person)\nWHERE (NOT n.name = $where_n_name)\nRETURN n')
     })
 
+    it('renders where NOT IN as NOT <left> IN, the form Neo4j 2026.x+ accepts (NTS-476)', () => {
+      const builder = new Builder()
+      const { query, params } = builder
+        .match('n', 'Person')
+        .where('n.age', 'NOT IN', [30, 40])
+        .return('n')
+        .build()
+
+      expect(query).toBe('MATCH (n:Person)\nWHERE (NOT n.age IN $where_n_age)\nRETURN n')
+      expect(params).toEqual({ where_n_age: [30, 40] })
+    })
+
+    it('cancels whereNot against the NOT IN operator instead of double-negating', () => {
+      const builder = new Builder()
+      const { query } = builder
+        .match('n', 'Person')
+        .whereNot('n.age', 'NOT IN', [30, 40])
+        .return('n')
+        .build()
+
+      expect(query).toBe('MATCH (n:Person)\nWHERE (n.age IN $where_n_age)\nRETURN n')
+    })
+
     it('supports whereBetween and whereNotBetween', () => {
       const builder = new Builder()
       const { query, params } = builder
