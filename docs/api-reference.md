@@ -90,6 +90,7 @@ import Neode, {
 - [Validation rules](#validation-rules)
 - [Map-based schema definitions](#map-based-schema-definitions)
 - [The Neode facade](#the-neode-facade)
+- [Query builder](#query-builder)
 - [Transactions](#transactions)
 - [Events](#events)
 - [Repositories](#repositories)
@@ -392,6 +393,27 @@ neode.batch(queries: Array<string | { query: string; params?: QueryParams }>, da
 ```
 
 `QueryOutput` is `{ records: QueryRecord[]; summary? }`; a `QueryRecord` offers `get(key)`, `has(key)`, `keys`.
+
+## Query builder
+
+`Builder` is the fluent Cypher builder the facade uses internally, importable directly when you need statements the facade does not express. Every user value is parameterised — the generated query contains only aliases.
+
+### `create()` / `merge()` — extra labels on nodes
+
+Both take `(alias, labels, properties)`. `labels` is a single label, an **array of labels** (a multi-label node), or `false` for no label:
+
+```typescript
+import { Builder } from 'neode'
+
+new Builder().create('p', ['Person', 'Admin'], { name: 'Adam' }).return('p').build()
+// CREATE (p:Person:Admin { name: $p_name })\nRETURN p
+
+new Builder().merge('p', ['Person', 'Admin'], { name: 'Adam' }).return('p').build()
+// MERGE (p:Person:Admin { name: $p_name })\nRETURN p
+// MERGE matches on ALL labels — the node must have :Person AND :Admin to match.
+```
+
+Model-defined labels work the same way on the facade: `@NodeEntity({ labels: ['Person', 'Actor'] })` (or the map API's `labels` key) gives the model every label, and every create/merge the facade performs writes — and for MERGE matches on — all of them. Labels are always sorted.
 
 ## Transactions
 

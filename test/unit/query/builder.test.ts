@@ -351,12 +351,36 @@ describe('QueryBuilder', () => {
     })
   })
 
+  describe('merge', () => {
+    it('matches on every label when given several', () => {
+      const builder = new Builder()
+      const { query, params } = builder
+        .merge('n', ['Person', 'Admin'], { name: 'Adam' })
+        .return('n')
+        .build()
+
+      expect(query).toBe('MERGE (n:Person:Admin { name: $n_name })\nRETURN n')
+      expect(params).toEqual({ n_name: 'Adam' })
+    })
+  })
+
   describe('create', () => {
     it('builds a create statement', () => {
       const builder = new Builder()
       const { query, params } = builder.create('n', 'Person', { name: 'Adam' }).return('n').build()
 
       expect(query).toBe('CREATE (n:Person { name: $n_name })\nRETURN n')
+      expect(params).toEqual({ n_name: 'Adam' })
+    })
+
+    it('writes every label when given several', () => {
+      const builder = new Builder()
+      const { query, params } = builder
+        .create('n', ['Person', 'Admin'], { name: 'Adam' })
+        .return('n')
+        .build()
+
+      expect(query).toBe('CREATE (n:Person:Admin { name: $n_name })\nRETURN n')
       expect(params).toEqual({ n_name: 'Adam' })
     })
   })
