@@ -30,10 +30,18 @@ class TimestampedPage {
 
 /**
 The stamped year off a hydrated timestamp value: a driver DateTime instance
-on the Bolt backends, the engine's plain temporal object on Relate — both
-carry a numeric `year`
+on the Bolt backends (its `year` is a driver Integer — low/high pair), the
+engine's plain temporal object on Relate (a JS number) — normalise both
 */
-const stampedYear = (value: unknown): unknown => (value as { year?: unknown } | undefined)?.year
+const stampedYear = (value: unknown): unknown => {
+  const year: unknown = (value as { year?: unknown } | undefined)?.year
+
+  if (typeof year === 'object' && year !== null && 'low' in year && 'high' in year) {
+    return (year as { low: number }).low
+  }
+
+  return year
+}
 
 // ---------------------------------------------------------------------------
 
