@@ -27,6 +27,12 @@ import { search, type ScoredEntity } from '../services/query/search.service.js'
 import { isConstructorOf, isRecord } from '../services/type-guards.js'
 import { hydrate } from '../hydrate.js'
 
+/**
+The INeode surface scoped to one open transaction: every read/write runs
+through the TransactionHandle opened by `Neode#beginTransaction` until its
+commit/rollback, with the facade's model methods (create, merge, relate,
+…) mirrored inside that scope.
+*/
 export class TransactionalService implements INeode {
   private readonly handle: TransactionHandle
 

@@ -1,3 +1,7 @@
+/**
+An `IS NULL` / `IS NOT NULL` predicate on a property, rendered by
+toString() — the value of `Builder.whereNull` / `whereNotNull`.
+*/
 export class WhereNull {
   private negative = false
   private readonly property: string

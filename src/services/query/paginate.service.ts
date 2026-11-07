@@ -64,6 +64,10 @@ export interface CursorPaginateOptions {
   before?: string | number
 }
 
+/**
+The union of the two pagination modes PaginateService accepts — the
+options shape (page vs cursor) selects the mode.
+*/
 export type PaginateOptions = OffsetPaginateOptions | CursorPaginateOptions
 
 /**

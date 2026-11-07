@@ -3,6 +3,10 @@ import { mergeProperty, mergeRelationshipModel } from '../../meta/index.js'
 import { PropertyType } from '../../meta/property-schema.js'
 import { addRegistration, memberName } from '../registrations.js'
 
+/**
+On a relationship entity: the property holding the node at the
+relationship's start.
+*/
 export function StartNode(
   entity: () => Newable,
 ): (value: undefined, context: ClassFieldDecoratorContext) => void {

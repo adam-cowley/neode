@@ -77,6 +77,8 @@ _source: decorators/node/duration.decorator.ts_
 
 ### `EndNode` (decorator)
 
+On a relationship entity: the property holding the node at the relationship's end.
+
 _source: decorators/relationship/end-node.decorator.ts_
 
 ### `EntityMethods` (interface)
@@ -149,9 +151,13 @@ _source: decorators/node/index.decorator.ts_
 
 ### `INeode` (interface)
 
+The public API surface of the Neode facade, as implemented by both the facade (autocommit scope) and TransactionalService (one open transaction). Accept this type when a function should work over either scope.
+
 _source: neode.interface.ts_
 
 ### `InternalId` (decorator)
+
+Project the node's internal id (elementId) into the property — a read-only structural field, not sent on writes.
 
 _source: decorators/internal-id.decorator.ts_
 
@@ -183,9 +189,13 @@ _source: meta/index.ts_
 
 ### `Neode` (class)
 
+The OGM facade: models, raw queries, transactions, schema management and the event emitter, over a ConnectionProvider (neo4j-driver or the embedded Relate engine). Construct via `forDriver` / `forRelate` / `fromEnv`, or directly with a ConnectionProvider.
+
 _source: neode.service.ts_
 
 ### `NodeEntity` (decorator)
+
+Register the class as a node model: replays the property/relationship registrations queued by its field decorators, and labels the node with the class name (or `config.labels`).
 
 _source: decorators/node/node-entity.decorator.ts_
 
@@ -203,9 +213,13 @@ _source: decorators/node/on-create-set.decorator.ts_
 
 ### `OneToMany` (decorator)
 
+Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading and an agent-facing description.
+
 _source: decorators/node/one-to-many.decorator.ts_
 
 ### `OneToOne` (decorator)
+
+Register a relationship property holding one related entity. The target entity (`config.target()`) is required — standard decorators have no design:type reflection to infer it.
 
 _source: decorators/node/one-to-one.decorator.ts_
 
@@ -235,6 +249,8 @@ _source: meta/ontology.ts_
 
 ### `OtherNode` (decorator)
 
+On a relationship entity: the property holding the node at the far end of the relationship — the end node for an outgoing relationship, the start node for an incoming one (the direction-agnostic alternative to
+
 _source: decorators/relationship/other-node.decorator.ts_
 
 ### `Point` (decorator)
@@ -244,6 +260,8 @@ Register a point (spatial) property.
 _source: decorators/node/point.decorator.ts_
 
 ### `Primary` (decorator)
+
+Mark the property as the model's primary key: the property Repository and save() match nodes on. Merges onto the existing property, so it can be stacked with a type decorator.
 
 _source: decorators/node/primary.decorator.ts_
 
@@ -345,6 +363,8 @@ _source: meta/schema-definition.interface.ts_
 
 ### `RelationshipEntity` (decorator)
 
+Register the class as a relationship model: replays the field registrations queued by its property decorators and marks the metamodel entry as a relationship.
+
 _source: decorators/relationship/relationship-entity.decorator.ts_
 
 ### `RelationshipExists` (decorator)
@@ -405,6 +425,8 @@ _source: entity-methods.ts_
 
 ### `StartNode` (decorator)
 
+On a relationship entity: the property holding the node at the relationship's start.
+
 _source: decorators/relationship/start-node.decorator.ts_
 
 ### `String` (decorator)
@@ -427,11 +449,21 @@ _source: meta/schema-definition.interface.ts_
 
 ### `Unique` (decorator)
 
+Mark the property as unique: installSchema() backs it with a uniqueness constraint, and merge() treats races on it as constraint violations. Merges onto the existing property, so it can be stacked with a type decorator.
+
 _source: decorators/node/unique.decorator.ts_
 
 ### `Uuid` (decorator)
 
+Register a UUID property: validated as a UUID string, defaulting to a random UUID v4 on create (an explicit `config.default` wins).
+
 _source: decorators/node/uuid.decorator.ts_
+
+### `ValidationRules` (interface)
+
+Validation rules accepted on a property definition (neode's Joi rule names, ported in src/validation/rule-table.ts). Every non-metamodel key of a map-schema property definition travels to the validator as a rule (mergeProperty persists it via PropertySchema#setRules), so these are the keys the published map API accepts alongside the structural options. Rules are applied on top of the property's base type: a rule the base type does not support throws at validation time (rule-table's failUnsupported), and boolean rules must be exactly `true`.
+
+_source: meta/schema-definition.interface.ts_
 
 ### `Vector` (decorator)
 
@@ -457,11 +489,19 @@ Query builder, repositories, raw Cypher, transactions, hydration, drivers and re
 
 ### `AccessMode` (type)
 
+Session routing for a statement: 'READ' (replica-capable) or 'WRITE' (primaries). Where a query path leaves routing open, the facade's defaultRouting (itself defaulting to 'READ') decides; ConnectionProvider#run defaults to 'WRITE'.
+
 _source: driver/types.ts_
+
+### `BatchStatementError` (interface)
+
+A single failed statement within a batch.
+
+_source: transaction/errors.ts_
 
 ### `Builder` (class)
 
-Fluent Cypher query builder. A statement-based builder: every `match()` / `create()` / `merge()` call starts a new statement segment; where clauses accumulate against the current segment and are flushed into it when the next segment starts or when `build()` is called. All user values are passed as query parameters - the generated query contains only aliases.
+Fluent Cypher query builder. A statement-based builder: every `match()` / `create()` / `merge()` call starts a new statement segment; where clauses accumulate against the current segment and are flushed into it when the next segment starts or when `build()` is called. All user values are passed as query parameters - the generated query contains only aliases. The one exception is `RawExpression` property values (NTS-460), which render verbatim into patterns; bind the values they reference via `param(name, value)`.
 
 _source: query/builder.ts_
 
@@ -525,7 +565,7 @@ _source: query/direction.ts_
 
 ### `EventType` (const)
 
-Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neade.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() when the merge created the node | hydrated entity | | NODE_UPDATED | save() when the merge matched an existing node | hydrated entity | | NODE_MERGED | reserved (mergeOn) | — | | NODE_UPDATED | reserved (update) | — | | NODE_DELETED | delete() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
+Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neode.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() when the merge created the node | hydrated entity | | NODE_UPDATED | save() when the merge matched an existing node | hydrated entity | | NODE_MERGED | reserved (mergeOn) | — | | NODE_DELETED | delete() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
 
 _source: common/events.ts_
 
@@ -603,6 +643,8 @@ _source: query/label-predicate.ts_
 
 ### `Neo4jConnectionProvider` (class)
 
+ConnectionProvider over a neo4j-driver `Driver` (Bolt): Neo4j Community/Enterprise, Aura, Memgraph, or `relate serve`. Result values are normalised out of driver types (Node, Relationship, Integer, temporal, Point) into the plain GraphNode/GraphRelationship shapes; driver errors are mapped through the typed error taxonomy.
+
 _source: driver/neo4j-connection-provider.ts_
 
 ### `OffsetPaginateOptions` (interface)
@@ -618,6 +660,8 @@ Offset/page result
 _source: services/query/paginate.service.ts_
 
 ### `PaginateOptions` (type)
+
+The union of the two pagination modes PaginateService accepts — the options shape (page vs cursor) selects the mode.
 
 _source: services/query/paginate.service.ts_
 
@@ -641,7 +685,7 @@ _source: projection/projection.service.ts_
 
 ### `Property` (class)
 
-A property in a SET clause: `property operator $param` or, inline in a pattern, `property: $param`.
+A property in a SET clause: `property operator $param` or, inline in a pattern, `property: $param`. With `isRaw`, the value renders verbatim (an inline Cypher expression, NTS-460) instead of a parameter reference.
 
 _source: query/property.ts_
 
@@ -659,6 +703,8 @@ _source: driver/types.ts_
 
 ### `QueryParams` (type)
 
+A map of Cypher parameter names to values, bound into the statement — values never render into the query text itself.
+
 _source: driver/types.ts_
 
 ### `QueryRecord` (interface)
@@ -669,13 +715,25 @@ _source: driver/types.ts_
 
 ### `QuerySummary` (interface)
 
+Metadata for one executed statement: write counters and (when the statement is prefixed with EXPLAIN / PROFILE) the server's plan.
+
 _source: driver/types.ts_
 
+### `RawExpression` (class)
+
+A raw Cypher expression used as an inline pattern property value (NTS-460): rendered verbatim into the pattern — `{ prop: <expression> }` — instead of being bound as a parameter. Variable references (`row.answers`), server-side calls (`datetime()`) and parameter references (`$name`, bound via `Builder#param`) are all legal; the expression must never interpolate data.
+
+_source: query/expressions.ts_
+
 ### `RelateConnectionProvider` (class)
+
+ConnectionProvider over the embedded Relate engine (@relate/relate) — in-process, no Bolt server. The engine is a soft dependency, loaded at construction time; the client shapes are structural so it stays that way.
 
 _source: driver/relate.ts_
 
 ### `Repository` (class)
+
+Active-record style data-access repository for one registered model — the TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
 
 _source: repository/index.ts_
 
@@ -717,7 +775,15 @@ _source: serialise.ts_
 
 ### `TransactionalService` (class)
 
+The INeode surface scoped to one open transaction: every read/write runs through the TransactionHandle opened by `Neode#beginTransaction` until its commit/rollback, with the facade's model methods (create, merge, relate, …) mirrored inside that scope.
+
 _source: transaction/transactional.service.ts_
+
+### `TransactionError` (class)
+
+Thrown by Neode.batch() when any statement of the batch fails and the transaction is rolled back (port of neode's TransactionError): - `errors` — per-statement error aligned with the input batch, null where the statement succeeded - `results` — results of the statements that succeeded before the failure - `details` — the failed statements only ({ index, query, params, error })
+
+_source: transaction/errors.ts_
 
 ### `TransactionHandle` (interface)
 
@@ -733,6 +799,8 @@ _source: serialise.ts_
 
 ### `WhereNull` (class)
 
+An `IS NULL` / `IS NOT NULL` predicate on a property, rendered by toString() — the value of `Builder.whereNull` / `whereNotNull`.
+
 _source: query/where-null.ts_
 
 ## Schema management
@@ -740,6 +808,8 @@ _source: query/where-null.ts_
 Indexes, constraints, full-text and vector indexes, schema inspection and drift workflow.
 
 ### `ApplySchemaDiffOptions` (interface)
+
+Options for applySchemaDrift.
 
 _source: services/schema/drift.service.ts_
 
@@ -769,6 +839,8 @@ _source: services/schema/fulltext.service.ts_
 
 ### `InspectOptions` (interface)
 
+Which objects count as "declared" for the inspection: pass the full-text/vector index definitions and the enterprise flag your installSchema call used, so the diff is not polluted by false "extra" entries.
+
 _source: services/schema/inspect.service.ts_
 
 ### `inspectSchema` (function)
@@ -778,6 +850,8 @@ Read the installed schema (SHOW CONSTRAINTS / SHOW INDEXES) and diff it against 
 _source: services/schema/inspect.service.ts_
 
 ### `SchemaDiff` (interface)
+
+The declared-vs-installed diff for one schema family (constraints or indexes): the raw object lists plus the names that only appear on one side.
 
 _source: services/schema/inspect.service.ts_
 
@@ -805,9 +879,13 @@ _source: services/schema/drift.service.ts_
 
 ### `SchemaInspection` (interface)
 
+The full inspectSchema result: constraint and index diffs against the declared models.
+
 _source: services/schema/inspect.service.ts_
 
 ### `SchemaObject` (interface)
+
+One constraint or index as inspected from the database (SHOW CONSTRAINTS / SHOW INDEXES).
 
 _source: services/schema/inspect.service.ts_
 
@@ -828,6 +906,8 @@ _source: services/schema/vector.service.ts_
 wipe()/testId() test utilities, factory seeding, connectivity checks and Cypher-script helpers.
 
 ### `ConnectivityConfig` (interface)
+
+The connection config the checks run against — the shape fromEnv() produces (uri + auth + driver config + database).
 
 _source: ops/verify-connectivity.ts_
 
@@ -857,6 +937,8 @@ _source: ops/cypher-script.ts_
 
 ### `RunCypherScriptOptions` (interface)
 
+Options for runCypherScript.
+
 _source: ops/cypher-script.ts_
 
 ### `splitCypherStatements` (function)
@@ -884,6 +966,8 @@ Retry verifyConnectivity with exponential-ish backoff until the database is reac
 _source: ops/verify-connectivity.ts_
 
 ### `WaitUntilReachableOptions` (interface)
+
+Backoff and probe options for waitUntilReachable — every field optional.
 
 _source: ops/verify-connectivity.ts_
 
@@ -945,7 +1029,19 @@ _source: from-env.ts_
 
 ### `toFulltextQuery` (function)
 
+Sanitise free user text into a safe full-text query string: Lucene syntax characters and uppercase boolean operators stripped, terms lowercased and capped at `maxTerms` (default 12). Pass user text through this before `search()` / `Repository#search` — binding the string as a parameter stops Cypher injection, but the Lucene parser still 500s on syntax characters (`(`, `"`, `*`, `AND`, …).
+
 _source: services/index-support/lucene.ts_
+
+### `ValidationDetail` (interface)
+
+One failed check, shaped like a Joi detail
+
+_source: validation/validation-error.ts_
+
+### `ValidationError` (class)
+
+_source: validation/validation-error.ts_
 
 ## Schema reference
 

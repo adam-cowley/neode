@@ -3,6 +3,11 @@ import { mergeModel } from '../../meta/index.js'
 import type { NodeConfig } from '../node-config.interface.js'
 import { getRegistrations } from '../registrations.js'
 
+/**
+Register the class as a node model: replays the property/relationship
+registrations queued by its field decorators, and labels the node with
+the class name (or `config.labels`).
+*/
 export function NodeEntity(
   config: NodeConfig = {},
 ): (constructor: Newable, context: ClassDecoratorContext) => void {

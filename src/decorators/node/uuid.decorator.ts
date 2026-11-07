@@ -4,6 +4,10 @@ import { PropertyType } from '../../meta/property-schema.js'
 import type { PropertyConfig } from '../property-config.interface.js'
 import { addRegistration, memberName } from '../registrations.js'
 
+/**
+Register a UUID property: validated as a UUID string, defaulting to a
+random UUID v4 on create (an explicit `config.default` wins).
+*/
 export function Uuid(
   config: PropertyConfig = {},
 ): (value: undefined, context: ClassFieldDecoratorContext) => void {

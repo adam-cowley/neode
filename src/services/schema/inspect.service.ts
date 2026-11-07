@@ -18,6 +18,12 @@ function declared(list: SchemaObject[], object: SchemaObject): void {
   }
 }
 
+/**
+Which objects count as "declared" for the inspection: pass the
+full-text/vector index definitions and the enterprise flag your
+installSchema call used, so the diff is not polluted by false "extra"
+entries.
+*/
 export interface InspectOptions {
   /**
   Full-text index definitions to include in the declared set
@@ -33,6 +39,10 @@ export interface InspectOptions {
   enterprise?: boolean
 }
 
+/**
+One constraint or index as inspected from the database (SHOW
+CONSTRAINTS / SHOW INDEXES).
+*/
 export interface SchemaObject {
   name: string
   type: string
@@ -40,6 +50,11 @@ export interface SchemaObject {
   properties: string[]
 }
 
+/**
+The declared-vs-installed diff for one schema family (constraints or
+indexes): the raw object lists plus the names that only appear on one
+side.
+*/
 export interface SchemaDiff {
   /**
   Objects found on the database
@@ -59,6 +74,10 @@ export interface SchemaDiff {
   extra: string[]
 }
 
+/**
+The full inspectSchema result: constraint and index diffs against the
+declared models.
+*/
 export interface SchemaInspection {
   constraints: SchemaDiff
   indexes: SchemaDiff

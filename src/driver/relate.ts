@@ -355,6 +355,11 @@ class RelateTransactionHandle implements TransactionHandle {
   }
 }
 
+/**
+ConnectionProvider over the embedded Relate engine (@relate/relate) —
+in-process, no Bolt server. The engine is a soft dependency, loaded at
+construction time; the client shapes are structural so it stays that way.
+*/
 export class RelateConnectionProvider implements ConnectionProvider {
   private readonly connection: RelateConnection
 
