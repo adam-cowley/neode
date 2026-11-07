@@ -179,6 +179,22 @@ export class Builder {
     }
   }
 
+  /**
+  Compile the body of a count / collect aggregate subquery:
+  `KIND { [WITH imports] inner }` — shared by the RETURN and WITH
+  position channels
+  */
+  private aggregateSubquery(
+    kind: 'COUNT' | 'COLLECT',
+    build: (sub: Builder) => Builder,
+    imports: string[],
+  ): string {
+    const { inner, imports: scoped } = this.compileSub(build, imports)
+    const scope = scoped.length > 0 ? `WITH ${scoped.join(', ')} ` : ''
+
+    return `${kind} { ${scope}${inner} }`
+  }
+
   private schemaStatementSegment(
     action: ConstraintAction,
     type: ConstraintType,
@@ -1005,29 +1021,43 @@ export class Builder {
   }
 
   /**
-  `COUNT { … } AS <alias>` in a RETURN / WITH position (NTS: grouped and
-  conditional counts without hand-written Cypher)
+  `COUNT { … } AS <alias>` in a RETURN position (NTS: grouped and
+  conditional counts without hand-written Cypher) — use withCountSubquery
+  when the aggregate must feed a later RETURN projection
   */
   countSubquery(alias: string, build: (sub: Builder) => Builder, imports: string[] = []): this {
-    const { inner, imports: scoped } = this.compileSub(build, imports)
-    const scope = scoped.length > 0 ? `WITH ${scoped.join(', ')} ` : ''
-
-    this.return(`COUNT { ${scope}${inner} } AS ${alias}`)
-
-    return this
+    return this.return(`${this.aggregateSubquery('COUNT', build, imports)} AS ${alias}`)
   }
 
   /**
-  `COLLECT { … } AS <alias>` in a RETURN / WITH position (NTS: collected
-  sub-projections without hand-written Cypher)
+  `COLLECT { … } AS <alias>` in a RETURN position (NTS: collected
+  sub-projections without hand-written Cypher) — use withCollectSubquery
+  when the aggregate must feed a later RETURN projection
   */
   collectSubquery(alias: string, build: (sub: Builder) => Builder, imports: string[] = []): this {
-    const { inner, imports: scoped } = this.compileSub(build, imports)
-    const scope = scoped.length > 0 ? `WITH ${scoped.join(', ')} ` : ''
+    return this.return(`${this.aggregateSubquery('COLLECT', build, imports)} AS ${alias}`)
+  }
 
-    this.return(`COLLECT { ${scope}${inner} } AS ${alias}`)
+  /**
+  `WITH COUNT { … } AS <alias>` (NTS-481): the aggregate is computed per
+  input row and stays in scope, so a later return() can project it (e.g.
+  `100 * completed / total`) — which a RETURN-position subquery cannot.
+  For any other WITH expression the raw escape hatch is `with(expr + ' AS alias')`.
+  */
+  withCountSubquery(alias: string, build: (sub: Builder) => Builder, imports: string[] = []): this {
+    return this.with(`${this.aggregateSubquery('COUNT', build, imports)} AS ${alias}`)
+  }
 
-    return this
+  /**
+  `WITH COLLECT { … } AS <alias>` (NTS-481): collected sub-projections in
+  WITH position, staying in scope for a later return()
+  */
+  withCollectSubquery(
+    alias: string,
+    build: (sub: Builder) => Builder,
+    imports: string[] = [],
+  ): this {
+    return this.with(`${this.aggregateSubquery('COLLECT', build, imports)} AS ${alias}`)
   }
 
   /**
