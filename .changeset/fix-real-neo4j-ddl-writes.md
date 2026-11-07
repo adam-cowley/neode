@@ -1,6 +1,6 @@
 ---
-
 'neode': patch
+---
 
 Fixes surfaced by the Neo4j Testcontainers CI job, where the embedded engine's Cypher dialect had been masking real-server behaviour:
 
