@@ -8,7 +8,7 @@ import { hydrate } from '../../src/hydrate.js'
 import type { WithMethods } from '../../src/entity-methods.js'
 import { Builder } from '../../src/query/index.js'
 import { NodeEntity, Property } from '../../src/decorators/index.js'
-import type { EntitySchema } from '../../src/meta/entity/entity-schema.js'
+import type { Newable } from '../../src/meta/newable.js'
 
 @NodeEntity()
 class TypePerson {
@@ -42,7 +42,7 @@ describe('public API type inference', () => {
       rank: 'number',
     })
 
-    expectTypeOf(Model).toExtend<new () => object>()
+    expectTypeOf(Model).toBeConstructibleWith()
   })
 
   it('the builder chain keeps method chaining and returns query + params', () => {
@@ -54,11 +54,11 @@ describe('public API type inference', () => {
     expectTypeOf(built.params).toEqualTypeOf<Record<string, unknown>>()
   })
 
-  it('model schemas resolve by name and expose property metadata', () => {
+  it('model schemas resolve by name to the registered model constructor', () => {
     defineModel('TypeSchemaProbe', { name: 'string' })
 
-    const schema = getModelByName('TypeSchemaProbe')
+    const model = getModelByName('TypeSchemaProbe')
 
-    expectTypeOf(schema).toExtend<EntitySchema | undefined>()
+    expectTypeOf(model).toExtend<Newable | undefined>()
   })
 })

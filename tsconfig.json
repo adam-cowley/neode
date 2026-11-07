@@ -32,6 +32,6 @@
 
     "noEmit": true
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "test/types/**/*.test-d.ts"],
   "exclude": ["node_modules", "dist"]
 }

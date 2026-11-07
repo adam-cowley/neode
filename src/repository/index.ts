@@ -2,6 +2,7 @@ import { THIS_NODE } from '../constants.js'
 import type { QueryOutput } from '../driver/types.js'
 import type { EntitySchema } from '../meta/entity/entity-schema.js'
 import { getModel } from '../meta/index.js'
+import type { Newable } from '../meta/newable.js'
 import type { PropertySchema } from '../meta/property-schema.js'
 import type { INeode } from '../neode.interface.js'
 import { Builder, eagerNode } from '../query/index.js'
@@ -34,7 +35,15 @@ export class Repository<Entity> {
   ) => Entity
   protected readonly database: string | undefined
 
-  constructor(neode: INeode, entity: new (...arguments_: never[]) => Entity, database?: string) {
+  /**
+  The entity is accepted in the registry's wire format (Newable — the
+  metamodel keys constructors loosely) so that @EntityRepository
+  subclasses keep a construct signature compatible with
+  RepositoryConstructor; a registered model is always the entity's own
+  constructor, so the correlation is re-established here (the same way
+  resolveRepository re-establishes it on lookup).
+  */
+  constructor(neode: INeode, entity: Newable, database?: string) {
     const entityConstructor: unknown = entity
     const model = getModel(entityConstructor)
 
@@ -45,7 +54,8 @@ export class Repository<Entity> {
     }
 
     this.neode = neode
-    this.entity = entity
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the registry erases the entity/repository generic correlation; the registered-model check above re-establishes it
+    this.entity = entity as new (...arguments_: never[]) => Entity
     this.database = database
     this.schema = model
   }
