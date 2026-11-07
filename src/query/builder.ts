@@ -37,6 +37,34 @@ export interface EntityMatchCriteria {
 export type BuilderParameters = Record<string, unknown>
 
 /**
+Scan compiled query text for `$name` parameter references (NTS-478).
+
+String literals and backtick-quoted identifiers are blanked out first —
+each blanked with same-length spaces so the reported indices stay valid
+against the original text — so `$`-shaped text inside them never
+false-positives. Backslash escapes inside literals are honoured; backtick
+identifiers have no escapes (Cypher doubles the backtick instead, which
+the regex also blanks).
+
+shortcut: comments are not blanked — the builder never emits comments, but
+a `$word` inside a hand-written `//` comment would report as unbound.
+*/
+function parameterReferences(query: string): { name: string; index: number }[] {
+  const blanked = query
+    .replaceAll(/'(?:\\.|[^'\\])*'/g, (match) => ' '.repeat(match.length))
+    .replaceAll(/"(?:\\.|[^"\\])*"/g, (match) => ' '.repeat(match.length))
+    .replaceAll(/`(?:\\.|[^`\\])*`/g, (match) => ' '.repeat(match.length))
+
+  const references = Array.from(blanked.matchAll(/\$(\w+)/g), (match) => ({
+    // the regex's capture group is always present when the match succeeds
+    name: match[1] ?? '',
+    index: match.index,
+  }))
+
+  return references
+}
+
+/**
 Fluent Cypher query builder.
 
 A statement-based builder: every `match()` / `create()` / `merge()` call
@@ -157,7 +185,13 @@ export class Builder {
   /**
   Compile a sub-builder into a query fragment, namespacing its parameters
   into this builder's parameter space (sub0_, sub1_, …) so nested queries
-  never collide with parent or sibling parameters
+  never collide with parent or sibling parameters.
+
+  NTS-478 — fail fast: every `$name` reference in the sub-query text must
+  resolve to a parameter the sub-builder registered. A raw `$name` that
+  was never bound throws here, naming the fragment, instead of surviving
+  as an unbound `$subN_name` that only fails at execution
+  ("Expected parameter(s): subN_name").
   */
   private compileSub(
     build: (sub: Builder) => Builder,
@@ -168,6 +202,23 @@ export class Builder {
 
     const { query, params } = returned.build()
     const prefix = `sub${String(this.subCount++)}_`
+
+    // NTS-478 — the check runs against the sub's own parameters: those are
+    // exactly the names the rewrite below turns into $subN_x, and any $name
+    // missing here would become an unbound $subN_name in the parent query
+    const firstUnbound = parameterReferences(query).find(
+      (reference) => !Object.hasOwn(params, reference.name),
+    )
+
+    if (firstUnbound !== undefined) {
+      const excerpt = query
+        .slice(Math.max(0, firstUnbound.index - 60), firstUnbound.index + 120)
+        .trim()
+
+      throw new NeodeError(
+        `Unbound parameter $${firstUnbound.name} in a sub-query (call/forEach/countSubquery/collectSubquery/whereExistsSubquery) — register it on the sub-builder before it compiles, e.g. sub.param('${firstUnbound.name}', value). Offending fragment: ${excerpt}`,
+      )
+    }
 
     for (const [key, value] of Object.entries(params)) {
       this.params[`${prefix}${key}`] = value
