@@ -12,3 +12,4 @@ logs/
 # Turbo
 .turbo/
 .husky/_
+.eslintcache
