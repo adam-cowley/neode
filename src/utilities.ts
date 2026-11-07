@@ -20,6 +20,7 @@ import { NeodeError, RelationNotLoadedError } from './errors/index.js'
 import { isStrictRelationAccess } from './strict-relation-access.js'
 import type { GraphNode, GraphRelationship } from './driver/types.js'
 import { elementIdOfEntity } from './element-id.js'
+import { snapshotEntity } from './dirty.js'
 import { applyEntityMethods, type WithMethods } from './entity-methods.js'
 import type { EntitySchema } from './meta/entity/entity-schema.js'
 import { EntityType } from './meta/entity/entity-schema.js'
@@ -353,6 +354,12 @@ export function hydrateNode<T>(
       Reflect.deleteProperty(entity, key)
     }
   }
+
+  // The hydrated state IS the persisted state — snapshot it as the
+  // baseline the instance's dirty tracking diffs against (NTS-157).
+  // Snapshot AFTER the NTS-155 own-undefined cleanup: relationship keys
+  // are not tracked state, but the snapshot must read the final shape.
+  snapshotEntity(targetSchema, entity)
 
   return constructed
 }

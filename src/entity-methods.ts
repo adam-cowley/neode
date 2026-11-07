@@ -14,7 +14,15 @@ with setDefaultNeode(); the most recently set instance wins.
 
 import type { GraphRelationship } from './driver/types.js'
 import { elementIdOfEntity } from './element-id.js'
+import {
+  dirtyValues,
+  diffDirty,
+  isTracked,
+  recordSaved,
+  wasChanged as wasChangedState,
+} from './dirty.js'
 import { getModel } from './meta/index.js'
+import type { EntitySchema } from './meta/entity/entity-schema.js'
 import type { Newable } from './meta/newable.js'
 import type { Neode } from './neode.service.js'
 import { toJson } from './serialise.js'
@@ -67,6 +75,15 @@ function requireConstructor(entity: object): Newable {
 }
 
 /**
+The model schema of an entity instance, or undefined when the value is
+not a registered model — the dirty-tracking surface reports "not dirty"
+for unregistered values instead of throwing
+*/
+function schemaOf(entity: object): EntitySchema | undefined {
+  return getModel(constructorOfInstance(entity))
+}
+
+/**
 The elementId of a hydrated entity
 */
 function elementIdOf(entity: object): string {
@@ -101,6 +118,14 @@ async function changeLabel(entity: object, label: string, verb: 'SET' | 'REMOVE'
   const hydrated = await neode.findById(requireConstructor(entity), elementId)
 
   if (hydrated !== undefined && hydrated !== null) {
+    // The re-hydrated state is the persisted state — re-baseline the
+    // dirty tracking before it lands on the instance (NTS-157)
+    const schema = schemaOf(entity)
+
+    if (schema !== undefined) {
+      recordSaved(schema, entity, hydrated)
+    }
+
     Object.assign(entity, hydrated)
   }
 
@@ -157,6 +182,27 @@ export interface EntityMethods {
   detachFrom<To extends object>(other: To, relationshipKey: string): Promise<DetachResult<this, To>>
 
   /**
+  Whether the instance has unsaved changes — any (or, with `key`, the
+  given property key) since its last persisted snapshot (Eloquent-style
+  dirty tracking, NTS-157). Instances that have never been hydrated or
+  saved report false.
+  */
+  isDirty(key?: string): boolean
+
+  /**
+  The unsaved changes: dirty property key -> current value. The primary
+  key is identity, not state, and relationship keys never appear —
+  relationships are written through relate()/detach().
+  */
+  getDirty(): Record<string, unknown>
+
+  /**
+  Whether the instance's last save() / update() wrote changes — any (or,
+  with `key`, the given property key)
+  */
+  wasChanged(key?: string): boolean
+
+  /**
   JSON-safe serialisation of this entity (properties, labels, elementId)
   */
   toJson(): Record<string, unknown>
@@ -179,6 +225,9 @@ interface MethodImpl {
   delete(this: object, options?: DeleteOptions | string): Promise<object>
   addLabel(this: object, label: string): Promise<object>
   removeLabel(this: object, label: string): Promise<object>
+  isDirty(this: object, key?: string): boolean
+  getDirty(this: object): Record<string, unknown>
+  wasChanged(this: object, key?: string): boolean
   toJson(this: object): Record<string, unknown>
   relateTo(
     this: object,
@@ -198,6 +247,14 @@ const methods: MethodImpl = {
   async save(this) {
     const saved = await requireNeode().save(this)
 
+    // Re-baseline the dirty state against the persisted state before the
+    // re-hydrated values land on the instance (NTS-157)
+    const schema = schemaOf(this)
+
+    if (schema !== undefined) {
+      recordSaved(schema, this, saved)
+    }
+
     return Object.assign(this, saved)
   },
 
@@ -205,10 +262,28 @@ const methods: MethodImpl = {
     return toJson(this)
   },
 
-  async update(this, properties = {}) {
-    const hydrated = await requireNeode().update(this, properties)
+  async update(this, properties) {
+    const schema = schemaOf(this)
+
+    // No properties given: flush the instance's own dirty state — a
+    // no-op (no query) when clean (NTS-157). Untracked instances keep
+    // the legacy no-argument behaviour (required-property refill).
+    const shouldFlushDirty = properties === undefined && schema !== undefined && isTracked(this)
+
+    if (shouldFlushDirty && diffDirty(schema, this).length === 0) {
+      return this
+    }
+
+    const hydrated = await requireNeode().update(
+      this,
+      shouldFlushDirty ? dirtyValues(schema, this) : (properties ?? {}),
+    )
 
     if (hydrated !== undefined) {
+      if (schema !== undefined) {
+        recordSaved(schema, this, hydrated)
+      }
+
       Object.assign(this, hydrated)
     }
 
@@ -250,6 +325,28 @@ const methods: MethodImpl = {
 
   async detachFrom(this, other, relationshipKey) {
     return requireNeode().detach(requireConstructor(this), this, other, relationshipKey)
+  },
+
+  isDirty(this, key) {
+    const schema = schemaOf(this)
+
+    if (schema === undefined || !isTracked(this)) {
+      return false
+    }
+
+    const dirty = diffDirty(schema, this)
+
+    return key === undefined ? dirty.length > 0 : dirty.includes(key)
+  },
+
+  getDirty(this) {
+    const schema = schemaOf(this)
+
+    return schema === undefined || !isTracked(this) ? {} : dirtyValues(schema, this)
+  },
+
+  wasChanged(this, key) {
+    return wasChangedState(this, key)
   },
 }
 

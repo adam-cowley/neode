@@ -7,6 +7,7 @@ import type {
   TransactionHandle,
 } from '../driver/types.js'
 import { EventType } from '../common/events.js'
+import { diffDirty } from '../dirty.js'
 import { getModel, getModels } from '../meta/index.js'
 import { EntitySchema } from '../meta/entity/entity-schema.js'
 import type { EntitySchema as EntitySchemaType } from '../meta/entity/entity-schema.js'
@@ -172,7 +173,19 @@ export class TransactionalService implements INeode {
 
     const merge = new MergeService(this.handle)
 
-    const { elementId, created } = await merge.save(entity, schema)
+    // NTS-157: tracked (hydrated) instances write only their dirty
+    // scalar properties — relationships stay on the explicit
+    // relate()/detach() paths. The facade's clean no-op short-circuit
+    // cannot apply inside an open transaction (the re-find still runs to
+    // hand back the persisted state), so only the dirty filter threads
+    // through.
+    const dirtyKeys = diffDirty(schema, entity)
+
+    const { elementId, created } = await merge.save(
+      entity,
+      schema,
+      dirtyKeys.length > 0 ? new Set(dirtyKeys) : undefined,
+    )
 
     const constructor: unknown = entity.constructor
 

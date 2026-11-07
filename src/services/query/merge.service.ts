@@ -157,6 +157,7 @@ export class MergeService extends QueryService {
   async save(
     model: object,
     schema: EntitySchema,
+    dirtyKeys?: ReadonlySet<string>,
   ): Promise<{ elementId: string; created: boolean }> {
     if (!isRecord(model)) {
       throw new TypeError('save requires a model object')
@@ -215,6 +216,11 @@ export class MergeService extends QueryService {
         continue
       }
 
+      // NTS-157: tracked instances write only their dirty keys
+      if (dirtyKeys !== undefined && !dirtyKeys.has(property.getKey())) {
+        continue
+      }
+
       const value = getValueOrDefault(model, property, schema)
 
       // If property is not set then ignore it
@@ -252,7 +258,13 @@ export class MergeService extends QueryService {
       throw new TypeError(`relate statement did not return an ${INTERNAL_ID}`)
     }
 
-    // Save relationship targets in the same transaction
+    // Save relationship targets in the same transaction. Tracked saves
+    // (NTS-157) never walk the graph: relationship writes belong to the
+    // explicit relate()/detach() paths.
+    if (dirtyKeys !== undefined) {
+      return { elementId: thisId, created: wasCreated }
+    }
+
     await Promise.all(
       schema.getRelationships().map(async (relationship) => {
         const key = relationship.getKey()
