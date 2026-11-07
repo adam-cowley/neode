@@ -10,6 +10,15 @@ export class WithStatement {
     this.variables = variables
   }
 
+  /**
+  Append projection items to this clause — the channel an aggregate
+  subquery uses to join a WITH clause it shares with carried variables
+  (NTS-461)
+  */
+  append(...variables: string[]): void {
+    this.variables.push(...variables)
+  }
+
   order(order: Order): void {
     this.orderClauses.push(order)
   }
