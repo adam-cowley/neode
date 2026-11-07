@@ -17,8 +17,13 @@ export class Where {
   }
 
   toString(): string {
-    const prefix = this.negative ? 'NOT ' : ''
+    // The compound `NOT IN` operator is rejected by Neo4j 2026.x+ (NTS-476):
+    // render the valid `NOT <left> IN $param` form instead. A set `negative`
+    // flag (whereNot) cancels the operator's negation rather than doubling it.
+    const isInOperator = this.operator.toUpperCase() === 'NOT IN'
+    const prefix = this.negative === isInOperator ? '' : 'NOT '
+    const operator = isInOperator ? 'IN' : this.operator
 
-    return `${prefix}${this.left} ${this.operator} ${this.right}`
+    return `${prefix}${this.left} ${operator} ${this.right}`
   }
 }
