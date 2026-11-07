@@ -112,6 +112,67 @@ export class Builder {
   }
 
   /**
+  Parse the orderBy argument forms and hand every parsed Order to the
+  sink (the statement's ORDER BY or the WITH's, NTS-477). Supported
+  forms:
+
+  - `('n.name', 'DESC')`
+  - `('n.name')`
+  - `(['n.name', 'n.other'])`
+  - `({ 'n.name': 'DESC' })`
+  - `({ field: 'n.name', order: 'DESC' })`
+  - `([{ field: 'n.name', order: 'ASC' }, { field: 'n.other', order: 'DESC' }])`
+  */
+  private addOrder(target: (order: Order) => void, ...arguments_: unknown[]): void {
+    let order: Order | undefined
+    const first = arguments_[0]
+
+    if (arguments_.length === 2) {
+      order = new Order(String(first), String(arguments_[1]))
+    } else if (Array.isArray(first)) {
+      for (const argument of first) {
+        this.addOrder(target, argument)
+      }
+    } else if (isRecord(first)) {
+      const field = first['field']
+
+      if (typeof field === 'string' && field !== '') {
+        // P2.2 parity (neode Builder#orderBy): an object carrying a
+        // `field` key is a single `{ field, order }` descriptor,
+        // not a field -> direction map.
+        const direction = first['order']
+
+        order = new Order(field, typeof direction === 'string' ? direction : '')
+      } else {
+        for (const [key, value] of Object.entries(first)) {
+          this.addOrder(target, key, value)
+        }
+      }
+    } else if (typeof first === 'string' && first !== '') {
+      order = new Order(first)
+    }
+
+    if (order) {
+      target(order)
+    }
+  }
+
+  /**
+  The clause that withOrder / withLimit attach to: the WITH most
+  recently pushed, which must still be the last thing in the pipeline
+  (NTS-477)
+  */
+  private get lastWith(): WithStatement {
+    const last = this.statements.at(-1)
+
+    if (!(last instanceof WithStatement)) {
+      throw new NeodeError('withOrder()/withLimit() must directly follow a with() call')
+    }
+
+    return last
+  }
+
+  /**
   Convert a map of properties into inline pattern properties,
   adding each value to the query parameters
   */
@@ -782,7 +843,7 @@ export class Builder {
 
   /**
   Add an order by clause. Supported forms:
-  
+
   - `orderBy('n.name', 'DESC')`
   - `orderBy('n.name')`
   - `orderBy(['n.name', 'n.other'])`
@@ -791,37 +852,37 @@ export class Builder {
   - `orderBy([{ field: 'n.name', order: 'ASC' }, { field: 'n.other', order: 'DESC' }])`
   */
   orderBy(...arguments_: unknown[]): this {
-    let order: Order | undefined
-    const first = arguments_[0]
+    this.addOrder(
+      (order) => {
+        this.activeStatement.order(order)
+      },
+      ...arguments_,
+    )
 
-    if (arguments_.length === 2) {
-      order = new Order(String(first), String(arguments_[1]))
-    } else if (Array.isArray(first)) {
-      for (const argument of first) {
-        this.orderBy(argument)
-      }
-    } else if (isRecord(first)) {
-      const field = first['field']
+    return this
+  }
 
-      if (typeof field === 'string' && field !== '') {
-        // P2.2 parity (neode Builder#orderBy): an object carrying a
-        // `field` key is a single `{ field, order }` descriptor,
-        // not a field -> direction map.
-        const direction = first['order']
+  /**
+  ORDER BY attached to the preceding WITH clause (NTS-477): a mid-query
+  sort / limit before a write. Accepts the same forms as orderBy.
+  */
+  withOrder(...arguments_: unknown[]): this {
+    this.addOrder(
+      (order) => {
+        this.lastWith.order(order)
+      },
+      ...arguments_,
+    )
 
-        order = new Order(field, typeof direction === 'string' ? direction : '')
-      } else {
-        for (const [key, value] of Object.entries(first)) {
-          this.orderBy(key, value)
-        }
-      }
-    } else if (typeof first === 'string' && first !== '') {
-      order = new Order(first)
-    }
+    return this
+  }
 
-    if (order) {
-      this.activeStatement.order(order)
-    }
+  /**
+  LIMIT attached to the preceding WITH clause (NTS-477) — the read side
+  of a read-modify-write: WITH … ORDER BY … LIMIT n, then the write.
+  */
+  withLimit(limit: number): this {
+    this.lastWith.limit(limit)
 
     return this
   }
