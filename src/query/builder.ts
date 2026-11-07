@@ -48,7 +48,10 @@ identifiers have no escapes (Cypher doubles the backtick instead, which
 the regex also blanks).
 
 shortcut: comments are not blanked — the builder never emits comments, but
-a `$word` inside a hand-written `//` comment would report as unbound.
+a `$word` inside a hand-written `//` comment would report as unbound; and
+quote pairing is single-pass, so a stray apostrophe can span a later
+literal — a real `$param` it swallows reports as unbound at build time,
+never silently corrupts.
 */
 function parameterReferences(query: string): { name: string; index: number }[] {
   const blanked = query
@@ -266,6 +269,10 @@ export class Builder {
   was never bound throws here, naming the fragment, instead of surviving
   as an unbound `$subN_name` that only fails at execution
   ("Expected parameter(s): subN_name").
+
+  NTS-492 — the rewrite skips `$name` inside string literals and
+  backtick-quoted identifiers, so `$`-bearing text a user quoted into the
+  query survives verbatim.
   */
   private compileSub(
     build: (sub: Builder) => Builder,
@@ -277,12 +284,12 @@ export class Builder {
     const { query, params } = returned.build()
     const prefix = `sub${String(this.subCount++)}_`
 
+    const references = parameterReferences(query)
+
     // NTS-478 — the check runs against the sub's own parameters: those are
     // exactly the names the rewrite below turns into $subN_x, and any $name
     // missing here would become an unbound $subN_name in the parent query
-    const firstUnbound = parameterReferences(query).find(
-      (reference) => !Object.hasOwn(params, reference.name),
-    )
+    const firstUnbound = references.find((reference) => !Object.hasOwn(params, reference.name))
 
     if (firstUnbound !== undefined) {
       const excerpt = query
@@ -298,10 +305,20 @@ export class Builder {
       this.params[`${prefix}${key}`] = value
     }
 
-    return {
-      inner: query.replaceAll(/\$(\w+)/g, (_match, key: string) => `$${prefix}${key}`),
-      imports,
+    // NTS-492 — rewrite only the references parameterReferences found:
+    // `$name` inside string literals and backtick identifiers is blanked
+    // out of those, so quoted text like '%s is $label' survives the
+    // namespacing untouched. Rebuilt in one forward pass — the reported
+    // indices refer to the original text until each slice consumes it.
+    let inner = ''
+    let cursor = 0
+    for (const { name, index } of references) {
+      inner += `${query.slice(cursor, index)}$${prefix}${name}`
+      cursor = index + name.length + 1
     }
+    inner += query.slice(cursor)
+
+    return { inner, imports }
   }
 
   /**
