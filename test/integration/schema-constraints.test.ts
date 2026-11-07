@@ -90,7 +90,11 @@ describe('composite + property-type schema sync (NTS-140/141)', () => {
       return
     }
 
-    const results = await new SchemaService(backend.connection).create()
+    // The service flag governs Enterprise-only DDL (property types). The
+    // capability probe knows per backend whether that DDL is supported —
+    // Community servers reject it, the embedded engine accepts it.
+    const enterprise = backend.capabilities.propertyTypes
+    const results = await new SchemaService(backend.connection, enterprise).create()
 
     for (const result of results) {
       expect(result.success).toBe(true)
@@ -101,11 +105,13 @@ describe('composite + property-type schema sync (NTS-140/141)', () => {
 
     expect(composite).toBeDefined()
     expect(composite!.properties).toEqual(['eventId', 'email'])
-    expect(constraints.get(TITLE_PROPERTY_TYPE)).toBeDefined()
+    if (enterprise) {
+      expect(constraints.get(TITLE_PROPERTY_TYPE)).toBeDefined()
+    }
     expect(await installedIndexes(backend)).toContain(COMPOSITE_INDEX)
 
     // ...and drop() reverses install()
-    await new SchemaService(backend.connection).drop()
+    await new SchemaService(backend.connection, enterprise).drop()
 
     const afterDrop = await installedConstraints(backend)
 
@@ -155,7 +161,7 @@ describe('composite + property-type schema sync (NTS-140/141)', () => {
       return
     }
 
-    const results = await new SchemaService(backend.connection).create()
+    const results = await new SchemaService(backend.connection, true).create()
 
     for (const result of results) {
       expect(result.success).toBe(true)
@@ -172,17 +178,17 @@ describe('composite + property-type schema sync (NTS-140/141)', () => {
       return
     }
 
-    await new SchemaService(backend.connection).create()
+    await new SchemaService(backend.connection, true).create()
 
-    const report = await inspectSchema(backend.connection)
+    const report = await inspectSchema(backend.connection, { enterprise: true })
 
     expect(report.constraints.missing).not.toContain(COMPOSITE_UNIQUE)
     expect(report.constraints.missing).not.toContain(TITLE_PROPERTY_TYPE)
     expect(report.indexes.missing).not.toContain(COMPOSITE_INDEX)
 
-    await new SchemaService(backend.connection).drop()
+    await new SchemaService(backend.connection, true).drop()
 
-    const after = await inspectSchema(backend.connection)
+    const after = await inspectSchema(backend.connection, { enterprise: true })
 
     expect(after.constraints.missing).toContain(COMPOSITE_UNIQUE)
     expect(after.constraints.missing).toContain(TITLE_PROPERTY_TYPE)

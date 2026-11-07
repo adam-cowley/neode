@@ -428,33 +428,37 @@ export async function applySchemaDrift(
     }
   }
 
-  return Promise.all(
-    targets.map(async ({ action, entry, statement }) => {
-      const result: SchemaResult = {
-        action,
-        // stale objects report the type SHOW gave them (RANGE, TEXT,
-        // …), which has no declared equivalent to name instead
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- reporting-only field
-        type: entry.type as ConstraintType,
-        label: entry.labelsOrTypes[0] ?? '',
-        property: entry.properties[0] ?? '',
-        statement,
-        success: false,
-      }
+  // Sequential: Neo4j can abort concurrent schema writes (schema-lock
+  // contention), so drift application never runs DDL in parallel
+  const results: SchemaResult[] = []
 
-      if (entry.properties.length > 1) {
-        result.properties = entry.properties
-      }
+  for (const { action, entry, statement } of targets) {
+    const result: SchemaResult = {
+      action,
+      // stale objects report the type SHOW gave them (RANGE, TEXT,
+      // …), which has no declared equivalent to name instead
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- reporting-only field
+      type: entry.type as ConstraintType,
+      label: entry.labelsOrTypes[0] ?? '',
+      property: entry.properties[0] ?? '',
+      statement,
+      success: false,
+    }
 
-      try {
-        await connection.run(statement, {}, 'WRITE')
+    if (entry.properties.length > 1) {
+      result.properties = entry.properties
+    }
 
-        result.success = true
-      } catch (error) {
-        result.error = error instanceof Error ? error : new Error(String(error))
-      }
+    try {
+      await connection.run(statement, {}, 'WRITE')
 
-      return result
-    }),
-  )
+      result.success = true
+    } catch (error) {
+      result.error = error instanceof Error ? error : new Error(String(error))
+    }
+
+    results.push(result)
+  }
+
+  return results
 }

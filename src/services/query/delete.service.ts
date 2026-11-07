@@ -40,6 +40,14 @@ export interface DeleteOptions {
 
 export class DeleteService extends QueryService {
   /**
+  Carry-over state while one delete() statement is being built: the node
+  aliases bound so far and whether the previous clause was a DELETE.
+  Cypher requires `WITH` between DELETE and the next MATCH — the carried
+  aliases keep every still-referenced binding in scope (42N24).
+  */
+  private buildContext = { bound: [THIS_NODE] as string[], deleted: false }
+
+  /**
   Add an optional match of a related node plus its own cascades, then
   delete it. `depth` is the number of relationship hops from the root.
   */
@@ -61,10 +69,20 @@ export class DeleteService extends QueryService {
 
     const targetSchema = typeof target === 'function' ? getModel(target) : undefined
 
+    // A sibling cascade segment deleted before this MATCH — carry the
+    // bindings over (this frame's patterns and the pending deletes of
+    // enclosing frames reference them)
+    if (this.buildContext.deleted) {
+      builder.with(...this.buildContext.bound)
+    }
+
     builder
       .optionalMatch(fromAlias)
       .relationship(relationship.getType(), relationship.getDirection(), relationshipAlias)
       .to(nodeAlias, targetSchema instanceof EntitySchema ? targetSchema.getLabels() : false)
+
+    this.buildContext.bound.push(nodeAlias)
+    this.buildContext.deleted = false
 
     if (targetSchema instanceof EntitySchema) {
       for (const targetRelationship of targetSchema.getRelationships()) {
@@ -73,6 +91,7 @@ export class DeleteService extends QueryService {
     }
 
     builder.detachDelete(nodeAlias)
+    this.buildContext.deleted = true
   }
 
   /**
@@ -88,6 +107,9 @@ export class DeleteService extends QueryService {
     }
 
     const builder = new Builder()
+
+    // Reset the per-query build state: service instances are reused
+    this.buildContext = { bound: [THIS_NODE], deleted: false }
 
     // Match by the entity's identity: elementId when known, else the
     // primary key — with a clear error when neither is available
@@ -114,7 +136,12 @@ export class DeleteService extends QueryService {
     if (isCascade && options.mode === 'detach') {
       // Delete the relationships to related nodes first, then the node
       // itself: related nodes survive (neode DeleteNode.js addDetachNode)
-      for (const relationship of schema.getRelationships()) {
+      for (const [index, relationship] of schema.getRelationships().entries()) {
+        // A previous segment deleted its relationships — carry `this` over
+        if (index > 0) {
+          builder.with(...this.buildContext.bound)
+        }
+
         const relationshipAlias = `${THIS_NODE}_${relationship.getKey()}_rel`
 
         builder

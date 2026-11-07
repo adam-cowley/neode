@@ -50,26 +50,29 @@ export class SchemaService {
   }
 
   private async runSchemaStatements(action: ConstraintAction): Promise<SchemaResult[]> {
-    const results = await Promise.all(
-      Array.from(getModels().values(), async (model) =>
-        this.runSchemaStatementsForModel(action, model),
-      ),
-    )
+    // Sequential on purpose: Neo4j can abort concurrent schema writes
+    // (schema-lock contention), so DDL statements never run in parallel
+    const results: SchemaResult[] = []
 
-    return results.flat()
+    for (const model of getModels().values()) {
+      results.push(...(await this.runSchemaStatementsForModel(action, model)))
+    }
+
+    return results
   }
 
   private async runSchemaStatementsForModel(
     action: ConstraintAction,
     model: EntitySchema,
   ): Promise<SchemaResult[]> {
-    const output = await Promise.all(
-      model
-        .getLabels()
-        .map(async (label) => this.runSchemaStatementsForLabel(action, model, label)),
-    )
+    // Sequential: see runSchemaStatements
+    const output: SchemaResult[] = []
 
-    return output.flat()
+    for (const label of model.getLabels()) {
+      output.push(...(await this.runSchemaStatementsForLabel(action, model, label)))
+    }
+
+    return output
   }
 
   private async runSchemaStatementsForLabel(
@@ -102,8 +105,12 @@ export class SchemaService {
     )
 
     // Property-type constraints (NTS-141): opt-in via `typed: true`,
-    // generated only for declared types with a Cypher equivalent
-    const propertyTypes = await this.runPropertyTypeStatementsForLabel(action, properties, label)
+    // generated only for declared types with a Cypher equivalent.
+    // Enterprise-only on the server side — skipped on Community editions,
+    // where every attempt would fail the whole install
+    const propertyTypes = this.enterprise
+      ? await this.runPropertyTypeStatementsForLabel(action, properties, label)
+      : []
 
     // Full-text indexes (NTS-436): one index per label covering every
     // property declared `fulltext: true`, installed/dropped alongside the
@@ -180,13 +187,18 @@ export class SchemaService {
     properties: PropertySchema[],
     label: string,
   ): Promise<SchemaResult[]> {
-    return Promise.all(
-      properties
-        .filter((property) => property.isUnique())
-        .map(async (property) =>
-          this.runStatement(action, ConstraintType.UNIQUE, label, [property.getKey()]),
-        ),
-    )
+    // Sequential: see runSchemaStatements
+    const results: SchemaResult[] = []
+
+    const uniques = properties.filter((property) => property.isUnique())
+
+    for (const property of uniques) {
+      results.push(
+        await this.runStatement(action, ConstraintType.UNIQUE, label, [property.getKey()]),
+      )
+    }
+
+    return results
   }
 
   private async runExistsConstraintStatementsForLabel(
@@ -194,13 +206,18 @@ export class SchemaService {
     properties: PropertySchema[],
     label: string,
   ): Promise<SchemaResult[]> {
-    return Promise.all(
-      properties
-        .filter((property) => property.isExists())
-        .map(async (property) =>
-          this.runStatement(action, ConstraintType.EXISTS, label, [property.getKey()]),
-        ),
-    )
+    // Sequential: see runSchemaStatements
+    const results: SchemaResult[] = []
+
+    const exists = properties.filter((property) => property.isExists())
+
+    for (const property of exists) {
+      results.push(
+        await this.runStatement(action, ConstraintType.EXISTS, label, [property.getKey()]),
+      )
+    }
+
+    return results
   }
 
   private async runIndexStatementsForLabel(
@@ -208,13 +225,18 @@ export class SchemaService {
     properties: PropertySchema[],
     label: string,
   ): Promise<SchemaResult[]> {
-    return Promise.all(
-      properties
-        .filter((property) => property.isIndex())
-        .map(async (property) =>
-          this.runStatement(action, ConstraintType.INDEX, label, [property.getKey()]),
-        ),
-    )
+    // Sequential: see runSchemaStatements
+    const results: SchemaResult[] = []
+
+    const indexes = properties.filter((property) => property.isIndex())
+
+    for (const property of indexes) {
+      results.push(
+        await this.runStatement(action, ConstraintType.INDEX, label, [property.getKey()]),
+      )
+    }
+
+    return results
   }
 
   private async runCompositeStatementsForLabel(
@@ -236,11 +258,14 @@ export class SchemaService {
       composites.set(compositeSchemaObjectName(label, list, type), list)
     }
 
-    return Promise.all(
-      [...composites].map(async ([name, list]) =>
-        this.runStatement(action, type, label, list, name),
-      ),
-    )
+    // Sequential: see runSchemaStatements
+    const results: SchemaResult[] = []
+
+    for (const [name, list] of composites) {
+      results.push(await this.runStatement(action, type, label, list, name))
+    }
+
+    return results
   }
 
   private async runPropertyTypeStatementsForLabel(
@@ -248,37 +273,44 @@ export class SchemaService {
     properties: PropertySchema[],
     label: string,
   ): Promise<SchemaResult[]> {
-    return Promise.all(
-      properties
-        .filter((property) => property.isTyped())
-        .map(async (property) => {
-          const type = cypherPropertyType(property.getType())
+    // Sequential: see runSchemaStatements
+    const results: SchemaResult[] = []
 
-          if (type === undefined) {
-            return {
-              action,
-              type: ConstraintType.PROPERTY_TYPE,
-              label,
-              property: property.getKey(),
-              statement: '',
-              success: false,
-              error: new Error(
-                `No property-type constraint can be generated for "${property.getKey()}": ` +
-                  'its declared type has no single Cypher property type',
-              ),
-            }
-          }
+    const typed = properties.filter((property) => property.isTyped())
 
-          return this.runStatement(
-            action,
-            ConstraintType.PROPERTY_TYPE,
-            label,
-            [property.getKey()],
-            undefined,
-            type,
-          )
-        }),
-    )
+    for (const property of typed) {
+      const type = cypherPropertyType(property.getType())
+
+      if (type === undefined) {
+        results.push({
+          action,
+          type: ConstraintType.PROPERTY_TYPE,
+          label,
+          property: property.getKey(),
+          statement: '',
+          success: false,
+          error: new Error(
+            `No property-type constraint can be generated for "${property.getKey()}": ` +
+              'its declared type has no single Cypher property type',
+          ),
+        })
+
+        continue
+      }
+
+      results.push(
+        await this.runStatement(
+          action,
+          ConstraintType.PROPERTY_TYPE,
+          label,
+          [property.getKey()],
+          undefined,
+          type,
+        ),
+      )
+    }
+
+    return results
   }
 
   private async runStatement(

@@ -42,12 +42,14 @@ describe('query:executed lifecycle event', () => {
     const events: QueryExecutedEvent[] = []
     backend.neode.on(EventType.QUERY_EXECUTED, (event) => events.push(event as QueryExecutedEvent))
 
-    await backend.neode.cypher('RETURN $x AS x', { x: 1 }, { database: 'aux' })
+    await backend.neode.cypher('RETURN $x AS x', { x: 1 }, { database: 'neo4j' })
 
     expect(events).toHaveLength(1)
     expect(events[0].cypher).toBe('RETURN $x AS x')
     expect(events[0].params).toEqual({ x: 1 })
-    expect(events[0].database).toBe('aux')
+    // The default database name — the only one that exists everywhere
+    // (Community containers ship just `neo4j`; Relate ignores the name)
+    expect(events[0].database).toBe('neo4j')
     expect(typeof events[0].duration).toBe('number')
     expect(events[0].duration).toBeGreaterThanOrEqual(0)
   })

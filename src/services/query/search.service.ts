@@ -67,8 +67,10 @@ export async function search<T>(
       throw new TypeError('Cannot run a full-text search: limit must be a positive integer')
     }
 
-    statement += ' LIMIT $limit'
-    parameters['limit'] = limit
+    // Inlined, not a parameter: the driver serialises JS numbers as
+    // floats and Neo4j rejects LIMIT 1.0 (22N03). The value is a
+    // validated safe integer, so interpolation is safe.
+    statement += ` LIMIT ${String(limit)}`
   }
 
   const constructor = resolveModel(model)

@@ -86,7 +86,17 @@ function durationToString(value: Record<string, unknown>): string {
 }
 
 function pointToJson(value: Record<string, unknown>): Record<string, unknown> {
-  const { srid, x, y, z } = value
+  const raw = value['srid']
+  // The driver hands the srid back as an Integer instance, not a number
+  let srid = Number(raw)
+
+  if (typeof raw === 'number') {
+    srid = raw
+  } else if (isInt(raw)) {
+    srid = raw.toNumber()
+  }
+
+  const { x, y, z } = value
 
   return z === undefined || z === null ? { srid, x, y } : { srid, x, y, z }
 }
@@ -101,13 +111,23 @@ function driverValueToJson(value: unknown): unknown {
     return value.toNumber()
   }
 
+  // Durations are formatted canonically (P0M1DT0S) rather than trusted to
+  // toString(): the driver's own spelling omits zero components (P1DT)
+  if (isDuration(value)) {
+    return durationToString({
+      months: Number(value.months),
+      days: Number(value.days),
+      seconds: Number(value.seconds),
+      nanoseconds: Number(value.nanoseconds),
+    })
+  }
+
   if (
     isDate(value) ||
     isDateTime(value) ||
     isTime(value) ||
     isLocalDateTime(value) ||
-    isLocalTime(value) ||
-    isDuration(value)
+    isLocalTime(value)
   ) {
     return value.toString()
   }

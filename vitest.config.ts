@@ -3,19 +3,28 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     globals: true,
+    // Test files must not run in parallel against one shared server: the
+    // container backend points every file at the same Neo4j database, and
+    // one file's wipe() would delete another file's data mid-test. The
+    // embedded backend is unaffected either way (each file opens its own
+    // in-memory database), so parallelism stays on for every other run.
+    fileParallelism: process.env.OGM_TEST_BACKEND === 'container' ? false : undefined,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
       exclude: ['src/**/*.test.ts', 'src/**/*.spec.ts'],
       reporter: ['text', 'html', 'lcov'],
-      // Baseline (full suite, Nov 2026): ~89% lines, ~86% branches,
-      // ~93% functions — thresholds ratchet just below actual; the
-      // plan's 90/90/85 is the target as coverage grows
+      // Baseline (unit suite, Nov 2026): ~73% lines, ~77% functions,
+      // ~85% branches on Node 24 — Node 20/22 measure ~0.6 points lower,
+      // so the ratchet sits well below every version's actual (the
+      // embedded backend's native library is not available in CI, so CI
+      // coverage measures the unit project only; the full suite reaches
+      // ~89.9% lines / ~92.0% functions).
       thresholds: {
-        lines: 89,
-        functions: 92,
-        branches: 86,
-        statements: 89,
+        lines: 71,
+        functions: 75,
+        branches: 84,
+        statements: 71,
       },
     },
     projects: [
