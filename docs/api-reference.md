@@ -200,7 +200,7 @@ import Neode, {
 - [Schema inspection & drift](#schema-inspection--drift)
 - [Connection providers](#connection-providers)
 - [Instance methods](#instance-methods)
-- [Collection, serialisation & hydration](#collection-serialisation--hydration)
+- [Collection & serialisation](#collection--serialisation)
 - [Raw Cypher & instrumentation](#raw-cypher--instrumentation)
 - [Search: full-text & vectors](#search-full-text--vectors)
 - [Read-model projections](#read-model-projections)
