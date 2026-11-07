@@ -360,17 +360,19 @@ neode validated with [Joi](https://github.com/hapijs/joi); neode 1.0 implements 
 email!: string
 ```
 
-The same keys are accepted in map-based definitions (`neode.model('Person', { email: { type: 'string', min: 2, max: 50, email: true } })`) — note the published `SchemaDefinition` types don't carry the rule keys yet, so in TypeScript the decorator form (or a cast) is the type-safe route.
+The same keys are accepted in map-based definitions (`neode.model('Person', { email: { type: 'string', min: 2, max: 50, email: true } })`) — the rule keys are part of the published `SchemaDefinition` types, so the map API gets the same autocomplete and type errors as the decorators.
 
 The complete rule list is in the [API reference](api-reference.md#validation-rules) — `min`, `max`, `length`, `regex`, `email`, `ip`, `uri`, `alphanum`, `allow`, `valid`, `invalid`, `positive`, `precision`, `before`/`after`, `lowercase`/`uppercase`, `truncate`, … Unknown rule names throw neode's familiar `Not sure how to validate <rule> on <key>`.
 
 Validation runs automatically on every write path (`save`, `create`, `update`) and throws a `ValidationError` — the port of neode's error, with the same `.details` / `.input` shape:
 
 ```typescript
+import { ValidationError } from 'neode'
+
 try {
   await neode.create(Person, { name: 'A', email: 'not-an-email' })
 } catch (error) {
-  if (error instanceof Error && error.name === 'ValidationError') {
+  if (error instanceof ValidationError) {
     // error.details — one { path, message, type } entry per failed check
     // error.input   — the object that failed
     console.warn(error.message)
@@ -389,6 +391,8 @@ Differences from neode:
 `batch()` keeps neode's contract — all statements in **one** transaction, rolled back on failure — with a more honest error:
 
 ```typescript
+import { TransactionError } from 'neode'
+
 try {
   const results = await neode.batch([
     'CREATE (n:Person { name: "Adam" })',
@@ -396,7 +400,7 @@ try {
   ])
   console.log(results.length)
 } catch (error) {
-  if (error instanceof Error && error.name === 'TransactionError') {
+  if (error instanceof TransactionError) {
     // error.errors  — aligned with the input array, null where a statement succeeded
     // error.results — results produced before the failure
     // error.details — { index, query, params, error } for every failed statement
