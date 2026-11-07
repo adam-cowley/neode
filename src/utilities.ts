@@ -622,7 +622,11 @@ export function setPropertyInBuilder(
   target: 'node' | 'relationship' = 'node',
 ): Builder {
   if (value === undefined || value === null) {
-    return builder.delete(`${alias}.${property.getKey()}`)
+    // Un-set via `SET this.prop = null` — Cypher removes the property,
+    // and real Neo4j 5 rejects the `DELETE this.prop` spelling (only
+    // nodes / relationships are deletable, 22NB1); the embedded engine
+    // accepted either
+    return builder.set(`${alias}.${property.getKey()}`, null)
   }
 
   // Ignore Internal IDs, properties and nodes

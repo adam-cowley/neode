@@ -579,6 +579,63 @@ describe('QueryBuilder', () => {
       expect(query).toBe('CREATE (n:Person)\nWITH n\nMATCH (m:Person)\nRETURN n, m')
     })
 
+    it('inserts WITH * between a delete and a chained match', () => {
+      const builder = new Builder()
+      const { query } = builder
+        .match('n', 'Person')
+        .where('n.name', 'Adam')
+        .delete('n')
+        .match('m', 'Person')
+        .return('m')
+        .build()
+
+      // Neo4j rejects "WITH is required between DELETE and MATCH" (42N24)
+      expect(query).toBe(
+        'MATCH (n:Person)\nWHERE (n.name = $where_n_name)\nDELETE n\nWITH *\nMATCH (m:Person)\nRETURN m',
+      )
+    })
+
+    it('inserts WITH * between a detach delete and a chained optional match', () => {
+      const builder = new Builder()
+      const { query } = builder
+        .match('n', 'Person')
+        .detachDelete('n')
+        .optionalMatch('m', 'Person')
+        .return('m')
+        .build()
+
+      expect(query).toBe(
+        'MATCH (n:Person)\nDETACH DELETE n\nWITH *\nOPTIONAL MATCH (m:Person)\nRETURN m',
+      )
+    })
+
+    it('does not add a WITH when the user already supplied one between delete and match', () => {
+      const builder = new Builder()
+      const { query } = builder
+        .match('n', 'Person')
+        .delete('n')
+        .with('n')
+        .match('m', 'Person')
+        .return('n', 'm')
+        .build()
+
+      expect(query).toBe('MATCH (n:Person)\nDELETE n\nWITH n\nMATCH (m:Person)\nRETURN n, m')
+    })
+
+    it('chains delete and create without a WITH (updating clauses may follow each other)', () => {
+      const builder = new Builder()
+      const { query } = builder
+        .match('n', 'Person')
+        .delete('n')
+        .create('m', 'Person', { name: 'Ada' })
+        .return('m')
+        .build()
+
+      expect(query).toBe(
+        'MATCH (n:Person)\nDELETE n\nCREATE (m:Person { name: $m_name })\nRETURN m',
+      )
+    })
+
     it('supports multiple create/match statements in sequence', () => {
       const builder = new Builder()
       const { query } = builder
