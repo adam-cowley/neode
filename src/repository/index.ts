@@ -23,6 +23,15 @@ export interface FindOptions {
 }
 
 /**
+Options for Repository#search(): `fields` selects which declared fulltext
+properties form the index (default: all of them)
+*/
+export interface SearchOptions<Entity> {
+  fields?: (keyof Entity & string)[]
+  limit?: number
+}
+
+/**
 The declared property types increment() may bump. ANY (no declared type)
 is allowed too — the schema does not always carry a type.
 */
@@ -418,19 +427,35 @@ export class Repository<Entity> {
   /**
   Full-text search over the index `installSchema()` created for this
   model's `fulltext: true` properties (NTS-436): hydrated entities with
-  their relevance score, best match first. Pass user text through
-  `toFulltextQuery()` first — the query is bound as a parameter, but
-  Lucene syntax characters in it are still parsed as such.
+  their relevance score, best match first. `fields` selects which declared
+  fulltext properties form the index (default: all of them). Pass user
+  text through `toFulltextQuery()` first — the query is bound as a
+  parameter, but Lucene syntax characters in it are still parsed as such.
   */
-  async search(query: string, options: { limit?: number } = {}): Promise<ScoredEntity<Entity>[]> {
-    const fields = this.schema
+  async search(
+    query: string,
+    options: SearchOptions<Entity> = {},
+  ): Promise<ScoredEntity<Entity>[]> {
+    const declared = this.schema
       .getProperties()
       .filter((schemaProperty) => schemaProperty.getFulltext())
       .map((schemaProperty) => schemaProperty.getKey())
 
-    if (fields.length === 0) {
+    if (declared.length === 0) {
       throw new Error(
         `Cannot search ${this.getLabels().join(':')}: no property is declared fulltext: true — declare one, or use neode.search(entity, indexName, query) with installFulltextIndexes()`,
+      )
+    }
+
+    // Declaration order, so the resolved name matches the index
+    // installSchema() (or a subset install) created for those fields
+    // regardless of the order the caller lists them in
+    const selected = options.fields === undefined ? undefined : new Set<string>(options.fields)
+    const fields = selected === undefined ? declared : declared.filter((key) => selected.has(key))
+
+    if (selected !== undefined && (fields.length === 0 || fields.length !== selected.size)) {
+      throw new Error(
+        `Cannot search ${this.getLabels().join(':')}: fields must name properties declared fulltext: true — declared fulltext properties are [${declared.join(', ')}]`,
       )
     }
 
