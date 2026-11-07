@@ -137,6 +137,67 @@ describe('QueryBuilder', () => {
       expect(params).toEqual({ where_n_name: 'Adam', where_n_name_2: 'Ada' })
     })
 
+    it('supports parenthesised where groups', () => {
+      const builder = new Builder()
+      const { query, params } = builder
+        .match('n', 'Person')
+        .where('n.age', '>', 30)
+        .whereGroup((g) => g.where('n.name', 'Adam').or().where('n.name', 'Ada'))
+        .return('n')
+        .build()
+
+      expect(query).toBe(
+        'MATCH (n:Person)\nWHERE (n.age > $where_n_age AND (n.name = $where_n_name OR n.name = $where_n_name_2))\nRETURN n',
+      )
+      expect(params).toEqual({ where_n_age: 30, where_n_name: 'Adam', where_n_name_2: 'Ada' })
+    })
+
+    it('joins a where group with or', () => {
+      const builder = new Builder()
+      const { query, params } = builder
+        .match('n', 'Person')
+        .where('n.name', 'Adam')
+        .or()
+        .whereGroup((g) => g.where('n.age', '>', 30).where('n.age', '<', 40))
+        .return('n')
+        .build()
+
+      expect(query).toBe(
+        'MATCH (n:Person)\nWHERE (n.name = $where_n_name OR (n.age > $where_n_age AND n.age < $where_n_age_2))\nRETURN n',
+      )
+      expect(params).toEqual({ where_n_name: 'Adam', where_n_age: 30, where_n_age_2: 40 })
+    })
+
+    it('supports nested groups', () => {
+      const builder = new Builder()
+      const { query } = builder
+        .match('n', 'Person')
+        .whereGroup((g) =>
+          g
+            .where('n.name', 'Adam')
+            .whereGroup((h) => h.where('n.age', '>', 30).or().whereNull('n.age')),
+        )
+        .return('n')
+        .build()
+
+      expect(query).toBe(
+        'MATCH (n:Person)\nWHERE ((n.name = $where_n_name AND (n.age > $where_n_age OR n.age IS NULL)))\nRETURN n',
+      )
+    })
+
+    it('ignores an empty group', () => {
+      const builder = new Builder()
+      const { query, params } = builder
+        .match('n', 'Person')
+        .where('n.name', 'Adam')
+        .whereGroup((g) => g)
+        .return('n')
+        .build()
+
+      expect(query).toBe('MATCH (n:Person)\nWHERE (n.name = $where_n_name)\nRETURN n')
+      expect(params).toEqual({ where_n_name: 'Adam' })
+    })
+
     it('supports whereId with elementId', () => {
       const builder = new Builder()
       const { query, params } = builder

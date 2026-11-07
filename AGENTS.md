@@ -158,7 +158,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `CursorPaginateOptions` (interface) — Keyset/cursor pagination on a temporal (or other comparable) property: paginate(model, filter, { limit, orderBy?, after?, before? })
 - `CypherOptions` (interface) — Options for the unified raw query entry, `Neode#cypher`.
 - `Direction` (const) — Direction of a relationship pattern. Accepts the legacy case-insensitive 'IN' / 'OUT' / 'BOTH' spellings anywhere a direction is taken.
-- `EventType` (const) — Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neade.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() | hydrated entity | | NODE_MERGED | reserved (mergeOn) | — | | NODE_UPDATED | reserved (update) | — | | NODE_DELETED | delete() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
+- `EventType` (const) — Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neade.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() when the merge created the node | hydrated entity | | NODE_UPDATED | save() when the merge matched an existing node | hydrated entity | | NODE_MERGED | reserved (mergeOn) | — | | NODE_UPDATED | reserved (update) | — | | NODE_DELETED | delete() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
 - `GraphNode` (interface) — A node value in a normalized shape, as returned in result records.
 - `GraphRelationship` (interface) — A relationship value in a normalized shape, as returned in result records.
 - `hasProjectedProperties` (function) — True when any property of the model projects a read-model value
@@ -202,7 +202,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 ```ts
 import { knn, search, toFulltextQuery } from 'neode'
 
-const vectorHits = await knn(runner, 'Person', 'person_plot_vector', vector, 5)
+const vectorHits = await knn(runner, "Person", "person_plot_vector", vector, 5)
 const textHits = await search(runner, 'Person', 'person_plot', toFulltextQuery(query))
 ```
 
@@ -227,11 +227,11 @@ const name = testId('person') // unique per-run ids, safe for parallel suites
 
 - `ConnectivityConfig` (interface)
 - `ConnectivityTimeoutError` (class) — Rejected by waitUntilReachable when the deadline passes.
-- `FactoryBuilder` (class) — Chainable factory builder (NTS-444): seed fake data through the library's normal create/relate services, so validation, defaults, timestamps and relationship logic all apply. neode.factory('User') .count(10) .with('posts', { count: 2, properties: { title: 'Seeded' } }) .create({ role: 'admin' }) Precedence on create: explicit value > `default` > `fake`. Unique properties with a `fake` generator are retried until the values are distinct within one batch (app-level check) — across runs the user's fake fn must be DB-safe (e.g. random UUIDs).
+- `FactoryBuilder` (class) — Chainable factory builder (NTS-444): seed fake data through the library's normal create/relate services, so validation, defaults, timestamps and relationship logic all apply. neode.factory('User') .count(10) .with('posts', { count: 2, properties: { title: 'Seeded' } }) .create({ role: 'admin' }) Precedence on create: explicit value > `default` > `fake`. Unique properties with a `fake` generator are retried until the values are distinct within one batch (app-level check) — across runs the user's fake fn must be DB-safe (e.g. random UUIDs). An override on a unique property applies to the first row; later rows fake distinct values around it.
 - `FactoryWithSpec` (interface) — Options for one `.with()` call on a factory builder (NTS-444)
 - `runCypherScript` (function) — Run every statement of a script sequentially against a runner. Stops at (rejects on) the first failing statement.
 - `RunCypherScriptOptions` (interface)
-- `splitCypherStatements` (function) — Split a script's contents into statements. Semicolons split statements except when they appear inside: - single- or double-quoted string literals (backslash escapes honoured), - backtick-quoted identifiers (`` `a``b` `` doubling honoured), - `--`and`//`line comments, and`/*` block comments (to the closer). Chunks that hold nothing but whitespace and comments are dropped, and each remaining statement is trimmed. Comments that belong to a statement are kept — they are legal Cypher.
+- `splitCypherStatements` (function) — Split a script's contents into statements. Semicolons split statements except when they appear inside: - single- or double-quoted string literals (backslash escapes honoured), - backtick-quoted identifiers (`` `a``b` `` doubling honoured), - `--` and `//` line comments, and `/*` block comments (to the closer). Chunks that hold nothing but whitespace and comments are dropped, and each remaining statement is trimmed. Comments that belong to a statement are kept — they are legal Cypher.
 - `testId` (function) — Unique identifier for test data — `test-<timestamp>-<random>` by default, safe as a property value (letters, digits and hyphens only).
 - `verifyConnectivity` (function) — Check that a database is reachable right now, using a throwaway driver constructed from the config (closed again afterwards). Note the check runs with whatever connectionTimeout the config carries — the driver's default applies otherwise.
 - `waitUntilReachable` (function) — Retry verifyConnectivity with exponential-ish backoff until the database is reachable or the timeout elapses (then: ConnectivityTimeoutError).
@@ -267,7 +267,5 @@ const systemPrompt = [
 
 // Or expose it over MCP as a resource / tool result:
 server.resource('graph-ontology', () => ontologyMarkdown())
-server.tool('describe-ontology', async () => ({
-  content: [{ type: 'text', text: JSON.stringify(ontology()) }],
-}))
+server.tool('describe-ontology', async () => ({ content: [{ type: 'text', text: JSON.stringify(ontology()) }] }))
 ```

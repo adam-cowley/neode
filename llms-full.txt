@@ -147,6 +147,10 @@ Mark the property as indexed. Merges onto the existing property, so it can be st
 
 _source: decorators/node/index.decorator.ts_
 
+### `INeode` (interface)
+
+_source: neode.interface.ts_
+
 ### `InternalId` (decorator)
 
 _source: decorators/internal-id.decorator.ts_
@@ -521,7 +525,7 @@ _source: query/direction.ts_
 
 ### `EventType` (const)
 
-Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neade.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() | hydrated entity | | NODE_MERGED | reserved (mergeOn) | — | | NODE_UPDATED | reserved (update) | — | | NODE_DELETED | delete() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
+Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neade.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() when the merge created the node | hydrated entity | | NODE_UPDATED | save() when the merge matched an existing node | hydrated entity | | NODE_MERGED | reserved (mergeOn) | — | | NODE_UPDATED | reserved (update) | — | | NODE_DELETED | delete() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
 
 _source: common/events.ts_
 
@@ -835,7 +839,7 @@ _source: ops/verify-connectivity.ts_
 
 ### `FactoryBuilder` (class)
 
-Chainable factory builder (NTS-444): seed fake data through the library's normal create/relate services, so validation, defaults, timestamps and relationship logic all apply. neode.factory('User') .count(10) .with('posts', { count: 2, properties: { title: 'Seeded' } }) .create({ role: 'admin' }) Precedence on create: explicit value > `default` > `fake`. Unique properties with a `fake` generator are retried until the values are distinct within one batch (app-level check) — across runs the user's fake fn must be DB-safe (e.g. random UUIDs).
+Chainable factory builder (NTS-444): seed fake data through the library's normal create/relate services, so validation, defaults, timestamps and relationship logic all apply. neode.factory('User') .count(10) .with('posts', { count: 2, properties: { title: 'Seeded' } }) .create({ role: 'admin' }) Precedence on create: explicit value > `default` > `fake`. Unique properties with a `fake` generator are retried until the values are distinct within one batch (app-level check) — across runs the user's fake fn must be DB-safe (e.g. random UUIDs). An override on a unique property applies to the first row; later rows fake distinct values around it.
 
 _source: services/factory.service.ts_
 
@@ -958,6 +962,7 @@ so new fields (e.g. upcoming schema options) appear here automatically.
 | `array` | `boolean` (optional) |  |
 | `default` | `DefaultValue` (optional) |  |
 | `primary` | `boolean` (optional) |  |
+| `fulltext` | `boolean` (optional) | Include in the model's full-text search index (NTS-436). |
 | `unique` | `boolean | string[]` (optional) | boolean: single-property unique constraint. string[]: composite unique covering exactly the listed properties (NTS-140) — declared on one property, the array is the full composite. |
 | `onCreateSet` | `boolean` (optional) |  |
 | `onMatchSet` | `boolean` (optional) |  |
@@ -969,7 +974,6 @@ so new fields (e.g. upcoming schema options) appear here automatically.
 | `index` | `boolean | string[]` (optional) | boolean: single-property index. string[]: composite index covering exactly the listed properties (NTS-140). |
 | `exists` | `boolean` (optional) |  |
 | `typed` | `boolean` (optional) | Opt in to a property-type constraint generated from the declared type (NTS-141): `REQUIRE n.prop IS :: STRING`. |
-| `fulltext` | `boolean` (optional) | Declare a full-text index over the property (NTS-123/436). |
 | `vector` | `VectorConfig` (optional) | Declare a vector index over the property (NTS-447): created by `installSchema()` with the deterministic `vectorIndexName()` naming and dropped by `dropSchema()`. |
 | `transform` | `TransformConfig` (optional) | Property value transforms (NTS-449): `in` converts the user value into its stored form before validation on every write path (create / update / merge / bulk writes), `out` converts the stored form back at hydration on read. See TransformConfig. |
 | `coalesce` | `string | string[]` (optional) | Read-side fallbacks applied at hydration when the stored/projected value is null or absent (NTS-139, the Zod `.catch()` analogue): a literal, or sibling property names whose first non-null value wins. |

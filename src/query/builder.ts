@@ -293,6 +293,38 @@ export class Builder {
   }
 
   /**
+  A parenthesised group of where conditions, built by the callback:
+  
+  - `whereGroup(g => g.where('n.age', '>', 30).where('n.age', '<', 40))`
+    renders `(n.age > $x AND n.age < $y)`, joined to the surrounding
+    conditions by the enclosing connector — so
+    `where('n.name', 'Adam').or().whereGroup(…)` gives
+    `(n.name = $z OR (n.age > $x AND n.age < $y))`, the shape flat
+    connectors cannot express (AND binds tighter than OR).
+  
+  The callback receives this builder; call only where methods on it.
+  Groups nest. An empty group adds no condition.
+  */
+  whereGroup(build: (group: Builder) => Builder): this {
+    const parent = this.activeWhereClause
+    const group = new WhereStatement()
+
+    this.whereClause = group
+
+    try {
+      build(this)
+    } finally {
+      this.whereClause = parent
+    }
+
+    if (group.toString() !== '') {
+      parent.append(group)
+    }
+
+    return this
+  }
+
+  /**
   Add a where condition to the current statement. Supported forms:
   
   - `where('n.name', 'Adam')` - equality
