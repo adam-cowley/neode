@@ -1,0 +1,29 @@
+extend layout
+block content
+  div.jumbotron
+    div.container
+      h1 Watch or Not?
+      p.lead Welcome to Watch or Not, the hottest movie recommender in town.
+  div.rate-film.container
+    div.col-xs-12
+      h2.text-center #{genre.name}? You can't handle a #{genre.name}
+      p.lead.text-center Based on your choices, we're happy to recommend you the following film:
+
+      div.film(id="movie_"+ movie._id)
+        div.col-md-8.col-md-offset-2.col-sm-12.film-title
+          h2.text-center.title= movie.title
+
+        div.film-cover.col-md-4.col-md-offset-2.col-sm-6
+          img.poster(alt="Poster", src=movie.poster)
+
+        div.film-details.col-md-4.col-sm-6
+          dl
+            dt Plot
+            dd
+              blockquote.plot= movie.plot
+            dt Runtime
+            dd.runtime= movie.runtime + "mins"
+            dt Released
+            dd.year= movie.year
+            dt Rating
+            dd.imdbRating= movie.imdbRating

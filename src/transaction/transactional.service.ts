@@ -1,0 +1,384 @@
+import type { EventEmitter } from 'node:events'
+import type {
+  GraphRelationship,
+  QueryOutput,
+  QueryParams as QueryParameters,
+  Runner,
+  TransactionHandle,
+} from '../driver/types.js'
+import { EventType } from '../common/events.js'
+import { getModel, getModels } from '../meta/index.js'
+import { EntitySchema } from '../meta/entity/entity-schema.js'
+import type { EntitySchema as EntitySchemaType } from '../meta/entity/entity-schema.js'
+import { elementIdOfEntity } from '../element-id.js'
+import type { RelationshipPropertySchema } from '../meta/relationship-property-schema.js'
+import type { INeode } from '../neode.interface.js'
+import { NeodeError } from '../errors/index.js'
+import { DeleteService, type DeleteOptions } from '../services/query/delete.service.js'
+import { DetachService, type DetachResult } from '../services/query/detach.service.js'
+import { FindByIdService } from '../services/query/find-by-id.service.js'
+import { FindService } from '../services/query/find.service.js'
+import { GetService, type OrderSpec } from '../services/query/get.service.js'
+import { MergeService } from '../services/query/merge.service.js'
+import { RelateService } from '../services/query/relate.service.js'
+import { UpdateService } from '../services/query/update.service.js'
+import { WithinDistanceService } from '../services/query/within-distance.service.js'
+import { search, type ScoredEntity } from '../services/query/search.service.js'
+import { isConstructorOf, isRecord } from '../services/type-guards.js'
+import { hydrate } from '../hydrate.js'
+
+export class TransactionalService implements INeode {
+  private readonly handle: TransactionHandle
+
+  private readonly eventEmitter: EventEmitter
+
+  constructor(handle: TransactionHandle, eventEmitter: EventEmitter) {
+    this.handle = handle
+    this.eventEmitter = eventEmitter
+  }
+
+  /**
+  The schema registered for the given model constructor
+  */
+  private getSchema(constructor: unknown): EntitySchemaType {
+    const found = getModel(constructor)
+
+    if (!(found instanceof EntitySchema)) {
+      const constructorName = typeof constructor === 'function' ? constructor.name : ''
+
+      const name = constructorName.length > 0 ? constructorName : 'unknown'
+
+      throw new NeodeError(
+        `Couldn't find a model for "${name}". Registered model(s) are: ${Array.from(
+          getModels().keys(),
+          (model) => (typeof model === 'function' ? model.name : 'unknown'),
+        ).join(', ')}`,
+      )
+    }
+
+    return found
+  }
+
+  /**
+  The relationship declared on the schema under the given key
+  (mirror of the facade's relate-by-key resolution)
+  */
+  private requireRelationship(schema: EntitySchemaType, key: string): RelationshipPropertySchema {
+    if (!schema.hasRelationship(key)) {
+      throw new NeodeError(
+        `Unknown relationship "${key}" on ${schema.getLabels().join(':') || 'entity'}`,
+      )
+    }
+
+    return schema.getRelationship(key)
+  }
+
+  /**
+  The facade-mirror methods accept the per-call `database` argument for
+  signature parity; a transaction handle is bound to one database at open
+  time, so the argument is acknowledged and ignored
+  */
+  private ignoreDatabaseOverride(database: string | undefined): void {
+    if (database !== undefined) {
+      // Deliberately ignored: this transaction runs against the database
+      // it was opened with
+    }
+  }
+
+  getRunner(): Runner {
+    return this.handle
+  }
+
+  getTransaction(): TransactionHandle {
+    return this.handle
+  }
+
+  async commit(): Promise<void> {
+    await this.handle.commit()
+  }
+
+  async rollback(): Promise<void> {
+    await this.handle.rollback()
+  }
+
+  async find<T>(
+    constructor: new (...arguments_: never[]) => T,
+    value: string,
+    database?: string,
+  ): Promise<T | undefined> {
+    this.ignoreDatabaseOverride(database)
+
+    const schema = this.getSchema(constructor)
+
+    const service = new FindService(this.handle)
+
+    return service.find<T>(constructor, schema, value)
+  }
+
+  async findById<T>(
+    constructor: new (...arguments_: never[]) => T,
+    id: string,
+    database?: string,
+  ): Promise<T | undefined> {
+    this.ignoreDatabaseOverride(database)
+
+    const schema = this.getSchema(constructor)
+
+    const service = new FindByIdService(this.handle)
+
+    return service.find<T>(constructor, schema, id)
+  }
+
+  async get<T>(
+    constructor: new (...arguments_: never[]) => T,
+    parameters: Record<string, unknown>,
+    limit?: number,
+    skip?: number,
+    database?: string,
+  ): Promise<T[]> {
+    this.ignoreDatabaseOverride(database)
+
+    const schema = this.getSchema(constructor)
+
+    const service = new GetService(this.handle)
+
+    return service.get<T>(constructor, schema, parameters, limit, skip)
+  }
+
+  async getFirst<T>(
+    constructor: new (...arguments_: never[]) => T,
+    parameters: Record<string, unknown>,
+    database?: string,
+  ): Promise<T | undefined> {
+    const records = await this.get<T>(constructor, parameters, 1, 0, database)
+
+    return records[0]
+  }
+
+  async save<T>(entity: T, database?: string): Promise<T> {
+    this.ignoreDatabaseOverride(database)
+
+    if (!isRecord(entity)) {
+      throw new TypeError('save requires an entity object')
+    }
+
+    const schema = this.getSchema(entity.constructor)
+
+    const merge = new MergeService(this.handle)
+
+    const { elementId, created } = await merge.save(entity, schema)
+
+    const constructor: unknown = entity.constructor
+
+    if (!isConstructorOf<T>(constructor)) {
+      throw new TypeError('The saved entity has no model constructor')
+    }
+
+    const saved = await this.findById<T>(constructor, elementId)
+
+    if (saved === undefined) {
+      throw new NeodeError('Entity was saved but could not be found immediately afterwards')
+    }
+
+    // Emit the event the merge actually was: a create or an update
+    this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
+
+    return saved
+  }
+
+  /**
+  Delete a node in this transaction's scope. `options` threads the
+  cascade modes through; the legacy string second argument (database)
+  stays accepted, as on the facade.
+  */
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- the generic mirrors INeode#delete's signature; the entity type cannot be inferred from anything else in it
+  async delete<T>(entity: T, options?: DeleteOptions | string, database?: string): Promise<void> {
+    this.ignoreDatabaseOverride(database)
+
+    if (!isRecord(entity)) {
+      throw new TypeError('delete requires an entity object')
+    }
+
+    const schema = this.getSchema(entity.constructor)
+
+    const service = new DeleteService(this.handle)
+
+    await service.delete(schema, entity, typeof options === 'string' ? undefined : options)
+
+    // Emit event
+    this.eventEmitter.emit(EventType.NODE_DELETED, entity)
+  }
+
+  /**
+  UPDATE the given properties on a node (`+=` semantics), then
+  re-hydrate it — mirror of the facade's update
+  */
+  async update<T>(
+    entity: T,
+    properties: Record<string, unknown> = {},
+    database?: string,
+  ): Promise<T | undefined> {
+    this.ignoreDatabaseOverride(database)
+
+    if (!isRecord(entity)) {
+      throw new TypeError('update requires an entity object')
+    }
+
+    const schema = this.getSchema(entity.constructor)
+
+    await new UpdateService(this.handle).update(schema, entity, properties)
+
+    const elementId = elementIdOfEntity(schema, entity)
+
+    if (elementId === undefined) {
+      return undefined
+    }
+
+    const constructor: unknown = entity.constructor
+
+    if (!isConstructorOf<T>(constructor)) {
+      throw new TypeError('The updated entity has no model constructor')
+    }
+
+    return new FindByIdService(this.handle).find<T>(constructor, schema, elementId)
+  }
+
+  /**
+  Relate two saved nodes by the relationship's KEY on the from-entity's
+  schema — mirror of the facade's relate
+  */
+  async relate<From extends object>(
+    constructor: new (...arguments_: never[]) => From,
+    from: From,
+    to: object,
+    relationshipKey: string,
+    properties: Record<string, unknown> = {},
+    isForceCreate = false,
+  ): Promise<GraphRelationship | undefined> {
+    const schema = this.getSchema(constructor)
+
+    const relationship = this.requireRelationship(schema, relationshipKey)
+
+    const result = await new RelateService(this.handle).relate(
+      schema,
+      from,
+      to,
+      relationship,
+      properties,
+      isForceCreate,
+    )
+
+    if (result !== undefined) {
+      this.eventEmitter.emit(
+        isForceCreate ? EventType.RELATIONSHIP_CREATED : EventType.RELATIONSHIP_MERGED,
+        result,
+      )
+    }
+
+    return result
+  }
+
+  /**
+  Remove the relationship of the given key between two nodes and return
+  both re-hydrated — mirror of the facade's detach
+  */
+  async detach<From extends object, To extends object>(
+    constructor: new (...arguments_: never[]) => From,
+    from: From,
+    to: To,
+    relationshipKey: string,
+  ): Promise<DetachResult<From, To>> {
+    const schema = this.getSchema(constructor)
+
+    const relationship = this.requireRelationship(schema, relationshipKey)
+
+    return new DetachService(this.handle).detach(schema, from, to, relationship)
+  }
+
+  /**
+  ALL nodes of the given constructor, optionally filtered, ordered,
+  limited and skipped — mirror of the facade's all
+  */
+  async all<T>(
+    constructor: new (...arguments_: never[]) => T,
+    parameters: Record<string, unknown> = {},
+    order?: OrderSpec,
+    limit?: number,
+    skip?: number,
+    database?: string,
+  ): Promise<T[]> {
+    this.ignoreDatabaseOverride(database)
+
+    const schema = this.getSchema(constructor)
+
+    return new GetService(this.handle).get<T>(constructor, schema, parameters, limit, skip, order)
+  }
+
+  async search<T>(
+    constructor: new (...arguments_: never[]) => T,
+    indexName: string,
+    query: string,
+    limit?: number,
+  ): Promise<ScoredEntity<T>[]> {
+    return search<T>(this.handle, constructor, indexName, query, limit)
+  }
+
+  /**
+  Nodes of the given constructor within `distance` of the given point —
+  mirror of the facade's withinDistance
+  */
+  async withinDistance<T>(
+    constructor: new (...arguments_: never[]) => T,
+    locationProperty: string,
+    point: unknown,
+    distance: number,
+    parameters: Record<string, unknown> = {},
+    order?: OrderSpec,
+    limit?: number,
+    skip?: number,
+    database?: string,
+  ): Promise<T[]> {
+    this.ignoreDatabaseOverride(database)
+
+    const schema = this.getSchema(constructor)
+
+    return new WithinDistanceService(this.handle).withinDistance<T>(
+      constructor,
+      schema,
+      locationProperty,
+      point,
+      distance,
+      parameters,
+      order,
+      limit,
+      skip,
+    )
+  }
+
+  /**
+  Run a query in this transaction's scope
+  */
+  async readCypher(query: string, parameters: QueryParameters = {}): Promise<QueryOutput> {
+    return this.handle.run(query, parameters)
+  }
+
+  async writeCypher(query: string, parameters: QueryParameters = {}): Promise<QueryOutput> {
+    return this.handle.run(query, parameters)
+  }
+
+  async cypher<T>(
+    query: string,
+    parameters?: QueryParameters,
+    options?: { hydrate: new (...arguments_: never[]) => T; alias?: string },
+  ): Promise<T[]>
+  async cypher(query: string, parameters?: QueryParameters, options?: object): Promise<QueryOutput>
+  async cypher(
+    query: string,
+    parameters: QueryParameters = {},
+    options: { hydrate?: new (...arguments_: never[]) => unknown; alias?: string } = {},
+  ): Promise<QueryOutput | unknown[]> {
+    const output: QueryOutput = await this.handle.run(query, parameters)
+
+    return options.hydrate ? hydrate(options.hydrate, output, options.alias ?? 'this') : output
+  }
+}

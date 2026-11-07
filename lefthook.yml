@@ -1,0 +1,11 @@
+# Runs the same gates AGENTS.md requires before every commit
+pre-push:
+  commands:
+    lint:
+      glob: "*.{ts,mts}"
+      run: pnpm lint
+    typecheck:
+      glob: "*.ts"
+      run: pnpm typecheck
+    test:
+      run: pnpm test:unit

@@ -1,0 +1,32 @@
+{
+  "name": "neode-ogm-example",
+  "version": "1.0.0",
+  "description": "The Watch or Not example app from adam-cowley/neode-example, ported to neode-ogm",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "workflow": "node index.js",
+    "server": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "neode",
+    "neo4j",
+    "graph",
+    "cypher",
+    "ogm"
+  ],
+  "author": "Adam Cowley",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.0",
+    "express-session": "^1.18.0",
+    "jade": "^1.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

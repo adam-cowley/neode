@@ -1,0 +1,26 @@
+{
+  "name": "neode-ogm-example-decorators",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The Watch or Not example app, expressed with the neode-ogm decorator API",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "workflow": "npm run build && node dist/index.js",
+    "start": "npm run build && node dist/server.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.0",
+    "express-session": "^1.18.0",
+    "jade": "^1.11.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/express-session": "^1.18.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,88 @@
+.jumbotron {
+  text-align: center;
+  padding-top: 80px;
+  padding-bottom: 80px;
+}
+
+.jumbotron .btn {
+  margin-top: 40px;
+}
+
+.getting-started {
+  text-align: center;
+}
+.getting-started .nav-pills {
+  margin-top: 50px;
+}
+
+.rate a {
+  font-weight: bold;
+  padding: 20px 0;
+}
+
+.rate a:hover .glyphicon {
+  animation: bounce 1s infinite;
+}
+
+@keyframes bounce {
+  0% {
+    margin-top: 0;
+    margin-bottom: 20px;
+  }
+  50% {
+    margin-top: 10px;
+    margin-bottom: 10px;
+  }
+  100% {
+    margin-top: 0;
+    margin-bottom: 20px;
+  }
+}
+
+.genres li a {
+  border: 1px solid #eee;
+  border-radius: 6px;
+  display: inline-block;
+  margin-bottom: 12px;
+  padding: 10px 20px;
+  transition: all 0.2s;
+}
+
+.genres li a:hover {
+  background: #337ab7;
+  color: #fff;
+  text-decoration: none;
+}
+
+.rate .glyphicon {
+  display: block;
+  margin: 0 auto 20px;
+  font-size: 1.8em;
+}
+
+.film-details dt {
+  border-bottom: 1px solid #eee;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+}
+.film-details dd {
+  margin-bottom: 18px;
+}
+.film-details blockquote {
+  font-style: italic;
+}
+
+.getting-started ul {
+  text-align: center;
+}
+
+.copyright {
+  border-top: 1px solid #eee;
+  margin-top: 60px;
+  padding-top: 12px;
+  text-align: center;
+}
+
+.film-title h2 {
+  margin-bottom: 24px;
+}

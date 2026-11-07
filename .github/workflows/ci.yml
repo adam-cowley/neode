@@ -1,0 +1,169 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  # Own job: type-aware linting is slow; don't gate the test matrix on it
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm lint
+
+  # Typecheck, tests with coverage, build and package checks over the
+  # supported Node line
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm test:coverage
+
+      - run: pnpm build
+
+      - run: pnpm test:package
+
+      - run: pnpm check:package
+
+  # Real Neo4j servers via Testcontainers, over the supported server line.
+  # Relate (embedded, zero-setup) runs on every commit too.
+  integration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        neo4j: ["5-community", "latest"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Integration tests (Relate embedded backend)
+        run: pnpm test:integration
+
+      - name: Integration tests (Neo4j ${{ matrix.neo4j }} via Testcontainers)
+        run: pnpm test:integration
+        env:
+          OGM_TEST_BACKEND: container
+          NEO4J_IMAGE: neo4j:${{ matrix.neo4j }}
+
+  # Fails the build when a user-visible change has no changeset
+  changeset-status:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec changeset status --since=origin/main
+
+  # Optional: external Neo4j/Memgraph via secrets. Inert until
+  # NEO4J_URI / NEO4J_USERNAME / NEO4J_PASSWORD are configured.
+  neo4j:
+    runs-on: ubuntu-latest
+    env:
+      NEO4J_URI: ${{ secrets.NEO4J_URI }}
+      NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
+      NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Check secrets
+        id: secrets
+        if: env.NEO4J_URI != '' && env.NEO4J_USERNAME != '' && env.NEO4J_PASSWORD != ''
+        run: echo 'enabled=true' >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        if: steps.secrets.outputs.enabled == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Integration tests (external Neo4j backend)
+        if: steps.secrets.outputs.enabled == 'true'
+        run: pnpm test:integration
+        env:
+          OGM_TEST_BACKEND: neo4j
+          NEO4J_DATABASE: ${{ secrets.NEO4J_DATABASE }}
+
+  # Publishes to npm via Changesets + trusted publishing (OIDC — no
+  # NPM_TOKEN secret). Runs on main after CI gates pass; a `next`
+  # pre-release mode keeps stable users unaffected during the migration.
+  release:
+    if: github.ref == 'refs/heads/main'
+    needs: [lint, check, integration]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Publish (changesets)
+        uses: changesets/action@v1
+        with:
+          publish: pnpm release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

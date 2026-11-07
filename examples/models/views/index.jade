@@ -1,0 +1,14 @@
+extend layout
+block content
+  div.jumbotron
+    div.container
+      h1 Watch or Not?
+      p.lead Welcome to Watch or Not, the hottest movie recommender in town.
+  div.getting-started.container
+    div.col-xs-12
+      p.lead What are you in the mood for?
+
+      ul.genres.list-inline
+        each genre in genres
+          li.nav-item
+            a.nav-link(href="/recommend/"+genre.name) #{genre.name}

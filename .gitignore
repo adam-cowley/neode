@@ -1,9 +1,13 @@
-bower_components/
-public/bower_components/
+dist/
 node_modules/
 coverage/
-.gulp-cache
+logs/
+*.log
 .env
-.nyc_output
-config/**/*
-test.js
+.env.*
+
+# TypeScript incremental build
+*.tsbuildinfo
+
+# Turbo
+.turbo/

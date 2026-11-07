@@ -1,0 +1,69 @@
+import { ConstraintViolationError } from './constraint-violation.js'
+import { NeodeError } from './neode-error.js'
+import { TransientError } from './transient.js'
+
+/**
+The status codes every backend raises for a unique-constraint violation:
+pre-5.x Neo4j, Neo4j 5.x, and the embedded Relate engine.
+*/
+const CONSTRAINT_VIOLATION_CODES = new Set([
+  'Neo.ClientError.Schema.ConstraintValidation',
+  'Neo.ClientError.Schema.ConstraintViolation',
+  'Neo.ClientError.Schema.ConstraintValidationFailed',
+])
+
+const TRANSIENT_CODE_PREFIX = 'Neo.TransientError.'
+
+/**
+Label/property of a unique violation, parsed from the message:
+
+ - 5.x:  "New node(123) with label `Movie` and property `title` = 'X' ..."
+ - 4.x:  "Node(123) already exists with label `Movie` and property `title` = 'X'"
+
+Composite constraints ("and properties `a` = …, `b` = …") parse as the
+first property; messages that name no label (the Relate engine names
+only the constraint) leave both undefined.
+*/
+const CONSTRAINT_MESSAGE = /\bwith label `([^`]+)` and propert(?:y|ies) `([^`]+)`/
+
+/**
+The classification facts both backends' errors carry: neo4j-driver's
+Neo4jError and the Relate client's RelateError both have `code` and
+`gqlStatus` (plus a `retryable` verdict).
+*/
+interface ClassifiedError extends Error {
+  code?: unknown
+  retryable?: unknown
+}
+
+/**
+Map a raw driver/engine error to the typed taxonomy (NTS-129):
+constraint violations → ConstraintViolationError, transient codes and
+retryable-flagged failures → TransientError. Everything else — unknown
+shapes and already-typed errors — passes through untouched.
+*/
+export function classifyError(error: unknown): unknown {
+  if (!(error instanceof Error) || error instanceof NeodeError) {
+    return error
+  }
+
+  const raw = error as ClassifiedError
+  const code = typeof raw.code === 'string' ? raw.code : undefined
+
+  if (code !== undefined && code !== '' && CONSTRAINT_VIOLATION_CODES.has(code)) {
+    const parsed = CONSTRAINT_MESSAGE.exec(error.message)
+
+    return new ConstraintViolationError(error.message, parsed?.[1], parsed?.[2], { cause: error })
+  }
+
+  const isTransient = code?.startsWith(TRANSIENT_CODE_PREFIX) === true || raw.retryable === true
+
+  return isTransient ? new TransientError(error.message, code, { cause: error }) : error
+}
+
+/**
+Type guard for classified transient errors.
+*/
+export function isTransientError(error: unknown): error is TransientError {
+  return error instanceof TransientError
+}

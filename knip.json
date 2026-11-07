@@ -1,0 +1,5 @@
+{
+  "entry": ["scripts/*.ts", "test/**/*.{ts,mts}", "bench/**/*.{ts,mts}"],
+  "project": ["src/**/*.ts"],
+  "ignoreExportsUsedInFile": true
+}

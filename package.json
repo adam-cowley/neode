@@ -1,47 +1,101 @@
 {
-  "name": "neode",
-  "version": "0.4.9",
-  "description": "Neo4j OGM for NodeJS",
-  "main": "build/index.js",
-  "types": "types/index.d.ts",
-  "scripts": {
-    "build": "./node_modules/@babel/cli/bin/babel.js src -d build",
-    "test": "./node_modules/.bin/mocha --timeout 5000 --require @babel/register ./test{/,/**/}*.spec.js",
-    "lint": "./node_modules/.bin/eslint src/",
-    "coverage": "./node_modules/.bin/nyc --reporter=html npm test",
-    "tdd": "./node_modules/.bin/mocha --require @babel/register --watch"
+  "name": "@neode/beta",
+  "version": "0.2.0",
+  "description": "Decorator-based Object Graph Mapper for Neo4j and Cypher-compatible graph databases",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
   },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown",
+    "prepublishOnly": "npm run build && npm run test:unit",
+    "watch": "tsc --watch",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:package": "vitest run --project package",
+    "test:types": "vitest run --typecheck --project types",
+    "test:watch": "vitest",
+    "docs:agents": "jiti scripts/generate-agent-docs.ts",
+    "bench": "vitest bench --project unit",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0 --cache && biome format .",
+    "lint:fix": "eslint . --fix --cache && biome format --write .",
+    "format": "biome format --write .",
+    "check:package": "publint && attw --pack . --profile node16",
+    "release": "pnpm build && changeset publish",
+    "knip": "knip",
+    "test:coverage": "vitest run --coverage"
+  },
+  "packageManager": "pnpm@12.18.0",
   "keywords": [
     "neo4j",
+    "ogm",
     "graph",
     "cypher",
-    "ogm"
+    "orm",
+    "memgraph",
+    "decorators"
   ],
+  "author": "Adam Cowley",
+  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/adam-cowley/neode.git"
-  },
-  "author": "Adam Cowley <github@adamcowley.co.uk>",
-  "license": "MIT",
-  "dependencies": {
-    "@hapi/joi": "^15.1.1",
-    "dotenv": "^4.0.0",
-    "neo4j-driver": "^4.2.2",
-    "uuid": "^3.4.0"
-  },
-  "devDependencies": {
-    "@babel/cli": "^7.8.4",
-    "@babel/core": "^7.9.6",
-    "@babel/node": "^7.8.4",
-    "@babel/preset-env": "^7.9.6",
-    "@babel/register": "^7.8.6",
-    "chai": "^3.5.0",
-    "eslint": "^4.19.1",
-    "mocha": "^5.2.0",
-    "nyc": "^14.1.1"
+    "url": "git+https://github.com/adam-cowley/neode-ogm.git"
   },
   "bugs": {
-    "url": "https://github.com/adam-cowley/neode/issues"
+    "url": "https://github.com/adam-cowley/neode-ogm/issues"
   },
-  "homepage": "https://github.com/adam-cowley/neode#readme"
+  "homepage": "https://github.com/adam-cowley/neode-ogm#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@biomejs/biome": "^2.6.6",
+    "@changesets/cli": "^3.0.3",
+    "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
+    "@eslint/js": "^9.0.0",
+    "@testcontainers/neo4j": "^12.2.1",
+    "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "@vitest/eslint-plugin": "^1.6.28",
+    "eslint": "^9.0.0",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import-x": "^4.18.0",
+    "eslint-plugin-unicorn": "^79.0.0",
+    "jiti": "^2.7.0",
+    "knip": "^6.44.1",
+    "lefthook": "^2.2.2",
+    "neo4j-driver": "^6.0.0",
+    "publint": "^0.3.25",
+    "tsdown": "^0.23.7",
+    "typescript": "~5.9.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
+  },
+  "peerDependencies": {
+    "neo4j-driver": "^6.0.0"
+  }
 }
