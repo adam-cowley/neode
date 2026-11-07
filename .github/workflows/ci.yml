@@ -31,7 +31,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [20, 22, 24]
+        # Node 20 cannot run the build toolchain (tsdown requires
+        # ^22.18 || ^24.11 || >=26); the published dist is plain JS and
+        # the package engines field keeps runtime support at >=20
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
 
