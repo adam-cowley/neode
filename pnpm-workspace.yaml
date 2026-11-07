@@ -1,0 +1,8 @@
+allowBuilds:
+  cpu-features: true
+  esbuild: true
+  lefthook: true
+  protobufjs: true
+  ssh2: true
+minimumReleaseAgeExclude:
+  - eslint-plugin-import-x@4.18.0
