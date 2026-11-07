@@ -167,8 +167,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Publish (changesets)
-        uses: changesets/action@v1
+        # v2.1.2 minimum: v1 bundles a pre-v3 changesets reader that cannot
+        # parse the .changeset/pre/ layout and dies with
+        # `ENOENT .changeset/pre/changes.md` once a Version PR has merged
+        uses: changesets/action@v2.1.2
         with:
+          # Version first: opens/updates the Version PR, and merging it
+          # triggers this job again to actually publish. Without it the
+          # publish step no-ops forever — nothing is ever versioned.
+          version: pnpm changeset version
           publish: pnpm release
+          github-token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
