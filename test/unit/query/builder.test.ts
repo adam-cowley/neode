@@ -475,6 +475,52 @@ describe('QueryBuilder', () => {
   })
 
   describe('chained statements', () => {
+    it('inserts WITH * between a create and a chained match', () => {
+      const builder = new Builder()
+      const { query } = builder
+        .create('n', 'Person', { name: 'Adam' })
+        .match('m', 'Person')
+        .return('n', 'm')
+        .build()
+
+      // Neo4j rejects "WITH is required between CREATE and MATCH"
+      expect(query).toBe(
+        'CREATE (n:Person { name: $n_name })\nWITH *\nMATCH (m:Person)\nRETURN n, m',
+      )
+    })
+
+    it('inserts WITH * between a merge and a chained match', () => {
+      const builder = new Builder()
+      const { query } = builder.merge('n', 'Person').match('m', 'Person').return('n', 'm').build()
+
+      expect(query).toBe('MERGE (n:Person)\nWITH *\nMATCH (m:Person)\nRETURN n, m')
+    })
+
+    it('chains create and merge without a WITH (updating clauses may follow each other)', () => {
+      const builder = new Builder()
+      const { query } = builder
+        .create('a', 'Person', { name: 'Adam' })
+        .merge('b', 'Person', { name: 'Ada' })
+        .return('a', 'b')
+        .build()
+
+      expect(query).toBe(
+        'CREATE (a:Person { name: $a_name })\nMERGE (b:Person { name: $b_name })\nRETURN a, b',
+      )
+    })
+
+    it('does not add a WITH when the user already supplied one between create and match', () => {
+      const builder = new Builder()
+      const { query } = builder
+        .create('n', 'Person')
+        .with('n')
+        .match('m', 'Person')
+        .return('n', 'm')
+        .build()
+
+      expect(query).toBe('CREATE (n:Person)\nWITH n\nMATCH (m:Person)\nRETURN n, m')
+    })
+
     it('supports multiple create/match statements in sequence', () => {
       const builder = new Builder()
       const { query } = builder

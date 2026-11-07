@@ -57,6 +57,14 @@ export class Builder {
   private subCount = 0
 
   /**
+  Whether the last opened segment is an updating clause (CREATE / MERGE).
+  Neo4j rejects a reading clause after an updating clause without an
+  intervening WITH ("WITH is required between CREATE and MATCH"), so
+  match() / optionalMatch() bridge the transition with `WITH *`.
+  */
+  private afterWriteClause = false
+
+  /**
   The statement segment currently being built — every pattern method
   appends to it.
   */
@@ -186,6 +194,20 @@ export class Builder {
   }
 
   /**
+  Bridge an updating -> reading clause transition: Neo4j rejects a MATCH
+  directly after CREATE / MERGE ("WITH is required between CREATE and
+  MATCH"), so emit `WITH *` — it preserves every in-scope variable
+  */
+  private bridgeWriteToRead(): void {
+    if (!this.afterWriteClause) {
+      return
+    }
+
+    this.statements.push(new WithStatement(['*']))
+    this.afterWriteClause = false
+  }
+
+  /**
   Register a named parameter for use in raw expressions (`$name`) — the
   channel for values inside setExpr / callProcedure / whereRaw positions,
   where the builder cannot bind values itself (NTS-462/473)
@@ -229,6 +251,7 @@ export class Builder {
   match(alias?: string, labels?: string | string[] | false, properties?: BuilderParameters): this {
     this.whereStatement('WHERE')
     this.statement()
+    this.bridgeWriteToRead()
 
     this.activeStatement.match(new Match(alias, labels, this.convertPropertyMap(alias, properties)))
 
@@ -241,6 +264,7 @@ export class Builder {
   optionalMatch(alias?: string, labels?: string | string[] | false): this {
     this.whereStatement('WHERE')
     this.statement('OPTIONAL MATCH')
+    this.bridgeWriteToRead()
 
     this.activeStatement.match(new Match(alias, labels))
 
@@ -254,6 +278,8 @@ export class Builder {
     this.whereStatement('WHERE')
     this.statement()
 
+    // The user's own WITH satisfies the updating -> reading requirement
+    this.afterWriteClause = false
     this.statements.push(new WithStatement(variables))
 
     return this
@@ -266,6 +292,7 @@ export class Builder {
     this.whereStatement('WHERE')
     this.statement()
 
+    this.afterWriteClause = false
     this.statements.push(new WithDistinctStatement(variables))
 
     return this
@@ -584,6 +611,7 @@ export class Builder {
   create(alias: string, labels?: string | string[] | false, properties?: BuilderParameters): this {
     this.whereStatement('WHERE')
     this.statement('CREATE')
+    this.afterWriteClause = true
 
     this.activeStatement.match(new Match(alias, labels, this.convertPropertyMap(alias, properties)))
 
@@ -596,6 +624,7 @@ export class Builder {
   merge(alias: string, labels?: string | string[] | false, properties?: BuilderParameters): this {
     this.whereStatement('WHERE')
     this.statement('MERGE')
+    this.afterWriteClause = true
 
     this.activeStatement.match(new Match(alias, labels, this.convertPropertyMap(alias, properties)))
 
