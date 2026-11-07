@@ -404,11 +404,12 @@ describe('Repository', () => {
       const repo = new Repository<Movie>(neode, Movie)
       const value = await repo.increment('u1', 'released', 2)
 
-      const [query] = mocks.writeCypher.mock.calls[0]
+      const [query, params] = mocks.writeCypher.mock.calls[0]
 
       expect(query).toContain('MATCH (this:Movie { id: $this_id })')
-      expect(query).toContain('SET this.`released` = coalesce(this.`released`, 0) + (2)')
+      expect(query).toContain('SET this.`released` = coalesce(this.`released`, 0) + $by')
       expect(query).toContain('RETURN this.`released` AS value')
+      expect(params.by).toBe(2)
       expect(value).toBe(5)
     })
 
@@ -430,6 +431,13 @@ describe('Repository', () => {
 
       // @ts-expect-error "bogus" is not a property of Movie
       await expect(repo.increment('u1', 'bogus')).rejects.toThrow('not a declared property')
+    })
+
+    it('rejects declared non-numeric properties', async () => {
+      const { neode } = stubNeode()
+      const repo = new Repository<Movie>(neode, Movie)
+
+      await expect(repo.increment('u1', 'title')).rejects.toThrow('not a numeric property')
     })
 
     it('rejects non-finite steps', async () => {

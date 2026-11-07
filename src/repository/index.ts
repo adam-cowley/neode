@@ -3,7 +3,7 @@ import type { QueryOutput } from '../driver/types.js'
 import type { EntitySchema } from '../meta/entity/entity-schema.js'
 import { getModel } from '../meta/index.js'
 import type { Newable } from '../meta/newable.js'
-import type { PropertySchema } from '../meta/property-schema.js'
+import { PropertyType, type PropertySchema } from '../meta/property-schema.js'
 import type { INeode } from '../neode.interface.js'
 import { Builder, eagerNode } from '../query/index.js'
 import { quote } from '../query/quote.js'
@@ -21,6 +21,16 @@ export interface FindOptions {
   limit?: number
   skip?: number
 }
+
+/**
+The declared property types increment() may bump. ANY (no declared type)
+is allowed too — the schema does not always carry a type.
+*/
+const NUMERIC_PROPERTY_TYPES = new Set<PropertyType>([
+  PropertyType.INTEGER,
+  PropertyType.FLOAT,
+  PropertyType.NUMBER,
+])
 
 /**
 Active-record style data-access repository for one registered model — the
@@ -343,12 +353,13 @@ export class Repository<Entity> {
   }
 
   /**
-  Atomically bump a numeric property: one server-side statement
-  `SET n.prop = coalesce(n.prop, 0) + by` — safe under concurrency where
-  read-modify-write via update() would lose updates.
+  Atomically bump a numeric property (NTS-435): one server-side statement
+  `SET n.prop = coalesce(n.prop, 0) + $by` — safe under concurrency where
+  read-modify-write via update() would lose updates. Returns the new value.
 
-  The property must be declared on the schema (its name is interpolated
-  into the Cypher — property names cannot be parameters).
+  The property must be a declared numeric property of the schema: its name
+  is interpolated into the Cypher (property names cannot be parameters),
+  so the declaration check is the injection guard.
   */
   async increment(
     target: Entity | string | number,
@@ -366,18 +377,26 @@ export class Repository<Entity> {
       )
     }
 
+    const type = declared.getType()
+
+    if (type !== PropertyType.ANY && !NUMERIC_PROPERTY_TYPES.has(type)) {
+      throw new TypeError(
+        `Cannot increment: "${property}" is not a numeric property on ${this.getLabels().join(':')}`,
+      )
+    }
+
     if (typeof by !== 'number' || !Number.isFinite(by)) {
       throw new TypeError('Cannot increment: step must be a finite number')
     }
 
-    // The step is a validated finite number, so inlining it into the raw
-    // set is injection-safe; the Builder's raw set has no parameter channel
+    // The property name is schema-validated and quoted (names cannot be
+    // parameters); the step is bound as a query parameter
     const key = quote(declared.getKey())
     const primaryKey = this.getPrimaryKey().getKey()
     const id = isRecord(target) ? target[primaryKey] : target
 
     const builder = new Builder().match(THIS_NODE, this.schema.getLabels(), { [primaryKey]: id })
-    builder.set(`${THIS_NODE}.${key} = coalesce(${THIS_NODE}.${key}, 0) + (${String(by)})`)
+    builder.setExpr(`${THIS_NODE}.${key}`, `coalesce(${THIS_NODE}.${key}, 0) + $by`, { by })
     builder.return(`${THIS_NODE}.${key} AS value`)
 
     const { query, params } = builder.build()
