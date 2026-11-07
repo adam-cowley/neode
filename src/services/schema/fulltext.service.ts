@@ -31,7 +31,10 @@ export function fulltextIndexName(definition: FulltextIndexDefinition): string {
   )
 }
 
-export function createFulltextStatement(definition: FulltextIndexDefinition): string {
+export function createFulltextStatement(
+  definition: FulltextIndexDefinition,
+  shouldQuoteLabel = true,
+): string {
   if (definition.properties.length === 0) {
     throw new TypeError(
       `Cannot create a full-text index on ${definition.label}: no properties given`,
@@ -40,7 +43,9 @@ export function createFulltextStatement(definition: FulltextIndexDefinition): st
 
   const properties = definition.properties.map((property) => `n.${quote(property)}`).join(', ')
 
-  return `CREATE FULLTEXT INDEX ${fulltextIndexName(definition)} IF NOT EXISTS FOR (n:${quote(definition.label)}) ON EACH [${properties}]`
+  const labelPattern = shouldQuoteLabel ? `n:${quote(definition.label)}` : `n:${definition.label}`
+
+  return `CREATE FULLTEXT INDEX ${fulltextIndexName(definition)} IF NOT EXISTS FOR (${labelPattern}) ON EACH [${properties}]`
 }
 
 export function dropFulltextStatement(name: string): string {
