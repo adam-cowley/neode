@@ -757,6 +757,12 @@ export class Builder {
   Set return fields / expressions
   */
   return(...values: string[]): this {
+    // NTS-463: a RETURN with no preceding clause is a valid standalone
+    // statement (e.g. `RETURN COUNT { … } AS found`) — open one lazily
+    if (this.current === undefined) {
+      this.statement()
+    }
+
     this.activeStatement.return(...values)
 
     return this
