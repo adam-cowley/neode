@@ -3,6 +3,7 @@ export { fromEnv } from './from-env.js'
 export {
   NeodeError,
   ConstraintViolationError,
+  RelationNotLoadedError,
   TransientError,
   classifyError,
   isTransientError,
@@ -22,6 +23,9 @@ export { toJson, valueToJson } from './serialise.js'
 // Active-record instance methods on hydrated entities (P7.2)
 export { applyEntityMethods, setDefaultNeode } from './entity-methods.js'
 export type { EntityMethods, WithMethods } from './entity-methods.js'
+
+// Strict relation access (NTS-155)
+export { setStrictRelationAccess } from './strict-relation-access.js'
 
 // Map-based schema definitions
 export {
