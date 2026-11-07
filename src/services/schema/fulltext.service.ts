@@ -97,7 +97,14 @@ export class FulltextIndexService {
   }
 
   private async run(action: ConstraintAction): Promise<SchemaResult[]> {
-    return Promise.all(this.definitions.map(async (definition) => this.runOne(action, definition)))
+    // Sequential: Neo4j can abort concurrent schema writes
+    const results: SchemaResult[] = []
+
+    for (const definition of this.definitions) {
+      results.push(await this.runOne(action, definition))
+    }
+
+    return results
   }
 
   async create(): Promise<SchemaResult[]> {

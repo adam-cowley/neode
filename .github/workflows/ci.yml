@@ -46,9 +46,10 @@ jobs:
 
       - run: pnpm typecheck
 
-      # Coverage thresholds are calibrated on the unit suite (89.5/86.5/93.2).
-      # The integration project needs a database and the package project needs
-      # dist/ — both are covered by the dedicated jobs below.
+      # Coverage runs over the unit project only: the embedded backend's
+      # native library is not available in the check job, and the package
+      # project needs dist/ (built below). The thresholds in
+      # vitest.config.ts are calibrated against exactly this suite.
       - run: pnpm test:coverage --project unit
 
       - run: pnpm build

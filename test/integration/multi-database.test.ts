@@ -9,8 +9,10 @@ import {
 } from '../../src/driver/types'
 
 /**
- * Delegates every call to an inner provider while recording the `database`
- * argument — proves the facade's per-call override reaches the port.
+ * Records the `database` argument without touching a server — proves the
+ * facade's per-call override reaches the port. The named databases only
+ * exist on Enterprise servers, and this is a wiring test: real execution
+ * against named databases is covered by the server tests below.
  */
 class RecordingProvider implements ConnectionProvider {
   readonly runDatabases: (string | undefined)[] = []
@@ -26,13 +28,17 @@ class RecordingProvider implements ConnectionProvider {
   ): Promise<QueryOutput> {
     this.runDatabases.push(database)
 
-    return this.inner.run(statement, parameters, mode, database)
+    return { records: [] }
   }
 
   async beginTransaction(mode?: AccessMode, database?: string): Promise<TransactionHandle> {
     this.beginDatabases.push(database)
 
-    return this.inner.beginTransaction(mode, database)
+    return {
+      run: async () => ({ records: [] }),
+      commit: async () => {},
+      rollback: async () => {},
+    }
   }
 
   async edition() {

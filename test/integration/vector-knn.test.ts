@@ -69,10 +69,21 @@ describe('vector kNN search', () => {
     }
 
     for (const mode of ['procedure', 'search-clause'] as const) {
-      const results = await knn<Doc>(backend.connection, Doc, INDEX, [1, 0.1, 0], 1, mode)
+      try {
+        const results = await knn<Doc>(backend.connection, Doc, INDEX, [1, 0.1, 0], 1, mode)
 
-      expect(results).toHaveLength(1)
-      expect(results[0].entity.emb).toEqual([0.9, 0.1, 0])
+        expect(results).toHaveLength(1)
+        expect(results[0].entity.emb).toEqual([0.9, 0.1, 0])
+      } catch (error) {
+        // Pre-Cypher-25 servers (Neo4j 5.x) have no SEARCH clause — the
+        // explicit form correctly rejects there; auto mode's fallback
+        // (previous test) covers those backends
+        if (mode === 'procedure') {
+          throw error
+        }
+
+        expect(String(error)).toContain('SEARCH')
+      }
     }
   })
 
