@@ -13,12 +13,27 @@ import { fulltextIndexName } from '../services/schema/fulltext.service.js'
 import { isGraphNode, isRecord } from '../services/type-guards.js'
 import { hydrateNode } from '../utilities.js'
 
+/**
+Ordering, paging and row-limit options shared by findAll() and where()
+*/
 export interface FindOptions {
   order?: OrderSpec
   limit?: number
   skip?: number
 }
 
+/**
+Active-record style data-access repository for one registered model — the
+TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
+@EntityRepository custom subclass.
+
+Constructed with a registered entity class (@NodeEntity / defineModel);
+unregistered entities throw. All reads return hydrated entity instances.
+
+shortcut: saveAll() saves entities one at a time, each in its own write
+transaction, so concurrent saves cannot conflict on single-transaction
+connections — batch UNWIND writes are BulkService's job.
+*/
 export class Repository<Entity> {
   /**
   Neo4j driver returns count() as an Integer instance, Relate as a number
@@ -104,6 +119,10 @@ export class Repository<Entity> {
     return this.schema.getLabels()
   }
 
+  /**
+  The schema's primary key property. Throws when the model declares none
+  (@Primary / @Uuid / @Property({ primary: true })).
+  */
   getPrimaryKey(): PropertySchema {
     const primaryKey = this.schema.getPrimaryKey()
 
@@ -116,6 +135,10 @@ export class Repository<Entity> {
     return primaryKey
   }
 
+  /**
+  Find one entity by its primary key value, or undefined when absent.
+  Accepts string and number keys only — anything else throws TypeError.
+  */
   async find(id: unknown): Promise<Entity | undefined> {
     if (typeof id !== 'string' && typeof id !== 'number') {
       throw new TypeError(`Repository.find expects a string or number id, received ${typeof id}`)
@@ -124,12 +147,20 @@ export class Repository<Entity> {
     return this.neode.find(this.entity, id, this.database)
   }
 
+  /**
+  The first entity matching the given properties (declared properties
+  only), or undefined when nothing matches.
+  */
   async findBy(properties: Partial<Entity> = {}): Promise<Entity | undefined> {
     const results = await this.findAll(properties, { limit: 1 })
 
     return results[0]
   }
 
+  /**
+  All entities matching the given properties (declared properties only —
+  unknown keys are ignored), ordered/paged/limited by options.
+  */
   async findAll(parameters: Partial<Entity> = {}, options: FindOptions = {}): Promise<Entity[]> {
     const builder = this.matchAll(parameters)
 
@@ -160,10 +191,17 @@ export class Repository<Entity> {
     })
   }
 
+  /**
+  findAll() alias — every entity matching the given properties.
+  */
   async where(parameters: Partial<Entity> = {}): Promise<Entity[]> {
     return this.findAll(parameters)
   }
 
+  /**
+  Count of entities matching the given properties (a Cypher count(), so
+  no entities are hydrated).
+  */
   async count(parameters: Partial<Entity> = {}): Promise<number> {
     const builder = this.matchAll(parameters)
 
@@ -180,6 +218,9 @@ export class Repository<Entity> {
     return Repository.toCount(firstRecord.get('count'))
   }
 
+  /**
+  Persist an entity (save = MERGE on its primary key / elementId).
+  */
   async save(object: Entity): Promise<Entity> {
     return this.neode.save(object, this.database)
   }
@@ -385,6 +426,10 @@ export class Repository<Entity> {
     return this.neode.search(this.entity, indexName, query, options.limit)
   }
 
+  /**
+  A Builder matching the entity by its primary key value — the seam for
+  subclass queries that continue from a known entity.
+  */
   matchEntity(variable: string = THIS_NODE, object: Entity): Builder {
     const builder = new Builder()
 

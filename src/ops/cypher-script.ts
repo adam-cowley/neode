@@ -110,6 +110,9 @@ function advance(
   }
 }
 
+/**
+Options for runCypherScript.
+*/
 export interface RunCypherScriptOptions {
   /**
   Progress callback — fires with each statement before it executes.

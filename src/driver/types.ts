@@ -46,6 +46,10 @@ export interface QueryOutput {
   summary?: QuerySummary | undefined
 }
 
+/**
+Metadata for one executed statement: write counters and (when the
+statement is prefixed with EXPLAIN / PROFILE) the server's plan.
+*/
 export interface QuerySummary {
   counters?: Record<string, number>
   /**
@@ -59,6 +63,10 @@ export interface QuerySummary {
   profile?: unknown
 }
 
+/**
+A map of Cypher parameter names to values, bound into the statement —
+values never render into the query text itself.
+*/
 // eslint-disable-next-line unicorn/name-replacements -- `QueryParams` is the documented public API name and imported by name in the test suites; renaming is a breaking change
 export type QueryParams = Record<string, unknown>
 
@@ -84,6 +92,12 @@ export interface TransactionHandle extends Runner {
   rollback(): Promise<void>
 }
 
+/**
+Session routing for a statement: 'READ' (replica-capable) or 'WRITE'
+(primaries). Where a query path leaves routing open, the facade's
+defaultRouting (itself defaulting to 'READ') decides;
+ConnectionProvider#run defaults to 'WRITE'.
+*/
 export type AccessMode = 'READ' | 'WRITE'
 
 /**

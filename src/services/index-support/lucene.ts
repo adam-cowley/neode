@@ -15,6 +15,15 @@ const LUCENE_OPERATORS = /\b(AND|OR|NOT|TO)\b/g
 
 const DEFAULT_MAX_TERMS = 12
 
+/**
+Sanitise free user text into a safe full-text query string: Lucene syntax
+characters and uppercase boolean operators stripped, terms lowercased and
+capped at `maxTerms` (default 12).
+
+Pass user text through this before `search()` / `Repository#search` —
+binding the string as a parameter stops Cypher injection, but the Lucene
+parser still 500s on syntax characters (`(`, `"`, `*`, `AND`, …).
+*/
 export function toFulltextQuery(text: string, maxTerms: number = DEFAULT_MAX_TERMS): string {
   return text
     .replaceAll(LUCENE_OPERATORS, ' ')

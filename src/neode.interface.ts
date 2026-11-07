@@ -1,6 +1,11 @@
 import type { CypherOptions, QueryOutput, QueryParams as QueryParameters } from './driver/types.js'
 import type { ScoredEntity } from './services/query/search.service.js'
 
+/**
+The public API surface of the Neode facade, as implemented by both the
+facade (autocommit scope) and TransactionalService (one open transaction).
+Accept this type when a function should work over either scope.
+*/
 export interface INeode {
   find<T>(
     constructor: new (...arguments_: never[]) => T,

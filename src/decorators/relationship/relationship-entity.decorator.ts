@@ -2,6 +2,11 @@ import type { Newable } from '../../meta/newable.js'
 import { mergeRelationshipModel } from '../../meta/index.js'
 import { getRegistrations } from '../registrations.js'
 
+/**
+Register the class as a relationship model: replays the field
+registrations queued by its property decorators and marks the metamodel
+entry as a relationship.
+*/
 export function RelationshipEntity(): (
   constructor: Newable,
   context: ClassDecoratorContext,

@@ -9,6 +9,10 @@ facade methods; they construct a throwaway driver per check and close it.
 
 import { type AuthToken, driver as createDriver } from 'neo4j-driver'
 
+/**
+The connection config the checks run against — the shape fromEnv()
+produces (uri + auth + driver config + database).
+*/
 export interface ConnectivityConfig {
   uri: string
   auth?: AuthToken
@@ -52,6 +56,9 @@ export async function verifyConnectivity(target: ConnectivityConfig): Promise<vo
   }
 }
 
+/**
+Backoff and probe options for waitUntilReachable — every field optional.
+*/
 export interface WaitUntilReachableOptions {
   /**
   Total budget in ms; past it the call rejects with ConnectivityTimeoutError. Default 30_000.

@@ -166,6 +166,14 @@ export class Neo4jTransactionHandle implements TransactionHandle {
   }
 }
 
+/**
+ConnectionProvider over a neo4j-driver `Driver` (Bolt): Neo4j
+Community/Enterprise, Aura, Memgraph, or `relate serve`.
+
+Result values are normalised out of driver types (Node, Relationship,
+Integer, temporal, Point) into the plain GraphNode/GraphRelationship
+shapes; driver errors are mapped through the typed error taxonomy.
+*/
 export class Neo4jConnectionProvider implements ConnectionProvider {
   private readonly driver: Driver
   private readonly database: string | undefined

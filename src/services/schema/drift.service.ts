@@ -73,6 +73,9 @@ export interface SchemaDrift {
   indexes: SchemaDriftGroup
 }
 
+/**
+Options for applySchemaDrift.
+*/
 export interface ApplySchemaDiffOptions {
   /**
   Also drop stale objects (installed but not declared). Off by default:

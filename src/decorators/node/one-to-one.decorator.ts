@@ -2,6 +2,11 @@ import { mergeRelationshipProperty } from '../../meta/index.js'
 import type { RelationshipConfig } from '../relationship-config.interface.js'
 import { addRegistration, memberName } from '../registrations.js'
 
+/**
+Register a relationship property holding one related entity. The target
+entity (`config.target()`) is required — standard decorators have no
+design:type reflection to infer it.
+*/
 export function OneToOne(
   config: RelationshipConfig,
 ): (value: undefined, context: ClassFieldDecoratorContext) => void {

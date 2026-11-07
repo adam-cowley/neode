@@ -60,39 +60,39 @@ Decorator reference:
 - `DateTime` (decorator) — Register a datetime property.
 - `Default` (decorator) — Set a default value (literal or factory function) for the property. Merges onto the existing property, so it can be stacked with a type decorator.
 - `Duration` (decorator) — Register a duration property.
-- `EndNode` (decorator)
+- `EndNode` (decorator) — On a relationship entity: the property holding the node at the relationship's end.
 - `EntityRepository` (decorator) — Register a custom Repository subclass for an entity (TypeORM parity):
 - `Expression` (decorator) — NTS-138 — raw Cypher expression projected into the read query: the escape hatch for graph context the projection builder cannot express yet. The expression references the root node as `this`. shortcut: the embedded Relate engine rejects pattern expressions (patterns inside function calls, e.g. `size((this)-[:R]->())`) inside RETURN projections — prefer
 - `Float` (decorator) — Register a float property.
 - `Hidden` (decorator) — Hide the property from the returned model. Merges onto the existing property, so it can be stacked with a type decorator.
 - `Index` (decorator) — Mark the property as indexed. Merges onto the existing property, so it can be stacked with a type decorator.
-- `InternalId` (decorator)
+- `InternalId` (decorator) — Project the node's internal id (elementId) into the property — a read-only structural field, not sent on writes.
 - `LabelPresent` (decorator) — NTS-137 — label predicate boolean: true when the node has the given label. Example: ```ts
 - `LocalDateTime` (decorator) — Register a local datetime property.
 - `LocalTime` (decorator) — Register a local time property.
-- `NodeEntity` (decorator)
+- `NodeEntity` (decorator) — Register the class as a node model: replays the property/relationship registrations queued by its field decorators, and labels the node with the class name (or `config.labels`).
 - `Number` (decorator) — Register a numeric (integer or float) property.
 - `OnCreateSet` (decorator) — Mark the property as set on create. Merges onto the existing property, so it can be stacked with a type decorator.
-- `OneToMany` (decorator)
-- `OneToOne` (decorator)
+- `OneToMany` (decorator) — Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading and an agent-facing description.
+- `OneToOne` (decorator) — Register a relationship property holding one related entity. The target entity (`config.target()`) is required — standard decorators have no design:type reflection to infer it.
 - `OnMatchSet` (decorator) — Mark the property as set on match. Merges onto the existing property, so it can be stacked with a type decorator.
-- `OtherNode` (decorator)
+- `OtherNode` (decorator) — On a relationship entity: the property holding the node at the far end of the relationship — the end node for an outgoing relationship, the start node for an incoming one (the direction-agnostic alternative to
 - `Point` (decorator) — Register a point (spatial) property.
-- `Primary` (decorator)
+- `Primary` (decorator) — Mark the property as the model's primary key: the property Repository and save() match nodes on. Merges onto the existing property, so it can be stacked with a type decorator.
 - `Property` (decorator) — Register a property with an explicit type and config, e.g. `@Property({ type: 'string', index: true })`. Prefer this over `@String` to avoid shadowing global types.
 - `Protected` (decorator) — Mark the property as protected (never returned to the client). Merges onto the existing property, so it can be stacked with a type decorator.
 - `Readonly` (decorator) — Mark the property as read only. Merges onto the existing property, so it can be stacked with a type decorator.
 - `RelatedMany` (decorator) — NTS-135 — eagerly load related entities as a read-only list. With a field subset the result is projected flat: a single field yields a scalar array (`completedLessons: string[]`), several fields an array of plain DTOs. Without `fields`, full entities are eagerly loaded (same behaviour as an eager
 - `RelatedOne` (decorator) — NTS-135 — eagerly load a related entity as a nested read-only DTO holding only the named fields. Without `fields`, the full entity is eagerly loaded (same behaviour as an eager
 - `RelationshipCount` (decorator) — NTS-136 — relationship count projected as an inline `COUNT { }` subquery in the read query (TypeORM
-- `RelationshipEntity` (decorator)
+- `RelationshipEntity` (decorator) — Register the class as a relationship model: replays the field registrations queued by its property decorators and marks the metamodel entry as a relationship.
 - `RelationshipExists` (decorator) — NTS-137 — relationship existence projected as an inline `EXISTS { }` boolean in the read query. `where` uses `node` as the variable convention for the target node. Example: ```ts
 - `Required` (decorator) — Mark the property as required. Merges onto the existing property, so it can be stacked with a type decorator.
-- `StartNode` (decorator)
+- `StartNode` (decorator) — On a relationship entity: the property holding the node at the relationship's start.
 - `String` (decorator) — Register a string property.
 - `Time` (decorator) — Register a time property.
-- `Unique` (decorator)
-- `Uuid` (decorator)
+- `Unique` (decorator) — Mark the property as unique: installSchema() backs it with a uniqueness constraint, and merge() treats races on it as constraint violations. Merges onto the existing property, so it can be stacked with a type decorator.
+- `Uuid` (decorator) — Register a UUID property: validated as a UUID string, defaulting to a random UUID v4 on create (an explicit `config.default` wins).
 - `Vector` (decorator) — Declare a vector index over the property (NTS-447): `installSchema()` creates the index with the deterministic `vectorIndexName()` naming, `dropSchema()` drops it, and `knn()` searches it. Merges onto the existing property, so it can be stacked with a type decorator.
 
 Map-API reference:
@@ -105,8 +105,8 @@ Map-API reference:
 
 ### Repositories & transactions
 
-- `Repository` (class)
-- `TransactionalService` (class)
+- `Repository` (class) — Active-record style data-access repository for one registered model — the TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
+- `TransactionalService` (class) — The INeode surface scoped to one open transaction: every read/write runs through the TransactionHandle opened by `Neode#beginTransaction` until its commit/rollback, with the facade's model methods (create, merge, relate, …) mirrored inside that scope.
 
 ## Install schema
 
@@ -121,20 +121,20 @@ await neode.installSchema()
 
 ### Schema management API
 
-- `ApplySchemaDiffOptions` (interface)
+- `ApplySchemaDiffOptions` (interface) — Options for applySchemaDrift.
 - `applySchemaDrift` (function) — Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450).
 - `formatSchemaDrift` (function) — Human-readable multi-line drift report, grouped by action (missing / stale / mismatched), one line per object plus its fix statement. Pure function — no database access (NTS-450).
 - `FulltextIndexDefinition` (interface) — A full-text index to keep installed on the database
 - `FulltextIndexService` (class) — Installs/drops the given full-text index definitions, following the same result-reporting pattern as SchemaService
-- `InspectOptions` (interface)
+- `InspectOptions` (interface) — Which objects count as "declared" for the inspection: pass the full-text/vector index definitions and the enterprise flag your installSchema call used, so the diff is not polluted by false "extra" entries.
 - `inspectSchema` (function) — Read the installed schema (SHOW CONSTRAINTS / SHOW INDEXES) and diff it against the declared schema
-- `SchemaDiff` (interface)
+- `SchemaDiff` (interface) — The declared-vs-installed diff for one schema family (constraints or indexes): the raw object lists plus the names that only appear on one side.
 - `schemaDrift` (function) — Structured schema drift (NTS-450): the declared-vs-installed inspection of constraints and every index kind (range/text/fulltext/vector), with the exact fix statement per entry. Cheap and drift-never-throws: drift is data, not an error — failing a CI run on a non-empty diff is the caller's job.
 - `SchemaDrift` (interface)
 - `SchemaDriftEntry` (interface) — One drifted schema object: what it is, where it lives, and the exact statement(s) that would resolve the drift (NTS-450)
 - `SchemaDriftGroup` (interface) — Drift of one schema family (constraints or indexes), grouped by action
-- `SchemaInspection` (interface)
-- `SchemaObject` (interface)
+- `SchemaInspection` (interface) — The full inspectSchema result: constraint and index diffs against the declared models.
+- `SchemaObject` (interface) — One constraint or index as inspected from the database (SHOW CONSTRAINTS / SHOW INDEXES).
 - `VectorIndexDefinition` (interface) — A vector index to keep installed on the database
 - `VectorIndexService` (class) — Installs/drops the given vector index definitions, following the same result-reporting pattern as SchemaService
 
@@ -146,8 +146,9 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 
 ### Querying API
 
-- `AccessMode` (type)
-- `Builder` (class) — Fluent Cypher query builder. A statement-based builder: every `match()` / `create()` / `merge()` call starts a new statement segment; where clauses accumulate against the current segment and are flushed into it when the next segment starts or when `build()` is called. All user values are passed as query parameters - the generated query contains only aliases.
+- `AccessMode` (type) — Session routing for a statement: 'READ' (replica-capable) or 'WRITE' (primaries). Where a query path leaves routing open, the facade's defaultRouting (itself defaulting to 'READ') decides; ConnectionProvider#run defaults to 'WRITE'.
+- `BatchStatementError` (interface) — A single failed statement within a batch.
+- `Builder` (class) — Fluent Cypher query builder. A statement-based builder: every `match()` / `create()` / `merge()` call starts a new statement segment; where clauses accumulate against the current segment and are flushed into it when the next segment starts or when `build()` is called. All user values are passed as query parameters - the generated query contains only aliases. The one exception is `RawExpression` property values (NTS-460), which render verbatim into patterns; bind the values they reference via `param(name, value)`.
 - `BulkChunk` (interface) — The result of one chunk: the rows attempted and the hydrated created/merged entities, in row order
 - `BulkOptions` (interface)
 - `BulkService` (class) — Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths
@@ -158,7 +159,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `CursorPaginateOptions` (interface) — Keyset/cursor pagination on a temporal (or other comparable) property: paginate(model, filter, { limit, orderBy?, after?, before? })
 - `CypherOptions` (interface) — Options for the unified raw query entry, `Neode#cypher`.
 - `Direction` (const) — Direction of a relationship pattern. Accepts the legacy case-insensitive 'IN' / 'OUT' / 'BOTH' spellings anywhere a direction is taken.
-- `EventType` (const) — Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neade.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() when the merge created the node | hydrated entity | | NODE_UPDATED | save() when the merge matched an existing node | hydrated entity | | NODE_MERGED | reserved (mergeOn) | — | | NODE_UPDATED | reserved (update) | — | | NODE_DELETED | delete() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
+- `EventType` (const) — Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neode.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() when the merge created the node | hydrated entity | | NODE_UPDATED | save() when the merge matched an existing node | hydrated entity | | NODE_MERGED | reserved (mergeOn) | — | | NODE_DELETED | delete() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
 - `GraphNode` (interface) — A node value in a normalized shape, as returned in result records.
 - `GraphRelationship` (interface) — A relationship value in a normalized shape, as returned in result records.
 - `hasProjectedProperties` (function) — True when any property of the model projects a read-model value
@@ -171,31 +172,33 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `knn` (function) — k-nearest-neighbour search over a vector index, returning hydrated entities with their similarity score, best match first. With the default `auto` mode the Cypher 25 `SEARCH` clause is attempted first and the queryNodes procedure is used as a fallback; when the backend supports neither a combined error is raised.
 - `KnnMode` (type) — Which query form to use for the kNN search
 - `LabelPredicate` (class) — A label predicate: `alias:Label` (several labels require all of them), shared by `whereLabel` (`WHERE n:Completed`) and `orderByLabel` (`ORDER BY n:Completed DESC`).
-- `Neo4jConnectionProvider` (class)
+- `Neo4jConnectionProvider` (class) — ConnectionProvider over a neo4j-driver `Driver` (Bolt): Neo4j Community/Enterprise, Aura, Memgraph, or `relate serve`. Result values are normalised out of driver types (Node, Relationship, Integer, temporal, Point) into the plain GraphNode/GraphRelationship shapes; driver errors are mapped through the typed error taxonomy.
 - `OffsetPaginateOptions` (interface) — Property -> direction pagination (the classic form): paginate(model, filter, { page, limit, order? })
 - `Page` (interface) — Offset/page result
-- `PaginateOptions` (type)
+- `PaginateOptions` (type) — The union of the two pagination modes PaginateService accepts — the options shape (page vs cursor) selects the mode.
 - `PaginateService` (class) — Pagination helpers. Two modes, selected by the options shape: - `{ page, limit, order? }` — offset pagination over two autocommit reads (data + COUNT), returning { items, total, page, limit, totalPages } - `{ limit, orderBy?, after?/before? }` — keyset pagination on a temporal property (`WHERE this.createdAt > datetime($cursor)`), returning { items, nextCursor, hasMore }
 - `projectionNode` (function) — The RETURN map projection for a model's read query: all properties, the hydration identity markers, full-entity eager relationships and every projected property — one query per read.
 - `ProjectionService` (class) — Read service for models with projected properties (NTS-135/136/137/138): the same match / where surface as the plain query services, but the RETURN map projection carries every projected value — related subsets, counts, exists, label predicates, expressions — in one query per read. NTS-145: object values on
-- `Property` (class) — A property in a SET clause: `property operator $param` or, inline in a pattern, `property: $param`.
+- `Property` (class) — A property in a SET clause: `property operator $param` or, inline in a pattern, `property: $param`. With `isRaw`, the value renders verbatim (an inline Cypher expression, NTS-460) instead of a parameter reference.
 - `QueryExecutedEvent` (interface) — Payload of QUERY_EXECUTED, emitted once per executed statement.
 - `QueryOutput` (interface) — A query result, independent of the underlying client.
-- `QueryParams` (type)
+- `QueryParams` (type) — A map of Cypher parameter names to values, bound into the statement — values never render into the query text itself.
 - `QueryRecord` (interface) — One row of a query result.
-- `QuerySummary` (interface)
-- `RelateConnectionProvider` (class)
-- `Repository` (class)
+- `QuerySummary` (interface) — Metadata for one executed statement: write counters and (when the statement is prefixed with EXPLAIN / PROFILE) the server's plan.
+- `RawExpression` (class) — A raw Cypher expression used as an inline pattern property value (NTS-460): rendered verbatim into the pattern — `{ prop: <expression> }` — instead of being bound as a parameter. Variable references (`row.answers`), server-side calls (`datetime()`) and parameter references (`$name`, bound via `Builder#param`) are all legal; the expression must never interpolate data.
+- `RelateConnectionProvider` (class) — ConnectionProvider over the embedded Relate engine (@relate/relate) — in-process, no Bolt server. The engine is a soft dependency, loaded at construction time; the client shapes are structural so it stays that way.
+- `Repository` (class) — Active-record style data-access repository for one registered model — the TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
 - `Runner` (interface) — Anything able to run statements in its scope (autocommit or transaction).
 - `ScoredEntity` (interface) — A hydrated entity with the relevance score of the index that matched it
 - `search` (function) — Full-text search over a full-text index (`CALL db.index.fulltext.queryNodes`), returning hydrated entities with their relevance score, best match first. The query string is bound as a parameter, so Lucene syntax characters in it are still parsed as such — pass user text through `toFulltextQuery` first.
 - `toCollection` (function) — Hydrate a raw query result into a Collection (neode's Factory.hydrate return shape)
 - `toDirection` (function) — Normalise a direction given in any supported spelling to a Direction. Unknown values fall back to BOTH (the most permissive direction), matching neode's behaviour of never throwing on a bad direction.
 - `toJson` (function) — Convert an entity into a JSON friendly object: plain properties (hidden and structural properties skipped), `_id` (elementId when the model carries an internal id property) and `_labels` (the schema's labels). Eagerly loaded relationships are serialised recursively.
-- `TransactionalService` (class)
+- `TransactionalService` (class) — The INeode surface scoped to one open transaction: every read/write runs through the TransactionHandle opened by `Neode#beginTransaction` until its commit/rollback, with the facade's model methods (create, merge, relate, …) mirrored inside that scope.
+- `TransactionError` (class) — Thrown by Neode.batch() when any statement of the batch fails and the transaction is rolled back (port of neode's TransactionError): - `errors` — per-statement error aligned with the input batch, null where the statement succeeded - `results` — results of the statements that succeeded before the failure - `details` — the failed statements only ({ index, query, params, error })
 - `TransactionHandle` (interface) — An explicit transaction: statements run in scope until commit/rollback.
 - `valueToJson` (function) — Convert a single property value into its JSON friendly shape.
-- `WhereNull` (class)
+- `WhereNull` (class) — An `IS NULL` / `IS NOT NULL` predicate on a property, rendered by toString() — the value of `Builder.whereNull` / `whereNotNull`.
 
 ## kNN & full-text search
 
@@ -210,7 +213,7 @@ const textHits = await search(runner, 'Person', 'person_plot', toFulltextQuery(q
 
 - `search` (function) — Full-text search over a full-text index (`CALL db.index.fulltext.queryNodes`), returning hydrated entities with their relevance score, best match first. The query string is bound as a parameter, so Lucene syntax characters in it are still parsed as such — pass user text through `toFulltextQuery` first.
 - `knn` (function) — k-nearest-neighbour search over a vector index, returning hydrated entities with their similarity score, best match first. With the default `auto` mode the Cypher 25 `SEARCH` clause is attempted first and the queryNodes procedure is used as a fallback; when the backend supports neither a combined error is raised.
-- `toFulltextQuery` (function)
+- `toFulltextQuery` (function) — Sanitise free user text into a safe full-text query string: Lucene syntax characters and uppercase boolean operators stripped, terms lowercased and capped at `maxTerms` (default 12). Pass user text through this before `search()` / `Repository#search` — binding the string as a parameter stops Cypher injection, but the Lucene parser still 500s on syntax characters (`(`, `"`, `*`, `AND`, …).
 - `FulltextIndexService` (class) — Installs/drops the given full-text index definitions, following the same result-reporting pattern as SchemaService
 - `VectorIndexService` (class) — Installs/drops the given vector index definitions, following the same result-reporting pattern as SchemaService
 
@@ -225,17 +228,17 @@ const name = testId('person') // unique per-run ids, safe for parallel suites
 
 ### Testing & ops API
 
-- `ConnectivityConfig` (interface)
+- `ConnectivityConfig` (interface) — The connection config the checks run against — the shape fromEnv() produces (uri + auth + driver config + database).
 - `ConnectivityTimeoutError` (class) — Rejected by waitUntilReachable when the deadline passes.
 - `FactoryBuilder` (class) — Chainable factory builder (NTS-444): seed fake data through the library's normal create/relate services, so validation, defaults, timestamps and relationship logic all apply. neode.factory('User') .count(10) .with('posts', { count: 2, properties: { title: 'Seeded' } }) .create({ role: 'admin' }) Precedence on create: explicit value > `default` > `fake`. Unique properties with a `fake` generator are retried until the values are distinct within one batch (app-level check) — across runs the user's fake fn must be DB-safe (e.g. random UUIDs). An override on a unique property applies to the first row; later rows fake distinct values around it.
 - `FactoryWithSpec` (interface) — Options for one `.with()` call on a factory builder (NTS-444)
 - `runCypherScript` (function) — Run every statement of a script sequentially against a runner. Stops at (rejects on) the first failing statement.
-- `RunCypherScriptOptions` (interface)
+- `RunCypherScriptOptions` (interface) — Options for runCypherScript.
 - `splitCypherStatements` (function) — Split a script's contents into statements. Semicolons split statements except when they appear inside: - single- or double-quoted string literals (backslash escapes honoured), - backtick-quoted identifiers (`` `a``b` `` doubling honoured), - `--`and`//`line comments, and`/*` block comments (to the closer). Chunks that hold nothing but whitespace and comments are dropped, and each remaining statement is trimmed. Comments that belong to a statement are kept — they are legal Cypher.
 - `testId` (function) — Unique identifier for test data — `test-<timestamp>-<random>` by default, safe as a property value (letters, digits and hyphens only).
 - `verifyConnectivity` (function) — Check that a database is reachable right now, using a throwaway driver constructed from the config (closed again afterwards). Note the check runs with whatever connectionTimeout the config carries — the driver's default applies otherwise.
 - `waitUntilReachable` (function) — Retry verifyConnectivity with exponential-ish backoff until the database is reachable or the timeout elapses (then: ConnectivityTimeoutError).
-- `WaitUntilReachableOptions` (interface)
+- `WaitUntilReachableOptions` (interface) — Backoff and probe options for waitUntilReachable — every field optional.
 - `wipe` (function) — Wipe the database clean for a test run: DETACH DELETE every node, then drop every constraint and index the database currently has. Standalone on purpose — SchemaService derives DROP statements from the registered models, while wipe() discovers them from the database itself (small duplication of its statement shapes, accepted). Index drops are best-effort: built-in indexes (e.g. the token lookup store on real servers) cannot be dropped and are ignored.
 - `WipeTarget` (type) — A Runner, or any facade exposing one (e.g. Neode — matched structurally to avoid importing the service here).
 

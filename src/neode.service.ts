@@ -106,6 +106,12 @@ function isSchemaDefinition(value: unknown): value is SchemaDefinition {
 }
 
 /* eslint-disable unicorn/prefer-event-target -- the event emitter is shared with TransactionalService (its constructor takes it and calls on/emit), which an EventTarget adapter would break */
+/**
+The OGM facade: models, raw queries, transactions, schema management and
+the event emitter, over a ConnectionProvider (neo4j-driver or the embedded
+Relate engine). Construct via `forDriver` / `forRelate` / `fromEnv`, or
+directly with a ConnectionProvider.
+*/
 export class Neode implements INeode {
   /**
   The structural minimum of the embedded Relate database (driver/relate.ts

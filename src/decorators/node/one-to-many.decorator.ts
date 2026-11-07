@@ -3,6 +3,12 @@ import { Direction } from '../../query/index.js'
 import { mergeRelationshipProperty } from '../../meta/index.js'
 import { addRegistration, memberName } from '../registrations.js'
 
+/**
+Register a relationship property holding many related entities.
+Positional form: target entity (lazy reference), relationship type
+(omitted matches any type — the pattern renders type-less), direction
+(default BOTH), eager loading and an agent-facing description.
+*/
 export function OneToMany(
   entity: () => Newable,
   type?: string,

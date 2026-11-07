@@ -3,6 +3,12 @@ import { mergeProperty, mergeRelationshipModel } from '../../meta/index.js'
 import { PropertyType } from '../../meta/property-schema.js'
 import { addRegistration, memberName } from '../registrations.js'
 
+/**
+On a relationship entity: the property holding the node at the far end of
+the relationship — the end node for an outgoing relationship, the start
+node for an incoming one (the direction-agnostic alternative to
+@EndNode / @StartNode).
+*/
 export function OtherNode(
   entity: () => Newable,
 ): (value: undefined, context: ClassFieldDecoratorContext) => void {
