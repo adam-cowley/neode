@@ -56,6 +56,7 @@ Decorator reference:
 
 - `Boolean` (decorator) — Register a boolean property.
 - `Computed` (decorator) — NTS-138 — derived field, computed in TypeScript after hydration from the entity's projected fields. Never sent to the database. Example: ```ts
+- `CreatedAt` (decorator) — Stamp the property server-side with `datetime()` once on create (NTS-165): the database clock writes it, so clocks never drift across clients. Stack it with a type decorator (e.g. `@DateTime()`) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
 - `Date` (decorator) — Register a date property.
 - `DateTime` (decorator) — Register a datetime property.
 - `Default` (decorator) — Set a default value (literal or factory function) for the property. Merges onto the existing property, so it can be stacked with a type decorator.
@@ -92,6 +93,7 @@ Decorator reference:
 - `String` (decorator) — Register a string property.
 - `Time` (decorator) — Register a time property.
 - `Unique` (decorator) — Mark the property as unique: installSchema() backs it with a uniqueness constraint, and merge() treats races on it as constraint violations. Merges onto the existing property, so it can be stacked with a type decorator.
+- `UpdatedAt` (decorator) — Stamp the property server-side with `datetime()` on create and on every write (NTS-165): the database clock writes it, so clocks never drift across clients. Stack it with a type decorator (e.g. `@DateTime()`) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
 - `Uuid` (decorator) — Register a UUID property: validated as a UUID string, defaulting to a random UUID v4 on create (an explicit `config.default` wins).
 - `Vector` (decorator) — Declare a vector index over the property (NTS-447): `installSchema()` creates the index with the deterministic `vectorIndexName()` naming, `dropSchema()` drops it, and `knn()` searches it. Merges onto the existing property, so it can be stacked with a type decorator.
 
@@ -160,6 +162,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `CypherOptions` (interface) — Options for the unified raw query entry, `Neode#cypher`.
 - `Direction` (const) — Direction of a relationship pattern. Accepts the legacy case-insensitive 'IN' / 'OUT' / 'BOTH' spellings anywhere a direction is taken.
 - `EventType` (const) — Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neode.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() when the merge created the node | hydrated entity | | NODE_UPDATED | save() when the merge matched an existing node | hydrated entity | | NODE_MERGED | reserved (mergeOn) | — | | NODE_DELETED | delete() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
+- `FindManyAndCountOptions` (interface) — findManyAndCount() options — they trim the data read only; `total` always counts the whole filter (Prisma parity)
 - `GraphNode` (interface) — A node value in a normalized shape, as returned in result records.
 - `GraphRelationship` (interface) — A relationship value in a normalized shape, as returned in result records.
 - `hasProjectedProperties` (function) — True when any property of the model projects a read-model value
@@ -172,6 +175,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `knn` (function) — k-nearest-neighbour search over a vector index, returning hydrated entities with their similarity score, best match first. With the default `auto` mode the Cypher 25 `SEARCH` clause is attempted first and the queryNodes procedure is used as a fallback; when the backend supports neither a combined error is raised.
 - `KnnMode` (type) — Which query form to use for the kNN search
 - `LabelPredicate` (class) — A label predicate: `alias:Label` (several labels require all of them), shared by `whereLabel` (`WHERE n:Completed`) and `orderByLabel` (`ORDER BY n:Completed DESC`).
+- `ManyAndCount` (interface) — Non-paginated `{ items, total }` read (Prisma's findManyAndCount)
 - `Neo4jConnectionProvider` (class) — ConnectionProvider over a neo4j-driver `Driver` (Bolt): Neo4j Community/Enterprise, Aura, Memgraph, or `relate serve`. Result values are normalised out of driver types (Node, Relationship, Integer, temporal, Point) into the plain GraphNode/GraphRelationship shapes; driver errors are mapped through the typed error taxonomy.
 - `OffsetPaginateOptions` (interface) — Property -> direction pagination (the classic form): paginate(model, filter, { page, limit, order? })
 - `Page` (interface) — Offset/page result
@@ -191,6 +195,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `Runner` (interface) — Anything able to run statements in its scope (autocommit or transaction).
 - `ScoredEntity` (interface) — A hydrated entity with the relevance score of the index that matched it
 - `search` (function) — Full-text search over a full-text index (`CALL db.index.fulltext.queryNodes`), returning hydrated entities with their relevance score, best match first. The query string is bound as a parameter, so Lucene syntax characters in it are still parsed as such — pass user text through `toFulltextQuery` first.
+- `StreamOptions` (interface) — lazy() options — the keyset walk behind cursor pagination
 - `toCollection` (function) — Hydrate a raw query result into a Collection (neode's Factory.hydrate return shape)
 - `toDirection` (function) — Normalise a direction given in any supported spelling to a Direction. Unknown values fall back to BOTH (the most permissive direction), matching neode's behaviour of never throwing on a bad direction.
 - `toJson` (function) — Convert an entity into a JSON friendly object: plain properties (hidden and structural properties skipped), `_id` (elementId when the model carries an internal id property) and `_labels` (the schema's labels). Eagerly loaded relationships are serialised recursively.
@@ -253,6 +258,7 @@ const name = testId('person') // unique per-run ids, safe for parallel suites
 - `ConstraintViolationError` (class) — A unique-constraint violation, raised on `merge()`/`create()` flows that race an existing node. `label`/`property` are parsed from the database message when it names them (Neo4j does; the embedded Relate engine only names the constraint), and stay undefined otherwise.
 - `isTransientError` (function) — Type guard for classified transient errors.
 - `NeodeError` (class) — Base class of the typed error taxonomy (NTS-129). Typed errors are produced by `classifyError`, which wraps the raw driver/engine error — the original is preserved as `cause`.
+- `RelationNotLoadedError` (class) — Raised when strict relation access is on (setStrictRelationAccess) and a relationship property the load spec did not request is read off a hydrated entity (NTS-155). The message names the exact fix: request the relation in the load spec (`with`) or load it on the instance.
 - `TransientError` (class) — A transient failure (`Neo.TransientError.*` codes, or the driver's / engine's own `retryable` verdict): retrying the operation may succeed. `isRetryable` is baked in by the code classification — a TransientError is only ever created for a retryable failure.
 
 ## Agent ontology API

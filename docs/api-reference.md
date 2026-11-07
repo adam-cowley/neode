@@ -266,6 +266,8 @@ All of these are understood by `@Property` (and by the sugar decorators, which a
 | `onCreateSet`     | SET only on CREATE.                                                                                      |
 | `onMatchSet`      | SET only on MATCH.                                                                                       |
 | `alwaysSet`       | SET on every write.                                                                                      |
+| `createdAt`       | Server-side timestamp — `datetime()` written once on create (`@CreatedAt`).                              |
+| `updatedAt`       | Server-side timestamp — `datetime()` written on create and every write (`@UpdatedAt`).                   |
 | `readonly`        | Excluded from `update()` writes.                                                                         |
 | `hidden`          | Excluded from `toJson()` output.                                                                         |
 | `protected`       | Excluded from hydration input.                                                                           |
@@ -277,9 +279,11 @@ All of these are understood by `@Property` (and by the sugar decorators, which a
 
 Each applies the matching config option to the property it decorates:
 
-`@Default(valueOrFn)` · `@OnCreateSet()` · `@OnMatchSet()` · `@Index()` · `@Unique()` · `@Required()` · `@Hidden()` · `@Protected()` · `@Readonly()` · `@Primary(config?)`
+`@Default(valueOrFn)` · `@OnCreateSet()` · `@OnMatchSet()` · `@CreatedAt()` · `@UpdatedAt()` · `@Index()` · `@Unique()` · `@Required()` · `@Hidden()` · `@Protected()` · `@Readonly()` · `@Primary(config?)`
 
 `@Primary` marks the property as primary key; combine it with a type decorator (or use `@Uuid({ primary: true })`).
+
+`@CreatedAt()` / `@UpdatedAt()` stamp the property server-side with `datetime()` — `@CreatedAt` once on create, `@UpdatedAt` on create and on every write — so clocks never drift across clients. Stack them with a type decorator (e.g. `@DateTime()`) for a declared type; `update()` never rewrites a `@CreatedAt` property, and a no-op save on a clean instance touches neither.
 
 ```typescript
 @NodeEntity()

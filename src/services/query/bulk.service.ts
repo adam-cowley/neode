@@ -5,7 +5,12 @@ import { hydrate } from '../../hydrate.js'
 import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { PropertyType, isProjectedProperty } from '../../meta/property-schema.js'
 import { getValueOrDefault } from '../../utilities.js'
-import { applyEmbeddings, applyInTransforms, modelPropertyValues } from '../write-utilities.js'
+import {
+  applyEmbeddings,
+  applyInTransforms,
+  modelPropertyValues,
+  timestampProperty,
+} from '../write-utilities.js'
 import { validate } from '../../validation/index.js'
 import { NeodeError } from '../../errors/index.js'
 import { QueryService } from './query.service.js'
@@ -210,13 +215,18 @@ export function processMergeRow(
 UNWIND $rows AS row
 CREATE (this:Label)
 SET this += row
+SET this.createdAt = coalesce(row.createdAt, datetime())
 RETURN this
+
+`stamps` are the server-side timestamp SET items (NTS-165); each reads the
+row's explicit value first (`coalesce`), so an explicitly provided
+timestamp wins over the database clock.
 */
-export function buildCreateQuery(labels: string[]): string {
+export function buildCreateQuery(labels: string[], stamps: string[] = []): string {
   return [
     'UNWIND $rows AS row',
     `CREATE (${THIS_NODE}${labelPattern(labels)})`,
-    `SET ${THIS_NODE} += row`,
+    [`SET ${THIS_NODE} += row`, ...stamps].filter((part) => part.length > 0).join(', '),
     `RETURN ${THIS_NODE}`,
   ].join('\n')
 }
@@ -224,22 +234,51 @@ export function buildCreateQuery(labels: string[]): string {
 /**
 UNWIND $rows AS row
 MERGE (this:Label { key: row.key, ... })
+ON CREATE SET this.createdAt = coalesce(row.createdAt, datetime())
 SET this += row
+SET this.updatedAt = coalesce(row.updatedAt, datetime())
 RETURN this
+
+`onCreateStamps` render in the ON CREATE SET clause, `stamps` in a plain
+SET that applies to created and matched rows alike (NTS-165).
 */
-export function buildMergeQuery(labels: string[], matchKeys: string[]): string {
+export function buildMergeQuery(
+  labels: string[],
+  matchKeys: string[],
+  onCreateStamps: string[] = [],
+  stamps: string[] = [],
+): string {
   if (matchKeys.length === 0) {
     throw new NeodeError('mergeMany requires at least one match property')
   }
 
   const pattern = matchKeys.map((key) => `${key}: row.${key}`).join(', ')
 
-  return [
+  const output = [
     'UNWIND $rows AS row',
     `MERGE (${THIS_NODE}${labelPattern(labels)} { ${pattern} })`,
-    `SET ${THIS_NODE} += row`,
+    ...(onCreateStamps.length > 0 ? [`ON CREATE SET ${onCreateStamps.join(', ')}`] : []),
+    [`SET ${THIS_NODE} += row`, ...stamps].filter((part) => part.length > 0).join(', '),
     `RETURN ${THIS_NODE}`,
-  ].join('\n')
+  ]
+
+  return output.join('\n')
+}
+
+/**
+The server-side timestamp SET items for the bulk row alias (NTS-165): the
+row's explicit value wins, otherwise the database clock stamps it
+*/
+function rowStamps(schema: EntitySchema, kind: 'createdAt' | 'updatedAt'): string[] {
+  const property = timestampProperty(schema, kind)
+
+  if (property === undefined) {
+    return []
+  }
+
+  const key = property.getKey()
+
+  return [`${THIS_NODE}.${key} = coalesce(row.${key}, datetime())`]
 }
 
 /**
@@ -341,7 +380,15 @@ export class BulkService extends QueryService {
     // shortcut: vector properties persist as plain SET values through the
     // UNWIND row map (indexable, not the packed vector format) — switch to
     // per-row procedure calls when bulk storage must be space-efficient too
-    return this.writeChunks<T>(constructor, rowMaps, buildCreateQuery(schema.getLabels()), options)
+    return this.writeChunks<T>(
+      constructor,
+      rowMaps,
+      buildCreateQuery(schema.getLabels(), [
+        ...rowStamps(schema, 'createdAt'),
+        ...rowStamps(schema, 'updatedAt'),
+      ]),
+      options,
+    )
   }
 
   /**
@@ -381,7 +428,12 @@ export class BulkService extends QueryService {
       }
     }
 
-    const query = buildMergeQuery(schema.getLabels(), matchKeys)
+    const query = buildMergeQuery(
+      schema.getLabels(),
+      matchKeys,
+      rowStamps(schema, 'createdAt'),
+      rowStamps(schema, 'updatedAt'),
+    )
 
     // The MERGE pattern reads the match values off the row map
     const rowMaps = parts.map((part) => ({ ...part.set, ...part.match }))

@@ -18,6 +18,16 @@ export interface PropertyConfig {
   onCreateSet?: boolean
   onMatchSet?: boolean
   alwaysSet?: boolean
+  /**
+  Server-side timestamp (NTS-165): stamped with `datetime()` once on
+  create — the `@CreatedAt` decorator's config option.
+  */
+  createdAt?: boolean
+  /**
+  Server-side timestamp (NTS-165): stamped with `datetime()` on create and
+  on every write — the `@UpdatedAt` decorator's config option.
+  */
+  updatedAt?: boolean
   required?: boolean
   hidden?: boolean
   protected?: boolean
