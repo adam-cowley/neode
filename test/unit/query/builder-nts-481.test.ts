@@ -12,8 +12,7 @@ describe('Builder aggregate subqueries in WITH position (NTS-481)', () => {
 
     expect(query).toBe(
       'MATCH (u:User)\n' +
-        'WITH COUNT { MATCH (l:Lesson)\nWHERE (l.depth = $sub0_where_l_depth) } AS total\n' +
-        'WITH COUNT { MATCH (c:Completion)\nWHERE (c.done = $sub1_where_c_done) } AS completed\n' +
+        'WITH COUNT { MATCH (l:Lesson)\nWHERE (l.depth = $sub0_where_l_depth) } AS total, COUNT { MATCH (c:Completion)\nWHERE (c.done = $sub1_where_c_done) } AS completed\n' +
         'RETURN u, round(100.0 * completed / total) AS progressPct',
     )
     expect(params).toEqual({ sub0_where_l_depth: 1, sub1_where_c_done: true })

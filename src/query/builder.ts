@@ -342,6 +342,32 @@ export class Builder {
     return `${kind} { ${scope}${inner} }`
   }
 
+  /**
+  The WITH clause a WITH-position aggregate subquery lands in (NTS-461):
+  the trailing WITH clause when nothing is pending after it — so the
+  aggregate shares one clause with the variables it must stay alongside —
+  otherwise a fresh WITH clause (the NTS-481 shape). Parameters are
+  namespaced either way, via aggregateSubquery.
+  */
+  private withSubqueryExpression(expression: string): this {
+    const hasPendingWhere = this.whereClause !== undefined && this.whereClause.toString() !== ''
+    const hasPendingStatement = this.current !== undefined && this.current.toString() !== ''
+    const last = this.statements.at(-1)
+
+    if (!hasPendingWhere && !hasPendingStatement && last instanceof WithStatement) {
+      last.append(expression)
+
+      return this
+    }
+
+    this.flush()
+    this.afterWriteClause = false
+    this.afterDeleteClause = false
+    this.statements.push(new WithStatement([expression]))
+
+    return this
+  }
+
   private schemaStatementSegment(
     action: ConstraintAction,
     type: ConstraintType,
@@ -1253,22 +1279,32 @@ export class Builder {
   `WITH COUNT { … } AS <alias>` (NTS-481): the aggregate is computed per
   input row and stays in scope, so a later return() can project it (e.g.
   `100 * completed / total`) — which a RETURN-position subquery cannot.
-  For any other WITH expression the raw escape hatch is `with(expr + ' AS alias')`.
+  Joins the trailing WITH clause when one is open (NTS-461): `WITH u, e, c`
+  followed by two of these renders one `WITH u, e, c, COUNT { … } AS x,
+  COUNT { … } AS y` — the carried variables survive and the aggregates
+  are filterable (`WHERE x < y`). With nothing to join, it opens its own
+  WITH clause. For any other WITH expression the raw escape hatch is
+  `with(expr + ' AS alias')`.
   */
   withCountSubquery(alias: string, build: (sub: Builder) => Builder, imports: string[] = []): this {
-    return this.with(`${this.aggregateSubquery('COUNT', build, imports)} AS ${alias}`)
+    return this.withSubqueryExpression(
+      `${this.aggregateSubquery('COUNT', build, imports)} AS ${alias}`,
+    )
   }
 
   /**
   `WITH COLLECT { … } AS <alias>` (NTS-481): collected sub-projections in
-  WITH position, staying in scope for a later return()
+  WITH position, staying in scope for a later return(). Joins the trailing
+  WITH clause when one is open (NTS-461), else opens its own.
   */
   withCollectSubquery(
     alias: string,
     build: (sub: Builder) => Builder,
     imports: string[] = [],
   ): this {
-    return this.with(`${this.aggregateSubquery('COLLECT', build, imports)} AS ${alias}`)
+    return this.withSubqueryExpression(
+      `${this.aggregateSubquery('COLLECT', build, imports)} AS ${alias}`,
+    )
   }
 
   /**
