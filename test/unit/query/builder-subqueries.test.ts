@@ -53,6 +53,62 @@ describe('Builder subqueries (NTS: no hand-written Cypher in repositories)', () 
   })
 })
 
+describe('WHERE after raw segments (NTS-475)', () => {
+  it('emits WHERE for a where chained after callProcedure', () => {
+    const { query, params } = new Builder()
+      .param('courseIndex', 'courseSearch')
+      .param('courseQuery', 'text')
+      .callProcedure(
+        'db.index.fulltext.queryNodes',
+        ['$courseIndex', '$courseQuery'],
+        ['node', 'score'],
+      )
+      .whereIn('c.status', ['active', 'draft'])
+      .return('count(c) AS total')
+      .build()
+
+    expect(query).toBe(
+      'CALL db.index.fulltext.queryNodes($courseIndex, $courseQuery) YIELD node, score\n' +
+        'WHERE (c.status IN $where_c_status)\n' +
+        'RETURN count(c) AS total',
+    )
+    expect(params).toEqual({
+      courseIndex: 'courseSearch',
+      courseQuery: 'text',
+      where_c_status: ['active', 'draft'],
+    })
+  })
+
+  it('emits a WHERE-prefixed segment for a where chained after unwind', () => {
+    const { query } = new Builder()
+      .unwind('$rows', 'row')
+      .where('row.active', true)
+      .return('row')
+      .build()
+
+    expect(query).toBe('UNWIND $rows AS row\nWHERE (row.active = $where_row_active)\nRETURN row')
+  })
+
+  it('keeps where after match and with-then-where rendering as before', () => {
+    const afterMatch = new Builder()
+      .match('n', 'Person')
+      .where('n.name', 'Adam')
+      .return('n')
+      .build().query
+
+    expect(afterMatch).toBe('MATCH (n:Person)\nWHERE (n.name = $where_n_name)\nRETURN n')
+
+    const afterWith = new Builder()
+      .match('n', 'Person')
+      .with('n')
+      .where('n.age', '>', 30)
+      .return('n')
+      .build().query
+
+    expect(afterWith).toBe('MATCH (n:Person)\nWITH n\nWHERE (n.age > $where_n_age)\nRETURN n')
+  })
+})
+
 describe('expr helpers', () => {
   it('composes leaf expressions without raw clause strings', () => {
     expect(expr.coalesce('n.reads', '0')).toBe('coalesce(n.reads, 0)')
