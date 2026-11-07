@@ -32,6 +32,12 @@
 
     "noEmit": true
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*.ts",
+    // The migration-guide snippet mirror — type-checks docs/migration-guide.md
+    // snippets under `tsc --noEmit`. The other test/types files are vitest
+    // typecheck-only (they do not pass plain tsc settings).
+    "test/types/migration-guide-snippets.test-d.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }
