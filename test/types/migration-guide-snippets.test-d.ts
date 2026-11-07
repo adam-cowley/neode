@@ -23,7 +23,9 @@ import Neode, {
   NodeEntity,
   OneToMany,
   Property,
+  TransactionError,
   Uuid,
+  ValidationError,
   defineModel,
   fromEnv,
   toJson,
@@ -200,7 +202,7 @@ export async function validationCatch(neode: Neode): Promise<void> {
   try {
     await neode.create(Person, { name: 'A', email: 'not-an-email' })
   } catch (error) {
-    if (error instanceof Error && error.name === 'ValidationError') {
+    if (error instanceof ValidationError) {
       console.warn(error.message)
     }
   }
@@ -216,7 +218,7 @@ export async function batch(neode: Neode): Promise<unknown> {
 
     return results
   } catch (error) {
-    if (error instanceof Error && error.name === 'TransactionError') {
+    if (error instanceof TransactionError) {
       console.warn(error.message)
     }
 
