@@ -1188,9 +1188,10 @@ export class Neode implements INeode {
 
   /**
   A factory builder for seeding fake data (NTS-444): chain `.count(n)`,
-  `.with(relationshipName, { count, properties })` and
-  `.create(overrides)`. Accepts a model name (map-defined via model()
-  / with()) or a decorated model class.
+  `.with(relationshipName, { count, properties })`,
+  `.has(otherFactory, relationshipName)`, `.make(overrides)` for
+  unsaved instances and `.create(overrides)`. Accepts a model name
+  (map-defined via model() / with()) or a decorated model class.
   */
   factory<T extends object>(model: new (...arguments_: never[]) => T): FactoryBuilder<T>
   factory(model: string | Newable): FactoryBuilder

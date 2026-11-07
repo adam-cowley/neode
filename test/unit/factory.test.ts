@@ -319,6 +319,99 @@ describe('Neode#factory (NTS-444)', () => {
     })
   })
 
+  describe('make()', () => {
+    it('returns an unsaved instance with fakes and defaults resolved', async () => {
+      const made = await neode.factory(SeedPerson).make()
+
+      expect(made).toBeInstanceOf(SeedPerson)
+      expect(made).toMatchObject({ city: 'Springfield', nickname: 'nick' })
+      expect(provider.txCalls).toHaveLength(0) // nothing was persisted
+    })
+
+    it('gives overrides precedence without touching the database', async () => {
+      const made = await neode.factory(SeedPerson).make({ city: 'Capital' })
+
+      expect(made).toMatchObject({ city: 'Capital', nickname: 'nick' })
+      expect(provider.txCalls).toHaveLength(0)
+    })
+
+    it('resolves to n unsaved instances with count(n)', async () => {
+      const made = await neode.factory(SeedPerson).count(3).make()
+
+      expect(Array.isArray(made)).toBe(true)
+      expect(made).toHaveLength(3)
+      expect(provider.txCalls).toHaveLength(0)
+    })
+
+    it('keeps unique fakes distinct across the batch', async () => {
+      const made = (await neode.factory(SeedPerson).count(2).make()) as SeedPerson[]
+
+      expect(made[0]?.email).not.toBe(made[1]?.email)
+    })
+
+    it('rejects relationship seeding — unsaved instances cannot be related', async () => {
+      await expect(neode.factory(SeedPerson).with('posts', { count: 1 }).make()).rejects.toThrow(
+        /use create\(\)/,
+      )
+
+      await expect(
+        neode.factory(SeedPerson).has(neode.factory(SeedPost), 'posts').make(),
+      ).rejects.toThrow(/use create\(\)/)
+    })
+  })
+
+  describe('has()', () => {
+    it('runs the child factory per parent and relates via the explicit relate path', async () => {
+      await neode.factory(SeedPerson).has(neode.factory(SeedPost).count(2), 'posts').create()
+
+      const postCreates = creates(provider).filter((create) => create.labels.includes('SeedPost'))
+
+      expect(postCreates).toHaveLength(2)
+      expect(relates(provider, 'WROTE')).toHaveLength(2)
+    })
+
+    it('runs the child factory once per parent instance', async () => {
+      await neode
+        .factory(SeedPerson)
+        .count(2)
+        .has(neode.factory(SeedPost).count(2), 'posts')
+        .create()
+
+      const postCreates = creates(provider).filter((create) => create.labels.includes('SeedPost'))
+
+      expect(postCreates).toHaveLength(4)
+      expect(relates(provider, 'WROTE')).toHaveLength(4)
+    })
+
+    it('composes a single child instance when the child factory has no count()', async () => {
+      await neode.factory(SeedPerson).has(neode.factory(SeedPost), 'posts').create()
+
+      expect(creates(provider).filter((create) => create.labels.includes('SeedPost'))).toHaveLength(
+        1,
+      )
+      expect(relates(provider, 'WROTE')).toHaveLength(1)
+    })
+
+    it('is chainable alongside with()', async () => {
+      await neode
+        .factory(SeedPerson)
+        .with('posts', { count: 1, properties: { title: 'Via with' } })
+        .has(neode.factory(SeedPost).count(1), 'posts')
+        .create()
+
+      expect(creates(provider).filter((create) => create.labels.includes('SeedPost'))).toHaveLength(
+        2,
+      )
+      expect(relates(provider, 'WROTE')).toHaveLength(2)
+    })
+
+    it('rejects an unknown relationship name', async () => {
+      const builder = neode.factory(SeedPerson).has(neode.factory(SeedPost), 'unknowns')
+
+      await expect(builder.create()).rejects.toThrow(/Unknown relationship "unknowns"/)
+    })
+  })
+
   describe('validation', () => {
     it('validates fake values like any other create', async () => {
       nicknameValue = 'ab' // shorter than the declared min: 4
