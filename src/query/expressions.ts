@@ -56,3 +56,23 @@ function caseExpression(pairs: { when: string; then: string }[], fallback?: stri
 }
 
 export { caseExpression as caseExpr }
+
+/**
+A raw Cypher expression used as an inline pattern property value
+(NTS-460): rendered verbatim into the pattern — `{ prop: <expression> }`
+— instead of being bound as a parameter. Variable references
+(`row.answers`), server-side calls (`datetime()`) and parameter
+references (`$name`, bound via `Builder#param`) are all legal; the
+expression must never interpolate data.
+*/
+export class RawExpression {
+  private readonly expression: string
+
+  constructor(expression: string) {
+    this.expression = expression
+  }
+
+  toString(): string {
+    return this.expression
+  }
+}
