@@ -1,0 +1,4 @@
+---
+'neode': minor
+---
+Adds `@Version()` for optimistic locking (and the matching `version` config option on `@Property` / `@Property()` configs and the map API). A created node starts at version 0 and every write addressed to that node increments it by exactly 1 — a clean no-op save (NTS-157 dirty tracking) never bumps it, and version never cascades to related nodes reached through another node's save. Writes on an instance carrying the version it was hydrated with (`update()`, instance `save()`) add `WHERE n.version = $expected`; when zero rows match — the node was modified or deleted by another transaction — a typed `OptimisticLockError` (extending `NeodeError`, stable `name`, never classified as a transient retry) is thrown with guidance to reload and retry. `mergeOn()` maintains the counter but carries no expected version to guard; bulk `createMany` stamps created rows with 0 (explicit row values win) and `mergeMany` additionally bumps matched rows.

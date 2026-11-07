@@ -120,6 +120,13 @@ export class PropertySchema {
   private updatedAt = false
 
   /**
+  Optimistic locking (NTS-158): @Version marks the integer property the
+  write paths keep in sync — stamped 0 on create, incremented on every
+  write addressed to the node
+  */
+  private version = false
+
+  /**
   Free-text explanation emitted by the agent ontology (NTS-445)
   */
   private description: string | undefined
@@ -409,6 +416,14 @@ export class PropertySchema {
 
   isUpdatedAt(): boolean {
     return this.updatedAt
+  }
+
+  setVersion(isVersion = true): void {
+    this.version = isVersion
+  }
+
+  isVersion(): boolean {
+    return this.version
   }
 
   setFulltext(isFulltext = true): void {

@@ -9,10 +9,13 @@ import { QueryService } from './query.service.js'
 import { isGraphNode } from '../type-guards.js'
 import {
   SERVER_TIMESTAMP,
+  versionBump,
   applyEmbeddings,
   applyInTransforms,
   timestampProperty,
+  versionProperty,
 } from '../write-utilities.js'
+import { OptimisticLockError } from '../../errors/index.js'
 
 export class UpdateService extends QueryService {
   /**
@@ -75,6 +78,8 @@ export class UpdateService extends QueryService {
             property.isReadonly() ||
             // @CreatedAt is set once on create (NTS-165)
             property.isCreatedAt() ||
+            // @Version is library-managed (NTS-158)
+            property.isVersion() ||
             isProjectedProperty(property) ||
             NON_VALUE_TYPES.has(property.getType()),
         )
@@ -150,6 +155,25 @@ export class UpdateService extends QueryService {
 
     builder.matchEntity(THIS_NODE, schema, identityCriteria)
 
+    // Optimistic locking (NTS-158): an instance carrying the version it was
+    // hydrated with guards the write on it — zero matched rows means the
+    // node changed (or vanished) under another transaction
+    const version = versionProperty(schema)
+    const versionKey = version?.getKey()
+    const expectedVersion: unknown =
+      versionKey === undefined ? undefined : Reflect.get(entity, versionKey)
+    const isLockGuarded = typeof expectedVersion === 'number'
+
+    if (version !== undefined && versionKey !== undefined) {
+      if (isLockGuarded) {
+        builder.param('expectedVersion', expectedVersion)
+        builder.whereRaw(`${THIS_NODE}.${versionKey} = $expectedVersion`)
+      }
+
+      // Every real update write bumps the version by exactly 1
+      builder.setExpr(`${THIS_NODE}.${versionKey}`, versionBump(THIS_NODE, versionKey))
+    }
+
     if (Object.keys(plain).length > 0) {
       builder.set(THIS_NODE, plain, '+=')
     }
@@ -171,6 +195,12 @@ export class UpdateService extends QueryService {
 
     const { query, params } = builder.build()
 
-    return this.runner.run(query, params)
+    const output = await this.runner.run(query, params)
+
+    if (isLockGuarded && output.records.length === 0) {
+      throw new OptimisticLockError(schema.getLabels().join(':'))
+    }
+
+    return output
   }
 }

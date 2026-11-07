@@ -36,6 +36,35 @@ export function timestampProperty(
 }
 
 /**
+The schema's @Version property (NTS-158), or undefined — one per model
+(the same find-first contract as timestampProperty())
+*/
+export function versionProperty(schema: EntitySchema): PropertySchema | undefined {
+  return schema.getProperties().find((property) => property.isVersion())
+}
+
+/**
+The expression bumping the node's version by exactly 1 (NTS-158): nodes
+written before the feature (or outside the library) may lack the property —
+coalesce gives them version 1 on their first library write
+*/
+export function versionBump(alias: string, key: string): string {
+  return `coalesce(${alias}.${key}, 0) + 1`
+}
+
+/**
+Stamp the create path's unstamped version property (NTS-158): a created
+node starts at version 0, an explicitly provided value always wins
+*/
+function stampCreateVersion(schema: EntitySchema, properties: Record<string, unknown>): void {
+  const property = versionProperty(schema)
+
+  if (property !== undefined && properties[property.getKey()] === undefined) {
+    properties[property.getKey()] = 0
+  }
+}
+
+/**
 Stamp the create path's unstamped timestamp properties (NTS-165): the
 CREATE pattern renders `datetime()` verbatim for them (RawExpression), an
 explicitly provided value always wins
@@ -399,6 +428,9 @@ async function createNode(runner: Runner, schema: EntitySchema, model: object): 
   // Server-side timestamps (NTS-165): unstamped @CreatedAt / @UpdatedAt
   // properties render `datetime()` verbatim in the CREATE pattern
   stampCreateTimestamps(schema, properties)
+
+  // Optimistic locking (NTS-158): a created node starts at version 0
+  stampCreateVersion(schema, properties)
 
   const builder = new Builder()
 

@@ -80,6 +80,7 @@ const IGNORED_KEYS = new Set([
   'alwaysSet',
   'createdAt',
   'updatedAt',
+  'version',
 ])
 
 /**

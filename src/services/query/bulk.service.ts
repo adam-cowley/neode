@@ -6,10 +6,12 @@ import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { PropertyType, isProjectedProperty } from '../../meta/property-schema.js'
 import { getValueOrDefault } from '../../utilities.js'
 import {
+  versionBump,
   applyEmbeddings,
   applyInTransforms,
   modelPropertyValues,
   timestampProperty,
+  versionProperty,
 } from '../write-utilities.js'
 import { validate } from '../../validation/index.js'
 import { NeodeError } from '../../errors/index.js'
@@ -240,13 +242,16 @@ SET this.updatedAt = coalesce(row.updatedAt, datetime())
 RETURN this
 
 `onCreateStamps` render in the ON CREATE SET clause, `stamps` in a plain
-SET that applies to created and matched rows alike (NTS-165).
+SET that applies to created and matched rows alike (NTS-165), and
+`onMatchStamps` in an ON MATCH SET clause (NTS-158 — the version bump only
+applies to matched rows).
 */
 export function buildMergeQuery(
   labels: string[],
   matchKeys: string[],
   onCreateStamps: string[] = [],
   stamps: string[] = [],
+  onMatchStamps: string[] = [],
 ): string {
   if (matchKeys.length === 0) {
     throw new NeodeError('mergeMany requires at least one match property')
@@ -258,6 +263,7 @@ export function buildMergeQuery(
     'UNWIND $rows AS row',
     `MERGE (${THIS_NODE}${labelPattern(labels)} { ${pattern} })`,
     ...(onCreateStamps.length > 0 ? [`ON CREATE SET ${onCreateStamps.join(', ')}`] : []),
+    ...(onMatchStamps.length > 0 ? [`ON MATCH SET ${onMatchStamps.join(', ')}`] : []),
     [`SET ${THIS_NODE} += row`, ...stamps].filter((part) => part.length > 0).join(', '),
     `RETURN ${THIS_NODE}`,
   ]
@@ -279,6 +285,29 @@ function rowStamps(schema: EntitySchema, kind: 'createdAt' | 'updatedAt'): strin
   const key = property.getKey()
 
   return [`${THIS_NODE}.${key} = coalesce(row.${key}, datetime())`]
+}
+
+/**
+The version SET item for the bulk row alias (NTS-158): the row's explicit
+value wins, otherwise a created row starts at 0. Matched rows bump via the
+ON MATCH clause (rowVersionBump).
+*/
+function rowVersionStamp(schema: EntitySchema): string[] {
+  const property = versionProperty(schema)
+
+  return property === undefined
+    ? []
+    : [`${THIS_NODE}.${property.getKey()} = coalesce(row.${property.getKey()}, 0)`]
+}
+
+/**
+The version ON MATCH SET item for the bulk merge (NTS-158): matched rows
+bump by exactly 1 (created rows take the ON CREATE stamp instead)
+*/
+function rowVersionBump(schema: EntitySchema): string[] {
+  const property = versionProperty(schema)
+
+  return property === undefined ? [] : [versionBump(THIS_NODE, property.getKey())]
 }
 
 /**
@@ -386,6 +415,7 @@ export class BulkService extends QueryService {
       buildCreateQuery(schema.getLabels(), [
         ...rowStamps(schema, 'createdAt'),
         ...rowStamps(schema, 'updatedAt'),
+        ...rowVersionStamp(schema),
       ]),
       options,
     )
@@ -431,8 +461,9 @@ export class BulkService extends QueryService {
     const query = buildMergeQuery(
       schema.getLabels(),
       matchKeys,
-      rowStamps(schema, 'createdAt'),
+      [...rowStamps(schema, 'createdAt'), ...rowVersionStamp(schema)],
       rowStamps(schema, 'updatedAt'),
+      rowVersionBump(schema),
     )
 
     // The MERGE pattern reads the match values off the row map

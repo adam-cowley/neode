@@ -4,6 +4,7 @@ export {
   NeodeError,
   ConstraintViolationError,
   RelationNotLoadedError,
+  OptimisticLockError,
   TransientError,
   classifyError,
   isTransientError,
