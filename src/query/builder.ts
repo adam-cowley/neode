@@ -23,6 +23,11 @@ import {
   propertyTypeStatement,
   schemaStatement,
 } from '../services/schema/schema.service.js'
+import {
+  createFulltextStatement,
+  dropFulltextStatement,
+  fulltextIndexName,
+} from '../services/schema/fulltext.service.js'
 
 /**
 Identity criteria for a persisted entity, as produced by
@@ -1132,6 +1137,11 @@ export class Builder {
     )
   }
 
+  /**
+  Property-existence constraint (`REQUIRE n.prop IS NOT NULL`).
+  Enterprise only — Community editions reject the statement at runtime;
+  SchemaService gates these on its `isEnterprise` flag.
+  */
   createExistenceConstraint(label: string, property: string): this {
     return this.schemaStatementSegment(ConstraintAction.CREATE, ConstraintType.EXISTS, label, [
       property,
@@ -1154,6 +1164,31 @@ export class Builder {
     type: ConstraintType = ConstraintType.UNIQUE,
   ): this {
     return this.schemaStatementSegment(ConstraintAction.DROP, type, label, [property])
+  }
+
+  /**
+  `CREATE FULLTEXT INDEX … IF NOT EXISTS FOR (n:Label) ON EACH [n.a, n.b]`
+  */
+  createFulltextIndex(label: string, properties: string[]): this {
+    this.flush()
+    this.statements.push({
+      toString: () => createFulltextStatement({ label, properties }, false),
+    })
+
+    return this
+  }
+
+  /**
+  Drop the full-text index `createFulltextIndex` would install — the
+  deterministic name is derived from the same label + properties
+  */
+  dropFulltextIndex(label: string, properties: string[]): this {
+    this.flush()
+    this.statements.push({
+      toString: () => dropFulltextStatement(fulltextIndexName({ label, properties })),
+    })
+
+    return this
   }
 
   /**

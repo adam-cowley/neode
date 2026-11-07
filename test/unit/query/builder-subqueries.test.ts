@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Builder, expr, caseExpr } from '../../../src/query'
+import { ConstraintType } from '../../../src/services/schema/schema.service'
 
 describe('Builder subqueries (NTS: no hand-written Cypher in repositories)', () => {
   it('compiles a scoped CALL subquery with imported variables', () => {
@@ -183,5 +184,48 @@ describe('Builder expression sets, procedure calls and constraints (NTS-195/462/
     expect(composite).toContain('courseSlug')
     expect(typed).toContain('REQUIRE n.`email` IS :: STRING')
     expect(exists).toContain('IS NOT NULL')
+  })
+
+  it('composes fulltext index DDL', () => {
+    const create = new Builder().createFulltextIndex('Movie', ['title', 'plot']).build().query
+    const drop = new Builder().dropFulltextIndex('Movie', ['title', 'plot']).build().query
+
+    expect(create).toBe(
+      'CREATE FULLTEXT INDEX movie_title_plot_fulltext IF NOT EXISTS FOR (n:Movie) ' +
+        'ON EACH [n.`title`, n.`plot`]',
+    )
+    expect(drop).toBe('DROP FULLTEXT INDEX movie_title_plot_fulltext IF EXISTS')
+  })
+
+  it('drops constraint and index DDL by type', () => {
+    const unique = new Builder().dropConstraint('User', 'sub').build().query
+    const index = new Builder()
+      .dropConstraint('Post', 'createdAt', ConstraintType.INDEX)
+      .build().query
+    const exists = new Builder()
+      .dropConstraint('User', 'email', ConstraintType.EXISTS)
+      .build().query
+    const typed = new Builder()
+      .dropConstraint('User', 'email', ConstraintType.PROPERTY_TYPE)
+      .build().query
+
+    expect(unique).toBe('DROP CONSTRAINT user_sub_unique IF EXISTS')
+    expect(index).toBe('DROP INDEX post_createdAt_index IF EXISTS')
+    expect(exists).toBe('DROP CONSTRAINT user_email_exists IF EXISTS')
+    expect(typed).toBe('DROP CONSTRAINT user_email_property_type IF EXISTS')
+  })
+
+  it('composes DDL segments alongside query segments', () => {
+    const { query } = new Builder()
+      .createUniqueConstraint('User', 'sub')
+      .createFulltextIndex('Movie', ['title'])
+      .build()
+
+    expect(query).toBe(
+      [
+        'CREATE CONSTRAINT user_sub_unique IF NOT EXISTS FOR (n:User) REQUIRE n.`sub` IS UNIQUE',
+        'CREATE FULLTEXT INDEX movie_title_fulltext IF NOT EXISTS FOR (n:Movie) ON EACH [n.`title`]',
+      ].join('\n'),
+    )
   })
 })
