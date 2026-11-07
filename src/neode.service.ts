@@ -59,9 +59,12 @@ import { rollbackAfterFailure } from './transaction/rollback.js'
 import {
   type CursorPage,
   type CursorPaginateOptions,
+  type FindManyAndCountOptions,
+  type ManyAndCount,
   type OffsetPaginateOptions,
   type Page,
   PaginateService,
+  type StreamOptions,
 } from './services/query/paginate.service.js'
 import { RelateService } from './services/query/relate.service.js'
 import { type ScoredEntity, search } from './services/query/search.service.js'
@@ -1099,6 +1102,66 @@ export class Neode implements INeode {
       this.getSchema(constructor),
       filter,
       options ?? { limit: 25 },
+    )
+  }
+
+  /**
+  Non-paginated `{ items, total }` read (NTS-166): every entity matching
+  the filter plus its total in one call. Options trim the data read
+  only — `total` is always the full filter count.
+  */
+  async findManyAndCount<T>(
+    constructor: new (...arguments_: never[]) => T,
+    filter: Record<string, unknown> = {},
+    options: FindManyAndCountOptions = {},
+  ): Promise<ManyAndCount<T>> {
+    return new PaginateService(this.connection).findManyAndCount<T>(
+      constructor,
+      this.getSchema(constructor),
+      filter,
+      options,
+    )
+  }
+
+  /**
+  Walk a large read in chunks of `size` items (NTS-166), paged by keyset
+  so memory stays flat. The callback receives each chunk in keyset
+  order; return false to stop early. Resolves to the number of items
+  delivered.
+  */
+  async chunk<T>(
+    constructor: new (...arguments_: never[]) => T,
+    filter: Record<string, unknown>,
+    size: number,
+    callback: (items: T[]) => unknown,
+    options: { orderBy?: string } = {},
+  ): Promise<number> {
+    return new PaginateService(this.connection).chunk<T>(
+      constructor,
+      this.getSchema(constructor),
+      filter,
+      size,
+      callback,
+      options,
+    )
+  }
+
+  /**
+  Async iterator over a large read (NTS-166): pages by keyset under the
+  hood, yielding one entity at a time, so memory stays flat. Breaking
+  out of the for-await loop stops the walk cleanly — each page is its
+  own autocommit read, so no session is left open.
+  */
+  async *lazy<T>(
+    constructor: new (...arguments_: never[]) => T,
+    filter: Record<string, unknown> = {},
+    options: StreamOptions = {},
+  ): AsyncGenerator<T> {
+    yield* new PaginateService(this.connection).lazy<T>(
+      constructor,
+      this.getSchema(constructor),
+      filter,
+      options,
     )
   }
 

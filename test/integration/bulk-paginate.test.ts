@@ -521,3 +521,189 @@ describe('paginate', () => {
     })
   })
 })
+
+describe('findManyAndCount / chunk / lazy (NTS-166)', () => {
+  let backend: TestBackend
+
+  beforeAll(async () => {
+    backend = await openBackend()
+  })
+
+  afterEach(async () => {
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  const schema = () => getModel(BulkPerson)!
+
+  /** Seed N people, then stamp distinct createdAt datetimes via Cypher */
+  async function seedTimeline(count: number): Promise<void> {
+    // NB: the String decorator shadows the global — use toString()
+    const name = (i: number) => `Person ${i.toString().padStart(2, '0')}`
+
+    await new BulkService(backend.connection).createMany(
+      BulkPerson,
+      schema(),
+      Array.from({ length: count }, (_, i) => ({
+        name: name(i),
+        visits: i,
+      })),
+    )
+
+    await backend.connection.run(
+      'UNWIND $entries AS entry ' +
+        'MATCH (p:BulkPerson { name: entry.name }) ' +
+        'SET p.createdAt = datetime(entry.when)',
+      {
+        entries: Array.from({ length: count }, (_, i) => ({
+          name: name(i),
+          when: `2026-01-01T00:00:${i.toString().padStart(2, '0')}Z`,
+        })),
+      },
+    )
+  }
+
+  describe('findManyAndCount', () => {
+    it('returns every matching entity with its total in one call', async () => {
+      await seedTimeline(6)
+
+      const result = await backend.neode.findManyAndCount<BulkPerson>(BulkPerson)
+
+      expect(result.total).toBe(6)
+      expect(result.items).toHaveLength(6)
+      expect(result.items.every((person) => person instanceof BulkPerson)).toBe(true)
+    })
+
+    it('applies the property filter to both the items and the total', async () => {
+      await seedTimeline(6)
+
+      const result = await backend.neode.findManyAndCount<BulkPerson>(BulkPerson, { visits: 3 })
+
+      expect(result.total).toBe(1)
+      expect(result.items.map((person) => person.name)).toEqual(['Person 03'])
+    })
+
+    it('lets order/limit/skip trim the items while total counts the filter', async () => {
+      await seedTimeline(6)
+
+      const result = await backend.neode.findManyAndCount<BulkPerson>(
+        BulkPerson,
+        {},
+        {
+          order: { visits: 'DESC' },
+          limit: 2,
+          skip: 1,
+        },
+      )
+
+      expect(result.total).toBe(6)
+      expect(result.items.map((person) => person.visits)).toEqual([4, 3])
+    })
+  })
+
+  describe('chunk', () => {
+    it('delivers every row in keyset-ordered pages of the requested size', async () => {
+      await seedTimeline(5)
+
+      const pages: number[][] = []
+
+      const delivered = await backend.neode.chunk<BulkPerson>(BulkPerson, {}, 2, (people) => {
+        pages.push(people.map((person) => person.visits))
+      })
+
+      expect(pages).toEqual([[0, 1], [2, 3], [4]])
+      expect(delivered).toBe(5)
+    })
+
+    it('stops the walk when the callback returns false', async () => {
+      await seedTimeline(5)
+
+      let delivered = 0
+
+      const seen = await backend.neode.chunk<BulkPerson>(BulkPerson, {}, 2, (people) => {
+        delivered += people.length
+
+        return false
+      })
+
+      expect(delivered).toBe(2)
+      expect(seen).toBe(2)
+    })
+
+    it('rejects a non-positive size and an unknown cursor property', async () => {
+      await seedTimeline(2)
+
+      await expect(
+        backend.neode.chunk<BulkPerson>(BulkPerson, {}, 0, () => undefined),
+      ).rejects.toThrow(/limit/i)
+
+      await expect(
+        backend.neode.chunk<BulkPerson>(BulkPerson, {}, 2, () => undefined, { orderBy: 'nope' }),
+      ).rejects.toThrow(/cursor property/i)
+    })
+  })
+
+  describe('lazy', () => {
+    it('yields every entity in keyset order across pages', async () => {
+      await seedTimeline(5)
+
+      const visits: number[] = []
+
+      for await (const person of backend.neode.lazy<BulkPerson>(BulkPerson, {}, { limit: 2 })) {
+        visits.push(person.visits)
+      }
+
+      expect(visits).toEqual([0, 1, 2, 3, 4])
+    })
+
+    it('stops cleanly on early break and leaves the connection usable', async () => {
+      await seedTimeline(5)
+
+      const visits: number[] = []
+
+      for await (const person of backend.neode.lazy<BulkPerson>(BulkPerson, {}, { limit: 2 })) {
+        visits.push(person.visits)
+
+        if (visits.length === 2) {
+          break
+        }
+      }
+
+      expect(visits).toEqual([0, 1])
+
+      // The broken walk left nothing open: a fresh iteration completes
+      const after: number[] = []
+
+      for await (const person of backend.neode.lazy<BulkPerson>(BulkPerson, {}, { limit: 2 })) {
+        after.push(person.visits)
+      }
+
+      expect(after).toEqual([0, 1, 2, 3, 4])
+    })
+
+    it('rejects an unknown cursor property', async () => {
+      await seedTimeline(2)
+
+      const walk = async (): Promise<number[]> => {
+        const seen: number[] = []
+
+        for await (const person of backend.neode.lazy<BulkPerson>(
+          BulkPerson,
+          {},
+          {
+            orderBy: 'nope',
+          },
+        )) {
+          seen.push(person.visits)
+        }
+
+        return seen
+      }
+
+      await expect(walk()).rejects.toThrow(/cursor property/i)
+    })
+  })
+})

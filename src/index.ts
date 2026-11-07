@@ -114,6 +114,9 @@ export type {
   PaginateOptions,
   OffsetPaginateOptions,
   CursorPaginateOptions,
+  ManyAndCount,
+  FindManyAndCountOptions,
+  StreamOptions,
 } from './services/query/paginate.service.js'
 
 // Ops helpers + consumer test utilities (NTS-130/134/146)
