@@ -20,7 +20,7 @@ export class Where {
     // The compound `NOT IN` operator is rejected by Neo4j 2026.x+ (NTS-476):
     // render the valid `NOT <left> IN $param` form instead. A set `negative`
     // flag (whereNot) cancels the operator's negation rather than doubling it.
-    const isInOperator = this.operator === 'NOT IN'
+    const isInOperator = this.operator.toUpperCase() === 'NOT IN'
     const prefix = this.negative === isInOperator ? '' : 'NOT '
     const operator = isInOperator ? 'IN' : this.operator
 

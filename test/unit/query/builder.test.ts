@@ -179,6 +179,17 @@ describe('QueryBuilder', () => {
       expect(query).toBe('MATCH (n:Person)\nWHERE (n.age IN $where_n_age)\nRETURN n')
     })
 
+    it('matches the NOT IN operator case-insensitively', () => {
+      const builder = new Builder()
+      const { query } = builder
+        .match('n', 'Person')
+        .where('n.age', 'not in', [30, 40])
+        .return('n')
+        .build()
+
+      expect(query).toBe('MATCH (n:Person)\nWHERE (NOT n.age IN $where_n_age)\nRETURN n')
+    })
+
     it('supports whereBetween and whereNotBetween', () => {
       const builder = new Builder()
       const { query, params } = builder
