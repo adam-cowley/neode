@@ -502,6 +502,9 @@ describe('Repository', () => {
       @String({ fulltext: true })
       plot: string
 
+      @String({ fulltext: true })
+      summary: string
+
       static build(values: Record<string, unknown>): Searchable {
         return Object.assign(new Searchable(), values) as unknown as Searchable
       }
@@ -516,9 +519,32 @@ describe('Repository', () => {
       const [constructor, indexName, query, limit] = mocks.search.mock.calls[0]
 
       expect(constructor).toBe(Searchable)
-      expect(indexName).toBe(fulltextIndexName({ label: 'Searchable', properties: ['plot'] }))
+      expect(indexName).toBe(
+        fulltextIndexName({ label: 'Searchable', properties: ['plot', 'summary'] }),
+      )
       expect(query).toBe('alien')
       expect(limit).toBeUndefined()
+    })
+
+    it('resolves a fields subset in declaration order', async () => {
+      const { neode, mocks } = stubNeode()
+      const repo = new Repository<Searchable>(neode, Searchable)
+
+      await repo.search('alien', { fields: ['summary', 'plot'] })
+
+      expect(mocks.search.mock.calls[0][1]).toBe(
+        fulltextIndexName({ label: 'Searchable', properties: ['plot', 'summary'] }),
+      )
+    })
+
+    it('throws when fields name a property not declared fulltext', async () => {
+      const { neode } = stubNeode()
+      const repo = new Repository<Searchable>(neode, Searchable)
+
+      // title is declared but not fulltext
+      await expect(repo.search('alien', { fields: ['title'] })).rejects.toThrow(
+        'must name properties declared fulltext: true',
+      )
     })
 
     it('passes the limit through', async () => {

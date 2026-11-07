@@ -11,7 +11,11 @@ import {
 } from '../../src/services/schema/vector.service'
 import { declaredSchemaObjects } from '../../src/services/schema/inspect.service'
 import { mergeModel } from '../../src/meta'
+import { defineModel } from '../../src/meta/map-schema'
 import { EntitySchema } from '../../src/meta/entity/entity-schema'
+import { ConnectionProvider, QueryOutput, TransactionHandle } from '../../src/driver/types'
+import { Neode } from '../../src/neode.service'
+import { ConstraintType } from '../../src/services/schema/schema.service'
 
 describe('fulltext index statements', () => {
   const def = { label: 'Movie', properties: ['title', 'plot'] }
@@ -36,6 +40,69 @@ describe('fulltext index statements', () => {
 
   it('rejects definitions without properties', () => {
     expect(() => createFulltextStatement({ label: 'Movie', properties: [] })).toThrow(TypeError)
+  })
+})
+
+describe('declarative fulltext via installSchema (NTS-436)', () => {
+  class RecordingProvider implements ConnectionProvider {
+    readonly statements: string[] = []
+
+    async run(statement: string): Promise<QueryOutput> {
+      this.statements.push(statement)
+
+      return { records: [] }
+    }
+
+    async beginTransaction(): Promise<TransactionHandle> {
+      return {
+        run: async (statement: string) => {
+          this.statements.push(statement)
+
+          return { records: [] }
+        },
+        commit: async () => {},
+        rollback: async () => {},
+      }
+    }
+
+    async edition(): Promise<'community'> {
+      return 'community'
+    }
+
+    async close(): Promise<void> {}
+  }
+
+  // Map API on purpose: proves the SchemaDefinition wiring (fulltext?: boolean)
+  // reaches the same install/drop path the decorators drive
+  defineModel('FulltextCourse', {
+    description: 'A course',
+    title: { type: 'string', fulltext: true },
+    blurb: { type: 'string', fulltext: true },
+  })
+
+  it('groups the fulltext properties into ONE index on installSchema', async () => {
+    const neode = new Neode(new RecordingProvider())
+
+    const results = await neode.installSchema()
+    const fulltext = results.filter((result) => result.type === ConstraintType.FULLTEXT)
+
+    expect(fulltext).toHaveLength(1)
+    expect(fulltext[0]?.statement).toBe(
+      'CREATE FULLTEXT INDEX fulltextcourse_title_blurb_fulltext IF NOT EXISTS ' +
+        'FOR (n:`FulltextCourse`) ON EACH [n.`title`, n.`blurb`]',
+    )
+  })
+
+  it('reverses the index on dropSchema', async () => {
+    const neode = new Neode(new RecordingProvider())
+
+    const results = await neode.dropSchema()
+    const fulltext = results.filter((result) => result.type === ConstraintType.FULLTEXT)
+
+    expect(fulltext).toHaveLength(1)
+    expect(fulltext[0]?.statement).toBe(
+      'DROP FULLTEXT INDEX fulltextcourse_title_blurb_fulltext IF EXISTS',
+    )
   })
 })
 
