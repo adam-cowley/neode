@@ -1,6 +1,6 @@
 # Neode
 
-> **Version 1.0 is coming.** A complete TypeScript rewrite of neode — with API parity for existing map-based schemas — is under development on the [`next` branch](https://github.com/adam-cowley/neode/tree/next), published as `neode@1.0.0-alpha.0` under the `next` dist-tag. Read the [migration guide](https://github.com/adam-cowley/neode/blob/next/docs/migration-guide.md) before upgrading. This `master` branch remains the 0.4.x series.
+> **Version 1.0 is coming.** A complete TypeScript rewrite of neode — with API parity for existing map-based schemas — is now the default branch (`main`), published as `neode@1.0.0-alpha.0` under the `next` dist-tag. Read the [migration guide](https://github.com/adam-cowley/neode/blob/main/docs/migration-guide.md) before upgrading. This `master` branch remains the 0.4.x series.
 
 Neode is a Neo4j OGM for Node JS designed to take care of the CRUD boilerplate involved with setting up a neo4j project with Node.  Just install, set up your models and go.
 
