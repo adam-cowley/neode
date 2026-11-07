@@ -32,6 +32,13 @@
 
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "test/types/**/*.test-d.ts"],
+  "include": [
+    "src/**/*.ts",
+    // All type tests — including the migration-guide snippet mirror
+    // (test/types/migration-guide-snippets.test-d.ts) — type-check under
+    // plain `tsc --noEmit`. NTS-493 repaired the api.test-d.ts assertions
+    // to match the real API, so the whole directory passes tsc.
+    "test/types/**/*.test-d.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

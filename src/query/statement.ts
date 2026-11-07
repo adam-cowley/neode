@@ -16,8 +16,6 @@ export class Statement {
   private readonly valuesToSet: SetClause[] = []
   private readonly onCreateSetValues: SetClause[] = []
   private readonly onMatchSetValues: SetClause[] = []
-  private readonly onCreateSetRawValues: string[] = []
-  private readonly onMatchSetRawValues: string[] = []
   private readonly valuesToRemove: string[] = []
   private readonly callValues: string[] = []
 
@@ -82,14 +80,16 @@ export class Statement {
     return this
   }
 
+  // Raw and parameterised items share one array so a statement mixing both
+  // renders a single ON CREATE SET clause (NTS-491) — two clauses is invalid Cypher
   onCreateSetRaw(items: string[]): this {
-    this.onCreateSetRawValues.push(...items)
+    this.onCreateSetValues.push(...items)
 
     return this
   }
 
   onMatchSetRaw(items: string[]): this {
-    this.onMatchSetRawValues.push(...items)
+    this.onMatchSetValues.push(...items)
 
     return this
   }
@@ -150,14 +150,6 @@ export class Statement {
       output.push(
         `ON MATCH SET ${this.onMatchSetValues.map((value) => value.toString()).join(', ')}`,
       )
-    }
-
-    if (this.onCreateSetRawValues.length > 0) {
-      output.push(`ON CREATE SET ${this.onCreateSetRawValues.join(', ')}`)
-    }
-
-    if (this.onMatchSetRawValues.length > 0) {
-      output.push(`ON MATCH SET ${this.onMatchSetRawValues.join(', ')}`)
     }
 
     if (this.valuesToSet.length > 0) {
