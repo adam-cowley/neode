@@ -45,6 +45,12 @@ _source: decorators/projection/computed.decorator.ts_
 
 _source: meta/schema-definition.interface.ts_
 
+### `CreatedAt` (decorator)
+
+Stamp the property server-side with `datetime()` once on create (NTS-165): the database clock writes it, so clocks never drift across clients. Stack it with a type decorator (e.g. `@DateTime()`) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
+
+_source: decorators/node/created-at.decorator.ts_
+
 ### `Date` (decorator)
 
 Register a date property.
@@ -453,6 +459,12 @@ Mark the property as unique: installSchema() backs it with a uniqueness constrai
 
 _source: decorators/node/unique.decorator.ts_
 
+### `UpdatedAt` (decorator)
+
+Stamp the property server-side with `datetime()` on create and on every write (NTS-165): the database clock writes it, so clocks never drift across clients. Stack it with a type decorator (e.g. `@DateTime()`) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
+
+_source: decorators/node/updated-at.decorator.ts_
+
 ### `Uuid` (decorator)
 
 Register a UUID property: validated as a UUID string, defaulting to a random UUID v4 on create (an explicit `config.default` wins).
@@ -569,6 +581,12 @@ Lifecycle events emitted by Neode (facade) and TransactionalService (work perfor
 
 _source: common/events.ts_
 
+### `FindManyAndCountOptions` (interface)
+
+findManyAndCount() options — they trim the data read only; `total` always counts the whole filter (Prisma parity)
+
+_source: services/query/paginate.service.ts_
+
 ### `GraphNode` (interface)
 
 A node value in a normalized shape, as returned in result records.
@@ -640,6 +658,12 @@ _source: services/query/knn.service.ts_
 A label predicate: `alias:Label` (several labels require all of them), shared by `whereLabel` (`WHERE n:Completed`) and `orderByLabel` (`ORDER BY n:Completed DESC`).
 
 _source: query/label-predicate.ts_
+
+### `ManyAndCount` (interface)
+
+Non-paginated `{ items, total }` read (Prisma's findManyAndCount)
+
+_source: services/query/paginate.service.ts_
 
 ### `Neo4jConnectionProvider` (class)
 
@@ -754,6 +778,12 @@ _source: services/query/search.service.ts_
 Full-text search over a full-text index (`CALL db.index.fulltext.queryNodes`), returning hydrated entities with their relevance score, best match first. The query string is bound as a parameter, so Lucene syntax characters in it are still parsed as such — pass user text through `toFulltextQuery` first.
 
 _source: services/query/search.service.ts_
+
+### `StreamOptions` (interface)
+
+lazy() options — the keyset walk behind cursor pagination
+
+_source: services/query/paginate.service.ts_
 
 ### `toCollection` (function)
 
@@ -1029,6 +1059,12 @@ Base class of the typed error taxonomy (NTS-129). Typed errors are produced by `
 
 _source: errors/neode-error.ts_
 
+### `RelationNotLoadedError` (class)
+
+Raised when strict relation access is on (setStrictRelationAccess) and a relationship property the load spec did not request is read off a hydrated entity (NTS-155). The message names the exact fix: request the relation in the load spec (`with`) or load it on the instance.
+
+_source: errors/relation-not-loaded.ts_
+
 ### `TransientError` (class)
 
 A transient failure (`Neo.TransientError.*` codes, or the driver's / engine's own `retryable` verdict): retrying the operation may succeed. `isRetryable` is baked in by the code classification — a TransientError is only ever created for a retryable failure.
@@ -1044,6 +1080,12 @@ Collection, serialisation and other shared exports.
 Load a .env file (dotenv does not clobber variables already set in process.env), map the NEO4J_* variables to a connection config and construct the neo4j driver. `driverConfig` — anything neo4j.driver accepts, e.g. `disableLosslessIntegers: true` — is forwarded verbatim, merged over the env-derived values.
 
 _source: from-env.ts_
+
+### `setStrictRelationAccess` (function)
+
+Enable or disable strict relation access. Off by default: neode-style code relies on reading an unloaded relationship as `undefined` — flip it on once every relationship you read is in the load spec (or eager).
+
+_source: strict-relation-access.ts_
 
 ### `toFulltextQuery` (function)
 
@@ -1081,6 +1123,8 @@ so new fields (e.g. upcoming schema options) appear here automatically.
 | `onCreateSet` | `boolean` (optional) |  |
 | `onMatchSet` | `boolean` (optional) |  |
 | `alwaysSet` | `boolean` (optional) |  |
+| `createdAt` | `boolean` (optional) | Server-side timestamp (NTS-165): stamped with `datetime()` once on create — the map-API form of `@CreatedAt`. |
+| `updatedAt` | `boolean` (optional) | Server-side timestamp (NTS-165): stamped with `datetime()` on create and on every write — the map-API form of `@UpdatedAt`. |
 | `required` | `boolean` (optional) |  |
 | `hidden` | `boolean` (optional) |  |
 | `protected` | `boolean` (optional) |  |
