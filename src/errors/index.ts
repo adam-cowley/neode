@@ -5,5 +5,6 @@
 export { classifyError, isTransientError } from './classify.js'
 export { ConstraintViolationError } from './constraint-violation.js'
 export { NeodeError } from './neode-error.js'
+export { RelationNotLoadedError } from './relation-not-loaded.js'
 export { redactParameters, withQueryContext } from './query-error.js'
 export { TransientError } from './transient.js'

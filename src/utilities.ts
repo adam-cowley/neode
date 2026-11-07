@@ -16,7 +16,8 @@ import {
   Time,
 } from 'neo4j-driver'
 import { ELEMENT_ID } from './constants.js'
-import { NeodeError } from './errors/index.js'
+import { NeodeError, RelationNotLoadedError } from './errors/index.js'
+import { isStrictRelationAccess } from './strict-relation-access.js'
 import type { GraphNode, GraphRelationship } from './driver/types.js'
 import { elementIdOfEntity } from './element-id.js'
 import { applyEntityMethods, type WithMethods } from './entity-methods.js'
@@ -297,6 +298,12 @@ export function hydrateNode<T>(
       value === 0 ||
       Number.isNaN(value)
     ) {
+      // The load spec requested the relation and the graph answered
+      // empty: materialize the loaded-and-empty shape ([] for many,
+      // undefined for one) so strict access can tell it apart from
+      // "not loaded" (NTS-155)
+      entity[key] = relationship.getMany() ? [] : undefined
+
       continue
     }
 
@@ -317,12 +324,102 @@ export function hydrateNode<T>(
 
     if (relationship.getMany()) {
       entity[key] = hydrated
-    } else if (hydrated.length > 0) {
+    } else {
+      // An empty singular result is loaded-and-empty (undefined), not
+      // "not loaded" — assign so the own property exists (NTS-155)
       entity[key] = hydrated[0]
     }
   }
 
+  // Strict relation access (NTS-155): relationships the load spec did not
+  // request are guarded by a prototype accessor — reading one throws
+  // RelationNotLoadedError in strict mode, stays undefined otherwise.
+  // Loaded values are own instance properties and shadow the accessor, so
+  // loaded-and-empty shapes read back fine.
+  installRelationAccessors(targetEntity, targetSchema)
+
+  for (const relationship of targetSchema.getRelationships()) {
+    // Static eager relationships count as loaded, and keys the load spec
+    // requested were materialized above (possibly as [] or undefined)
+    if (relationship.getEager() || Object.hasOwn(eagerValues, relationship.getKey())) {
+      continue
+    }
+
+    // A decorator-declared field constructs an own undefined — remove it
+    // so the prototype accessor shows through and the guard can fire
+    const key = relationship.getKey()
+
+    if (Object.hasOwn(entity, key) && entity[key] === undefined) {
+      Reflect.deleteProperty(entity, key)
+    }
+  }
+
   return constructed
+}
+
+const RELATION_ACCESSORS_APPLIED = Symbol('neode:relation-accessors-applied')
+
+/**
+Install the unloaded-relation guards on an entity class's PROTOTYPE
+(idempotent, once per constructor): one accessor per non-eager
+relationship key. Loaded relationships are own instance properties and
+shadow the accessor — the accessor only ever answers for unloaded ones,
+with RelationNotLoadedError in strict mode and undefined otherwise. Its
+setter materializes the assigned value as an own property, so later
+hydration passes and user assignments load through normally.
+*/
+function installRelationAccessors(constructor: Newable, schema: EntitySchema): void {
+  const prototype: unknown = constructor.prototype
+
+  if (
+    typeof prototype !== 'object' ||
+    prototype === null ||
+    Object.hasOwn(prototype, RELATION_ACCESSORS_APPLIED)
+  ) {
+    return
+  }
+
+  for (const relationship of schema.getRelationships()) {
+    // Static eager relationships are requested by every read query —
+    // they count as loaded, no guard
+    if (relationship.getEager()) {
+      continue
+    }
+
+    const key = relationship.getKey()
+
+    // A user-declared prototype member wins — partial adoption,
+    // no clobbering (as with the entity instance methods)
+    if (Object.hasOwn(prototype, key)) {
+      continue
+    }
+
+    Object.defineProperty(prototype, key, {
+      enumerable: false,
+      configurable: true,
+      get(this: object) {
+        // Lenient mode (the default): neode-style `undefined`
+        if (!isStrictRelationAccess()) {
+          return
+        }
+
+        throw new RelationNotLoadedError(constructor.name, key)
+      },
+      set(this: object, value: unknown) {
+        Object.defineProperty(this, key, {
+          value,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        })
+      },
+    })
+  }
+
+  Object.defineProperty(prototype, RELATION_ACCESSORS_APPLIED, {
+    value: true,
+    enumerable: false,
+  })
 }
 
 /**
