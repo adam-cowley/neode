@@ -5,6 +5,8 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  # Releases are manual only — nothing publishes automatically on merge
+  workflow_dispatch:
 
 jobs:
   # Own job: type-aware linting is slow; don't gate the test matrix on it
@@ -18,7 +20,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
@@ -43,7 +44,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-          cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
@@ -78,7 +78,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
@@ -102,7 +101,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
@@ -124,7 +122,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
       - name: Check secrets
         id: secrets
@@ -161,14 +158,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
           registry-url: https://registry.npmjs.org
 
       - run: pnpm install --frozen-lockfile
 
       - name: Publish (changesets)
-        uses: changesets/action@v1
+        # v2.1.2 minimum: v1's reader cannot parse the v3 .changeset/pre/
+        # layout (ENOENT .changeset/pre/changes.md after a Version PR merges)
+        uses: changesets/action@v2.1.2
         with:
+          version: pnpm changeset version
           publish: pnpm release
+          github-token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

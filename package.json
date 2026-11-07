@@ -98,5 +98,5 @@
   "peerDependencies": {
     "neo4j-driver": "^6.0.0"
   },
-  "prepare": "husky"
+  "prepare": "husky && tsdown"
 }
