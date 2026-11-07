@@ -229,3 +229,61 @@ describe('Builder expression sets, procedure calls and constraints (NTS-195/462/
     )
   })
 })
+
+describe('Builder#existsExpr — expression-level EXISTS (NTS-465)', () => {
+  it('composes an EXISTS subquery inside an or() chain', () => {
+    const builder = new Builder()
+    const { query, params } = builder
+      .match('c', 'Course')
+      .where("c.status <> 'draft'")
+      .param('includeDrafts', false)
+      .or('$includeDrafts')
+      .or(builder.existsExpr((sub) => sub.match('a', 'Account').where('a.sub', 'viewer-sub')))
+      .return('c')
+      .build()
+
+    expect(query).toBe(
+      [
+        'MATCH (c:Course)',
+        "WHERE (c.status <> 'draft' OR $includeDrafts OR EXISTS { MATCH (a:Account)\nWHERE (a.sub = $sub0_where_a_sub) })",
+        'RETURN c',
+      ].join('\n'),
+    )
+    expect(params).toEqual({ includeDrafts: false, sub0_where_a_sub: 'viewer-sub' })
+  })
+
+  it('negates to NOT EXISTS', () => {
+    const builder = new Builder()
+    const { query, params } = builder
+      .match('c', 'Course')
+      .where(`NOT ${builder.existsExpr((sub) => sub.match('e', 'Enrolment').where('e.sub', 'x'))}`)
+      .return('c')
+      .build()
+
+    expect(query).toBe(
+      [
+        'MATCH (c:Course)',
+        'WHERE (NOT EXISTS { MATCH (e:Enrolment)\nWHERE (e.sub = $sub0_where_e_sub) })',
+        'RETURN c',
+      ].join('\n'),
+    )
+    expect(params).toEqual({ sub0_where_e_sub: 'x' })
+  })
+
+  it('projects an EXISTS expression in a RETURN position', () => {
+    const builder = new Builder().match('c', 'Course')
+    const { query } = builder
+      .return('c.slug', `${builder.existsExpr((sub) => sub.match('e', 'Enrolment'))} AS hasOne`)
+      .build()
+
+    expect(query).toBe('MATCH (c:Course)\nRETURN c.slug, EXISTS { MATCH (e:Enrolment) } AS hasOne')
+  })
+
+  it('fails fast on unbound sub-query parameters', () => {
+    const builder = new Builder().match('c', 'Course')
+
+    expect(() =>
+      builder.existsExpr((sub) => sub.match('e', 'Enrolment').whereRaw('e.slug = $slug')),
+    ).toThrow(/Unbound parameter \$slug/)
+  })
+})

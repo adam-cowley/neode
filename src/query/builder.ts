@@ -1272,16 +1272,26 @@ export class Builder {
   }
 
   /**
+  `EXISTS { … }` as a composable expression (NTS-465): the compiled
+  subquery as a string, for where/or/return positions the clause form
+  cannot reach - `or(builder.existsExpr(…))`,
+  `NOT ${builder.existsExpr(…)}`, `return(\`… AS alias\`)`. Sub-query
+  parameters bind, namespace and fail fast on unbound references exactly
+  like whereExistsSubquery.
+  */
+  existsExpr(build: (sub: Builder) => Builder, imports: string[] = []): string {
+    const { inner, imports: scoped } = this.compileSub(build, imports)
+    const scope = scoped.length > 0 ? `WITH ${scoped.join(', ')} ` : ''
+
+    return `EXISTS { ${scope}${inner} }`
+  }
+
+  /**
   `EXISTS { … }` as a WHERE predicate (NTS: relationship / property
   existence checks without hand-written Cypher)
   */
   whereExistsSubquery(build: (sub: Builder) => Builder, imports: string[] = []): this {
-    const { inner, imports: scoped } = this.compileSub(build, imports)
-    const scope = scoped.length > 0 ? `WITH ${scoped.join(', ')} ` : ''
-
-    this.whereRaw(`EXISTS { ${scope}${inner} }`)
-
-    return this
+    return this.whereRaw(this.existsExpr(build, imports))
   }
 
   /**
