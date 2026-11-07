@@ -133,10 +133,16 @@ export class Builder {
   }
 
   /**
-  Flush any open statement / where segment into `statements`
+  Flush any open statement / where segment into `statements`.
+
+  The next where segment is opened with a WHERE prefix: where* methods
+  chained after the raw segments pushed by callProcedure / call /
+  unwind / forEach / DDL land on the statement following that segment
+  and need the keyword (NTS-475) — segment-starting methods like
+  match() pass it themselves, flush() covers the remaining positions.
   */
   private flush(): void {
-    this.whereStatement()
+    this.whereStatement('WHERE')
     this.statement()
   }
 
