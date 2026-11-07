@@ -59,15 +59,7 @@ const neode = fromEnv()
 Models are classes decorated with `@NodeEntity`. Property types and options — including validation rules — live in the decorator config:
 
 ```typescript
-import {
-  NodeEntity,
-  Uuid,
-  Property,
-  InternalId,
-  OneToMany,
-  Direction,
-  WithMethods,
-} from 'neode'
+import { NodeEntity, Uuid, Property, InternalId, OneToMany, Direction, WithMethods } from 'neode'
 
 @NodeEntity()
 export class Pet {
