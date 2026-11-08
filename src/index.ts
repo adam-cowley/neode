@@ -67,7 +67,7 @@ export type {
   AccessMode,
 } from './driver/types.js'
 export { Neo4jConnectionProvider } from './driver/neo4j-connection-provider.js'
-export { RelateConnectionProvider } from './driver/relate.js'
+export { RelateConnectionProvider, requireRelateClient } from './driver/relate.js'
 
 // Raw-cypher helpers + instrumented provider (NTS-122/124/132/133)
 export { jsonSafe, jsonSafeRecord } from './driver/json-safe.js'
