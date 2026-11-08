@@ -43,18 +43,29 @@ duck-typed guards still recognise it). The original is returned untouched
 when it has no Integer fields — with driver 6's native-number temporals
 that is the common case, and identity survives.
 */
-function normalizeInternalIntegers(value: Record<string, unknown>): unknown {
-  const clone = Object.assign(Object.create(Object.getPrototypeOf(value)), value)
-  let changed = false
-
-  for (const [key, item] of Object.entries(clone)) {
-    if (DriverInteger.isInteger(item)) {
-      clone[key] = item.toNumber()
-      changed = true
-    }
+function normalizeInternalIntegers(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value
   }
 
-  return changed ? clone : value
+  const clone: Record<string, unknown> = { ...value }
+
+  // Keep the driver prototype — the __is*__ duck-typed markers the driver's
+  // own guards (and ours) check live there, not on the instance
+  Object.setPrototypeOf(clone, Reflect.getPrototypeOf(value))
+
+  let hasIntegerFields = false
+
+  for (const [key, item] of Object.entries(value)) {
+    if (!DriverInteger.isInteger(item)) {
+      continue
+    }
+
+    clone[key] = item.toNumber()
+    hasIntegerFields = true
+  }
+
+  return hasIntegerFields ? clone : value
 }
 
 /**
@@ -105,7 +116,7 @@ export function normalizeDriverValue(value: unknown): unknown {
     isDuration(value) ||
     isPoint(value)
   ) {
-    return normalizeInternalIntegers(value as unknown as Record<string, unknown>)
+    return normalizeInternalIntegers(value)
   }
 
   if (Array.isArray(value)) {
