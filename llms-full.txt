@@ -883,6 +883,12 @@ An explicit transaction: statements run in scope until commit/rollback.
 
 _source: driver/types.ts_
 
+### `TransactionOptions` (interface)
+
+Options for `Neode#transaction` — routing and database are per transaction (the transaction's session decides them once at open time).
+
+_source: transaction/ambient.ts_
+
 ### `valueToJson` (function)
 
 Convert a single property value into its JSON friendly shape.

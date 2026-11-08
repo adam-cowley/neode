@@ -101,6 +101,11 @@ import {
   type GraphTypeDefinition,
 } from './services/schema/graph-type.service.js'
 import { constructorOf, isConstructorOf, isRecord } from './services/type-guards.js'
+import {
+  ambientTransaction,
+  runAmbientTransaction,
+  type TransactionOptions,
+} from './transaction/ambient.js'
 import { type BatchStatementError, TransactionError } from './transaction/errors.js'
 import { TransactionalService } from './transaction/transactional.service.js'
 
@@ -265,12 +270,37 @@ export class Neode implements INeode {
     throw this.unknownRelationship(schema, keyOrType)
   }
 
+  /**
+  The transaction the next unit of work runs on (NTS-156): the ambient
+  transaction's handle when the calling async context has one — every
+  facade read/write inside `transaction()` joins it, and the per-method
+  commit()/rollback() defer to the outermost unit — else a fresh
+  explicit transaction. The public openers (readTransaction /
+  writeTransaction) never join: the explicit-handle API is unchanged.
+  */
+  private async beginWorkTransaction(
+    mode: AccessMode,
+    database?: string,
+  ): Promise<TransactionHandle> {
+    const ambient = ambientTransaction()
+
+    return (
+      ambient?.runner ?? (await this.connection.beginTransaction(mode, database ?? this.database))
+    )
+  }
+
   getConnection(): ConnectionProvider {
     return this.connection
   }
 
+  /**
+  The runner statements run on right now (NTS-156): the ambient
+  transaction's handle when the calling async context has one (so
+  getRunner()-based paths — runCypherScript(), traverse() — join the
+  ambient transaction), else the instance's connection.
+  */
   getRunner(): Runner {
-    return this.connection
+    return ambientTransaction()?.runner ?? this.connection
   }
 
   isEnterprise(): boolean {
@@ -317,7 +347,14 @@ export class Neode implements INeode {
     parameters: QueryParameters = {},
     database?: string,
   ): Promise<QueryOutput> {
-    return this.connection.run(query, parameters, 'READ', database ?? this.database)
+    // NTS-156: inside an ambient transaction the statement joins it (the
+    // per-call database override is ignored — the transaction is bound to
+    // one database at open time)
+    const ambient = ambientTransaction()
+
+    return ambient
+      ? ambient.runner.run(query, parameters)
+      : this.connection.run(query, parameters, 'READ', database ?? this.database)
   }
 
   async writeCypher(
@@ -325,7 +362,11 @@ export class Neode implements INeode {
     parameters: QueryParameters = {},
     database?: string,
   ): Promise<QueryOutput> {
-    return this.connection.run(query, parameters, 'WRITE', database ?? this.database)
+    const ambient = ambientTransaction()
+
+    return ambient
+      ? ambient.runner.run(query, parameters)
+      : this.connection.run(query, parameters, 'WRITE', database ?? this.database)
   }
 
   /**
@@ -446,12 +487,19 @@ export class Neode implements INeode {
     parameters: QueryParameters = {},
     options: CypherOptions = {},
   ): Promise<QueryOutput | unknown[]> {
-    const output = await this.connection.run(
-      query,
-      parameters,
-      options.routing ?? this.defaultRouting ?? 'READ',
-      options.database ?? this.database,
-    )
+    // NTS-156: inside an ambient transaction the statement joins it; the
+    // driver reports no summary for in-transaction runs, so the counters
+    // come back empty
+    const ambient = ambientTransaction()
+
+    const output = ambient
+      ? await ambient.runner.run(query, parameters)
+      : await this.connection.run(
+          query,
+          parameters,
+          options.routing ?? this.defaultRouting ?? 'READ',
+          options.database ?? this.database,
+        )
 
     const rows: QueryOutput = {
       records: output.records.map((record) => jsonSafeRecord(record)),
@@ -539,12 +587,20 @@ export class Neode implements INeode {
   /**
   Run a unit of work within a READ transaction: the transaction commits
   on success unless the work committed explicitly, and rolls back when
-  the work throws
+  the work throws. Inside an ambient transaction (NTS-156) the work joins
+  it instead — same transaction, close endpoints deferred to the
+  outermost unit.
   */
   async inReadTransaction<T>(
     work: (tx: TransactionalService) => Promise<T>,
     database?: string,
   ): Promise<T> {
+    const ambient = ambientTransaction()
+
+    if (ambient) {
+      return ambient.join(this.eventEmitter, work)
+    }
+
     const tx = await this.openReadTransaction(database)
 
     try {
@@ -569,12 +625,20 @@ export class Neode implements INeode {
   /**
   Run a unit of work within a WRITE transaction: the transaction commits
   on success unless the work committed explicitly, and rolls back when
-  the work throws
+  the work throws. Inside an ambient transaction (NTS-156) the work joins
+  it instead — same transaction, close endpoints deferred to the
+  outermost unit.
   */
   async inWriteTransaction<T>(
     work: (tx: TransactionalService) => Promise<T>,
     database?: string,
   ): Promise<T> {
+    const ambient = ambientTransaction()
+
+    if (ambient) {
+      return ambient.join(this.eventEmitter, work)
+    }
+
     const tx = await this.openWriteTransaction(database)
 
     try {
@@ -597,6 +661,63 @@ export class Neode implements INeode {
   }
 
   /**
+  Run a unit of work in an AMBIENT transaction (NTS-156): the transaction
+  lives in AsyncLocalStorage for the duration of the callback, so every
+  facade/repository call inside joins it without threading a handle.
+
+  - Nested `transaction()` calls join the outer transaction (no
+    savepoints in v1).
+  - Close semantics follow the managed scopes (NTS-561): the transaction
+    commits when the callback resolves and rolls back when it throws; an
+    explicit `tx.commit()` / `tx.rollback()` inside the callback works.
+  - A failure classified as transient (TransientError —
+    `Neo.TransientError.*` codes or a driver `retryable` verdict) retries
+    the WHOLE callback in a fresh transaction, `retries` times (default
+    2). The callback must be idempotent: work that reached the database
+    rolls back with the failed attempt, but non-database side effects run
+    again on retry.
+  - `routing` ('WRITE' default | 'READ') and `database` choose the
+    transaction's session — per transaction, not per call.
+
+  Requires a runtime with AsyncLocalStorage (node:async_hooks). On
+  runtimes without it (some edge/serverless targets) keep using the
+  explicit-handle API — `readTransaction()` / `writeTransaction()`,
+  `openReadTransaction()` / `openWriteTransaction()` and this class's
+  managed `inReadTransaction()` / `inWriteTransaction()` — which never
+  touches ALS.
+
+  Joining the ambient transaction: every model read/write
+  (find/get/all/save/create/merge/update/relate/detach/delete), batch(),
+  and the raw Cypher paths (cypher/readCypher/writeCypher and the
+  read()/write() sugar). NOT joining (they manage their own sessions, v1):
+  search(), knn(), pagination (paginate/chunk/lazy), bulk
+  (createMany/mergeMany), explain()/profile() and the schema-management
+  methods.
+  */
+  async transaction<T>(
+    work: (tx: TransactionalService) => Promise<T>,
+    options: TransactionOptions = {},
+  ): Promise<T> {
+    const ambient = ambientTransaction()
+
+    // Already inside an ambient transaction: join it — no begin, no close,
+    // and no retry of its own (the outermost unit's retry re-runs the
+    // whole callback, so an inner retry would double-apply the work)
+    return ambient
+      ? ambient.join(this.eventEmitter, work)
+      : runAmbientTransaction(
+          async () =>
+            this.connection.beginTransaction(
+              options.routing ?? 'WRITE',
+              options.database ?? this.database,
+            ),
+          this.eventEmitter,
+          work,
+          options,
+        )
+  }
+
+  /**
   Run a batch of statements within ONE transaction (neode's batch()):
   begin, run every statement, then commit. On any failure the transaction
   is rolled back and a TransactionError is thrown, carrying the
@@ -607,7 +728,7 @@ export class Neode implements INeode {
     queries: (string | { query: string; params?: QueryParameters })[],
     database?: string,
   ): Promise<QueryOutput[]> {
-    const tx = await this.connection.beginTransaction('WRITE', database ?? this.database)
+    const tx = await this.beginWorkTransaction('WRITE', database)
 
     const results: QueryOutput[] = []
     const errors: (BatchStatementError | null)[] = []
@@ -686,7 +807,7 @@ export class Neode implements INeode {
     const database = typeof databaseOrOptions === 'string' ? databaseOrOptions : options?.database
     const withSpec = options?.with
 
-    const tx = await this.readTransaction(database)
+    const tx = await this.beginWorkTransaction('READ', database)
 
     try {
       // A load spec reads through the projection path even when the model
@@ -712,7 +833,7 @@ export class Neode implements INeode {
   ): Promise<T | undefined> {
     const schema = this.getSchema(constructor)
 
-    const tx = await this.readTransaction(database)
+    const tx = await this.beginWorkTransaction('READ', database)
 
     try {
       const output = hasProjectedProperties(schema)
@@ -736,7 +857,7 @@ export class Neode implements INeode {
   ): Promise<T[]> {
     const schema = this.getSchema(constructor)
 
-    const tx = await this.readTransaction(database)
+    const tx = await this.beginWorkTransaction('READ', database)
 
     try {
       const results = hasProjectedProperties(schema)
@@ -856,7 +977,7 @@ export class Neode implements INeode {
       database,
     })
 
-    const tx = await this.writeTransaction(database)
+    const tx = await this.beginWorkTransaction('WRITE', database)
 
     try {
       const constructed = new constructor()
@@ -904,7 +1025,7 @@ export class Neode implements INeode {
   ): Promise<T | undefined> {
     const schema = this.getSchema(constructor)
 
-    const tx = await this.writeTransaction(database)
+    const tx = await this.beginWorkTransaction('WRITE', database)
 
     try {
       const mergeService = new MergeService(tx)
@@ -1008,7 +1129,7 @@ export class Neode implements INeode {
 
     const schema = this.getSchema(entityConstructor)
 
-    const tx = await this.writeTransaction(database)
+    const tx = await this.beginWorkTransaction('WRITE', database)
 
     try {
       await new UpdateService(tx).update(schema, entity, properties)
@@ -1045,7 +1166,7 @@ export class Neode implements INeode {
     const schema = this.getSchema(constructor)
     const relationship = this.resolveRelationship(schema, relationshipKey)
 
-    const tx = await this.writeTransaction(database)
+    const tx = await this.beginWorkTransaction('WRITE', database)
 
     try {
       const result = await new RelateService(tx).relate(
@@ -1086,7 +1207,7 @@ export class Neode implements INeode {
     const schema = this.getSchema(constructor)
     const relationship = this.requireRelationship(schema, relationshipKey)
 
-    const tx = await this.writeTransaction(database)
+    const tx = await this.beginWorkTransaction('WRITE', database)
 
     try {
       const result = await new DetachService(tx).detach(schema, from, to, relationship)
@@ -1116,7 +1237,7 @@ export class Neode implements INeode {
     const schema = this.getSchema(constructor)
     const relationship = this.requireRelationship(schema, relationshipKey)
 
-    const tx = await this.readTransaction()
+    const tx = await this.beginWorkTransaction('READ')
 
     try {
       const result = await new LoadRelationService(tx).load(schema, entity, relationship, options)
@@ -1445,7 +1566,7 @@ export class Neode implements INeode {
   ): Promise<T[]> {
     const schema = this.getSchema(constructor)
 
-    const tx = await this.readTransaction(database)
+    const tx = await this.beginWorkTransaction('READ', database)
 
     try {
       const withSpec = options?.with
@@ -1489,7 +1610,7 @@ export class Neode implements INeode {
   ): Promise<T[]> {
     const schema = this.getSchema(constructor)
 
-    const tx = await this.readTransaction(database)
+    const tx = await this.beginWorkTransaction('READ', database)
 
     try {
       const results = await new WithinDistanceService(tx).withinDistance<T>(
@@ -1638,7 +1759,10 @@ export class Neode implements INeode {
       (schemaSoft !== undefined ||
         (cascadeOptions?.soft !== undefined && cascadeOptions.soft !== ''))
 
-    const tx = await this.writeTransaction(typeof options === 'string' ? options : database)
+    const tx = await this.beginWorkTransaction(
+      'WRITE',
+      typeof options === 'string' ? options : database,
+    )
 
     try {
       await runObservers(constructorOf(entity), 'beforeDelete', entity, {
