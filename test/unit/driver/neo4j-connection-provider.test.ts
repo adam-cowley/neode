@@ -16,39 +16,49 @@ function foreignRealmCopy(value: object): object {
 }
 
 describe('normalizeDriverValue', () => {
-  it('passes driver temporal and spatial values through untouched (same realm)', () => {
-    const values = [
-      new neo4j.DateTime(2020, 1, 2, 3, 4, 5, neo4j.int(6), neo4j.int(0), 'UTC'),
-      new neo4j.Date(2020, 1, 2),
-      new neo4j.Time(3, 4, 5, neo4j.int(6), neo4j.int(0)),
-      new neo4j.LocalTime(3, 4, 5, neo4j.int(6)),
-      new neo4j.LocalDateTime(2020, 1, 2, 3, 4, 5, neo4j.int(6)),
-      new neo4j.Duration(1, 2, 3, neo4j.int(4)),
-      new neo4j.Point(7203, 1, 2),
-    ]
+  it('normalises the Integer fields of driver temporal and spatial values (same realm)', () => {
+    // Values built with explicit neo4j.int() arguments (and points straight
+    // off the server) carry Integer internals — normalised to plain numbers
+    // on a same-prototype clone (NTS-547: bulk reads return the same shapes
+    // the single-record path does)
+    const dateTime = new neo4j.DateTime(2020, 1, 2, 3, 4, 5, neo4j.int(6), neo4j.int(0), 'UTC')
+    const point = new neo4j.Point(neo4j.int(4326), 1.5, 2.5)
 
-    for (const value of values) {
-      expect(normalizeDriverValue(value)).toBe(value)
-    }
+    const outDateTime = normalizeDriverValue(dateTime)
+    expect(outDateTime).not.toBe(dateTime) // had Integer fields → normalised copy
+    expect(outDateTime).toBeInstanceOf(neo4j.DateTime)
+    expect(outDateTime.nanosecond).toBe(6)
+    expect(outDateTime.timeZoneOffsetSeconds).toBe(0)
+
+    const outPoint = normalizeDriverValue(point)
+    expect(outPoint).not.toBe(point)
+    expect(outPoint).toBeInstanceOf(neo4j.Point)
+    expect(outPoint.srid).toBe(4326)
   })
 
-  it('passes foreign-realm temporal and spatial values through untouched', () => {
+  it('passes values with no Integer fields through untouched (same realm)', () => {
+    // Driver 6 temporals built with native numbers carry no Integer
+    // internals — identity is preserved
+    const date = new neo4j.Date(2020, 1, 2)
+
+    expect(normalizeDriverValue(date)).toBe(date)
+  })
+
+  it('normalises the Integer fields of foreign-realm temporal and spatial values', () => {
     // Real driver instances copy their identifier properties off, but are not
     // instanceof the classes this library imports — the mangled shapes a
     // duplicated neo4j-driver install used to spread into plain objects.
-    const values = [
-      foreignRealmCopy(new neo4j.DateTime(2020, 1, 2, 3, 4, 5, neo4j.int(6), neo4j.int(0), 'UTC')),
-      foreignRealmCopy(new neo4j.Date(2020, 1, 2)),
-      foreignRealmCopy(new neo4j.Time(3, 4, 5, neo4j.int(6), neo4j.int(0))),
-      foreignRealmCopy(new neo4j.LocalTime(3, 4, 5, neo4j.int(6))),
-      foreignRealmCopy(new neo4j.LocalDateTime(2020, 1, 2, 3, 4, 5, neo4j.int(6))),
-      foreignRealmCopy(new neo4j.Duration(1, 2, 3, neo4j.int(4))),
-      foreignRealmCopy(new neo4j.Point(7203, 1, 2)),
-    ]
+    // The duck-typed shape survives; Integer internals still normalise.
+    const foreign = foreignRealmCopy(
+      new neo4j.DateTime(2020, 1, 2, 3, 4, 5, neo4j.int(6), neo4j.int(0), 'UTC'),
+    )
 
-    for (const value of values) {
-      expect(normalizeDriverValue(value)).toBe(value)
-    }
+    const out = normalizeDriverValue(foreign) as Record<string, unknown>
+
+    expect(out).not.toBe(foreign) // had Integer fields → normalised copy
+    expect(out['__isDateTime__']).toBe(true)
+    expect(out['nanosecond']).toBe(6)
+    expect(out['timeZoneOffsetSeconds']).toBe(0)
   })
 
   it('normalises driver integers and recurses into arrays and plain objects', () => {

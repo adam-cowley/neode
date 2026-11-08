@@ -5,6 +5,7 @@ import { hydrateNode } from './utilities.js'
 import { isGraphNode } from './services/type-guards.js'
 import { Builder, type Direction } from './query/index.js'
 import type { GraphNode, QueryOutput } from './driver/types.js'
+import { quote } from './query/quote.js'
 
 /**
 One hop of a traversal (NTS-512): a relationship type, a direction, an
@@ -34,6 +35,10 @@ The traversal builder (NTS-512): typed multi-hop reads — chain hops, run,
 get hydrated entities per hop position. Row semantics: one row per
 matched path (variable-degree hops fan out).
 
+Aggregate reads (NTS-547): declare `groupBy()` / `countDistinct()` and read
+the result with `runAggregates()` — group aliases come back hydrated,
+counts as numbers. `orderBy()` / `limit()` shape either mode.
+
 ```ts
 const rows = await neode.traverse(Product)
   .hop('SUPPLIED_BY', 'out', Supplier)
@@ -41,11 +46,29 @@ const rows = await neode.traverse(Product)
   .run()
 
 rows[0].nodes // [Product, Supplier, Territory] hydrated
+
+// co-purchase style: ranked, capped, excluding the origin's own edges
+const ranked = await neode.traverse(Order)
+  .where({ orderID })
+  .hop('CONTAINS', 'out', Product)
+  .hop('CONTAINS', 'in', Order)
+  .hop('CONTAINS', 'out', Product)
+  .exclude('t0', 'CONTAINS', 't3')
+  .groupBy('t3')
+  .countDistinct('t2', 'times')
+  .orderBy('times', 'DESC')
+  .limit(5)
+  .runAggregates()
 ```
 */
 export class TraverseBuilder {
   private readonly hops: Hop[] = []
   private startFilters: Record<string, unknown> = {}
+  private readonly exclusions: string[] = []
+  private groupAliases: string[] | undefined
+  private countSpec: { alias: string; as: string } | undefined
+  private orderSpec: { field: string; order?: 'ASC' | 'DESC' } | undefined
+  private limitCount: number | undefined
 
   private readonly runner: {
     run: (statement: string, parameters?: Record<string, unknown>) => Promise<QueryOutput>
@@ -61,6 +84,62 @@ export class TraverseBuilder {
   ) {
     this.runner = runner
     this.start = start
+  }
+
+  /**
+  Assemble the MATCH + hops + WHERE the run methods share.
+  */
+  private buildPattern(): { builder: Builder; aliases: string[]; start: Newable } {
+    const startConstructor = this.start()
+    const startSchema = getModel(startConstructor)
+
+    if (!(startSchema instanceof EntitySchema)) {
+      throw new TypeError('traverse() requires a registered model')
+    }
+
+    const builder = new Builder()
+
+    builder.match('t0', startSchema.getLabels(), this.startFilters)
+
+    const aliases = ['t0']
+
+    for (const [index, hop] of this.hops.entries()) {
+      const alias = `t${String(index + 1)}`
+
+      // A class is a function WITH a prototype; a lazy thunk is an arrow
+      const targetConstructor =
+        typeof hop.target === 'function' && hop.target.prototype !== undefined
+          ? hop.target
+          : undefined
+
+      const targetSchema = targetConstructor === undefined ? undefined : getModel(targetConstructor)
+
+      builder.relationship(hop.type, hop.direction, `r${String(index + 1)}`, hop.degrees)
+
+      builder.to(alias, targetSchema instanceof EntitySchema ? targetSchema.getLabels() : false)
+
+      aliases.push(alias)
+    }
+
+    for (const exclusion of this.exclusions) {
+      builder.whereRaw(exclusion)
+    }
+
+    if (this.orderSpec !== undefined) {
+      const { field, order } = this.orderSpec
+
+      if (order === undefined) {
+        builder.orderBy(field)
+      } else {
+        builder.orderBy(field, order)
+      }
+    }
+
+    if (this.limitCount !== undefined) {
+      builder.limit(this.limitCount)
+    }
+
+    return { builder, aliases, start: startConstructor }
   }
 
   /**
@@ -99,40 +178,60 @@ export class TraverseBuilder {
   }
 
   /**
+  Exclude a relationship between two in-scope aliases — rendered as
+  `WHERE NOT (from)-[:TYPE]->(to)`. The "not already connected to the
+  origin" clause (e.g. co-purchase recommendations: exclude products the
+  origin order already contains).
+  */
+  exclude(fromAlias: string, type: string, toAlias: string): this {
+    this.exclusions.push(`NOT (${fromAlias})-[:${quote(type)}]->(${toAlias})`)
+
+    return this
+  }
+
+  /**
+  Aliases to group by (and return) in an aggregate read — `runAggregates()`.
+  */
+  groupBy(...aliases: string[]): this {
+    this.groupAliases = [...(this.groupAliases ?? []), ...aliases]
+
+    return this
+  }
+
+  /**
+  Aggregate return: `count(DISTINCT alias) AS as` (the traversal version of
+  "how many distinct paths reach the end through this node").
+  */
+  countDistinct(alias: string, as: string): this {
+    this.countSpec = { alias, as }
+
+    return this
+  }
+
+  /**
+  Order the result rows (aggregate alias or node property).
+  */
+  orderBy(field: string, order?: 'ASC' | 'DESC'): this {
+    this.orderSpec = order === undefined ? { field } : { field, order }
+
+    return this
+  }
+
+  /**
+  Cap the number of returned rows.
+  */
+  limit(limit: number): this {
+    this.limitCount = limit
+
+    return this
+  }
+
+  /**
   Run the traversal: one row per matched path, each row the hydrated
   entities along it (origin first).
   */
   async run(): Promise<TraversalRow[]> {
-    const startConstructor = this.start()
-    const startSchema = getModel(startConstructor)
-
-    if (!(startSchema instanceof EntitySchema)) {
-      throw new TypeError('traverse() requires a registered model')
-    }
-
-    const builder = new Builder()
-
-    builder.match('t0', startSchema.getLabels(), this.startFilters)
-
-    const aliases = ['t0']
-
-    for (const [index, hop] of this.hops.entries()) {
-      const alias = `t${String(index + 1)}`
-
-      // A class is a function WITH a prototype; a lazy thunk is an arrow
-      const targetConstructor =
-        typeof hop.target === 'function' && hop.target.prototype !== undefined
-          ? hop.target
-          : undefined
-
-      const targetSchema = targetConstructor === undefined ? undefined : getModel(targetConstructor)
-
-      builder.relationship(hop.type, hop.direction, `r${String(index + 1)}`, hop.degrees)
-
-      builder.to(alias, targetSchema instanceof EntitySchema ? targetSchema.getLabels() : false)
-
-      aliases.push(alias)
-    }
+    const { builder, aliases, start } = this.buildPattern()
 
     builder.return(...aliases)
 
@@ -148,10 +247,56 @@ export class TraverseBuilder {
           return value
         }
 
-        return hydrateForNode(value, index === 0 ? startConstructor : undefined)
+        return hydrateForNode(value, index === 0 ? start : undefined)
       })
 
       return { nodes }
+    })
+  }
+
+  /**
+  Run the traversal as an aggregate read: the `groupBy()` aliases returned
+  per row (hydrated like run()'s positions) plus the `countDistinct()`
+  count. Rows are `Record<string, unknown>` — group alias → entity,
+  count alias → number.
+  */
+  async runAggregates(): Promise<Record<string, unknown>[]> {
+    const countSpec = this.countSpec
+
+    if (countSpec === undefined) {
+      throw new TypeError('runAggregates() requires countDistinct(alias, as)')
+    }
+
+    const { builder, aliases } = this.buildPattern()
+
+    const groups = this.groupAliases ?? []
+
+    for (const alias of [...groups, countSpec.alias]) {
+      if (!aliases.includes(alias)) {
+        throw new TypeError(
+          `Unknown traversal alias "${alias}" — this traversal defines: ${aliases.join(', ')}`,
+        )
+      }
+    }
+
+    builder.return(...groups, `count(DISTINCT ${countSpec.alias}) AS ${countSpec.as}`)
+
+    const { query, params } = builder.build()
+
+    const output = await this.runner.run(query, params)
+
+    return output.records.map((record) => {
+      const row: Record<string, unknown> = {}
+
+      for (const alias of groups) {
+        const value: unknown = record.get(alias)
+
+        row[alias] = isGraphNode(value) ? hydrateForNode(value) : value
+      }
+
+      row[countSpec.as] = record.get(countSpec.as)
+
+      return row
     })
   }
 }

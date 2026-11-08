@@ -56,6 +56,28 @@ function isModelOf<T>(
 }
 
 /**
+First occurrence per distinct value (JSON identity) — preserves order
+*/
+function dedupe(values: unknown[]): unknown[] {
+  const seen = new Set<string>()
+  const out: unknown[] = []
+
+  for (const value of values) {
+    const key = JSON.stringify(value)
+
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+
+    out.push(value)
+  }
+
+  return out
+}
+
+/**
 Post-process one projected property value on the hydrated entity
 */
 function postProcessProjection(entity: Record<string, unknown>, property: PropertySchema): void {
@@ -67,6 +89,13 @@ function postProcessProjection(entity: Record<string, unknown>, property: Proper
     const fields = property.getFields()
 
     if (fields !== undefined && fields.length > 0) {
+      // NTS-547 — multi-hop paths yield one element per matched path:
+      // the same end node reached through two intermediate nodes appears
+      // twice. Dedupe by value (single-hop projections cannot duplicate).
+      if (property.getPath() !== undefined && Array.isArray(entity[key])) {
+        entity[key] = dedupe(entity[key] as unknown[])
+      }
+
       return
     }
 

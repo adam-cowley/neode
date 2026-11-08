@@ -87,6 +87,27 @@ class StudentProgress {
   summary: string
 }
 
+@NodeEntity()
+class PathStudent {
+  @InternalId() _id: string
+  @Property({ type: 'string', primary: true }) id: string
+  @Property({ type: 'string' }) name: string
+
+  // NTS-547 — peers = students sharing this student's course; their
+  // completed lessons, deduped (two peers completing the same lesson
+  // reach it through two paths)
+  @RelatedMany({
+    path: [
+      { type: 'IN_COURSE', direction: 'out' },
+      { type: 'IN_COURSE', direction: 'in' },
+      { type: 'COMPLETED_LESSON', direction: 'out' },
+    ],
+    target: () => ProjectionLesson,
+    fields: ['slug'],
+  })
+  peerLessons: string[]
+}
+
 describe('projection reads (NTS-135/136/137/138)', () => {
   let backend: TestBackend
   let projections: ProjectionService
@@ -175,6 +196,26 @@ describe('projection reads (NTS-135/136/137/138)', () => {
 
     // @Computed, after hydration
     expect(adam.summary).toBe('Adam: 2 done')
+  })
+
+  it('projects a multi-hop path read and dedupes repeated end nodes (NTS-547)', async () => {
+    await backend.connection.run(
+      'CREATE (a:PathStudent { id: "a", name: "Adam" })-[:IN_COURSE]->(c:ProjectionCourse { title: "T", status: "ACTIVE" })\n' +
+        'CREATE (b:PathStudent { id: "b", name: "Billy" })-[:IN_COURSE]->(c)\n' +
+        'CREATE (ch:PathStudent { id: "ch", name: "Charlie" })-[:IN_COURSE]->(c)\n' +
+        'CREATE (l:ProjectionLesson { slug: "warmup" })\n' +
+        'CREATE (b)-[:COMPLETED_LESSON]->(l)\n' +
+        'CREATE (ch)-[:COMPLETED_LESSON]->(l)',
+    )
+
+    const adam = (await new ProjectionService(backend.connection).find(
+      PathStudent,
+      getModel(PathStudent),
+      'a',
+    )) as unknown as Record<string, unknown>
+
+    // 'warmup' is reachable through Billy AND Charlie — one element, not two
+    expect(adam.peerLessons).toEqual(['warmup'])
   })
 
   it('returns read-model values for every matching node', async () => {

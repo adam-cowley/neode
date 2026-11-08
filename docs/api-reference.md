@@ -346,10 +346,10 @@ These declare values projected into the read query — one RETURN projection per
 class Learner {
   @InternalId() _id: string
 
-  @RelatedOne({ type: 'IN_COURSE', direction: 'out', fields: ['title'] })
-  course: { title: string } // nested read-only DTO
+  @RelatedOne({ type: 'IN_COURSE', direction: 'out', target: () => Course, fields: ['title'] })
+  course?: Pick<Course, 'title'> // nested read-only DTO
 
-  @RelatedMany({ type: 'COMPLETED_LESSON', fields: ['slug'] })
+  @RelatedMany({ type: 'COMPLETED_LESSON', target: () => Lesson, fields: ['slug'] })
   completedLessons: string[] // single field → scalar array
 
   @RelationshipCount({ type: 'COMPLETED_LESSON', direction: 'out' })
@@ -369,7 +369,8 @@ class Learner {
 }
 ```
 
-- `@RelatedOne(config)` / `@RelatedMany(config)` — `config`: `{ type, direction?, fields?, target? }`. Omit `fields` for full-entity eager loading; with a field subset the result projects flat (one field → scalar array, several → plain DTOs).
+- `@RelatedOne(config)` / `@RelatedMany(config)` — `config`: `{ type, direction?, fields?, target? }`. Omit `fields` for full-entity eager loading; with a field subset the result projects flat (one field → scalar array, several → plain DTOs). With `target()`, `fields` is type-checked against the target's properties — pair it with `Pick<Target, ...>` on the annotated property so the annotation can't drift.
+- **Multi-hop `path` (NTS-547)** — pass `path: [{ type, direction?, target? }, …]` instead of `type`: the hops chain in one pattern comprehension and the last hop binds the projected node. `fields` is required (projected form only); `target()` on the config label-filters and type-checks the final node, `target` on an intermediate hop label-filters that hop. End nodes reached through several paths dedupe on hydration. An optional `where` filters elements inside the comprehension — `node` is the final node, `this` the annotated node (`where: 'NOT (this)-[:CONTAINS]->(node)'` turns the co-purchase read into "not already ordered here"). `Course <- IN_COURSE - other students -COMPLETED_LESSON-> lessons` is `path: [{ type: 'IN_COURSE', direction: 'out' }, { type: 'IN_COURSE', direction: 'in' }, { type: 'COMPLETED_LESSON', direction: 'out' }]`.
 - `@RelationshipCount({ type, direction?, where? })` / `@RelationshipExists({ type, direction?, where? })` — `where` uses `node` as the variable for the target node.
 - `@Computed(fn)` — never sent to the database; runs after hydration.
 - `@Vector({ dimensions, … })` (NTS-447) — declare a vector index over the property: `installSchema()` creates it, `dropSchema()` drops it, `knn()` searches it.
@@ -841,6 +842,31 @@ rows[0].nodes // [Product, Supplier, Territory] — hydrated entities
 - Variable degrees fan out rows (one per matched path). Relationship properties are available via `Repository#matchEntity`-style follow-ups or raw reads.
 - Hops render through the same parameterised Builder as everything else — no string interpolation.
 
+### Aggregate traversals (NTS-547)
+
+The same builder runs as an aggregate read — the co-purchase shape ("entities reached through shared origins, ranked by how many origins they share, excluding the ones already connected to the start"):
+
+```typescript
+const rows = await neode
+  .traverse(Order)
+  .where({ orderID })
+  .hop('CONTAINS', 'out', Product) //  t1: this order's products
+  .hop('CONTAINS', 'in', Order) //    t2: other orders…
+  .hop('CONTAINS', 'out', Product) // t3: …and what they contain
+  .exclude('t0', 'CONTAINS', 't3') // not already in THIS order
+  .groupBy('t3')
+  .countDistinct('t2', 'times')
+  .orderBy('times', 'DESC')
+  .limit(5)
+  .runAggregates()
+
+// rows: [{ t3: Product (hydrated), times: 4 }, …]
+```
+
+- `.exclude(from, type, to)` renders `WHERE NOT (from)-[:TYPE]->(to)`; aliases are the hop positions `t0…tN`.
+- `runAggregates()` requires `.countDistinct(alias, as)`; with no `.groupBy()`, the count is a single global row.
+- `run()` keeps its path-row shape — the two modes never mix.
+
 ## Connection providers
 
 The database-agnostic port every backend implements:
@@ -1088,6 +1114,17 @@ Both follow the result-reporting pattern of `installSchema()`. Index names defau
 ## Read-model projections
 
 Declarative read models composed into a single RETURN projection per read — one Cypher query, no N+1. Declared with the [projection decorators](#read-model-projection-decorators); read through `ProjectionService` or the facade's query methods, which switch to the projection automatically when a model has projected properties.
+
+### Recommended: `target()` + `Pick` annotations
+
+When a projection reads a field subset, pass `target()` and derive the annotation with `Pick`:
+
+```typescript
+@RelatedOne({ type: 'PLACED_BY', direction: 'out', target: () => Customer, fields: ['customerID', 'companyName', 'country'] })
+customer?: Pick<Customer, 'customerID' | 'companyName' | 'country'>
+```
+
+With `target()` present, `fields` is type-checked against the target's properties — a typo'd field name is a compile error that lists the valid fields. `Pick` derives the annotation from the same class, so the `fields` list and the DTO shape cannot drift apart: change a property on `Customer` and the compiler points at every projection that needs updating. `fields` without `target()` stays legal (unchecked) — use it when importing the target would be heavy or circular, and keep the annotation honest by hand.
 
 ```typescript
 import { ProjectionService, projectionNode, hasProjectedProperties, hydrateProjection } from 'neode'

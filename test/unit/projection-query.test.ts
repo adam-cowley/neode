@@ -45,11 +45,43 @@ class ProjectionQueryModel {
   @RelatedMany({ type: 'COHORT', direction: 'in', fields: ['slug', 'title'] })
   cohortLessons: { slug: string; title: string }[]
 
+  // NTS-547 — multi-hop path, singular form: first element only
+  @RelatedOne({
+    path: [{ type: 'IN_COURSE', direction: 'out' }],
+    target: () => ProjectionQueryCourse,
+    fields: ['title'],
+  })
+  courseViaPath?: Pick<ProjectionQueryCourse, 'title'>
+
   @RelatedOne({ type: 'ACTED_IN', direction: 'out', target: () => ProjectionQueryCourse })
   fullCourse: ProjectionQueryCourse
 
   @RelatedMany({ type: 'COMPLETED_LESSON', direction: 'out', target: () => ProjectionQueryLesson })
   allLessons: ProjectionQueryLesson[]
+
+  // NTS-547 — multi-hop path: chained comprehension, last hop binds `node`
+  @RelatedMany({
+    path: [
+      { type: 'NEXT_COURSE', direction: 'out' },
+      { type: 'IN_COURSE', direction: 'in' },
+    ],
+    target: () => ProjectionQueryCourse,
+    fields: ['title'],
+  })
+  siblingCourseTitles: string[]
+
+  // intermediate hop with a target: label-filtered mid-path
+  @RelatedMany({
+    path: [
+      { type: 'IN_COURSE', direction: 'out' },
+      { type: 'COHORT', direction: 'in', target: () => ProjectionQueryModel },
+      { type: 'COMPLETED_LESSON', direction: 'out' },
+    ],
+    target: () => ProjectionQueryLesson,
+    fields: ['slug'],
+    where: 'NOT (this)-[:BLOCKED]->(node)',
+  })
+  peerLessons: string[]
 
   @RelationshipCount({ type: 'HAS_MODULE|HAS_LESSON', direction: 'out' })
   materialCount: number
@@ -95,6 +127,21 @@ describe('projection Cypher composition (NTS-135/136/137/138)', () => {
     // @RelatedMany with several fields: array of plain maps
     expect(query).toContain(
       'cohortLessons: [ (this)<-[:`COHORT`]-(node) | node { .slug, .title } ]',
+    )
+
+    // NTS-547 — multi-hop path: hops chained, `node` bound by the last hop
+    expect(query).toContain(
+      'siblingCourseTitles: [ (this)-[:`NEXT_COURSE`]->(this_h1)<-[:`IN_COURSE`]-(node:`ProjectionQueryCourse`) | node.title ]',
+    )
+
+    // ...with a label-filtered intermediate hop and a WHERE fragment
+    expect(query).toContain(
+      'peerLessons: [ (this)-[:`IN_COURSE`]->(this_h1)<-[:`COHORT`]-(this_h2:`ProjectionQueryModel`)-[:`COMPLETED_LESSON`]->(node:`ProjectionQueryLesson`) WHERE NOT (this)-[:BLOCKED]->(node) | node.slug ]',
+    )
+
+    // ...singular form takes the first element
+    expect(query).toContain(
+      'courseViaPath: [ (this)-[:`IN_COURSE`]->(node:`ProjectionQueryCourse`) | node.title ][0]',
     )
 
     // @RelationshipCount: inline COUNT { } subquery, multi-type via pipe

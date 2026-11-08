@@ -37,6 +37,38 @@ function normalizeProperties(properties: Record<string, unknown>): Record<string
 }
 
 /**
+Shallow clone of a driver temporal/point instance with every Integer field
+converted to a plain number (same prototype, so instanceof and the
+duck-typed guards still recognise it). The original is returned untouched
+when it has no Integer fields — with driver 6's native-number temporals
+that is the common case, and identity survives.
+*/
+function normalizeInternalIntegers(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value
+  }
+
+  const clone: Record<string, unknown> = { ...value }
+
+  // Keep the driver prototype — the __is*__ duck-typed markers the driver's
+  // own guards (and ours) check live there, not on the instance
+  Object.setPrototypeOf(clone, Reflect.getPrototypeOf(value))
+
+  let hasIntegerFields = false
+
+  for (const [key, item] of Object.entries(value)) {
+    if (!DriverInteger.isInteger(item)) {
+      continue
+    }
+
+    clone[key] = item.toNumber()
+    hasIntegerFields = true
+  }
+
+  return hasIntegerFields ? clone : value
+}
+
+/**
 Walk a driver result value and normalize driver-specific types
 (Node, Relationship, Integer, temporal, point) into plain JS shapes.
 */
@@ -69,12 +101,12 @@ export function normalizeDriverValue(value: unknown): unknown {
     }
   }
 
-  // Temporal / spatial types expose a toString that round-trips the value;
-  // they are passed through as-is for now (deep value mapping lands with
-  // the property-type layer) but their internal integers are normalized.
-  // The driver's duck-typed guards check identifier properties, so they also
-  // recognise instances from a second copy of neo4j-driver (pnpm/link
-  // setups) that `instanceof` would miss and mangle into plain objects.
+  // Temporal / spatial types pass through — but their internal Integer
+  // fields (Point.srid, Date.year, Time.nanosecond, …) are normalized to
+  // plain numbers, matching how property integers are treated above. The
+  // clone keeps the driver prototype, so instanceof and the driver's
+  // duck-typed guards (including a second copy of neo4j-driver in
+  // pnpm/link setups) still recognise it.
   if (
     isDateTime(value) ||
     isDate(value) ||
@@ -84,7 +116,7 @@ export function normalizeDriverValue(value: unknown): unknown {
     isDuration(value) ||
     isPoint(value)
   ) {
-    return value
+    return normalizeInternalIntegers(value)
   }
 
   if (Array.isArray(value)) {

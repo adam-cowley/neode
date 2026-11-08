@@ -2,7 +2,14 @@ import { mergeProperty } from '../../meta/index.js'
 import type { Newable } from '../../meta/newable.js'
 import { PropertyType } from '../../meta/property-schema.js'
 import { toDirection } from '../../query/index.js'
-import type { RelatedConfig } from './projection-config.interface.js'
+import type { PropertyPathHop } from '../../meta/property-schema.js'
+import type {
+  AnyRelatedConfig,
+  CheckedPathRelatedConfig,
+  CheckedRelatedConfig,
+  RelatedConfig,
+  RelatedPathHop,
+} from './projection-config.interface.js'
 import { addRegistration, memberName } from '../registrations.js'
 
 /**
@@ -12,12 +19,28 @@ only the named fields. Without `fields`, the full entity is eagerly loaded
 
 Example:
 ```ts
-@RelatedOne({ type: 'IN_COURSE', direction: 'out', fields: ['title', 'status'] })
-course: { title: string; status: string };
+@RelatedOne({ type: 'IN_COURSE', direction: 'out', target: () => Course, fields: ['title', 'status'] })
+course?: Pick<Course, 'title' | 'status'>
 ```
+
+With a `target()`, `fields` is type-checked against the target's
+properties. Without one, `fields` is unchecked (the unchecked overload).
+
+NTS-547 — pass `path` instead of `type` for a multi-hop read: the hops are
+chained in order and the LAST hop ends at the projected node. `fields` is
+required with `path` (projected form only); a `target()` checks `fields`
+against it and label-filters the final node.
 */
+export function RelatedOne<T extends object>(
+  config: CheckedRelatedConfig<T> | CheckedPathRelatedConfig<T>,
+): (value: undefined, context: ClassFieldDecoratorContext) => void
 export function RelatedOne(
-  config: RelatedConfig,
+  config:
+    | (RelatedConfig & { fields: string[]; target?: undefined })
+    | { path: RelatedPathHop[]; fields: string[]; target?: undefined },
+): (value: undefined, context: ClassFieldDecoratorContext) => void
+export function RelatedOne(
+  config: AnyRelatedConfig,
 ): (value: undefined, context: ClassFieldDecoratorContext) => void {
   return function (_value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = memberName(context)
@@ -30,8 +53,49 @@ export function RelatedOne(
         config.fields ? { fields: config.fields } : {},
       )
 
-      property.setRelationshipType(config.type)
+      // Multi-hop path (NTS-547): hops chained at render time; `type` and
+      // top-level `direction` do not apply. The last hop ends at the
+      // property's target — kept on the property so the final node is
+      // label-filtered like a single-hop projection.
+      if (config.path !== undefined) {
+        if (config.fields === undefined || config.fields.length === 0) {
+          throw new Error(`@RelatedOne on "${propertyKey}" with 'path' requires 'fields'`)
+        }
+
+        property.setPath(
+          config.path.map((hop) => {
+            const normalised: PropertyPathHop = {
+              type: hop.type,
+              direction: toDirection(hop.direction),
+            }
+
+            if (hop.target !== undefined) {
+              normalised.target = hop.target
+            }
+
+            return normalised
+          }),
+        )
+
+        const pathEntity: Newable | undefined = config.target?.()
+
+        if (pathEntity !== undefined) {
+          property.setEntity(pathEntity)
+        }
+
+        if (config.where !== undefined) {
+          property.setWhere(config.where)
+        }
+
+        return
+      }
+
+      property.setRelationshipType(config.type ?? '')
       property.setDirection(toDirection(config.direction))
+
+      if (config.where !== undefined) {
+        property.setWhere(config.where)
+      }
 
       // With a field subset the target class is not needed for hydration;
       // without one it drives full-entity eager loading and is required

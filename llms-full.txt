@@ -1177,7 +1177,7 @@ _source: traverse.ts_
 
 ### `TraverseBuilder` (class)
 
-The traversal builder (NTS-512): typed multi-hop reads — chain hops, run, get hydrated entities per hop position. Row semantics: one row per matched path (variable-degree hops fan out). ```ts const rows = await neode.traverse(Product) .hop('SUPPLIED_BY', 'out', Supplier) .hop('COVERS', 'in', Territory, { degrees: '1..2' }) .run() rows[0].nodes // [Product, Supplier, Territory] hydrated ```
+The traversal builder (NTS-512): typed multi-hop reads — chain hops, run, get hydrated entities per hop position. Row semantics: one row per matched path (variable-degree hops fan out). Aggregate reads (NTS-547): declare `groupBy()` / `countDistinct()` and read the result with `runAggregates()` — group aliases come back hydrated, counts as numbers. `orderBy()` / `limit()` shape either mode. ```ts const rows = await neode.traverse(Product) .hop('SUPPLIED_BY', 'out', Supplier) .hop('COVERS', 'in', Territory, { degrees: '1..2' }) .run() rows[0].nodes // [Product, Supplier, Territory] hydrated // co-purchase style: ranked, capped, excluding the origin's own edges const ranked = await neode.traverse(Order) .where({ orderID }) .hop('CONTAINS', 'out', Product) .hop('CONTAINS', 'in', Order) .hop('CONTAINS', 'out', Product) .exclude('t0', 'CONTAINS', 't3') .groupBy('t3') .countDistinct('t2', 'times') .orderBy('times', 'DESC') .limit(5) .runAggregates() ```
 
 _source: traverse.ts_
 
