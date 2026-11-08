@@ -150,4 +150,54 @@ describe('traverse (NTS-512)', () => {
 
     expect(() => backend.neode.traverse(Ghost as never)).toThrow()
   })
+
+  it('aggregate mode: co-drinker beers, origin beers excluded, ranked + capped (NTS-547)', async () => {
+    // Bob shares Duvel 6.66 with Adam and also drinks Duvel Velvet (Adam
+    // does not). Co-drinker beers from Adam's perspective: everything
+    // reachable Drinker->Beer<-Drinker->Beer MINUS beers Adam already
+    // drinks — so Velvet survives with times = 1, everything else excluded.
+    // (Seed before the transaction: autocommits queue behind an open tx.)
+    await backend.neode.mergeMany(Drinker, [{ name: 'Bob' }])
+    await backend.neode.mergeMany(Beer, [{ name: 'Duvel Velvet' }])
+
+    const tx = await backend.neode.openWriteTransaction()
+
+    const bob = await tx.find(Drinker, 'Bob')
+    const duvel666 = await tx.find(Beer, 'Duvel 6.66')
+    const velvet = await tx.find(Beer, 'Duvel Velvet')
+
+    expect(bob).toBeDefined()
+    expect(duvel666).toBeDefined()
+    expect(velvet).toBeDefined()
+
+    await tx.relate(Drinker, bob, duvel666, 'drinks')
+    await tx.relate(Drinker, bob, velvet, 'drinks')
+    await tx.commit()
+
+    const rows = await backend.neode
+      .traverse(Drinker)
+      .where({ name: 'Adam' })
+      .hop('DRINKS', Direction.OUTGOING, Beer) //  t1: beers Adam drinks
+      .hop('DRINKS', Direction.INCOMING, Drinker) // t2: drinkers of those beers
+      .hop('DRINKS', Direction.OUTGOING, Beer) //  t3: beers they drink
+      .exclude('t0', 'DRINKS', 't3') // ...that Adam does not already drink
+      .groupBy('t3')
+      .countDistinct('t2', 'times')
+      .orderBy('times', 'DESC')
+      .limit(5)
+      .runAggregates()
+
+    expect(rows).toHaveLength(1)
+
+    const row = rows[0] as Record<string, unknown>
+
+    expect((row['t3'] as Beer).name).toBe('Duvel Velvet')
+    expect(row['times']).toBe(1)
+  })
+
+  it('aggregate mode without a count declaration rejects', async () => {
+    await expect(
+      backend.neode.traverse(Drinker).hop('DRINKS', Direction.OUTGOING, Beer).runAggregates(),
+    ).rejects.toThrow('countDistinct')
+  })
 })
