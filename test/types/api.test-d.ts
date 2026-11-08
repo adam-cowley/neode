@@ -10,6 +10,7 @@ import { Builder } from '../../src/query/index.js'
 import { NodeEntity, Property } from '../../src/decorators/index.js'
 import type { Newable } from '../../src/meta/newable.js'
 import type { FactoryBuilder } from '../../src/services/factory.service.js'
+import type { QueryOutput } from '../../src/driver/types.js'
 
 @NodeEntity()
 class TypePerson {
@@ -90,5 +91,19 @@ describe('INeode#find id typing (NTS-502)', () => {
     expectTypeOf(tx.find<NumKey>)
       .parameter(1)
       .toEqualTypeOf<string | number>()
+  })
+})
+
+describe('INeode#read/#write build-and-run sugar (NTS-553)', () => {
+  it('accepts a Builder or a string on every scope', () => {
+    const neode = {} as unknown as import('../../src/index.js').default
+    const tx = {} as unknown as import('../../src/index.js').INeode
+
+    for (const scope of [neode, tx]) {
+      expectTypeOf(scope.read).parameter(0).toEqualTypeOf<Builder | string>()
+      expectTypeOf(scope.write).parameter(0).toEqualTypeOf<Builder | string>()
+      expectTypeOf(scope.read).returns.toEqualTypeOf<Promise<QueryOutput>>()
+      expectTypeOf(scope.write).returns.toEqualTypeOf<Promise<QueryOutput>>()
+    }
   })
 })

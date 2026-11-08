@@ -74,7 +74,7 @@ Decorator reference:
 - `NodeEntity` (decorator) — Register the class as a node model: replays the property/relationship registrations queued by its field decorators, and labels the node with the class name (or `config.labels`).
 - `Number` (decorator) — Register a numeric (integer or float) property.
 - `OnCreateSet` (decorator) — Mark the property as set on create. Merges onto the existing property, so it can be stacked with a type decorator.
-- `OneToMany` (decorator) — Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading and an agent-facing description.
+- `OneToMany` (decorator) — Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading, an agent-facing description and per-relationship cascade.
 - `OneToOne` (decorator) — Register a relationship property holding one related entity. The target entity (`config.target()`) is required — standard decorators have no design:type reflection to infer it.
 - `OnMatchSet` (decorator) — Mark the property as set on match. Merges onto the existing property, so it can be stacked with a type decorator.
 - `OtherNode` (decorator) — On a relationship entity: the property holding the node at the far end of the relationship — the end node for an outgoing relationship, the start node for an incoming one (the direction-agnostic alternative to

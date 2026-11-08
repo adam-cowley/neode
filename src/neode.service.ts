@@ -325,6 +325,43 @@ export class Neode implements INeode {
   }
 
   /**
+  Build-and-run sugar (NTS-553): pass a Builder to build-and-run it, or a
+  string to pass it straight through to readCypher. Caller-supplied
+  parameters merge over the builder's own params. Routes READ.
+  */
+  async read(
+    query: Builder | string,
+    parameters: QueryParameters = {},
+    database?: string,
+  ): Promise<QueryOutput> {
+    if (typeof query === 'string') {
+      return this.readCypher(query, parameters, database)
+    }
+
+    const built = query.build()
+
+    return this.readCypher(built.query, { ...built.params, ...parameters }, database)
+  }
+
+  /**
+  WRITE counterpart of read(): pass a Builder to build-and-run it, or a
+  string to pass it straight through to writeCypher. Routes WRITE.
+  */
+  async write(
+    query: Builder | string,
+    parameters: QueryParameters = {},
+    database?: string,
+  ): Promise<QueryOutput> {
+    if (typeof query === 'string') {
+      return this.writeCypher(query, parameters, database)
+    }
+
+    const built = query.build()
+
+    return this.writeCypher(built.query, { ...built.params, ...parameters }, database)
+  }
+
+  /**
   Set the routing used when a query path leaves it open — `cypher()`
   without a per-call `routing` option (default READ)
   */

@@ -227,7 +227,7 @@ _source: decorators/node/on-create-set.decorator.ts_
 
 ### `OneToMany` (decorator)
 
-Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading and an agent-facing description.
+Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading, an agent-facing description and per-relationship cascade.
 
 _source: decorators/node/one-to-many.decorator.ts_
 
@@ -1339,6 +1339,7 @@ so new fields (e.g. upcoming schema options) appear here automatically.
 | `target` | `string` | Name of the model this relationship points at |
 | `properties` | `Record<string, PropertyTypeName | PropertyDefinition>` (optional) | shortcut: edge properties are parsed but not wired yet — needs a generated relationship entity; add when edge-property saves are needed |
 | `eager` | `boolean` (optional) |  |
+| `cascade` | `boolean` (optional) | Per-relationship cascade: deleting a node also deletes the nodes reached through this relationship, recursively (each level applies its own annotations). Unannotated relationships survive unless the delete call opts in with `{ cascade: true }`. |
 
 ### SchemaDefinition
 

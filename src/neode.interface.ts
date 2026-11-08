@@ -1,6 +1,7 @@
 import type { CypherOptions, QueryOutput, QueryParams as QueryParameters } from './driver/types.js'
 import type { DeleteOptions } from './services/query/delete.service.js'
 import type { OrderSpec } from './services/query/get.service.js'
+import type { Builder } from './query/index.js'
 import type { ScoredEntity } from './services/query/search.service.js'
 
 /**
@@ -48,6 +49,24 @@ export interface INeode {
   ): Promise<T | undefined>
   readCypher(query: string, parameters: QueryParameters, database?: string): Promise<QueryOutput>
   writeCypher(query: string, parameters: QueryParameters, database?: string): Promise<QueryOutput>
+  /**
+  Build-and-run sugar (NTS-553): a Builder is built once and run through
+  readCypher (READ routing); a string passes straight through. Caller
+  parameters merge over the builder's own params.
+  */
+  read(
+    query: Builder | string,
+    parameters?: QueryParameters,
+    database?: string,
+  ): Promise<QueryOutput>
+  /**
+  WRITE counterpart of read().
+  */
+  write(
+    query: Builder | string,
+    parameters?: QueryParameters,
+    database?: string,
+  ): Promise<QueryOutput>
   search<T>(
     constructor: new (...arguments_: never[]) => T,
     indexName: string,

@@ -14,6 +14,7 @@ import type { EntitySchema as EntitySchemaType } from '../meta/entity/entity-sch
 import { elementIdOfEntity } from '../element-id.js'
 import type { RelationshipPropertySchema } from '../meta/relationship-property-schema.js'
 import type { INeode } from '../neode.interface.js'
+import type { Builder } from '../query/index.js'
 import { NeodeError } from '../errors/index.js'
 import { DeleteService, type DeleteOptions } from '../services/query/delete.service.js'
 import { DetachService, type DetachResult } from '../services/query/detach.service.js'
@@ -470,6 +471,34 @@ export class TransactionalService implements INeode {
 
   async writeCypher(query: string, parameters: QueryParameters = {}): Promise<QueryOutput> {
     return this.handle.run(query, parameters)
+  }
+
+  /**
+  Build-and-run sugar in this transaction's scope (NTS-553): pass a
+  Builder to build-and-run it, or a string to pass it straight through
+  to readCypher. Caller parameters merge over the builder's own params.
+  */
+  async read(query: Builder | string, parameters: QueryParameters = {}): Promise<QueryOutput> {
+    if (typeof query === 'string') {
+      return this.readCypher(query, parameters)
+    }
+
+    const built = query.build()
+
+    return this.readCypher(built.query, { ...built.params, ...parameters })
+  }
+
+  /**
+  WRITE counterpart of read(), in this transaction's scope.
+  */
+  async write(query: Builder | string, parameters: QueryParameters = {}): Promise<QueryOutput> {
+    if (typeof query === 'string') {
+      return this.writeCypher(query, parameters)
+    }
+
+    const built = query.build()
+
+    return this.writeCypher(built.query, { ...built.params, ...parameters })
   }
 
   async cypher<T>(
