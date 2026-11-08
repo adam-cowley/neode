@@ -1,6 +1,12 @@
 /**
 Direction of a relationship pattern.
 
+BOTH renders an undirected match pattern (`-[r:TYPE]-`), matching
+relationships of the type in either direction. Undirected is match-only:
+Neo4j cannot create a relationship without a direction, so the write paths
+(relate / create / save) reject BOTH with a descriptive error — set
+OUTGOING or INCOMING to write (NTS-483).
+
 Accepts the legacy case-insensitive 'IN' / 'OUT' / 'BOTH' spellings
 anywhere a direction is taken.
 */

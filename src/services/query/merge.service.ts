@@ -17,6 +17,7 @@ import {
   applyInTransforms,
   createNodeAndRelationships,
   getOtherProperty,
+  assertWritableDirection,
   modelPropertyValues,
   setRelationshipEntityProperties,
   timestampProperty,
@@ -153,6 +154,8 @@ export class MergeService extends QueryService {
     targetSchema: EntitySchema,
     entity: unknown,
   ): Promise<unknown> {
+    assertWritableDirection(relationship)
+
     const fromNode = 'from'
     const toNode = 'to'
     const thisRelationship = 'rel'
@@ -426,6 +429,9 @@ export class MergeService extends QueryService {
         if (!hasValue) {
           return
         }
+
+        // Reject before saving any targets: BOTH is match-only (NTS-483)
+        assertWritableDirection(relationship)
 
         const value = propertyValue
 

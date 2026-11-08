@@ -14,6 +14,7 @@ import {
 import { Direction } from '../../src/query'
 import { getModel } from '../../src/meta'
 import { EntitySchema } from '../../src/meta/entity/entity-schema'
+import { NeodeError } from '../../src/errors'
 import { DetachService } from '../../src/services/query/detach.service'
 import { RelateService } from '../../src/services/query/relate.service'
 import { RelationshipService } from '../../src/services/query/relationship.service'
@@ -169,16 +170,26 @@ describe('Relate / detach / relationship services', () => {
       ).toBe(0)
     })
 
-    it('relates with a both direction', async () => {
+    it('rejects a both direction on write — undirected is match-only (NTS-483)', async () => {
       const { adam, rex } = await createFixtures()
 
-      await relateService.relate(personSchema, adam, rex, personSchema.getRelationship('playsWith'))
+      const attempt = relateService.relate(
+        personSchema,
+        adam,
+        rex,
+        personSchema.getRelationship('playsWith'),
+      )
 
+      await expect(attempt).rejects.toBeInstanceOf(NeodeError)
+      await expect(attempt).rejects.toThrow(/match-only/)
+      await expect(attempt).rejects.toThrow(/OUTGOING or INCOMING/)
+
+      // Nothing was written
       expect(
         await count(
           'MATCH (:Person { name: "Adam" })-[r:PLAYS_WITH]-(:Pet { name: "Rex" }) RETURN count(r) AS c',
         ),
-      ).toBe(1)
+      ).toBe(0)
     })
 
     it('sets properties through the relationship entity schema', async () => {
