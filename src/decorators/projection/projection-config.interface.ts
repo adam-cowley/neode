@@ -30,6 +30,28 @@ export interface RelatedConfig {
 }
 
 /**
+Checked form of `RelatedConfig` for the @RelatedOne / @RelatedMany
+overloads that carry a `target()`: `fields` must be keys of the target's
+instance type, so a typo is a compile error instead of a field silently
+missing from the projection.
+*/
+export interface CheckedRelatedConfig<T extends object> {
+  /**
+  Relationship type, e.g. 'IN_COURSE'
+  */
+  type: string
+  direction?: ProjectionDirection
+  /**
+  Target entity — `fields` is checked against its instance type
+  */
+  target: () => new (...arguments_: never[]) => T
+  /**
+  Field subset to project; omit for full-entity eager loading
+  */
+  fields?: (keyof T & string)[]
+}
+
+/**
 NTS-136 — config for @RelationshipCount. `where` uses `node` as the
 variable convention for the target node, e.g. 'NOT node:OptionalLesson'.
 The relationship type may pipe multiple types: 'HAS_MODULE|HAS_LESSON'.

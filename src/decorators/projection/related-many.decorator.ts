@@ -2,7 +2,7 @@ import { mergeProperty } from '../../meta/index.js'
 import type { Newable } from '../../meta/newable.js'
 import { PropertyType } from '../../meta/property-schema.js'
 import { toDirection } from '../../query/index.js'
-import type { RelatedConfig } from './projection-config.interface.js'
+import type { CheckedRelatedConfig, RelatedConfig } from './projection-config.interface.js'
 import { addRegistration, memberName } from '../registrations.js'
 
 /**
@@ -17,7 +17,16 @@ Example:
 @RelatedMany({ type: 'COMPLETED_LESSON', fields: ['slug'] })
 completedLessons: string[];
 ```
+
+With a `target()`, `fields` is type-checked against the target's
+properties. Without one, `fields` is unchecked (the unchecked overload).
 */
+export function RelatedMany<T extends object>(
+  config: CheckedRelatedConfig<T>,
+): (value: undefined, context: ClassFieldDecoratorContext) => void
+export function RelatedMany(
+  config: RelatedConfig & { fields: string[]; target?: undefined },
+): (value: undefined, context: ClassFieldDecoratorContext) => void
 export function RelatedMany(
   config: RelatedConfig,
 ): (value: undefined, context: ClassFieldDecoratorContext) => void {

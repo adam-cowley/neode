@@ -346,10 +346,10 @@ These declare values projected into the read query — one RETURN projection per
 class Learner {
   @InternalId() _id: string
 
-  @RelatedOne({ type: 'IN_COURSE', direction: 'out', fields: ['title'] })
-  course: { title: string } // nested read-only DTO
+  @RelatedOne({ type: 'IN_COURSE', direction: 'out', target: () => Course, fields: ['title'] })
+  course?: Pick<Course, 'title'> // nested read-only DTO
 
-  @RelatedMany({ type: 'COMPLETED_LESSON', fields: ['slug'] })
+  @RelatedMany({ type: 'COMPLETED_LESSON', target: () => Lesson, fields: ['slug'] })
   completedLessons: string[] // single field → scalar array
 
   @RelationshipCount({ type: 'COMPLETED_LESSON', direction: 'out' })
@@ -369,7 +369,7 @@ class Learner {
 }
 ```
 
-- `@RelatedOne(config)` / `@RelatedMany(config)` — `config`: `{ type, direction?, fields?, target? }`. Omit `fields` for full-entity eager loading; with a field subset the result projects flat (one field → scalar array, several → plain DTOs).
+- `@RelatedOne(config)` / `@RelatedMany(config)` — `config`: `{ type, direction?, fields?, target? }`. Omit `fields` for full-entity eager loading; with a field subset the result projects flat (one field → scalar array, several → plain DTOs). With `target()`, `fields` is type-checked against the target's properties — pair it with `Pick<Target, ...>` on the annotated property so the annotation can't drift.
 - `@RelationshipCount({ type, direction?, where? })` / `@RelationshipExists({ type, direction?, where? })` — `where` uses `node` as the variable for the target node.
 - `@Computed(fn)` — never sent to the database; runs after hydration.
 - `@Vector({ dimensions, … })` (NTS-447) — declare a vector index over the property: `installSchema()` creates it, `dropSchema()` drops it, `knn()` searches it.
@@ -1088,6 +1088,17 @@ Both follow the result-reporting pattern of `installSchema()`. Index names defau
 ## Read-model projections
 
 Declarative read models composed into a single RETURN projection per read — one Cypher query, no N+1. Declared with the [projection decorators](#read-model-projection-decorators); read through `ProjectionService` or the facade's query methods, which switch to the projection automatically when a model has projected properties.
+
+### Recommended: `target()` + `Pick` annotations
+
+When a projection reads a field subset, pass `target()` and derive the annotation with `Pick`:
+
+```typescript
+@RelatedOne({ type: 'PLACED_BY', direction: 'out', target: () => Customer, fields: ['customerID', 'companyName', 'country'] })
+customer?: Pick<Customer, 'customerID' | 'companyName' | 'country'>
+```
+
+With `target()` present, `fields` is type-checked against the target's properties — a typo'd field name is a compile error that lists the valid fields. `Pick` derives the annotation from the same class, so the `fields` list and the DTO shape cannot drift apart: change a property on `Customer` and the compiler points at every projection that needs updating. `fields` without `target()` stays legal (unchecked) — use it when importing the target would be heavy or circular, and keep the annotation honest by hand.
 
 ```typescript
 import { ProjectionService, projectionNode, hasProjectedProperties, hydrateProjection } from 'neode'

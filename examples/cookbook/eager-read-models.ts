@@ -8,6 +8,10 @@ Two ways to get graph data onto a read without N+1 queries:
 2. @RelatedOne / @RelatedMany / @RelationshipCount project a read-only
    view (field subsets, counts) in the SAME query as the node itself.
 
+Projections pass `target()` so `fields` is type-checked against the
+target's properties, and annotate with `Pick<Target, …>` so the DTO
+shape and the `fields` list cannot drift apart.
+
 The projections read the same relationship TYPES the write-model
 properties declare — relate() resolves keys on the write model, the
 projections are read-only views over them.
@@ -68,11 +72,18 @@ class Student {
   completed!: Lesson[]
 
   // Read model over the same relationship types, one query per read.
-  // Two fields → a plain DTO; a single field would project the scalar.
-  @RelatedOne({ type: 'IN_COURSE', direction: 'out', fields: ['title', 'status'] })
-  course!: { title: string; status: string }
+  // Recommended form: target() checks `fields` against the target, and a
+  // Pick annotation keeps the DTO shape from drifting. Two fields → a
+  // plain DTO; a single field would project the scalar.
+  @RelatedOne({
+    type: 'IN_COURSE',
+    direction: 'out',
+    target: () => Course,
+    fields: ['title', 'status'],
+  })
+  course!: Pick<Course, 'title' | 'status'>
 
-  @RelatedMany({ type: 'COMPLETED_LESSON', fields: ['slug'] })
+  @RelatedMany({ type: 'COMPLETED_LESSON', target: () => Lesson, fields: ['slug'] })
   completedSlugs!: string[]
 
   @RelationshipCount({ type: 'COMPLETED_LESSON', direction: 'out' })
