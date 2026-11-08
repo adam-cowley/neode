@@ -881,9 +881,21 @@ Apply the missing objects of a drift idempotently — every CREATE carries IF NO
 
 _source: services/schema/drift.service.ts_
 
+### `currentGraphType` (function)
+
+The installed graph type's canonical specification string, or undefined when no graph type is installed (`'{}'` in server output). Backend errors (the command needs Cypher 25 / Neo4j 2026.02+ Enterprise) propagate to the caller — drift probing catches them and omits the family.
+
+_source: services/schema/graph-type.service.ts_
+
 ### `deriveGraphType` (function)
 
-Derive the graph type from the registered models (the same walk the ontology emits): node models become node element types (first label identifies, the rest are implied), their relationship declarations become relationship element types. Duplicate identifying labels/types: first model wins — anything the server rejects surfaces in the SchemaResult error
+Derive the graph type from the registered models (the same walk the ontology emits): node models become node element types (first label identifies, the rest are implied), their relationship declarations become relationship element types. Uniqueness is hoisted into named constraint items (NTS-549). Duplicate identifying labels/types: first model wins — anything the server rejects surfaces in the SchemaResult error. `options.constraints` appends user-declared constraint items — the only way to constrain labels/types that are not identifying ones (NTS-549).
+
+_source: services/schema/graph-type.service.ts_
+
+### `deriveGraphTypeElementsOnly` (function)
+
+Derives a graph type and strips its constraint items + any uniqueness flags — the key/uniqueness shape ALTER leaves unchanged (NTS-551)
 
 _source: services/schema/graph-type.service.ts_
 
@@ -909,6 +921,36 @@ Installs/drops the given full-text index definitions, following the same result-
 
 _source: services/schema/fulltext.service.ts_
 
+### `graphTypeAddStatement` (function)
+
+`ALTER CURRENT GRAPH TYPE ADD { ... }` — NTS-551: add new element types and constraint items to the existing graph type. Only additions are valid: an ADD cannot modify an existing element type, and independent constraints cannot be added to labels/types that already serve as identifying ones — server-side rejections surface in the SchemaResult error.
+
+_source: services/schema/graph-type.service.ts_
+
+### `graphTypeAlterStatement` (function)
+
+`ALTER CURRENT GRAPH TYPE ALTER { ... }` — NTS-551: replace the definition of existing element types (it redefines them to exactly what is given — partially defining an element type does not leave the omitted parts unchanged). Key/uniqueness constraints cannot be included: they cannot be altered server-side and remain unchanged instead, so definitions carrying them are rejected rather than silently redefined without them.
+
+_source: services/schema/graph-type.service.ts_
+
+### `GraphTypeConstraintDefinition` (interface)
+
+NTS-549 — one named constraint item of a graph type
+
+_source: services/schema/graph-type.service.ts_
+
+### `GraphTypeConstraintKind` (type)
+
+What the constraint enforces: uniqueness, key (existence + uniqueness), property existence, or property type
+
+_source: services/schema/graph-type.service.ts_
+
+### `graphTypeConstraintName` (const)
+
+Deterministic name for a graph type constraint item (the same `<label>_<props>_<kind>` shape as the standalone constraint names)
+
+_source: services/schema/graph-type.service.ts_
+
 ### `GraphTypeDefinition` (interface)
 
 A complete graph type: the shape derived from the registered models
@@ -917,7 +959,7 @@ _source: services/schema/graph-type.service.ts_
 
 ### `graphTypeDropStatement` (function)
 
-`ALTER CURRENT GRAPH TYPE DROP { ... }` — drops the element types by identifying label/relationship type (dropping an element type drops the constraints it enforced)
+`ALTER CURRENT GRAPH TYPE DROP { ... }` — drops the element types by identifying label/relationship type plus every named constraint item. Dropping an element type removes its dependent constraints (label existence, property type/existence) but LEAVES its uniqueness/key constraints — those survive as constraints on non-identifying labels and must go by name.
 
 _source: services/schema/graph-type.service.ts_
 
@@ -962,6 +1004,12 @@ _source: services/schema/inspect.service.ts_
 Read the installed schema (SHOW CONSTRAINTS / SHOW INDEXES) and diff it against the declared schema
 
 _source: services/schema/inspect.service.ts_
+
+### `parseGraphTypeSpecification` (function)
+
+Parse the canonical `specification` string `SHOW CURRENT GRAPH TYPE` returns into the structural definition (NTS-550) — the same shapes the statement builders render, so drift comparison is structural on both sides. Accepts both the multi-line canonical form and a full `ALTER CURRENT GRAPH TYPE SET` statement (single-line, comma-separated). Throws on fragments it cannot parse (the canonical form is deterministic — a failure is a library bug and should be loud).
+
+_source: services/schema/graph-type.service.ts_
 
 ### `SchemaDiff` (interface)
 
@@ -1109,7 +1157,7 @@ _source: ops/verify-connectivity.ts_
 
 ### `wipe` (function)
 
-Wipe the database clean for a test run: DETACH DELETE every node, then drop every constraint and index the database currently has. Standalone on purpose — SchemaService derives DROP statements from the registered models, while wipe() discovers them from the database itself (small duplication of its statement shapes, accepted). Index drops are best-effort: built-in indexes (e.g. the token lookup store on real servers) cannot be dropped and are ignored.
+Wipe the database clean for a test run: DETACH DELETE every node, reset the graph type to empty (NTS-550 — graph-type-derived constraints only go with the type; Enterprise servers only, best-effort), then drop every constraint and index the database currently has. Standalone on purpose — SchemaService derives DROP statements from the registered models, while wipe() discovers them from the database itself (small duplication of its statement shapes, accepted). Index drops are best-effort: built-in indexes (e.g. the token lookup store on real servers) cannot be dropped and are ignored. Constraint drops are best-effort too: on servers that had a graph type installed, SHOW CONSTRAINTS lists graph-type-derived constraints whose DROP CONSTRAINT may fail even after the reset.
 
 _source: testing/wipe.ts_
 

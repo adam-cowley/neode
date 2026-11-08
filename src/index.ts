@@ -107,12 +107,15 @@ export { VectorIndexService } from './services/schema/vector.service.js'
 export type { VectorIndexDefinition } from './services/schema/vector.service.js'
 export {
   GraphTypeService,
+  currentGraphType,
   deriveGraphType,
   deriveGraphTypeElementsOnly,
   graphTypeAddStatement,
   graphTypeAlterStatement,
+  graphTypeConstraintName,
   graphTypeSetStatement,
   graphTypeDropStatement,
+  parseGraphTypeSpecification,
 } from './services/schema/graph-type.service.js'
 export type {
   GraphTypeConstraintDefinition,
@@ -122,7 +125,6 @@ export type {
   GraphTypeRelationshipDefinition,
   GraphTypePropertyDefinition,
 } from './services/schema/graph-type.service.js'
-export { graphTypeConstraintName } from './services/schema/graph-type.service.js'
 export { inspectSchema } from './services/schema/inspect.service.js'
 export type {
   SchemaInspection,

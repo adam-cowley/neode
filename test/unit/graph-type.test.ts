@@ -12,8 +12,9 @@ import {
   Uuid,
 } from '../../src/decorators'
 import { defineModel } from '../../src/meta/map-schema'
-import type { ConnectionProvider } from '../../src/driver/types'
+import type { ConnectionProvider, QueryRecord } from '../../src/driver/types'
 import { Direction } from '../../src/query/direction'
+import { formatSchemaDrift, schemaDrift } from '../../src/services/schema/drift.service'
 import {
   GraphTypeService,
   deriveGraphType,
@@ -23,6 +24,7 @@ import {
   graphTypeConstraintName,
   graphTypeDropStatement,
   graphTypeSetStatement,
+  parseGraphTypeSpecification,
 } from '../../src/services/schema/graph-type.service'
 
 /**
@@ -490,6 +492,216 @@ describe('graphTypeAddStatement / graphTypeAlterStatement (NTS-551)', () => {
   it('ADD/ALTER of an empty definition throws', () => {
     expect(() => graphTypeAddStatement({ nodes: [] })).toThrow(TypeError)
     expect(() => graphTypeAlterStatement({ nodes: [] })).toThrow(TypeError)
+  })
+})
+
+// ---- Parsing the canonical specification + drift (NTS-550) -------------------
+
+describe('parseGraphTypeSpecification (NTS-550)', () => {
+  // The exact canonical form `SHOW CURRENT GRAPH TYPE` returns (per the
+  // Cypher manual's documented output, \r\n-separated)
+  const canonical = [
+    '{',
+    '   (:`City` => {`name` :: STRING NOT NULL, `population` :: INTEGER}),',
+    '   (:`Person` => :`Resident` {`name` :: STRING, `ssn` :: INTEGER}),',
+    '   (:`Resident`)-[:`LIVES_IN` => {`since` :: ANY NOT NULL}]->(:`City` =>),',
+    '   (:`Person` =>)-[:`WORKS_FOR` => {`role` :: STRING}]->(:`Company` =>),',
+    '   CONSTRAINT `constraint_bb1018eb` FOR (`n`:`Person` =>) REQUIRE (`n`.`name`, `n`.`ssn`) IS KEY,',
+    '   CONSTRAINT `animal_id` FOR (`n`:`Animal`) REQUIRE (`n`.`id`) IS UNIQUE,',
+    '   CONSTRAINT `resident_address` FOR (`n`:`Resident`) REQUIRE (`n`.`address`) IS :: STRING,',
+    '   CONSTRAINT `stayed_in_endDate` FOR ()-[`r`:`STAYED_IN`]->() REQUIRE (`r`.`endDate`) IS :: DATE,',
+    '   CONSTRAINT `stayed_in_startDate` FOR ()-[`r`:`STAYED_IN`]->() REQUIRE (`r`.`startDate`) IS NOT NULL',
+    '}',
+  ].join('\r\n')
+
+  it('parses node and relationship element types', () => {
+    const parsed = parseGraphTypeSpecification(canonical)
+
+    expect(parsed.nodes).toEqual([
+      {
+        label: 'City',
+        properties: [
+          { name: 'name', type: 'STRING', nullable: false },
+          { name: 'population', type: 'INTEGER' },
+        ],
+      },
+      {
+        label: 'Person',
+        implies: ['Resident'],
+        properties: [
+          { name: 'name', type: 'STRING' },
+          { name: 'ssn', type: 'INTEGER' },
+        ],
+      },
+    ])
+
+    expect(parsed.relationships).toEqual([
+      {
+        type: 'LIVES_IN',
+        source: 'Resident',
+        target: 'City',
+        properties: [{ name: 'since', type: 'ANY', nullable: false }],
+      },
+      {
+        type: 'WORKS_FOR',
+        source: 'Person',
+        target: 'Company',
+        properties: [{ name: 'role', type: 'STRING' }],
+      },
+    ])
+  })
+
+  it('parses named constraint items with their kinds', () => {
+    const parsed = parseGraphTypeSpecification(canonical)
+
+    expect(parsed.constraints).toEqual([
+      {
+        name: 'constraint_bb1018eb',
+        labelOrType: 'Person',
+        relationship: false,
+        properties: ['name', 'ssn'],
+        kind: 'KEY',
+      },
+      {
+        name: 'animal_id',
+        labelOrType: 'Animal',
+        relationship: false,
+        properties: ['id'],
+        kind: 'UNIQUE',
+      },
+      {
+        name: 'resident_address',
+        labelOrType: 'Resident',
+        relationship: false,
+        properties: ['address'],
+        kind: 'TYPE',
+        type: 'STRING',
+      },
+      {
+        name: 'stayed_in_endDate',
+        labelOrType: 'STAYED_IN',
+        relationship: true,
+        properties: ['endDate'],
+        kind: 'TYPE',
+        type: 'DATE',
+      },
+      {
+        name: 'stayed_in_startDate',
+        labelOrType: 'STAYED_IN',
+        relationship: true,
+        properties: ['startDate'],
+        kind: 'EXISTS',
+      },
+    ])
+  })
+
+  it('parses an empty graph type to no elements and throws on garbage', () => {
+    expect(parseGraphTypeSpecification('{}')).toEqual({
+      nodes: [],
+      relationships: [],
+      constraints: [],
+    })
+    expect(() => parseGraphTypeSpecification('{WHAT}')).toThrow(TypeError)
+  })
+})
+
+describe('graph type drift (NTS-550)', () => {
+  const record = (values: Record<string, unknown>): QueryRecord => ({
+    keys: Object.keys(values),
+    get: (key) => values[key],
+    has: (key) => key in values,
+  })
+
+  /** Provider answering the three SHOW probes; graph type spec configurable */
+  const provider = (specification: string | undefined, failGraphType = false) => {
+    const connection = {
+      run: async (statement: string) => {
+        if (statement === 'SHOW CONSTRAINTS' || statement === 'SHOW INDEXES') {
+          return { records: [] }
+        }
+
+        if (statement === 'SHOW CURRENT GRAPH TYPE') {
+          if (failGraphType) {
+            throw new Error('unsupported')
+          }
+
+          return { records: specification === undefined ? [] : [record({ specification })] }
+        }
+
+        return { records: [] }
+      },
+    } as unknown as ConnectionProvider
+
+    return connection
+  }
+
+  it('reports no graph type drift when the installed specification matches the derivation', async () => {
+    const declared = deriveGraphType()
+    const drift = await schemaDrift(provider(graphTypeSetStatement(declared)))
+
+    expect(drift.graphType).toBeDefined()
+    expect(drift.graphType?.missing).toEqual([])
+    expect(drift.graphType?.stale).toEqual([])
+    expect(drift.graphType?.mismatched).toEqual([])
+    expect(drift.graphType?.declaredStatement).toBe(graphTypeSetStatement(declared))
+  })
+
+  it('round-trips: no drift when the server shape is parsed and re-diffed', async () => {
+    // Same as above but through the real derived definition of THIS file's
+    // fixtures — the parser must understand our own SET rendering
+    const drift = await schemaDrift(provider(graphTypeSetStatement(deriveGraphType())))
+
+    expect(drift.graphType?.missing).toEqual([])
+    expect(drift.graphType?.stale).toEqual([])
+    expect(drift.graphType?.mismatched).toEqual([])
+  })
+
+  it('reports stale elements (installed but not declared) with their DROP fix', async () => {
+    const drift = await schemaDrift(
+      provider(
+        'ALTER CURRENT GRAPH TYPE SET {(:`Legacy` => {`x` :: INTEGER}), ()-[:`OLD` =>]->()}',
+      ),
+    )
+
+    expect(drift.graphType?.stale.map((entry) => entry.name)).toEqual(['Legacy', 'OLD'])
+    expect(drift.graphType?.stale[0]?.dropStatement).toContain('DROP {(:`Legacy` =>)}')
+  })
+
+  it('reports missing elements when no graph type is installed', async () => {
+    const drift = await schemaDrift(provider(undefined))
+
+    expect(drift.graphType?.installed).toBeUndefined()
+    expect(drift.graphType?.missing.map((entry) => entry.name)).toContain('GtPerson')
+    expect(drift.graphType?.missing[0]?.createStatement).toContain('ADD {(:`')
+  })
+
+  it('reports a redefined element type with its ALTER fix', async () => {
+    // GtMovie redefined with an extra NOT NULL property server-side
+    const drift = await schemaDrift(
+      provider(
+        'ALTER CURRENT GRAPH TYPE SET {(:`GtMovie` => {`title` :: STRING NOT NULL, `released` :: INTEGER})}',
+      ),
+    )
+
+    expect(drift.graphType?.mismatched.map((entry) => entry.name)).toEqual(['GtMovie'])
+    expect(drift.graphType?.mismatched[0]?.createStatement).toContain('ALTER {(:`GtMovie` =>')
+  })
+
+  it('omits the family on backends without graph type support', async () => {
+    const drift = await schemaDrift(provider(undefined, true))
+
+    expect(drift.graphType).toBeUndefined()
+  })
+
+  it('the human-readable report includes the graph type family', async () => {
+    const drift = await schemaDrift(
+      provider('ALTER CURRENT GRAPH TYPE SET {(:`Legacy` => {`x` :: INTEGER})}'),
+    )
+
+    const report = formatSchemaDrift(drift)
+
+    expect(report).toContain('graph type (installed)')
+    expect(report).toContain('GRAPH_TYPE Legacy')
   })
 })
 

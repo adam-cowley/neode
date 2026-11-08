@@ -8,6 +8,7 @@ import {
 } from './schema.service.js'
 import { type FulltextIndexDefinition, fulltextIndexName } from './fulltext.service.js'
 import { type VectorIndexDefinition, vectorIndexName } from './vector.service.js'
+import type { GraphTypeConstraintDefinition } from './graph-type.service.js'
 
 /**
 Push a schema object into the declared list unless its name is already declared
@@ -37,6 +38,11 @@ export interface InspectOptions {
   Existence constraints are Enterprise-only: include them in the declared set
   */
   enterprise?: boolean
+  /**
+  NTS-550 — named graph type constraint items (the extras passed to
+  installGraphType()) so the graph type family does not report them missing
+  */
+  graphTypeConstraints?: GraphTypeConstraintDefinition[]
 }
 
 /**

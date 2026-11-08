@@ -267,6 +267,228 @@ export function graphTypeDropStatement(definition: GraphTypeDefinition): string 
   return `ALTER CURRENT GRAPH TYPE DROP {${statements.join(', ')}}`
 }
 
+// ---- Parsing the server's canonical specification (NTS-550) ------------------
+//
+// `SHOW CURRENT GRAPH TYPE` returns one `specification` string in a
+// canonical form: `\r\n`-separated lines, backticked identifiers, every
+// uniqueness/key constraint hoisted into its own `CONSTRAINT ... FOR ...
+// REQUIRE ...` line (with generated names when not explicitly named), and
+// relationship ends rendered as abbreviated node element types
+// (`(:`Label` =>)` when the end is an element type's identifying label,
+// `(:`Label`)` when it is a plain label, `()` when unconstrained).
+
+const NODE_SPEC_PATTERN =
+  /^\(\s*(?:`(\w+)`\s*)?:\s*`([^`]+)`\s*=>\s*(?::\s*([^{}]*?))?\s*(?:\{(.*)\})?\s*\)$/
+
+const RELATIONSHIP_SPEC_PATTERN =
+  /^\(\s*(?::\s*(?:`([^`]+)`\s*(?:=>\s*)?)?)?\)\s*-\[\s*:\s*`([^`]+)`\s*(?:=>\s*(?:\{(.*)\})?\s*)?\]->\(\s*(?::\s*(?:`([^`]+)`\s*(?:=>\s*)?)?)?\)$/
+
+const CONSTRAINT_SPEC_PATTERN =
+  /^CONSTRAINT\s*`([^`]+)`\s*FOR\s*(?:\(\)\s*-\[\s*`?(\w+)`?\s*:\s*`?(\w+)`?\s*\]\s*->\s*\(\)|\(\s*(?:`?(\w+)`?\s*)?:\s*`([^`]+)`\s*(?:=>\s*)?\))\s*REQUIRE\s*\((.*)\)\s*(IS\s+UNIQUE|IS\s+KEY|IS\s+NOT\s+NULL|IS\s*::\s*.+)$/i
+
+const PROPERTY_SPEC_PATTERN = /`?(\w+)`?\s*\.\s*`?(\w+)`?/g
+
+const parseSpecProperties = (body = ''): GraphTypePropertyDefinition[] => {
+  if (body === '') {
+    return []
+  }
+
+  return body.split(',').map((part) => {
+    const match = /^\s*`([^`]+)`\s*::\s*(.+?)(?:\s+NOT NULL)?\s*$/.exec(part)
+
+    if (match === null) {
+      throw new TypeError(`Cannot parse graph type property specification: "${part.trim()}"`)
+    }
+
+    const [, name = '', type = ''] = match
+
+    return {
+      name,
+      type,
+      // `NOT NULL` only lands the flag at the END — `LIST<STRING NOT NULL>`
+      // carries it inside the brackets (list-element nullability, not the
+      // property's)
+      ...(part.trimEnd().endsWith('NOT NULL') && { nullable: false }),
+    }
+  })
+}
+
+const parseSpecImplied = (body = ''): string[] | undefined => {
+  const implied = body
+    .split('&')
+    .map((label) => label.trim().replaceAll('`', ''))
+    .filter((label) => label.length > 0)
+
+  return implied.length > 0 ? implied : undefined
+}
+
+const parseSpecConstraint = (match: RegExpExecArray): GraphTypeConstraintDefinition => {
+  // 1 = name, 2 = relationship variable, 3 = relationship type,
+  // 4 = node binding variable, 5 = node label, 6 = REQUIRE body,
+  // 7 = predicate — capture groups are `string | undefined` at runtime
+  const [, name = '', , relationshipType, , nodeLabel = '', requireBody = '', predicate = '']: (
+    | string
+    | undefined
+  )[] = match
+
+  const properties = Array.from(
+    requireBody.matchAll(PROPERTY_SPEC_PATTERN),
+    (propertyMatch) => propertyMatch[2] ?? '',
+  )
+
+  const upper = predicate.toUpperCase()
+
+  let kind: GraphTypeConstraintKind = 'TYPE'
+
+  if (upper.includes('UNIQUE')) {
+    kind = 'UNIQUE'
+  } else if (upper.includes('KEY')) {
+    kind = 'KEY'
+  } else if (upper.includes('NOT NULL')) {
+    kind = 'EXISTS'
+  }
+
+  return {
+    name,
+    labelOrType: relationshipType ?? nodeLabel,
+    relationship: relationshipType !== undefined,
+    properties,
+    kind,
+    ...(kind === 'TYPE' && { type: predicate.replace(/^\s*IS\s*::\s*/i, '').trim() }),
+  }
+}
+
+/**
+Parse the canonical `specification` string `SHOW CURRENT GRAPH TYPE`
+returns into the structural definition (NTS-550) — the same shapes the
+statement builders render, so drift comparison is structural on both
+sides. Accepts both the multi-line canonical form and a full `ALTER
+CURRENT GRAPH TYPE SET` statement (single-line, comma-separated). Throws
+on fragments it cannot parse (the canonical form is deterministic — a
+failure is a library bug and should be loud).
+*/
+export function parseGraphTypeSpecification(specification: string): GraphTypeDefinition {
+  const body = specification
+    .trim()
+    .replace(/^ALTER\s+CURRENT\s+GRAPH\s+TYPE\s+SET\s*/i, '')
+    .trim()
+
+  if (body === '{}' || body === '{ }') {
+    return { nodes: [], relationships: [], constraints: [] }
+  }
+
+  if (!body.startsWith('{') || !body.endsWith('}')) {
+    throw new TypeError(`Cannot parse graph type specification: "${specification.trim()}"`)
+  }
+
+  // Inside the outer braces; the loop tracks only nested structure
+  const inner = body.slice(1, -1)
+
+  const nodes: GraphTypeNodeDefinition[] = []
+  const relationships: GraphTypeRelationshipDefinition[] = []
+  const constraints: GraphTypeConstraintDefinition[] = []
+
+  // Top-level (depth-0) comma split — property maps and LIST<...> types
+  // carry commas at depth 1
+  let depth = 0
+  let current = ''
+
+  const flush = (): void => {
+    const fragment = current.trim()
+
+    current = ''
+
+    if (fragment === '') {
+      return
+    }
+
+    let match = NODE_SPEC_PATTERN.exec(fragment)
+
+    if (match !== null) {
+      // 1 = optional binding variable, 2 = label, 3 = implied labels,
+      // 4 = property map body — capture groups are `string | undefined`
+      // at runtime
+      const groups: (string | undefined)[] = match
+      const properties = parseSpecProperties(groups[4] ?? '')
+      const implied = parseSpecImplied(groups[3])
+
+      nodes.push({
+        label: groups[2] ?? '',
+        ...(implied !== undefined && { implies: implied }),
+        ...(properties.length > 0 && { properties }),
+      })
+
+      return
+    }
+
+    match = RELATIONSHIP_SPEC_PATTERN.exec(fragment)
+
+    if (match !== null) {
+      // 1 = source label, 2 = type, 3 = property map body, 4 = target
+      // label — capture groups are `string | undefined` at runtime
+      const [, source, type = '', propertyBody = '', target]: (string | undefined)[] = match
+      const properties = parseSpecProperties(propertyBody)
+
+      relationships.push({
+        type,
+        ...(source !== undefined && { source }),
+        ...(target !== undefined && { target }),
+        ...(properties.length > 0 && { properties }),
+      })
+
+      return
+    }
+
+    match = CONSTRAINT_SPEC_PATTERN.exec(fragment)
+
+    if (match !== null) {
+      constraints.push(parseSpecConstraint(match))
+
+      return
+    }
+
+    throw new TypeError(`Cannot parse graph type specification fragment: "${fragment}"`)
+  }
+
+  for (const character of inner) {
+    if ('{[('.includes(character)) {
+      depth += 1
+    } else if ('}])'.includes(character)) {
+      depth -= 1
+    }
+
+    if (character === ',' && depth === 0) {
+      flush()
+
+      continue
+    }
+
+    current += character
+  }
+
+  flush()
+
+  return { nodes, relationships, constraints }
+}
+
+/**
+The installed graph type's canonical specification string, or undefined
+when no graph type is installed (`'{}'` in server output). Backend errors
+(the command needs Cypher 25 / Neo4j 2026.02+ Enterprise) propagate to the
+caller — drift probing catches them and omits the family.
+*/
+export async function currentGraphType(
+  connection: ConnectionProvider,
+): Promise<string | undefined> {
+  const output = await connection.run('SHOW CURRENT GRAPH TYPE', {}, 'READ')
+
+  const specification = output.records[0]?.get('specification')
+
+  return typeof specification === 'string' && specification.trim() !== '{}'
+    ? specification
+    : undefined
+}
+
 /**
 Mappable property columns of an element type: declared properties with a
 Cypher type equivalent, typed and flagged. NUMBER (spans INTEGER + FLOAT),
