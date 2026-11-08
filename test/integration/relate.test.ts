@@ -51,7 +51,7 @@ class Ownership {
   @Property()
   since: string
 
-  @Property({ type: 'number' })
+  @Property({ type: 'number', min: 1 })
   years: number
 }
 
@@ -317,5 +317,56 @@ describe('Relate / detach / relationship services', () => {
       expect(await backend.neode.find(Person, adam.id)).toBeInstanceOf(Person)
       expect(await backend.neode.find(Pet, rex.id)).toBeInstanceOf(Pet)
     })
+  })
+})
+
+// ---- NTS-509: edge-entity property rules validate on the write boundary ----
+
+describe('relationship-entity property validation (NTS-509)', () => {
+  let backend: TestBackend
+  let relateService: RelateService
+  let personSchema: EntitySchema
+
+  beforeAll(async () => {
+    backend = await openBackend()
+
+    relateService = new RelateService(backend.connection)
+
+    personSchema = getModel(Person)
+  })
+
+  afterEach(async () => {
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  it('rejects edge properties violating the relationship entity rules', async () => {
+    const adam = await backend.neode.save(Person.create('Adam'))
+    const rex = await backend.neode.save(Pet.create('Rex'))
+
+    await expect(
+      relateService.relate(personSchema, adam, rex, personSchema.getRelationship('leases'), {
+        since: '2020-01-01',
+        years: 0,
+      }),
+    ).rejects.toThrow(/validation/i)
+  })
+
+  it('accepts valid edge properties (the rules pass through)', async () => {
+    const adam = await backend.neode.save(Person.create('Adam'))
+    const rex = await backend.neode.save(Pet.create('Rex'))
+
+    const result = await relateService.relate(
+      personSchema,
+      adam,
+      rex,
+      personSchema.getRelationship('leases'),
+      { since: '2020-01-01', years: 2 },
+    )
+
+    expect(result).toBeDefined()
   })
 })
