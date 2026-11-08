@@ -14,7 +14,7 @@ Package version: **1.0.0-next.1** (from package.json).
 - [Querying](#querying) — Query builder, repositories, raw Cypher, transactions, hydration, drivers and read-model projections.
 - [Schema management](#schema-management) — Indexes, constraints, full-text and vector indexes, schema inspection and drift workflow.
 - [Testing & ops](#testing-ops) — wipe()/testId() test utilities, factory seeding, connectivity checks and Cypher-script helpers.
-- [Errors](#errors) — Typed error taxonomy and driver-error classification.
+- [Errors](#errors) — Typed error taxonomy and driver-error classification. House rule: every error message names the fix — reload the entity on OptimisticLockError, add the named key to the `with` load spec on RelationNotLoadedError.
 - [Core](#core) — Collection, serialisation and other shared exports.
 - [Schema reference](#schema-reference) — every field of PropertyDefinition / RelationshipDefinition / SchemaDefinition
 - [Agent ontology API](#agent-ontology-api) — ontology() / ontologyMarkdown() for Text2Cypher and MCP
@@ -1205,7 +1205,7 @@ _source: testing/wipe.ts_
 
 ## Errors
 
-Typed error taxonomy and driver-error classification.
+Typed error taxonomy and driver-error classification. House rule: every error message names the fix — reload the entity on OptimisticLockError, add the named key to the `with` load spec on RelationNotLoadedError.
 
 ### `classifyError` (function)
 

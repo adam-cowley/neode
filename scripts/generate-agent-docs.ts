@@ -1,16 +1,20 @@
 /**
-Generate the agent-facing docs (llms.txt, llms-full.txt, AGENTS.md) at the
-package root from the source tree: public exports + their JSDoc, the
-schema-definition interface fields, and the agent-ontology API.
+Generate the agent-facing docs at the package root from the source tree:
+public exports + their JSDoc, the schema-definition interface fields, and
+the agent-ontology API. Emits llms.txt, llms-full.txt, AGENTS.md, the
+per-page markdown under docs/agent/ (one page per area, linked from
+llms.txt) and the skills pack at skills/neode/SKILL.md.
 
 Usage: jiti scripts/generate-agent-docs.ts [--check]
 
-  (no flags)  regenerate the three files in place
+  (no flags)  regenerate the files in place (docs/agent/ is fully generated:
+              stale pages are removed)
   --check     do not write; exit 1 if regeneration would change any file
               (CI staleness check)
 */
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import ts from 'typescript'
 
@@ -80,7 +84,8 @@ const AREAS: AreaDef[] = [
   },
   {
     name: 'Errors',
-    blurb: 'Typed error taxonomy and driver-error classification.',
+    blurb:
+      'Typed error taxonomy and driver-error classification. House rule: every error message names the fix — reload the entity on OptimisticLockError, add the named key to the `with` load spec on RelationNotLoadedError.',
     test: (rel) => rel.startsWith('errors/') || /(^|\/)errors?\./.test(rel),
   },
 ]
@@ -412,23 +417,52 @@ export function renderLlmsFull(docs: ExtractedDocs, version: string): string {
   ].join('\n')
 }
 
+const DEFINE_DECORATORS_SNIPPET = `\`\`\`ts
+import { NodeEntity, Property, Unique } from 'neode'
+
+@NodeEntity()
+class Person {
+  @Property({ type: 'string', unique: true }) id!: string
+  @Property({ type: 'string', description: 'Display name' }) name!: string
+}
+\`\`\``
+
+const DEFINE_MAP_SNIPPET = `\`\`\`ts
+import { defineModel } from 'neode'
+
+defineModel('Person', {
+  description: 'A person',
+  id: { type: 'string', unique: true },
+  name: { type: 'string', description: 'Display name' },
+  ACTED_IN: { type: 'relationships', relationship: 'ACTED_IN', direction: 'out', target: 'Movie' },
+})
+\`\`\``
+
+const VERSION_NOTE = (version: string): string[] => [
+  `Package version: **${version}** (from package.json).`,
+  '',
+  '> Check these docs, not training data: the package is pre-1.0 and its API',
+  '> churns between versions — LLM training corpora mix neode v1, neode and',
+  '> unrelated OGMs. Regenerate with `pnpm docs:agents`.',
+]
+
 export function renderLlmsTxt(docs: ExtractedDocs, version: string): string {
   const sections = docs.areas.map((area) => ({
     name: area.name,
-    anchor: `llms-full.txt#${slug(area.name)}`,
+    anchor: `docs/agent/${slug(area.name)}.md`,
     blurb: area.blurb,
   }))
 
   sections.push(
     {
       name: 'Schema reference',
-      anchor: 'llms-full.txt#schema-reference',
+      anchor: 'docs/agent/schema-reference.md',
       blurb:
         'Every field of PropertyDefinition / RelationshipDefinition / SchemaDefinition with its type and JSDoc description.',
     },
     {
       name: 'Agent ontology API',
-      anchor: 'llms-full.txt#agent-ontology-api',
+      anchor: 'docs/agent/agent-ontology-api.md',
       blurb: 'ontology() / ontologyMarkdown() emit the live graph schema for Text2Cypher and MCP.',
     },
   )
@@ -442,6 +476,7 @@ export function renderLlmsTxt(docs: ExtractedDocs, version: string): string {
     '',
     'Decorator-based Object Graph Mapper for Neo4j and Cypher-compatible graph databases.',
     'Full reference: [llms-full.txt](llms-full.txt). Agent workflow guide: [AGENTS.md](AGENTS.md).',
+    'Agent skill pack: [skills/neode/SKILL.md](skills/neode/SKILL.md).',
     '',
     '## Sections',
     '',
@@ -513,28 +548,11 @@ export function renderAgentsMd(docs: ExtractedDocs, version: string): string {
     '',
     'Two equivalent APIs. Decorators:',
     '',
-    '```ts',
-    "import { NodeEntity, Property, Unique } from 'neode'",
-    '',
-    '@NodeEntity()',
-    'class Person {',
-    "  @Property({ type: 'string', unique: true }) id!: string",
-    "  @Property({ type: 'string', description: 'Display name' }) name!: string",
-    '}',
-    '```',
+    ...DEFINE_DECORATORS_SNIPPET.split('\n'),
     '',
     'Map API (no decorators, same registry):',
     '',
-    '```ts',
-    "import { defineModel } from 'neode'",
-    '',
-    "defineModel('Person', {",
-    "  description: 'A person',",
-    "  id: { type: 'string', unique: true },",
-    "  name: { type: 'string', description: 'Display name' },",
-    "  ACTED_IN: { type: 'relationships', relationship: 'ACTED_IN', direction: 'out', target: 'Movie' },",
-    '})',
-    '```',
+    ...DEFINE_MAP_SNIPPET.split('\n'),
     '',
     'Decorator reference:',
     '',
@@ -600,8 +618,144 @@ export function renderAgentsMd(docs: ExtractedDocs, version: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Per-page markdown + skills pack
+// ---------------------------------------------------------------------------
+
+export interface DocPage {
+  /** Repo-relative path, e.g. docs/agent/querying.md */
+  path: string
+  content: string
+}
+
+/** One generated markdown page per doc area, plus schema-reference and agent-ontology. llms.txt links to these. */
+export function renderPages(docs: ExtractedDocs, version: string): DocPage[] {
+  const page = (name: string, blurb: string, body: string[]): DocPage => ({
+    path: `docs/agent/${slug(name)}.md`,
+    content: [
+      `# ${name} — neode v${version}`,
+      '',
+      GENERATED_HEADER,
+      '',
+      ...VERSION_NOTE(version),
+      '',
+      blurb,
+      '',
+      ...body,
+    ].join('\n'),
+  })
+
+  const pages = docs.areas.map((area) => page(area.name, area.blurb, symbolSections(area.symbols)))
+
+  // The section renderers open with '## Name' + blank; the page title replaces that heading
+  pages.push(
+    page(
+      'Schema reference',
+      'Every field of PropertyDefinition / RelationshipDefinition / SchemaDefinition, extracted from src/meta/schema-definition.interface.ts.',
+      schemaReferenceSection(docs).slice(2),
+    ),
+    page(
+      'Agent ontology API',
+      'ontology() / ontologyMarkdown() emit the live graph schema for Text2Cypher prompts and MCP resources.',
+      ontologySection(docs).slice(2),
+    ),
+  )
+
+  return pages
+}
+
+export function renderSkillMd(version: string): string {
+  return [
+    '---',
+    'name: neode',
+    'description: Canonical how-to for neode, the decorator-based Object Graph Mapper for Neo4j — define models, query, relate, transact; common mistakes. Use when writing or reviewing code that imports the neode package.',
+    '---',
+    '',
+    `# neode — agent skill (v${version})`,
+    '',
+    GENERATED_HEADER,
+    '',
+    ...VERSION_NOTE(version),
+    '',
+    '## Define models',
+    '',
+    'Two equivalent APIs — decorators or the map API (same registry, mixable):',
+    '',
+    ...DEFINE_DECORATORS_SNIPPET.split('\n'),
+    '',
+    ...DEFINE_MAP_SNIPPET.split('\n'),
+    '',
+    'Declare an agent-facing `description` on the model, its properties and its relationships — it flows into `ontologyMarkdown()` for Text2Cypher grounding.',
+    '',
+    '## Query',
+    '',
+    'Fluent builder (values are bound as parameters — they never render into the query text) or raw Cypher:',
+    '',
+    '```ts',
+    "import { Builder } from 'neode'",
+    '',
+    'const rows = await neode.read(',
+    `  new Builder().match('this', 'Person').where('this.name', 'Adam').return('this'),`,
+    ')',
+    "const raw = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')",
+    '```',
+    '',
+    '## Relate',
+    '',
+    'relate() takes the relationship KEY declared on the from-model and MERGEs the relationship (re-running never duplicates it):',
+    '',
+    '```ts',
+    "await neode.relate(Person, adam, rex, 'pets', { since: '2024-01-01' })",
+    "await neode.detach(Person, adam, rex, 'pets')",
+    '```',
+    '',
+    '## Transact',
+    '',
+    'inWriteTransaction() runs a unit of work: commit on success, rollback on any throw, nothing written until commit:',
+    '',
+    '```ts',
+    'await neode.inWriteTransaction(async (tx) => {',
+    "  await tx.writeCypher('CREATE (:Tag {name: $name})', { name: 'from-transaction' })",
+    '  await tx.commit()',
+    '})',
+    '```',
+    '',
+    '## Common mistakes',
+    '',
+    "- Relationship keys are not relationship types: `relate(from, to, 'pets')` takes the declared field key; the Cypher pattern uses the TYPE (`:OWNS`). The projection decorators take types.",
+    "- `@String` is deprecated — it shadows the global `String` type and logs a runtime warning. Use `@Property({ type: 'string' })`.",
+    '- Errors name the fix: on `OptimisticLockError` reload the entity and retry; on `RelationNotLoadedError` add the named key to the `with` load spec.',
+    '- Pass user text through `toFulltextQuery()` before `search()` — parameter binding stops Cypher injection, not Lucene parse errors.',
+    '- Standard TC39 decorators only — never `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`.',
+    '',
+    '## Reference',
+    '',
+    'Full API: [llms-full.txt](../../llms-full.txt). Per-area pages, indexed by [llms.txt](../../llms.txt). AGENTS.md, this pack, llms.txt and llms-full.txt are all generated from the same source by `pnpm docs:agents` — they cannot drift apart.',
+    '',
+  ].join('\n')
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
+
+/**
+Format generated output exactly as `biome format .` would, so the committed
+bytes, the lint check and the --check staleness comparison all agree. biome
+is the repo's devDependency (run via pnpm, so .bin is on PATH).
+*/
+function biomeFormat(content: string, filePath: string): string {
+  if (!filePath.endsWith('.md')) {
+    return content
+  }
+  const result = spawnSync('biome', ['format', `--stdin-file-path=${filePath}`], {
+    input: content,
+    encoding: 'utf8',
+  })
+  if (result.error !== undefined || result.status !== 0 || typeof result.stdout !== 'string') {
+    throw new Error(`biome format failed for ${filePath}: ${result.stderr}`)
+  }
+  return result.stdout
+}
 
 function main(): void {
   const check = process.argv.includes('--check')
@@ -616,16 +770,26 @@ function main(): void {
     ['llms.txt', renderLlmsTxt(docs, pkg.version)],
     ['llms-full.txt', renderLlmsFull(docs, pkg.version)],
     ['AGENTS.md', renderAgentsMd(docs, pkg.version)],
-  ]
+    ['skills/neode/SKILL.md', renderSkillMd(pkg.version)],
+    ...renderPages(docs, pkg.version).map((page) => [page.path, page.content] as [string, string]),
+  ].map(([name, content]) => [name, biomeFormat(content, name)] as [string, string])
+
+  const pagesDir = path.join(root, 'docs/agent')
+  const pagePaths = new Set(outputs.map(([rel]) => rel))
 
   if (check) {
     const stale = outputs.filter(([name, content]) => {
       const file = path.join(root, name)
       return !fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== content
     })
-    if (stale.length > 0) {
+    // The pages directory is fully generated: a file the generator no longer
+    // emits is stale too, not just a file whose content changed
+    const extras = fs.existsSync(pagesDir)
+      ? fs.readdirSync(pagesDir).filter((name) => !pagePaths.has(`docs/agent/${name}`))
+      : []
+    if (stale.length > 0 || extras.length > 0) {
       console.error(
-        `stale generated agent docs: ${stale.map(([name]) => name).join(', ')} — run "pnpm docs:agents" to regenerate`,
+        `stale generated agent docs: ${[...stale.map(([name]) => name), ...extras].join(', ')} — run "pnpm docs:agents" to regenerate`,
       )
       process.exit(1)
     }
@@ -633,7 +797,12 @@ function main(): void {
     return
   }
 
-  for (const [name, content] of outputs) fs.writeFileSync(path.join(root, name), content)
+  fs.rmSync(pagesDir, { recursive: true, force: true })
+  for (const [name, content] of outputs) {
+    const file = path.join(root, name)
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, content)
+  }
   console.log(`generated ${outputs.map(([name]) => name).join(', ')}`)
 }
 
