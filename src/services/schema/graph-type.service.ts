@@ -20,6 +20,7 @@ import {
   ConstraintAction,
   ConstraintType,
   cypherPropertyType,
+  schemaObjectName,
   type SchemaResult,
 } from './schema-objects.js'
 
@@ -63,7 +64,59 @@ A complete graph type: the shape derived from the registered models
 export interface GraphTypeDefinition {
   nodes: GraphTypeNodeDefinition[]
   relationships?: GraphTypeRelationshipDefinition[]
+  /**
+  NTS-549 — named `CONSTRAINT ... FOR ... REQUIRE` items: uniqueness/key
+  constraints hoisted out of the element types (explicitly named, so the
+  name is addressable in `ALTER CURRENT GRAPH TYPE DROP` / `DROP CONSTRAINT`)
+  and constraints on labels/types that are not identifying ones (derivation
+  cannot produce those — pass them to installGraphType())
+  */
+  constraints?: GraphTypeConstraintDefinition[]
 }
+
+/**
+What the constraint enforces: uniqueness, key (existence + uniqueness),
+property existence, or property type
+*/
+export type GraphTypeConstraintKind = 'UNIQUE' | 'KEY' | 'EXISTS' | 'TYPE'
+
+/**
+NTS-549 — one named constraint item of a graph type
+*/
+export interface GraphTypeConstraintDefinition {
+  /**
+  Explicit name — generated deterministically when omitted
+  */
+  name?: string
+  /**
+  Node label, or relationship type when `relationship` is true
+  */
+  labelOrType: string
+  /**
+  On a relationship type rather than a node label
+  */
+  relationship?: boolean
+  /**
+  Constrained properties (EXISTS and TYPE take exactly one)
+  */
+  properties: string[]
+  kind: GraphTypeConstraintKind
+  /**
+  For kind TYPE: the enforced Cypher property type
+  */
+  type?: string
+}
+
+/**
+Deterministic name for a graph type constraint item (the same
+`<label>_<props>_<kind>` shape as the standalone constraint names)
+*/
+export const graphTypeConstraintName = (constraint: GraphTypeConstraintDefinition): string =>
+  schemaObjectName(
+    constraint.labelOrType,
+    constraint.properties.map((property) => property.toLowerCase()).join('_'),
+    constraint.kind.toLowerCase(),
+  )
 
 const renderProperty = (property: GraphTypePropertyDefinition): string =>
   `${quote(property.name)} :: ${property.type}` +
@@ -107,11 +160,75 @@ const elements = (definition: GraphTypeDefinition): string[] => [
 ]
 
 /**
+The predicate right of `REQUIRE`, per constraint kind
+*/
+const constraintPredicate = (constraint: GraphTypeConstraintDefinition): string => {
+  switch (constraint.kind) {
+    case 'UNIQUE': {
+      return 'IS UNIQUE'
+    }
+    case 'KEY': {
+      return 'IS KEY'
+    }
+    case 'EXISTS': {
+      return 'IS NOT NULL'
+    }
+    case 'TYPE': {
+      return `IS :: ${constraint.type ?? ''}`.trimEnd()
+    }
+  }
+}
+
+/**
+`CONSTRAINT [name] FOR (n:Label)|()-[r:TYPE]->() REQUIRE ... IS ...` —
+NTS-549. Property existence/type constraints are single-property (server
+rule); uniqueness/key take one or more (composites, NTS-552)
+*/
+const renderConstraint = (constraint: GraphTypeConstraintDefinition): string => {
+  if (constraint.properties.length === 0) {
+    throw new TypeError(
+      `Graph type constraint on "${constraint.labelOrType}" declares no properties`,
+    )
+  }
+
+  if (
+    (constraint.kind === 'EXISTS' || constraint.kind === 'TYPE') &&
+    constraint.properties.length > 1
+  ) {
+    throw new TypeError(
+      `Graph type ${constraint.kind} constraint on "${constraint.labelOrType}" takes exactly one property`,
+    )
+  }
+
+  const variable = constraint.relationship === true ? 'r' : 'n'
+  const target =
+    constraint.relationship === true
+      ? `()-[${variable}:${quote(constraint.labelOrType)}]->()`
+      : `(${variable}:${quote(constraint.labelOrType)})`
+  // One parenthesised list — the server's canonical spelling for both the
+  // single (`(n.address)`) and composite (`(n.name, n.ssn)`) forms
+  const properties = constraint.properties
+    .map((property) => `${variable}.${quote(property)}`)
+    .join(', ')
+
+  return `CONSTRAINT ${quote(constraint.name ?? graphTypeConstraintName(constraint))} FOR ${target} REQUIRE (${properties}) ${constraintPredicate(constraint)}`
+}
+
+/**
+The definition's constraint items, validated for name collisions
+*/
+const constraintItems = (definition: GraphTypeDefinition): string[] => {
+  const items = definition.constraints ?? []
+
+  return items.map((constraint) => renderConstraint(constraint))
+}
+
+/**
 `ALTER CURRENT GRAPH TYPE SET { ... }` — replaces the database's existing
 graph type and constraints
 */
 export function graphTypeSetStatement(definition: GraphTypeDefinition): string {
-  const statements = elements(definition)
+  const statements = [...elements(definition), ...constraintItems(definition)]
 
   if (statements.length === 0) {
     throw new TypeError(
@@ -124,14 +241,20 @@ export function graphTypeSetStatement(definition: GraphTypeDefinition): string {
 
 /**
 `ALTER CURRENT GRAPH TYPE DROP { ... }` — drops the element types by
-identifying label/relationship type (dropping an element type drops the
-constraints it enforced)
+identifying label/relationship type plus every named constraint item.
+Dropping an element type removes its dependent constraints (label
+existence, property type/existence) but LEAVES its uniqueness/key
+constraints — those survive as constraints on non-identifying labels and
+must go by name.
 */
 export function graphTypeDropStatement(definition: GraphTypeDefinition): string {
   const statements = [
     ...definition.nodes.map((node) => `(:${quote(node.label)} =>)`),
     ...(definition.relationships ?? []).map(
       (relationship) => `()-[:${quote(relationship.type)} =>]->()`,
+    ),
+    ...(definition.constraints ?? []).map(
+      (constraint) => `CONSTRAINT ${quote(constraint.name ?? graphTypeConstraintName(constraint))}`,
     ),
   ]
 
@@ -142,6 +265,228 @@ export function graphTypeDropStatement(definition: GraphTypeDefinition): string 
   }
 
   return `ALTER CURRENT GRAPH TYPE DROP {${statements.join(', ')}}`
+}
+
+// ---- Parsing the server's canonical specification (NTS-550) ------------------
+//
+// `SHOW CURRENT GRAPH TYPE` returns one `specification` string in a
+// canonical form: `\r\n`-separated lines, backticked identifiers, every
+// uniqueness/key constraint hoisted into its own `CONSTRAINT ... FOR ...
+// REQUIRE ...` line (with generated names when not explicitly named), and
+// relationship ends rendered as abbreviated node element types
+// (`(:`Label` =>)` when the end is an element type's identifying label,
+// `(:`Label`)` when it is a plain label, `()` when unconstrained).
+
+const NODE_SPEC_PATTERN =
+  /^\(\s*(?:`(\w+)`\s*)?:\s*`([^`]+)`\s*=>\s*(?::\s*([^{}]*?))?\s*(?:\{(.*)\})?\s*\)$/
+
+const RELATIONSHIP_SPEC_PATTERN =
+  /^\(\s*(?::\s*(?:`([^`]+)`\s*(?:=>\s*)?)?)?\)\s*-\[\s*:\s*`([^`]+)`\s*(?:=>\s*(?:\{(.*)\})?\s*)?\]->\(\s*(?::\s*(?:`([^`]+)`\s*(?:=>\s*)?)?)?\)$/
+
+const CONSTRAINT_SPEC_PATTERN =
+  /^CONSTRAINT\s*`([^`]+)`\s*FOR\s*(?:\(\)\s*-\[\s*`?(\w+)`?\s*:\s*`?(\w+)`?\s*\]\s*->\s*\(\)|\(\s*(?:`?(\w+)`?\s*)?:\s*`([^`]+)`\s*(?:=>\s*)?\))\s*REQUIRE\s*\((.*)\)\s*(IS\s+UNIQUE|IS\s+KEY|IS\s+NOT\s+NULL|IS\s*::\s*.+)$/i
+
+const PROPERTY_SPEC_PATTERN = /`?(\w+)`?\s*\.\s*`?(\w+)`?/g
+
+const parseSpecProperties = (body = ''): GraphTypePropertyDefinition[] => {
+  if (body === '') {
+    return []
+  }
+
+  return body.split(',').map((part) => {
+    const match = /^\s*`([^`]+)`\s*::\s*(.+?)(?:\s+NOT NULL)?\s*$/.exec(part)
+
+    if (match === null) {
+      throw new TypeError(`Cannot parse graph type property specification: "${part.trim()}"`)
+    }
+
+    const [, name = '', type = ''] = match
+
+    return {
+      name,
+      type,
+      // `NOT NULL` only lands the flag at the END — `LIST<STRING NOT NULL>`
+      // carries it inside the brackets (list-element nullability, not the
+      // property's)
+      ...(part.trimEnd().endsWith('NOT NULL') && { nullable: false }),
+    }
+  })
+}
+
+const parseSpecImplied = (body = ''): string[] | undefined => {
+  const implied = body
+    .split('&')
+    .map((label) => label.trim().replaceAll('`', ''))
+    .filter((label) => label.length > 0)
+
+  return implied.length > 0 ? implied : undefined
+}
+
+const parseSpecConstraint = (match: RegExpExecArray): GraphTypeConstraintDefinition => {
+  // 1 = name, 2 = relationship variable, 3 = relationship type,
+  // 4 = node binding variable, 5 = node label, 6 = REQUIRE body,
+  // 7 = predicate — capture groups are `string | undefined` at runtime
+  const [, name = '', , relationshipType, , nodeLabel = '', requireBody = '', predicate = '']: (
+    | string
+    | undefined
+  )[] = match
+
+  const properties = Array.from(
+    requireBody.matchAll(PROPERTY_SPEC_PATTERN),
+    (propertyMatch) => propertyMatch[2] ?? '',
+  )
+
+  const upper = predicate.toUpperCase()
+
+  let kind: GraphTypeConstraintKind = 'TYPE'
+
+  if (upper.includes('UNIQUE')) {
+    kind = 'UNIQUE'
+  } else if (upper.includes('KEY')) {
+    kind = 'KEY'
+  } else if (upper.includes('NOT NULL')) {
+    kind = 'EXISTS'
+  }
+
+  return {
+    name,
+    labelOrType: relationshipType ?? nodeLabel,
+    relationship: relationshipType !== undefined,
+    properties,
+    kind,
+    ...(kind === 'TYPE' && { type: predicate.replace(/^\s*IS\s*::\s*/i, '').trim() }),
+  }
+}
+
+/**
+Parse the canonical `specification` string `SHOW CURRENT GRAPH TYPE`
+returns into the structural definition (NTS-550) — the same shapes the
+statement builders render, so drift comparison is structural on both
+sides. Accepts both the multi-line canonical form and a full `ALTER
+CURRENT GRAPH TYPE SET` statement (single-line, comma-separated). Throws
+on fragments it cannot parse (the canonical form is deterministic — a
+failure is a library bug and should be loud).
+*/
+export function parseGraphTypeSpecification(specification: string): GraphTypeDefinition {
+  const body = specification
+    .trim()
+    .replace(/^ALTER\s+CURRENT\s+GRAPH\s+TYPE\s+SET\s*/i, '')
+    .trim()
+
+  if (body === '{}' || body === '{ }') {
+    return { nodes: [], relationships: [], constraints: [] }
+  }
+
+  if (!body.startsWith('{') || !body.endsWith('}')) {
+    throw new TypeError(`Cannot parse graph type specification: "${specification.trim()}"`)
+  }
+
+  // Inside the outer braces; the loop tracks only nested structure
+  const inner = body.slice(1, -1)
+
+  const nodes: GraphTypeNodeDefinition[] = []
+  const relationships: GraphTypeRelationshipDefinition[] = []
+  const constraints: GraphTypeConstraintDefinition[] = []
+
+  // Top-level (depth-0) comma split — property maps and LIST<...> types
+  // carry commas at depth 1
+  let depth = 0
+  let current = ''
+
+  const flush = (): void => {
+    const fragment = current.trim()
+
+    current = ''
+
+    if (fragment === '') {
+      return
+    }
+
+    let match = NODE_SPEC_PATTERN.exec(fragment)
+
+    if (match !== null) {
+      // 1 = optional binding variable, 2 = label, 3 = implied labels,
+      // 4 = property map body — capture groups are `string | undefined`
+      // at runtime
+      const groups: (string | undefined)[] = match
+      const properties = parseSpecProperties(groups[4] ?? '')
+      const implied = parseSpecImplied(groups[3])
+
+      nodes.push({
+        label: groups[2] ?? '',
+        ...(implied !== undefined && { implies: implied }),
+        ...(properties.length > 0 && { properties }),
+      })
+
+      return
+    }
+
+    match = RELATIONSHIP_SPEC_PATTERN.exec(fragment)
+
+    if (match !== null) {
+      // 1 = source label, 2 = type, 3 = property map body, 4 = target
+      // label — capture groups are `string | undefined` at runtime
+      const [, source, type = '', propertyBody = '', target]: (string | undefined)[] = match
+      const properties = parseSpecProperties(propertyBody)
+
+      relationships.push({
+        type,
+        ...(source !== undefined && { source }),
+        ...(target !== undefined && { target }),
+        ...(properties.length > 0 && { properties }),
+      })
+
+      return
+    }
+
+    match = CONSTRAINT_SPEC_PATTERN.exec(fragment)
+
+    if (match !== null) {
+      constraints.push(parseSpecConstraint(match))
+
+      return
+    }
+
+    throw new TypeError(`Cannot parse graph type specification fragment: "${fragment}"`)
+  }
+
+  for (const character of inner) {
+    if ('{[('.includes(character)) {
+      depth += 1
+    } else if ('}])'.includes(character)) {
+      depth -= 1
+    }
+
+    if (character === ',' && depth === 0) {
+      flush()
+
+      continue
+    }
+
+    current += character
+  }
+
+  flush()
+
+  return { nodes, relationships, constraints }
+}
+
+/**
+The installed graph type's canonical specification string, or undefined
+when no graph type is installed (`'{}'` in server output). Backend errors
+(the command needs Cypher 25 / Neo4j 2026.02+ Enterprise) propagate to the
+caller — drift probing catches them and omits the family.
+*/
+export async function currentGraphType(
+  connection: ConnectionProvider,
+): Promise<string | undefined> {
+  const output = await connection.run('SHOW CURRENT GRAPH TYPE', {}, 'READ')
+
+  const specification = output.records[0]?.get('specification')
+
+  return typeof specification === 'string' && specification.trim() !== '{}'
+    ? specification
+    : undefined
 }
 
 /**
@@ -171,6 +516,77 @@ const graphTypeProperties = (properties: PropertySchema[]): GraphTypePropertyDef
   }
 
   return output
+}
+
+/**
+NTS-552 — composite `REQUIRE (n.a, n.b) IS ...` constraint groups of a
+model: `compositeUnique` → IS UNIQUE, `compositeIndex` → IS KEY (a graph
+type enforces rather than indexes — KEY, the strongest composite
+constraint, is the closest graph-type equivalent of a composite index).
+Declared on any of the group's properties; deduplicated per property list.
+*/
+const compositeConstraintGroups = (
+  labelOrType: string,
+  isRelationship: boolean,
+  properties: PropertySchema[],
+): GraphTypeConstraintDefinition[] => {
+  const groups: GraphTypeConstraintDefinition[] = []
+  const seen = new Set<string>()
+
+  const declare = (members: string[] | undefined, kind: 'UNIQUE' | 'KEY'): void => {
+    if (members === undefined || members.length === 0) {
+      return
+    }
+
+    // Deduplicated by the declared property list; a group declared on more
+    // than one of its properties repeats the same list
+    const key = `${kind}:${members.join(',')}`
+
+    if (seen.has(key)) {
+      return
+    }
+
+    seen.add(key)
+
+    groups.push({ labelOrType, relationship: isRelationship, properties: members, kind })
+  }
+
+  for (const property of properties) {
+    declare(property.getCompositeUnique(), 'UNIQUE')
+    declare(property.getCompositeIndex(), 'KEY')
+  }
+
+  return groups
+}
+
+/**
+NTS-549 — hoist `unique: true` properties out of an element type's
+property map into explicitly named constraint items: the name is what
+`DROP CONSTRAINT` / `ALTER CURRENT GRAPH TYPE DROP` addresses, and inline
+uniqueness is only nameable by the server's generated names
+*/
+const hoistUniqueness = (
+  labelOrType: string,
+  isRelationship: boolean,
+  properties: GraphTypePropertyDefinition[],
+): { properties: GraphTypePropertyDefinition[]; constraints: GraphTypeConstraintDefinition[] } => {
+  const kept: GraphTypePropertyDefinition[] = []
+  const constraints: GraphTypeConstraintDefinition[] = []
+
+  for (const property of properties) {
+    if (property.unique === true) {
+      constraints.push({
+        labelOrType,
+        relationship: isRelationship,
+        properties: [property.name],
+        kind: 'UNIQUE',
+      })
+    } else {
+      kept.push(property)
+    }
+  }
+
+  return { properties: kept, constraints }
 }
 
 /**
@@ -237,12 +653,19 @@ const relationshipElementType = (
 Derive the graph type from the registered models (the same walk the
 ontology emits): node models become node element types (first label
 identifies, the rest are implied), their relationship declarations become
-relationship element types. Duplicate identifying labels/types: first model
-wins — anything the server rejects surfaces in the SchemaResult error
+relationship element types. Uniqueness is hoisted into named constraint
+items (NTS-549). Duplicate identifying labels/types: first model wins —
+anything the server rejects surfaces in the SchemaResult error.
+
+`options.constraints` appends user-declared constraint items — the only
+way to constrain labels/types that are not identifying ones (NTS-549).
 */
-export function deriveGraphType(): GraphTypeDefinition {
+export function deriveGraphType(
+  options: { constraints?: GraphTypeConstraintDefinition[] } = {},
+): GraphTypeDefinition {
   const nodes: GraphTypeNodeDefinition[] = []
   const relationships: GraphTypeRelationshipDefinition[] = []
+  const constraints: GraphTypeConstraintDefinition[] = []
   const seenLabels = new Set<string>()
   const seenTypes = new Set<string>()
 
@@ -259,15 +682,24 @@ export function deriveGraphType(): GraphTypeDefinition {
     if (label !== undefined && !seenLabels.has(label)) {
       seenLabels.add(label)
 
-      const properties = graphTypeProperties(model.getProperties())
+      // Bare-label skip is judged on the mappable properties BEFORE
+      // uniqueness hoisting — a single @Unique property still yields an
+      // element type (its property map just carries no type flags)
+      const mappable = graphTypeProperties(model.getProperties())
+      const hoisted = hoistUniqueness(label, false, mappable)
+
+      constraints.push(
+        ...hoisted.constraints,
+        ...compositeConstraintGroups(label, false, model.getProperties()),
+      )
 
       // A node element type requires implied labels or a non-empty
       // property map — skip bare-label models the server would reject
-      if (implied.length > 0 || properties.length > 0) {
+      if (implied.length > 0 || mappable.length > 0) {
         nodes.push({
           label,
           ...(implied.length > 0 && { implies: implied }),
-          ...(properties.length > 0 && { properties }),
+          ...(hoisted.properties.length > 0 && { properties: hoisted.properties }),
         })
       }
     }
@@ -284,6 +716,7 @@ export function deriveGraphType(): GraphTypeDefinition {
       const direction = relationship.getDirection()
       let farLabel: string | undefined
       let properties: GraphTypePropertyDefinition[] = []
+      let relationshipEntityProperties: PropertySchema[] = []
 
       try {
         const targetSchema = getModel(relationship.getTarget())
@@ -292,6 +725,7 @@ export function deriveGraphType(): GraphTypeDefinition {
           const far = relationshipEntityFarLabel(targetSchema, direction)
           farLabel = far.label
           properties = far.properties
+          relationshipEntityProperties = targetSchema.getProperties()
         } else {
           farLabel = targetSchema.getLabels()[0]
         }
@@ -299,12 +733,19 @@ export function deriveGraphType(): GraphTypeDefinition {
         // No resolvable target: the declaration relates to any end
       }
 
+      const hoisted = hoistUniqueness(type, true, properties)
+
+      constraints.push(
+        ...hoisted.constraints,
+        ...compositeConstraintGroups(type, true, relationshipEntityProperties),
+      )
+
       const elementType = relationshipElementType(
         type,
         direction,
         label ?? '',
         farLabel,
-        properties,
+        hoisted.properties,
       )
 
       if (elementType !== undefined) {
@@ -313,7 +754,111 @@ export function deriveGraphType(): GraphTypeDefinition {
     }
   }
 
-  return { nodes, relationships }
+  return { nodes, relationships, constraints: [...constraints, ...(options.constraints ?? [])] }
+}
+
+/**
+`ALTER CURRENT GRAPH TYPE ADD { ... }` — NTS-551: add new element types and
+constraint items to the existing graph type. Only additions are valid: an
+ADD cannot modify an existing element type, and independent constraints
+cannot be added to labels/types that already serve as identifying ones —
+server-side rejections surface in the SchemaResult error.
+*/
+export function graphTypeAddStatement(definition: GraphTypeDefinition): string {
+  const statements = [...elements(definition), ...constraintItems(definition)]
+
+  if (statements.length === 0) {
+    throw new TypeError(
+      'Cannot extend a graph type: no node or relationship element types or constraints derived from the registered models',
+    )
+  }
+
+  return `ALTER CURRENT GRAPH TYPE ADD {${statements.join(', ')}}`
+}
+
+/**
+`ALTER CURRENT GRAPH TYPE ALTER { ... }` — NTS-551: replace the definition
+of existing element types (it redefines them to exactly what is given —
+partially defining an element type does not leave the omitted parts
+unchanged). Key/uniqueness constraints cannot be included: they cannot be
+altered server-side and remain unchanged instead, so definitions carrying
+them are rejected rather than silently redefined without them.
+*/
+export function graphTypeAlterStatement(definition: GraphTypeDefinition): string {
+  if ((definition.constraints ?? []).length > 0) {
+    throw new TypeError(
+      'ALTER cannot include constraint items — key/uniqueness constraints remain unchanged',
+    )
+  }
+
+  const uniqueBearers = definition.nodes
+    .map(
+      (node) =>
+        [
+          node.label,
+          node.properties
+            ?.filter((property) => property.unique === true)
+            .map((property) => property.name) ?? [],
+        ] as const,
+    )
+    .filter(([, names]) => names.length > 0)
+
+  if (uniqueBearers.length > 0) {
+    throw new TypeError(
+      `ALTER cannot include key/uniqueness constraints — remove them from the element types: ${uniqueBearers.map(([label, names]) => `${label}(${names.join(', ')})`).join(', ')}`,
+    )
+  }
+
+  const statements = elements(definition)
+
+  if (statements.length === 0) {
+    throw new TypeError('Cannot alter a graph type: no node or relationship element types given')
+  }
+
+  return `ALTER CURRENT GRAPH TYPE ALTER {${statements.join(', ')}}`
+}
+
+/**
+Derives a graph type and strips its constraint items + any uniqueness
+flags — the key/uniqueness shape ALTER leaves unchanged (NTS-551)
+*/
+export function deriveGraphTypeElementsOnly(): GraphTypeDefinition {
+  const derived = deriveGraphType()
+
+  const stripUniqueness = (
+    properties: GraphTypePropertyDefinition[] | undefined,
+  ): GraphTypePropertyDefinition[] | undefined => {
+    if (properties === undefined) {
+      return undefined
+    }
+
+    const kept: GraphTypePropertyDefinition[] = []
+
+    for (const property of properties) {
+      if (property.unique !== true) {
+        kept.push(property)
+      }
+    }
+
+    return kept
+  }
+
+  const nodes = derived.nodes.map((node) => {
+    const properties = stripUniqueness(node.properties)
+
+    return { ...node, ...(properties !== undefined && { properties }) }
+  })
+
+  const relationships = derived.relationships?.map((relationship) => {
+    const properties = stripUniqueness(relationship.properties)
+
+    return { ...relationship, ...(properties !== undefined && { properties }) }
+  })
+
+  return {
+    nodes,
+    ...(relationships !== undefined && { relationships }),
+  }
 }
 
 /**
@@ -332,11 +877,15 @@ function graphTypeResult(action: ConstraintAction, statement: string): SchemaRes
 }
 
 function graphTypeUnsupported(action: ConstraintAction): SchemaResult {
+  const verbs: Record<ConstraintAction, string> = {
+    [ConstraintAction.CREATE]: 'SET',
+    [ConstraintAction.DROP]: 'DROP',
+    [ConstraintAction.ADD]: 'ADD',
+    [ConstraintAction.ALTER]: 'ALTER',
+  }
+
   return {
-    ...graphTypeResult(
-      action,
-      `-- ALTER CURRENT GRAPH TYPE ${action === ConstraintAction.CREATE ? 'SET' : 'DROP'} { ... }`,
-    ),
+    ...graphTypeResult(action, `-- ALTER CURRENT GRAPH TYPE ${verbs[action]} { ... }`),
     error: new Error(
       'Graph types are Enterprise Edition only (Neo4j 2026.02+): enable the enterprise flag ' +
         '(new Neode(connection, true) / NEO4J_ENTERPRISE=true / setEnterprise(true)) before installing',
@@ -371,15 +920,42 @@ export class GraphTypeService {
     return [result]
   }
 
-  async create(): Promise<SchemaResult[]> {
+  async create(
+    options: { constraints?: GraphTypeConstraintDefinition[] } = {},
+  ): Promise<SchemaResult[]> {
     return this.enterprise
-      ? this.run(ConstraintAction.CREATE, graphTypeSetStatement(deriveGraphType()))
+      ? this.run(ConstraintAction.CREATE, graphTypeSetStatement(deriveGraphType(options)))
       : [graphTypeUnsupported(ConstraintAction.CREATE)]
   }
 
-  async drop(): Promise<SchemaResult[]> {
+  async drop(
+    options: { constraints?: GraphTypeConstraintDefinition[] } = {},
+  ): Promise<SchemaResult[]> {
     return this.enterprise
-      ? this.run(ConstraintAction.DROP, graphTypeDropStatement(deriveGraphType()))
+      ? this.run(ConstraintAction.DROP, graphTypeDropStatement(deriveGraphType(options)))
       : [graphTypeUnsupported(ConstraintAction.DROP)]
+  }
+
+  /**
+  NTS-551 — `ALTER CURRENT GRAPH TYPE ADD`: add the derived (or given)
+  element types and constraint items to the existing graph type
+  */
+  async extend(definition: GraphTypeDefinition = deriveGraphType()): Promise<SchemaResult[]> {
+    return this.enterprise
+      ? this.run(ConstraintAction.ADD, graphTypeAddStatement(definition))
+      : [graphTypeUnsupported(ConstraintAction.ADD)]
+  }
+
+  /**
+  NTS-551 — `ALTER CURRENT GRAPH TYPE ALTER`: redefine the given (or
+  derived, constraint-stripped) element types. Key/uniqueness constraints
+  are not part of an ALTER and remain unchanged server-side.
+  */
+  async alter(
+    definition: GraphTypeDefinition = deriveGraphTypeElementsOnly(),
+  ): Promise<SchemaResult[]> {
+    return this.enterprise
+      ? this.run(ConstraintAction.ALTER, graphTypeAlterStatement(definition))
+      : [graphTypeUnsupported(ConstraintAction.ALTER)]
   }
 }

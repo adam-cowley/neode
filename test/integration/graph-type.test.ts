@@ -12,6 +12,7 @@ import {
   StartNode,
 } from '../../src/decorators'
 import { Direction } from '../../src/query/direction'
+import { formatSchemaDrift, schemaDrift } from '../../src/services/schema/drift.service'
 
 /**
  * Graph type install/drop against a real server (NTS-548). Graph types are
@@ -53,6 +54,15 @@ class GtActor {
 class GtPerson {
   @Property({ type: 'string', required: true })
   name!: string
+}
+
+@NodeEntity()
+class Nts552Install {
+  @Property({ type: 'int', unique: ['region', 'code'] })
+  code!: number
+
+  @Property({ type: 'string' })
+  region!: string
 }
 
 let backend: TestBackend
@@ -139,5 +149,170 @@ describe('graph types (NTS-548)', () => {
 
     expect(results[0]?.success).toBe(false)
     expect(results[0]?.error?.message).toContain('Enterprise')
+  })
+
+  it('installs named constraints on non-identifying labels (NTS-549)', async () => {
+    if (!supportsGraphTypes) {
+      return
+    }
+
+    const neode = new Neode(backend.connection, true)
+
+    // Earlier tests leave data that violates the element types — a SET
+    // against a populated database fails on conflicting nodes
+    await backend.clearGraph()
+
+    // GtMovie is an element type; GtOrphan is constrained without being one
+    const installed = await neode.installGraphType({
+      constraints: [
+        {
+          name: 'gt_orphan_tag_unique',
+          labelOrType: 'GtOrphan',
+          properties: ['tag'],
+          kind: 'UNIQUE',
+        },
+      ],
+    })
+
+    expect(installed[0]?.success).toBe(true)
+
+    const shown = await shownGraphType()
+
+    expect(shown).toContain('gt_orphan_tag_unique')
+
+    // The named constraint enforces: create one node, then a duplicate fails
+    await backend.connection.run("CREATE (:GtOrphan { tag: 'one' })")
+    await expect(backend.connection.run("CREATE (:GtOrphan { tag: 'one' })")).rejects.toThrow()
+
+    // The name is addressable in DROP CONSTRAINT
+    await backend.connection.run('DROP CONSTRAINT gt_orphan_tag_unique')
+
+    await neode.dropGraphType()
+  })
+
+  it('installs composite REQUIRE constraints from model flags (NTS-552)', async () => {
+    if (!supportsGraphTypes) {
+      return
+    }
+
+    const neode = new Neode(backend.connection, true)
+
+    await backend.clearGraph()
+
+    // Nts552Install is declared with a composite unique over two properties
+    // (see the model below); the server canonicalises it to a named
+    // CONSTRAINT ... REQUIRE (...) IS UNIQUE item
+    const installed = await neode.installGraphType()
+
+    expect(installed[0]?.success).toBe(true)
+
+    const shown = await shownGraphType()
+
+    expect(shown).toContain('nts552install_region_code_unique')
+
+    // Enforcement: the composite pair must be unique (existence of the KEY
+    // half is server-dependent — real Neo4j enforces it, the embedded
+    // engine only enforces uniqueness)
+    await backend.connection.run("CREATE (:Nts552Install { code: 1, region: 'EU' })")
+    await expect(
+      backend.connection.run("CREATE (:Nts552Install { code: 1, region: 'EU' })"),
+    ).rejects.toThrow()
+
+    await neode.dropGraphType()
+  })
+
+  it('extends and alters the installed graph type (NTS-551)', async () => {
+    if (!supportsGraphTypes) {
+      return
+    }
+
+    const neode = new Neode(backend.connection, true)
+
+    await backend.clearGraph()
+
+    await neode.installGraphType()
+
+    // ADD: a new element type (declared on a registered model installed
+    // after the first SET — here simulated by extending with a hand-built
+    // definition, the same shape deriveGraphType produces)
+    const extended = await neode.extendGraphType({
+      nodes: [{ label: 'GtStudio', properties: [{ name: 'name', type: 'STRING' }] }],
+      relationships: [
+        {
+          type: 'GT_PRODUCED',
+          source: 'GtStudio',
+          target: 'GtMovie',
+          properties: [{ name: 'year', type: 'INTEGER' }],
+        },
+      ],
+    })
+
+    expect(extended[0]?.success).toBe(true)
+    expect(extended[0]?.statement.startsWith('ALTER CURRENT GRAPH TYPE ADD {')).toBe(true)
+
+    expect(await shownGraphType()).toContain('GtStudio')
+
+    // ALTER: redefine an existing element type (uniqueness stripped —
+    // key/uniqueness constraints remain unchanged server-side)
+    const altered = await neode.alterGraphType({
+      nodes: [
+        { label: 'GtMovie', properties: [{ name: 'title', type: 'STRING', nullable: false }] },
+      ],
+    })
+
+    expect(altered[0]?.success).toBe(true)
+    expect(altered[0]?.statement.startsWith('ALTER CURRENT GRAPH TYPE ALTER {')).toBe(true)
+
+    // The altered element type is enforced: a GtMovie without title fails
+    await expect(backend.connection.run('CREATE (:GtMovie { released: 2026 })')).rejects.toThrow()
+
+    await neode.dropGraphType()
+  })
+
+  it('reports graph type drift and wipe() resets the graph type (NTS-550)', async () => {
+    if (!supportsGraphTypes) {
+      return
+    }
+
+    const neode = new Neode(backend.connection, true)
+
+    await backend.clearGraph()
+
+    await neode.installGraphType()
+
+    // Freshly installed from the same derivation: no graph type drift
+    const clean = await schemaDrift(backend.connection)
+
+    expect(clean.graphType).toBeDefined()
+    expect(clean.graphType?.missing).toEqual([])
+    expect(clean.graphType?.stale).toEqual([])
+    expect(clean.graphType?.mismatched).toEqual([])
+
+    // Drift arrives the moment the server's graph type differs from the
+    // models: drop an installed element type behind the library's back
+    // (Nts552Install — un-referenced by relationship element types, which
+    // would have to be dropped or altered first)
+    await backend.connection.run('ALTER CURRENT GRAPH TYPE DROP {(:`Nts552Install` =>)}')
+
+    const drifted = await schemaDrift(backend.connection)
+
+    expect(drifted.graphType?.missing.map((entry) => entry.name)).toContain('Nts552Install')
+    expect(drifted.graphType?.missing[0]?.createStatement).toContain('ADD {(:`Nts552Install`')
+
+    // The report mentions the family
+    expect(formatSchemaDrift(drifted)).toContain('graph type')
+
+    // wipe() resets the graph type to empty (and every constraint with it)
+    const { wipe } = await import('../../src/testing/wipe.js')
+
+    await wipe(neode)
+
+    const after = await schemaDrift(backend.connection)
+
+    // Everything declared is missing again — the graph type is gone
+    expect(after.graphType?.installed).toBeUndefined()
+    expect(after.graphType?.missing.map((entry) => entry.name)).toContain('GtPerson')
+
+    await backend.clearGraph()
   })
 })

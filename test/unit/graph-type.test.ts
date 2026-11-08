@@ -12,13 +12,19 @@ import {
   Uuid,
 } from '../../src/decorators'
 import { defineModel } from '../../src/meta/map-schema'
-import type { ConnectionProvider } from '../../src/driver/types'
+import type { ConnectionProvider, QueryRecord } from '../../src/driver/types'
 import { Direction } from '../../src/query/direction'
+import { formatSchemaDrift, schemaDrift } from '../../src/services/schema/drift.service'
 import {
   GraphTypeService,
   deriveGraphType,
+  deriveGraphTypeElementsOnly,
+  graphTypeAddStatement,
+  graphTypeAlterStatement,
+  graphTypeConstraintName,
   graphTypeDropStatement,
   graphTypeSetStatement,
+  parseGraphTypeSpecification,
 } from '../../src/services/schema/graph-type.service'
 
 /**
@@ -174,11 +180,18 @@ describe('deriveGraphType', () => {
     const person = graphType.nodes.find((node) => node.label === 'GtPerson')
 
     expect(person?.properties).toEqual([
-      // @Uuid({ primary: true }): the primary key implies unique
-      { name: 'id', type: 'STRING', unique: true },
       { name: 'name', type: 'STRING', nullable: false },
       { name: 'aliases', type: 'LIST<STRING NOT NULL>' },
     ])
+
+    // NTS-549 — the @Uuid({ primary: true }) uniqueness is hoisted into a
+    // named constraint item instead of an inline IS UNIQUE
+    expect(graphType.constraints).toContainEqual({
+      labelOrType: 'GtPerson',
+      relationship: false,
+      properties: ['id'],
+      kind: 'UNIQUE',
+    })
   })
 
   it('derives relationship element types with resolved ends and entity properties', () => {
@@ -223,6 +236,472 @@ describe('deriveGraphType', () => {
     expect(statement.startsWith('ALTER CURRENT GRAPH TYPE SET {')).toBe(true)
     expect(statement).toContain('(:`GtEmployee` => :`GtResident` {`email` :: STRING NOT NULL})')
     expect(statement).toContain('()-[:`GT_SEES` =>]->()')
+
+    // NTS-549 — hoisted uniqueness renders as a named CONSTRAINT item with
+    // the deterministic <label>_<prop>_unique name
+    expect(statement).toContain(
+      'CONSTRAINT `gtperson_id_unique` FOR (n:`GtPerson`) REQUIRE (n.`id`) IS UNIQUE',
+    )
+  })
+
+  it('drops named constraint items alongside the element types (NTS-549)', () => {
+    // Dropping an element type removes its dependent constraints but
+    // LEAVES its uniqueness/key ones — those only go by name
+    const statement = graphTypeDropStatement(graphType)
+
+    expect(statement).toContain('CONSTRAINT `gtperson_id_unique`')
+    expect(statement).toContain('(:`GtPerson` =>)')
+  })
+})
+
+// ---- Named constraints + non-identifying labels (NTS-549) --------------------
+
+describe('graph type constraint items (NTS-549)', () => {
+  it('renders user-declared constraints on non-identifying labels', () => {
+    const statement = graphTypeSetStatement({
+      nodes: [
+        { label: 'Pet', implies: ['Animal'], properties: [{ name: 'name', type: 'STRING' }] },
+      ],
+      constraints: [
+        // Animal is only an implied label here — derivation cannot constrain it
+        { name: 'animal_id', labelOrType: 'Animal', properties: ['id'], kind: 'UNIQUE' },
+        { name: 'pet_name_key', labelOrType: 'Pet', properties: ['name'], kind: 'KEY' },
+      ],
+    })
+
+    expect(statement).toContain(
+      'CONSTRAINT `animal_id` FOR (n:`Animal`) REQUIRE (n.`id`) IS UNIQUE',
+    )
+    expect(statement).toContain('CONSTRAINT `pet_name_key` FOR (n:`Pet`) REQUIRE (n.`name`) IS KEY')
+  })
+
+  it('renders constraints on relationship types and existence/type kinds', () => {
+    const statement = graphTypeSetStatement({
+      nodes: [{ label: 'City', properties: [{ name: 'name', type: 'STRING' }] }],
+      relationships: [{ type: 'STAYED_IN', properties: [{ name: 'endDate', type: 'DATE' }] }],
+      constraints: [
+        {
+          labelOrType: 'STAYED_IN',
+          relationship: true,
+          properties: ['startDate'],
+          kind: 'EXISTS',
+        },
+        {
+          name: 'stayed_type',
+          labelOrType: 'STAYED_IN',
+          relationship: true,
+          properties: ['endDate'],
+          kind: 'TYPE',
+          type: 'DATE',
+        },
+      ],
+    })
+
+    expect(statement).toContain(
+      'CONSTRAINT `stayed_in_startdate_exists` FOR ()-[r:`STAYED_IN`]->() REQUIRE (r.`startDate`) IS NOT NULL',
+    )
+    expect(statement).toContain(
+      'CONSTRAINT `stayed_type` FOR ()-[r:`STAYED_IN`]->() REQUIRE (r.`endDate`) IS :: DATE',
+    )
+  })
+
+  it('generates a deterministic name when none is given', () => {
+    expect(
+      graphTypeConstraintName({ labelOrType: 'Person', properties: ['ssn'], kind: 'KEY' }),
+    ).toBe('person_ssn_key')
+  })
+
+  it('rejects existence/type constraints over more than one property', () => {
+    expect(() =>
+      graphTypeSetStatement({
+        nodes: [{ label: 'City' }],
+        constraints: [{ labelOrType: 'City', properties: ['a', 'b'], kind: 'EXISTS' }],
+      }),
+    ).toThrow(TypeError)
+  })
+})
+
+// ---- Composite REQUIRE constraints (NTS-552) ---------------------------------
+
+describe('composite REQUIRE constraints (NTS-552)', () => {
+  it('derives composite uniques as named REQUIRE ... IS UNIQUE items', () => {
+    @NodeEntity()
+    class Nts552Unique {
+      @Property({ type: 'string' })
+      name!: string
+
+      // array form: composite unique over exactly these properties
+      @Property({ type: 'string', unique: ['name', 'email'] })
+      email!: string
+    }
+
+    const derived = deriveGraphType()
+    const node = derived.nodes.find((n) => n.label === 'Nts552Unique')
+
+    // The property map carries both properties without inline flags
+    expect(node?.properties?.map((p) => p.name)).toEqual(['name', 'email'])
+
+    expect(derived.constraints).toContainEqual({
+      labelOrType: 'Nts552Unique',
+      relationship: false,
+      properties: ['name', 'email'],
+      kind: 'UNIQUE',
+    })
+
+    expect(graphTypeSetStatement(derived)).toContain(
+      'CONSTRAINT `nts552unique_name_email_unique` FOR (n:`Nts552Unique`) REQUIRE (n.`name`, n.`email`) IS UNIQUE',
+    )
+  })
+
+  it('maps composite indexes to REQUIRE ... IS KEY (a graph type enforces, not indexes)', () => {
+    @NodeEntity()
+    class Nts552Key {
+      @Property({ type: 'number', index: ['code', 'region'] })
+      code!: number
+    }
+
+    expect(deriveGraphType().constraints).toContainEqual({
+      labelOrType: 'Nts552Key',
+      relationship: false,
+      properties: ['code', 'region'],
+      kind: 'KEY',
+    })
+  })
+
+  it('deduplicates groups declared on more than one of their properties', () => {
+    @NodeEntity()
+    class Nts552Shared {
+      @Property({ type: 'string', unique: ['a', 'b'] })
+      a!: string
+
+      @Property({ type: 'string', unique: ['a', 'b'] })
+      b!: string
+    }
+
+    expect(
+      deriveGraphType().constraints?.filter((c) => c.labelOrType === 'Nts552Shared'),
+    ).toHaveLength(1)
+  })
+
+  it('derives composite REQUIRE items from relationship entities', () => {
+    @RelationshipEntity()
+    class Nts552Rated {
+      @Property({ type: 'int', unique: ['stars', 'day'] })
+      stars!: number
+
+      @StartNode(() => GtMovie)
+      source!: GtMovie
+
+      @EndNode(() => GtMovie)
+      target!: GtMovie
+    }
+
+    // The entity's properties join the element type of a declaration that
+    // targets it — standalone relationship entities derive nothing
+    @NodeEntity()
+    class Nts552Rater {
+      @OneToOne({ type: 'NTS552_RATED', target: () => Nts552Rated, direction: Direction.OUTGOING })
+      rated!: Nts552Rated
+    }
+
+    expect(deriveGraphType().constraints).toContainEqual({
+      labelOrType: 'NTS552_RATED',
+      relationship: true,
+      properties: ['stars', 'day'],
+      kind: 'UNIQUE',
+    })
+  })
+})
+
+// ---- ADD / ALTER verbs (NTS-551) ---------------------------------------------
+
+describe('graphTypeAddStatement / graphTypeAlterStatement (NTS-551)', () => {
+  it('renders ADD with element types and constraint items', () => {
+    expect(
+      graphTypeAddStatement({
+        nodes: [{ label: 'Company', properties: [{ name: 'name', type: 'STRING' }] }],
+        relationships: [
+          {
+            type: 'WORKS_FOR',
+            source: 'Person',
+            target: 'Company',
+            properties: [{ name: 'role', type: 'STRING' }],
+          },
+        ],
+        constraints: [
+          { name: 'company_key', labelOrType: 'Company', properties: ['name'], kind: 'KEY' },
+        ],
+      }),
+    ).toBe(
+      'ALTER CURRENT GRAPH TYPE ADD {' +
+        '(:`Company` => {`name` :: STRING}), ' +
+        '(:`Person`)-[:`WORKS_FOR` => {`role` :: STRING}]->(:`Company`), ' +
+        'CONSTRAINT `company_key` FOR (n:`Company`) REQUIRE (n.`name`) IS KEY}',
+    )
+  })
+
+  it('renders ALTER with element types only', () => {
+    expect(
+      graphTypeAlterStatement({
+        nodes: [
+          {
+            label: 'Robot',
+            implies: ['Machine'],
+            properties: [{ name: 'id', type: 'INTEGER', nullable: false }],
+          },
+        ],
+        relationships: [
+          {
+            type: 'LIVES_IN',
+            source: 'Resident',
+            target: 'City',
+            properties: [{ name: 'since', type: 'ANY', nullable: false }],
+          },
+        ],
+      }),
+    ).toBe(
+      'ALTER CURRENT GRAPH TYPE ALTER {' +
+        '(:`Robot` => :`Machine` {`id` :: INTEGER NOT NULL}), ' +
+        '(:`Resident`)-[:`LIVES_IN` => {`since` :: ANY NOT NULL}]->(:`City`)}',
+    )
+  })
+
+  it('ALTER rejects constraint items and uniqueness flags', () => {
+    expect(() =>
+      graphTypeAlterStatement({
+        nodes: [{ label: 'City' }],
+        constraints: [{ labelOrType: 'City', properties: ['name'], kind: 'KEY' }],
+      }),
+    ).toThrow(/cannot include constraint items/i)
+
+    expect(() =>
+      graphTypeAlterStatement({
+        nodes: [{ label: 'City', properties: [{ name: 'name', type: 'STRING', unique: true }] }],
+      }),
+    ).toThrow(/cannot include key\/uniqueness/i)
+  })
+
+  it('ALTER of the derived definition strips the hoisted constraints (they remain unchanged)', () => {
+    const statement = graphTypeAlterStatement(deriveGraphTypeElementsOnly())
+
+    expect(statement.startsWith('ALTER CURRENT GRAPH TYPE ALTER {')).toBe(true)
+    expect(statement).not.toContain('CONSTRAINT')
+    expect(statement).not.toContain('IS UNIQUE')
+  })
+
+  it('ADD/ALTER of an empty definition throws', () => {
+    expect(() => graphTypeAddStatement({ nodes: [] })).toThrow(TypeError)
+    expect(() => graphTypeAlterStatement({ nodes: [] })).toThrow(TypeError)
+  })
+})
+
+// ---- Parsing the canonical specification + drift (NTS-550) -------------------
+
+describe('parseGraphTypeSpecification (NTS-550)', () => {
+  // The exact canonical form `SHOW CURRENT GRAPH TYPE` returns (per the
+  // Cypher manual's documented output, \r\n-separated)
+  const canonical = [
+    '{',
+    '   (:`City` => {`name` :: STRING NOT NULL, `population` :: INTEGER}),',
+    '   (:`Person` => :`Resident` {`name` :: STRING, `ssn` :: INTEGER}),',
+    '   (:`Resident`)-[:`LIVES_IN` => {`since` :: ANY NOT NULL}]->(:`City` =>),',
+    '   (:`Person` =>)-[:`WORKS_FOR` => {`role` :: STRING}]->(:`Company` =>),',
+    '   CONSTRAINT `constraint_bb1018eb` FOR (`n`:`Person` =>) REQUIRE (`n`.`name`, `n`.`ssn`) IS KEY,',
+    '   CONSTRAINT `animal_id` FOR (`n`:`Animal`) REQUIRE (`n`.`id`) IS UNIQUE,',
+    '   CONSTRAINT `resident_address` FOR (`n`:`Resident`) REQUIRE (`n`.`address`) IS :: STRING,',
+    '   CONSTRAINT `stayed_in_endDate` FOR ()-[`r`:`STAYED_IN`]->() REQUIRE (`r`.`endDate`) IS :: DATE,',
+    '   CONSTRAINT `stayed_in_startDate` FOR ()-[`r`:`STAYED_IN`]->() REQUIRE (`r`.`startDate`) IS NOT NULL',
+    '}',
+  ].join('\r\n')
+
+  it('parses node and relationship element types', () => {
+    const parsed = parseGraphTypeSpecification(canonical)
+
+    expect(parsed.nodes).toEqual([
+      {
+        label: 'City',
+        properties: [
+          { name: 'name', type: 'STRING', nullable: false },
+          { name: 'population', type: 'INTEGER' },
+        ],
+      },
+      {
+        label: 'Person',
+        implies: ['Resident'],
+        properties: [
+          { name: 'name', type: 'STRING' },
+          { name: 'ssn', type: 'INTEGER' },
+        ],
+      },
+    ])
+
+    expect(parsed.relationships).toEqual([
+      {
+        type: 'LIVES_IN',
+        source: 'Resident',
+        target: 'City',
+        properties: [{ name: 'since', type: 'ANY', nullable: false }],
+      },
+      {
+        type: 'WORKS_FOR',
+        source: 'Person',
+        target: 'Company',
+        properties: [{ name: 'role', type: 'STRING' }],
+      },
+    ])
+  })
+
+  it('parses named constraint items with their kinds', () => {
+    const parsed = parseGraphTypeSpecification(canonical)
+
+    expect(parsed.constraints).toEqual([
+      {
+        name: 'constraint_bb1018eb',
+        labelOrType: 'Person',
+        relationship: false,
+        properties: ['name', 'ssn'],
+        kind: 'KEY',
+      },
+      {
+        name: 'animal_id',
+        labelOrType: 'Animal',
+        relationship: false,
+        properties: ['id'],
+        kind: 'UNIQUE',
+      },
+      {
+        name: 'resident_address',
+        labelOrType: 'Resident',
+        relationship: false,
+        properties: ['address'],
+        kind: 'TYPE',
+        type: 'STRING',
+      },
+      {
+        name: 'stayed_in_endDate',
+        labelOrType: 'STAYED_IN',
+        relationship: true,
+        properties: ['endDate'],
+        kind: 'TYPE',
+        type: 'DATE',
+      },
+      {
+        name: 'stayed_in_startDate',
+        labelOrType: 'STAYED_IN',
+        relationship: true,
+        properties: ['startDate'],
+        kind: 'EXISTS',
+      },
+    ])
+  })
+
+  it('parses an empty graph type to no elements and throws on garbage', () => {
+    expect(parseGraphTypeSpecification('{}')).toEqual({
+      nodes: [],
+      relationships: [],
+      constraints: [],
+    })
+    expect(() => parseGraphTypeSpecification('{WHAT}')).toThrow(TypeError)
+  })
+})
+
+describe('graph type drift (NTS-550)', () => {
+  const record = (values: Record<string, unknown>): QueryRecord => ({
+    keys: Object.keys(values),
+    get: (key) => values[key],
+    has: (key) => key in values,
+  })
+
+  /** Provider answering the three SHOW probes; graph type spec configurable */
+  const provider = (specification: string | undefined, failGraphType = false) => {
+    const connection = {
+      run: async (statement: string) => {
+        if (statement === 'SHOW CONSTRAINTS' || statement === 'SHOW INDEXES') {
+          return { records: [] }
+        }
+
+        if (statement === 'SHOW CURRENT GRAPH TYPE') {
+          if (failGraphType) {
+            throw new Error('unsupported')
+          }
+
+          return { records: specification === undefined ? [] : [record({ specification })] }
+        }
+
+        return { records: [] }
+      },
+    } as unknown as ConnectionProvider
+
+    return connection
+  }
+
+  it('reports no graph type drift when the installed specification matches the derivation', async () => {
+    const declared = deriveGraphType()
+    const drift = await schemaDrift(provider(graphTypeSetStatement(declared)))
+
+    expect(drift.graphType).toBeDefined()
+    expect(drift.graphType?.missing).toEqual([])
+    expect(drift.graphType?.stale).toEqual([])
+    expect(drift.graphType?.mismatched).toEqual([])
+    expect(drift.graphType?.declaredStatement).toBe(graphTypeSetStatement(declared))
+  })
+
+  it('round-trips: no drift when the server shape is parsed and re-diffed', async () => {
+    // Same as above but through the real derived definition of THIS file's
+    // fixtures — the parser must understand our own SET rendering
+    const drift = await schemaDrift(provider(graphTypeSetStatement(deriveGraphType())))
+
+    expect(drift.graphType?.missing).toEqual([])
+    expect(drift.graphType?.stale).toEqual([])
+    expect(drift.graphType?.mismatched).toEqual([])
+  })
+
+  it('reports stale elements (installed but not declared) with their DROP fix', async () => {
+    const drift = await schemaDrift(
+      provider(
+        'ALTER CURRENT GRAPH TYPE SET {(:`Legacy` => {`x` :: INTEGER}), ()-[:`OLD` =>]->()}',
+      ),
+    )
+
+    expect(drift.graphType?.stale.map((entry) => entry.name)).toEqual(['Legacy', 'OLD'])
+    expect(drift.graphType?.stale[0]?.dropStatement).toContain('DROP {(:`Legacy` =>)}')
+  })
+
+  it('reports missing elements when no graph type is installed', async () => {
+    const drift = await schemaDrift(provider(undefined))
+
+    expect(drift.graphType?.installed).toBeUndefined()
+    expect(drift.graphType?.missing.map((entry) => entry.name)).toContain('GtPerson')
+    expect(drift.graphType?.missing[0]?.createStatement).toContain('ADD {(:`')
+  })
+
+  it('reports a redefined element type with its ALTER fix', async () => {
+    // GtMovie redefined with an extra NOT NULL property server-side
+    const drift = await schemaDrift(
+      provider(
+        'ALTER CURRENT GRAPH TYPE SET {(:`GtMovie` => {`title` :: STRING NOT NULL, `released` :: INTEGER})}',
+      ),
+    )
+
+    expect(drift.graphType?.mismatched.map((entry) => entry.name)).toEqual(['GtMovie'])
+    expect(drift.graphType?.mismatched[0]?.createStatement).toContain('ALTER {(:`GtMovie` =>')
+  })
+
+  it('omits the family on backends without graph type support', async () => {
+    const drift = await schemaDrift(provider(undefined, true))
+
+    expect(drift.graphType).toBeUndefined()
+  })
+
+  it('the human-readable report includes the graph type family', async () => {
+    const drift = await schemaDrift(
+      provider('ALTER CURRENT GRAPH TYPE SET {(:`Legacy` => {`x` :: INTEGER})}'),
+    )
+
+    const report = formatSchemaDrift(drift)
+
+    expect(report).toContain('graph type (installed)')
+    expect(report).toContain('GRAPH_TYPE Legacy')
   })
 })
 
