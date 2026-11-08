@@ -96,14 +96,24 @@ describe('INeode#find id typing (NTS-502)', () => {
 
 describe('INeode#read/#write build-and-run sugar (NTS-553)', () => {
   it('accepts a Builder or a string on every scope', () => {
-    const neode = {} as unknown as import('../../src/index.js').default
-    const tx = {} as unknown as import('../../src/index.js').INeode
+    const neode = {
+      read: () => undefined,
+      write: () => undefined,
+    } as unknown as import('../../src/index.js').default
+    const tx = {
+      read: () => undefined,
+      write: () => undefined,
+    } as unknown as import('../../src/index.js').INeode
 
     for (const scope of [neode, tx]) {
       expectTypeOf(scope.read).parameter(0).toEqualTypeOf<Builder | string>()
       expectTypeOf(scope.write).parameter(0).toEqualTypeOf<Builder | string>()
-      expectTypeOf(scope.read).returns.toEqualTypeOf<Promise<QueryOutput>>()
-      expectTypeOf(scope.write).returns.toEqualTypeOf<Promise<QueryOutput>>()
+
+      // The positional (parameters, database) shape resolves to the raw
+      // output — the hydrate option (NTS-559) is a separate overload
+      expectTypeOf(scope.read(new Builder())).toEqualTypeOf<Promise<QueryOutput>>()
+      expectTypeOf(scope.read('RETURN 1 AS one', {}, 'aux')).toEqualTypeOf<Promise<QueryOutput>>()
+      expectTypeOf(scope.write(new Builder(), {}, 'aux')).toEqualTypeOf<Promise<QueryOutput>>()
     }
   })
 })

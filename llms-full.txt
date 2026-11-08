@@ -649,6 +649,12 @@ Hydrate one row of a projection read (NTS-135/136/137/138). The RETURN map proje
 
 _source: projection/hydrate.ts_
 
+### `HydrateQueryOptions` (interface)
+
+Options for the hydrate overloads of the build-and-run sugar, `Neode#read` / `Neode#write` (NTS-559): with a `hydrate` class the rows are hydrated into entities of that class instead of returned raw.
+
+_source: driver/types.ts_
+
 ### `instrumentConnectionProvider` (function)
 
 Instrument a provider transparently: property reads the wrapper doesn't satisfy — duck-typed introspection such as `connection.database` on the neo4j provider — forward to the inner provider, so consumers holding `Neode#getConnection()` see through the instrumentation.

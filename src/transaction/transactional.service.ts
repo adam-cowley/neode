@@ -1,6 +1,7 @@
 import type { EventEmitter } from 'node:events'
 import type {
   GraphRelationship,
+  HydrateQueryOptions,
   QueryOutput,
   QueryParams as QueryParameters,
   Runner,
@@ -30,7 +31,7 @@ import { WithinDistanceService } from '../services/query/within-distance.service
 import { search, type ScoredEntity } from '../services/query/search.service.js'
 import { runObservers } from '../observers.js'
 import { isConstructorOf, isRecord } from '../services/type-guards.js'
-import { hydrate } from '../hydrate.js'
+import { hydrate, hydrateWhenRequested, splitHydrateArguments } from '../hydrate.js'
 
 /**
 The INeode surface scoped to one open transaction: every read/write runs
@@ -478,28 +479,78 @@ export class TransactionalService implements INeode {
   Build-and-run sugar in this transaction's scope (NTS-553): pass a
   Builder to build-and-run it, or a string to pass it straight through
   to readCypher. Caller parameters merge over the builder's own params.
+
+  NTS-559: the `hydrate` option (the options object as the second or
+  third argument) hydrates the rows into entities of the given class
+  (the same overload `cypher()` offers, in this scope).
   */
-  async read(query: Builder | string, parameters: QueryParameters = {}): Promise<QueryOutput> {
+  async read<T>(
+    query: Builder | string,
+    options: { hydrate: new (...arguments_: never[]) => T; alias?: string },
+  ): Promise<T[]>
+  async read(query: Builder | string, parameters?: QueryParameters): Promise<QueryOutput>
+  async read<T>(
+    query: Builder | string,
+    parameters: QueryParameters | undefined,
+    options: { hydrate: new (...arguments_: never[]) => T; alias?: string },
+  ): Promise<T[]>
+  async read(
+    query: Builder | string,
+    parametersOrOptions: QueryParameters | HydrateQueryOptions = {},
+    options: { hydrate?: new (...arguments_: never[]) => unknown; alias?: string } = {},
+  ): Promise<QueryOutput | unknown[]> {
+    const { parameters, options: hydrateOptions } = splitHydrateArguments(
+      parametersOrOptions,
+      options,
+    )
+
     if (typeof query === 'string') {
-      return this.readCypher(query, parameters)
+      const raw = await this.readCypher(query, parameters)
+
+      return hydrateWhenRequested(hydrateOptions, raw)
     }
 
     const built = query.build()
 
-    return this.readCypher(built.query, { ...built.params, ...parameters })
+    const output = await this.readCypher(built.query, { ...built.params, ...parameters })
+
+    return hydrateWhenRequested(hydrateOptions, output)
   }
 
   /**
   WRITE counterpart of read(), in this transaction's scope.
   */
-  async write(query: Builder | string, parameters: QueryParameters = {}): Promise<QueryOutput> {
+  async write<T>(
+    query: Builder | string,
+    options: { hydrate: new (...arguments_: never[]) => T; alias?: string },
+  ): Promise<T[]>
+  async write(query: Builder | string, parameters?: QueryParameters): Promise<QueryOutput>
+  async write<T>(
+    query: Builder | string,
+    parameters: QueryParameters | undefined,
+    options: { hydrate: new (...arguments_: never[]) => T; alias?: string },
+  ): Promise<T[]>
+  async write(
+    query: Builder | string,
+    parametersOrOptions: QueryParameters | HydrateQueryOptions = {},
+    options: { hydrate?: new (...arguments_: never[]) => unknown; alias?: string } = {},
+  ): Promise<QueryOutput | unknown[]> {
+    const { parameters, options: hydrateOptions } = splitHydrateArguments(
+      parametersOrOptions,
+      options,
+    )
+
     if (typeof query === 'string') {
-      return this.writeCypher(query, parameters)
+      const raw = await this.writeCypher(query, parameters)
+
+      return hydrateWhenRequested(hydrateOptions, raw)
     }
 
     const built = query.build()
 
-    return this.writeCypher(built.query, { ...built.params, ...parameters })
+    const output = await this.writeCypher(built.query, { ...built.params, ...parameters })
+
+    return hydrateWhenRequested(hydrateOptions, output)
   }
 
   /**
