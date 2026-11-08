@@ -8,7 +8,7 @@ import { PropertyType } from '../meta/property-schema.js'
 import type { OrderSpec } from '../services/query/get.service.js'
 import { isRecord } from '../services/type-guards.js'
 import { NeodeError } from '../errors/index.js'
-import { projectionNode } from './projection.js'
+import { loadSpecCalls, projectionNode } from './projection.js'
 import { hydrateProjection } from './hydrate.js'
 import { applySoftDeleteFilter } from '../services/query/soft-delete.js'
 
@@ -210,8 +210,13 @@ export class ProjectionService {
     builder: Builder,
     limit?: number,
     skip?: number,
+    withSpec?: object,
   ): Promise<T[]> {
-    builder.return(`${projectionNode(THIS_NODE, schema)} AS ${THIS_NODE}`)
+    // Decorated load specs (NTS-560) emit their CALL subqueries before
+    // the RETURN, whose projection map reads the collected aliases
+    loadSpecCalls(builder, THIS_NODE, schema, withSpec)
+
+    builder.return(`${projectionNode(THIS_NODE, schema, withSpec)} AS ${THIS_NODE}`)
 
     if (skip !== undefined && skip !== 0) {
       builder.skip(skip)
@@ -245,6 +250,7 @@ export class ProjectionService {
     limit?: number,
     skip?: number,
     order?: OrderSpec,
+    withSpec?: object,
   ): Promise<T[]> {
     const builder = new Builder()
 
@@ -256,7 +262,7 @@ export class ProjectionService {
 
     applyOrder(builder, order, schema, bound)
 
-    return this.run<T>(constructor, schema, builder, limit, skip)
+    return this.run<T>(constructor, schema, builder, limit, skip, withSpec)
   }
 
   /**
@@ -266,6 +272,7 @@ export class ProjectionService {
     constructor: new (...arguments_: never[]) => T,
     schema: EntitySchema,
     value: unknown,
+    withSpec?: object,
   ): Promise<T | undefined> {
     const builder = new Builder()
 
@@ -279,7 +286,7 @@ export class ProjectionService {
 
     applySoftDeleteFilter(builder, schema)
 
-    const results = await this.run<T>(constructor, schema, builder, 1)
+    const results = await this.run<T>(constructor, schema, builder, 1, undefined, withSpec)
 
     return results[0]
   }

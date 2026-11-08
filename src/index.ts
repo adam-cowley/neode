@@ -150,6 +150,12 @@ export { vectorIndexName } from './services/schema/vector.service.js'
 export { fulltextIndexName } from './services/schema/fulltext.service.js'
 export type { OrderSpec } from './query/order-spec.js'
 export type {
+  LoadSpec,
+  ReadOptions,
+  RelationQuery,
+  WithSpec,
+} from './query/load-spec.js'
+export type {
   Page,
   CursorPage,
   PaginateOptions,

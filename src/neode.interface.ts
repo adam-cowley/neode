@@ -4,6 +4,7 @@ import type {
   QueryOutput,
   QueryParams as QueryParameters,
 } from './driver/types.js'
+import type { ReadOptions, WithSpec } from './query/load-spec.js'
 import type { DeleteOptions } from './services/query/delete.service.js'
 import type { OrderSpec } from './services/query/get.service.js'
 import type { Builder } from './query/index.js'
@@ -19,6 +20,17 @@ export interface INeode {
     constructor: new (...arguments_: never[]) => T,
     value: string | number,
     database?: string,
+  ): Promise<T | undefined>
+  /**
+  Load spec variant (NTS-560): `options.with` requests non-eager
+  relationships per read — `with: { orders: (relation) => relation.orderBy(
+  'orderDate', 'DESC').limit(20) }` — hydrated entities included. The
+  return contract is unchanged.
+  */
+  find<T>(
+    constructor: new (...arguments_: never[]) => T,
+    value: string | number,
+    options: ReadOptions<T>,
   ): Promise<T | undefined>
   findById<T>(
     constructor: new (...arguments_: never[]) => T,
@@ -40,6 +52,7 @@ export interface INeode {
     limit?: number,
     skip?: number,
     database?: string,
+    options?: { with?: WithSpec<T> },
   ): Promise<T[]>
   /**
   MERGE a node of the given constructor on its merge fields (the unique

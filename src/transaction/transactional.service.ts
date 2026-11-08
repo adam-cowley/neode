@@ -16,6 +16,7 @@ import { elementIdOfEntity } from '../element-id.js'
 import type { RelationshipPropertySchema } from '../meta/relationship-property-schema.js'
 import type { INeode } from '../neode.interface.js'
 import type { Builder } from '../query/index.js'
+import type { ReadOptions, WithSpec } from '../query/load-spec.js'
 import { BoundBuilder } from '../query/bound-builder.js'
 import { NeodeError } from '../errors/index.js'
 import { DeleteService, type DeleteOptions } from '../services/query/delete.service.js'
@@ -24,6 +25,7 @@ import { FindByIdService } from '../services/query/find-by-id.service.js'
 import { FindService } from '../services/query/find.service.js'
 import { GetService, type OrderSpec } from '../services/query/get.service.js'
 import { MergeService, getMergeFields } from '../services/query/merge.service.js'
+import { ProjectionService } from '../projection/projection.service.js'
 import { INTERNAL_ID } from '../constants.js'
 import { RelateService } from '../services/query/relate.service.js'
 import { UpdateService } from '../services/query/update.service.js'
@@ -117,14 +119,29 @@ export class TransactionalService implements INeode {
     constructor: new (...arguments_: never[]) => T,
     value: string | number,
     database?: string,
+  ): Promise<T | undefined>
+  async find<T>(
+    constructor: new (...arguments_: never[]) => T,
+    value: string | number,
+    options: ReadOptions<T>,
+  ): Promise<T | undefined>
+  async find<T>(
+    constructor: new (...arguments_: never[]) => T,
+    value: string | number,
+    databaseOrOptions?: string | ReadOptions<T>,
   ): Promise<T | undefined> {
-    this.ignoreDatabaseOverride(database)
+    this.ignoreDatabaseOverride(
+      typeof databaseOrOptions === 'string' ? databaseOrOptions : databaseOrOptions?.database,
+    )
 
     const schema = this.getSchema(constructor)
 
-    const service = new FindService(this.handle)
+    const withSpec = typeof databaseOrOptions === 'object' ? databaseOrOptions.with : undefined
 
-    return service.find<T>(constructor, schema, value)
+    // A load spec reads through the projection path (facade parity)
+    return withSpec === undefined
+      ? new FindService(this.handle).find<T>(constructor, schema, value)
+      : new ProjectionService(this.handle).find<T>(constructor, schema, value, withSpec)
   }
 
   async findById<T>(
@@ -415,12 +432,26 @@ export class TransactionalService implements INeode {
     limit?: number,
     skip?: number,
     database?: string,
+    options?: { with?: WithSpec<T> },
   ): Promise<T[]> {
     this.ignoreDatabaseOverride(database)
 
     const schema = this.getSchema(constructor)
 
-    return new GetService(this.handle).get<T>(constructor, schema, parameters, limit, skip, order)
+    const withSpec = options?.with
+
+    // A load spec reads through the projection path (facade parity)
+    return withSpec === undefined
+      ? new GetService(this.handle).get<T>(constructor, schema, parameters, limit, skip, order)
+      : new ProjectionService(this.handle).get<T>(
+          constructor,
+          schema,
+          parameters,
+          limit,
+          skip,
+          order,
+          withSpec,
+        )
   }
 
   async search<T>(

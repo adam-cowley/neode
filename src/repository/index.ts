@@ -6,6 +6,7 @@ import type { Newable } from '../meta/newable.js'
 import { PropertyType, type PropertySchema } from '../meta/property-schema.js'
 import type { INeode } from '../neode.interface.js'
 import { Builder, eagerNode } from '../query/index.js'
+import type { WithSpec } from '../query/load-spec.js'
 import { quote } from '../query/quote.js'
 import { applyOrder, type OrderSpec } from '../query/order-spec.js'
 import { getMergeFields } from '../services/query/merge.service.js'
@@ -21,7 +22,12 @@ import { applySoftDeleteFilter } from '../services/query/soft-delete.js'
 /**
 Ordering, paging and row-limit options shared by findAll() and where()
 */
-export interface FindOptions {
+/**
+Ordering, paging, row-limit and load-spec options shared by findAll()
+and where(). Generic over the entity so the `with` load spec (NTS-560)
+type-checks its relationship keys.
+*/
+export interface FindOptions<Entity = object> {
   order?: OrderSpec
   limit?: number
   skip?: number
@@ -30,6 +36,13 @@ export interface FindOptions {
   @SoftDelete label; this opts back in.
   */
   includeDeleted?: boolean
+  /**
+  Per-relation eager load spec (NTS-560): request non-eager relationships
+  and decorate their read — `with: { orders: (relation) => relation.limit(2) }`.
+  With a spec the read goes through the projection path, so the standard
+  soft-delete filter applies — includeDeleted is not honoured with `with`.
+  */
+  with?: WithSpec<Entity>
 }
 
 /**
@@ -210,7 +223,9 @@ export class Repository<Entity> {
   async findAll(parameters: Partial<Entity> = {}, options: FindOptions = {}): Promise<Entity[]> {
     const hasIncludeDeleted = options.includeDeleted === true
 
-    if (!hasIncludeDeleted && hasProjectedProperties(this.schema)) {
+    const withSpec = options.with
+
+    if (!hasIncludeDeleted && (withSpec !== undefined || hasProjectedProperties(this.schema))) {
       return this.neode.all<Entity>(
         this.entity,
         parameters,
@@ -218,6 +233,7 @@ export class Repository<Entity> {
         options.limit,
         options.skip,
         this.database,
+        withSpec === undefined ? undefined : { with: withSpec },
       )
     }
 

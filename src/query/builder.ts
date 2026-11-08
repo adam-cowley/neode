@@ -1022,6 +1022,16 @@ export class Builder {
   }
 
   /**
+  SKIP attached to the preceding WITH clause (NTS-560) — the offset half
+  of the WITH-carried ORDER BY / LIMIT trim (withLimit)
+  */
+  withSkip(skip: number): this {
+    this.lastWith.skip(skip)
+
+    return this
+  }
+
+  /**
   LIMIT attached to the preceding WITH clause (NTS-477) — the read side
   of a read-modify-write: WITH … ORDER BY … LIMIT n, then the write.
   */

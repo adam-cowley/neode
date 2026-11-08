@@ -47,6 +47,7 @@ import { hasProjectedProperties } from './projection/index.js'
 import { ProjectionService } from './projection/projection.service.js'
 import { Builder } from './query/index.js'
 import { BoundBuilder } from './query/bound-builder.js'
+import type { ReadOptions, WithSpec } from './query/load-spec.js'
 import { quote } from './query/quote.js'
 import type { Repository } from './repository/index.js'
 import { FactoryBuilder } from './services/factory.service.js'
@@ -640,15 +641,33 @@ export class Neode implements INeode {
     constructor: new (...arguments_: never[]) => T,
     value: string | number,
     database?: string,
+  ): Promise<T | undefined>
+  async find<T>(
+    constructor: new (...arguments_: never[]) => T,
+    value: string | number,
+    options: ReadOptions<T>,
+  ): Promise<T | undefined>
+  async find<T>(
+    constructor: new (...arguments_: never[]) => T,
+    value: string | number,
+    databaseOrOptions?: string | ReadOptions<T>,
   ): Promise<T | undefined> {
     const schema = this.getSchema(constructor)
+
+    const options = typeof databaseOrOptions === 'object' ? databaseOrOptions : undefined
+    const database = typeof databaseOrOptions === 'string' ? databaseOrOptions : options?.database
+    const withSpec = options?.with
 
     const tx = await this.readTransaction(database)
 
     try {
-      const output = hasProjectedProperties(schema)
-        ? await new ProjectionService(tx).find<T>(constructor, schema, value)
-        : await new FindService(tx).find<T>(constructor, schema, value)
+      // A load spec reads through the projection path even when the model
+      // declares no projected properties — it renders the requested
+      // relationships into the RETURN projection
+      const output =
+        withSpec !== undefined || hasProjectedProperties(schema)
+          ? await new ProjectionService(tx).find<T>(constructor, schema, value, withSpec)
+          : await new FindService(tx).find<T>(constructor, schema, value)
 
       await tx.commit()
 
@@ -1394,22 +1413,27 @@ export class Neode implements INeode {
     limit?: number,
     skip?: number,
     database?: string,
+    options?: { with?: WithSpec<T> },
   ): Promise<T[]> {
     const schema = this.getSchema(constructor)
 
     const tx = await this.readTransaction(database)
 
     try {
-      const results = hasProjectedProperties(schema)
-        ? await new ProjectionService(tx).get<T>(
-            constructor,
-            schema,
-            parameters,
-            limit,
-            skip,
-            order,
-          )
-        : await new GetService(tx).get<T>(constructor, schema, parameters, limit, skip, order)
+      const withSpec = options?.with
+
+      const results =
+        withSpec !== undefined || hasProjectedProperties(schema)
+          ? await new ProjectionService(tx).get<T>(
+              constructor,
+              schema,
+              parameters,
+              limit,
+              skip,
+              order,
+              withSpec,
+            )
+          : await new GetService(tx).get<T>(constructor, schema, parameters, limit, skip, order)
 
       await tx.commit()
 

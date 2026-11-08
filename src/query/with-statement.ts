@@ -6,6 +6,8 @@ export class WithStatement {
 
   private limitValue?: number
 
+  private skipValue?: number
+
   constructor(variables: string[]) {
     this.variables = variables
   }
@@ -27,11 +29,19 @@ export class WithStatement {
     this.limitValue = limit
   }
 
+  skip(skip: number): void {
+    this.skipValue = skip
+  }
+
   toString(): string {
     const output = [`WITH ${this.variables.join(', ')}`]
 
     if (this.orderClauses.length > 0) {
       output.push(`ORDER BY ${this.orderClauses.map((order) => order.toString()).join(', ')}`)
+    }
+
+    if (this.skipValue !== undefined) {
+      output.push(`SKIP ${String(this.skipValue)}`)
     }
 
     if (this.limitValue !== undefined) {

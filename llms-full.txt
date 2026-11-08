@@ -691,6 +691,12 @@ A label predicate: `alias:Label` (several labels require all of them), shared by
 
 _source: query/label-predicate.ts_
 
+### `LoadSpec` (type)
+
+One entry of a load spec (NTS-560): a callback decorating the relation's read. `true` (a plain request) is also accepted at the `with` key.
+
+_source: query/load-spec.ts_
+
 ### `ManyAndCount` (interface)
 
 Non-paginated `{ items, total }` read (Prisma's findManyAndCount)
@@ -735,7 +741,7 @@ _source: services/query/paginate.service.ts_
 
 ### `projectionNode` (function)
 
-The RETURN map projection for a model's read query: all properties, the hydration identity markers, full-entity eager relationships and every projected property — one query per read.
+The RETURN map projection for a model's read query: all properties, the hydration identity markers, full-entity eager relationships and every projected property — one query per read. `withSpec` (NTS-560) additionally renders requested non-eager relationships: `true` renders the standard comprehension fragment, a decorating callback renders `key: <key>_loaded` (`[0]` for singular) — the alias the CALL subquery loadSpecCalls() published. Requested keys count as loaded: the hydrated values materialize as own properties through the regular eager hydration path.
 
 _source: projection/projection.ts_
 
@@ -787,11 +793,23 @@ A raw Cypher expression used as an inline pattern property value (NTS-460): rend
 
 _source: query/expressions.ts_
 
+### `ReadOptions` (interface)
+
+Options for the model reads that accept a load spec (NTS-560).
+
+_source: query/load-spec.ts_
+
 ### `RelateConnectionProvider` (class)
 
 ConnectionProvider over the embedded Relate engine (@relate/relate) — in-process, no Bolt server. The engine is a soft dependency, loaded at construction time; the client shapes are structural so it stays that way.
 
 _source: driver/relate.ts_
+
+### `RelationQuery` (interface)
+
+The sub-builder a load spec callback receives (NTS-560): the comprehension / subquery-legal operations only — where, orderBy, limit, skip. No return(), no writes, no statement segments. Property names are bare ("orderDate") — the loader prefixes them with the related node's variable. Every method returns the view for chaining.
+
+_source: query/load-spec.ts_
 
 ### `Repository` (class)
 
@@ -876,6 +894,12 @@ _source: serialise.ts_
 An `IS NULL` / `IS NOT NULL` predicate on a property, rendered by toString() — the value of `Builder.whereNull` / `whereNotNull`.
 
 _source: query/where-null.ts_
+
+### `WithSpec` (type)
+
+The `with` load spec on find / findAll / all (NTS-560): relationship key -> request. Keys must name relationships declared on the model — unknown keys are rejected at compile time when the model type is known and throw a NeodeError at runtime.
+
+_source: query/load-spec.ts_
 
 ## Schema management
 

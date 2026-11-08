@@ -197,6 +197,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `knn` (function) — k-nearest-neighbour search over a vector index, returning hydrated entities with their similarity score, best match first. With the default `auto` mode the Cypher 25 `SEARCH` clause is attempted first and the queryNodes procedure is used as a fallback; when the backend supports neither a combined error is raised.
 - `KnnMode` (type) — Which query form to use for the kNN search
 - `LabelPredicate` (class) — A label predicate: `alias:Label` (several labels require all of them), shared by `whereLabel` (`WHERE n:Completed`) and `orderByLabel` (`ORDER BY n:Completed DESC`).
+- `LoadSpec` (type) — One entry of a load spec (NTS-560): a callback decorating the relation's read. `true` (a plain request) is also accepted at the `with` key.
 - `ManyAndCount` (interface) — Non-paginated `{ items, total }` read (Prisma's findManyAndCount)
 - `Neo4jConnectionProvider` (class) — ConnectionProvider over a neo4j-driver `Driver` (Bolt): Neo4j Community/Enterprise, Aura, Memgraph, or `relate serve`. Result values are normalised out of driver types (Node, Relationship, Integer, temporal, Point) into the plain GraphNode/GraphRelationship shapes; driver errors are mapped through the typed error taxonomy.
 - `OffsetPaginateOptions` (interface) — Property -> direction pagination (the classic form): paginate(model, filter, { page, limit, order? })
@@ -204,7 +205,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `Page` (interface) — Offset/page result
 - `PaginateOptions` (type) — The union of the two pagination modes PaginateService accepts — the options shape (page vs cursor) selects the mode.
 - `PaginateService` (class) — Pagination helpers. Two modes, selected by the options shape: - `{ page, limit, order? }` — offset pagination over two autocommit reads (data + COUNT), returning { items, total, page, limit, totalPages } - `{ limit, orderBy?, after?/before? }` — keyset pagination on a temporal property (`WHERE this.createdAt > datetime($cursor)`), returning { items, nextCursor, hasMore }
-- `projectionNode` (function) — The RETURN map projection for a model's read query: all properties, the hydration identity markers, full-entity eager relationships and every projected property — one query per read.
+- `projectionNode` (function) — The RETURN map projection for a model's read query: all properties, the hydration identity markers, full-entity eager relationships and every projected property — one query per read. `withSpec` (NTS-560) additionally renders requested non-eager relationships: `true` renders the standard comprehension fragment, a decorating callback renders `key: <key>_loaded` (`[0]` for singular) — the alias the CALL subquery loadSpecCalls() published. Requested keys count as loaded: the hydrated values materialize as own properties through the regular eager hydration path.
 - `ProjectionService` (class) — Read service for models with projected properties (NTS-135/136/137/138): the same match / where surface as the plain query services, but the RETURN map projection carries every projected value — related subsets, counts, exists, label predicates, expressions — in one query per read. NTS-145: object values on
 - `Property` (class) — A property in a SET clause: `property operator $param` or, inline in a pattern, `property: $param`. With `isRaw`, the value renders verbatim (an inline Cypher expression, NTS-460) instead of a parameter reference.
 - `QueryExecutedEvent` (interface) — Payload of QUERY_EXECUTED, emitted once per executed statement.
@@ -213,7 +214,9 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `QueryRecord` (interface) — One row of a query result.
 - `QuerySummary` (interface) — Metadata for one executed statement: write counters and (when the statement is prefixed with EXPLAIN / PROFILE) the server's plan.
 - `RawExpression` (class) — A raw Cypher expression used as an inline pattern property value (NTS-460): rendered verbatim into the pattern — `{ prop: <expression> }` — instead of being bound as a parameter. Variable references (`row.answers`), server-side calls (`datetime()`) and parameter references (`$name`, bound via `Builder#param`) are all legal; the expression must never interpolate data.
+- `ReadOptions` (interface) — Options for the model reads that accept a load spec (NTS-560).
 - `RelateConnectionProvider` (class) — ConnectionProvider over the embedded Relate engine (@relate/relate) — in-process, no Bolt server. The engine is a soft dependency, loaded at construction time; the client shapes are structural so it stays that way.
+- `RelationQuery` (interface) — The sub-builder a load spec callback receives (NTS-560): the comprehension / subquery-legal operations only — where, orderBy, limit, skip. No return(), no writes, no statement segments. Property names are bare ("orderDate") — the loader prefixes them with the related node's variable. Every method returns the view for chaining.
 - `Repository` (class) — Active-record style data-access repository for one registered model — the TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
 - `requireRelateClient` (function) — Resolve the Relate client module and native library. The client is not yet published to npm, so it is loaded from disk: 1. `RELATE_CLIENT_PATH` env var, or 2. the sibling `relate` repository checkout (`../relate/clients/javascript`) The native library location is passed through via `RELATE_LIB` (see the Relate client's loader) — detected automatically here when a sibling repository checkout exists.
 - `Runner` (interface) — Anything able to run statements in its scope (autocommit or transaction).
@@ -228,6 +231,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `TransactionHandle` (interface) — An explicit transaction: statements run in scope until commit/rollback.
 - `valueToJson` (function) — Convert a single property value into its JSON friendly shape.
 - `WhereNull` (class) — An `IS NULL` / `IS NOT NULL` predicate on a property, rendered by toString() — the value of `Builder.whereNull` / `whereNotNull`.
+- `WithSpec` (type) — The `with` load spec on find / findAll / all (NTS-560): relationship key -> request. Keys must name relationships declared on the model — unknown keys are rejected at compile time when the model type is known and throw a NeodeError at runtime.
 
 ## kNN & full-text search
 
