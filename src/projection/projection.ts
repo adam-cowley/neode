@@ -85,16 +85,16 @@ function relationshipPattern(alias: string, property: PropertySchema): string {
   if (path !== undefined && path.length > 0) {
     const segments: string[] = [`(${alias})`]
 
-    path.forEach((hop, index) => {
-      const last = index === path.length - 1
-      const to = last ? 'node' : `${alias}_h${String(index + 1)}`
+    for (const [index, hop] of path.entries()) {
+      const isLast = index === path.length - 1
+      const to = isLast ? 'node' : `${alias}_h${String(index + 1)}`
       const arrowIn = hop.direction === Direction.INCOMING ? '<' : ''
       const arrowOut = hop.direction === Direction.OUTGOING ? '>' : ''
       const type = hop.type.length > 0 ? `[:${quote(hop.type)}]` : '[]'
-      const labels = last ? targetLabels(property) : labelsPattern(hop.target?.())
+      const labels = isLast ? targetLabels(property) : labelsPattern(hop.target?.())
 
       segments.push(`${arrowIn}-${type}-${arrowOut}(${to}${labels})`)
-    })
+    }
 
     return segments.join('')
   }

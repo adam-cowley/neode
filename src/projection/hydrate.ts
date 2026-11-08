@@ -65,11 +65,13 @@ function dedupe(values: unknown[]): unknown[] {
   for (const value of values) {
     const key = JSON.stringify(value)
 
-    if (!seen.has(key)) {
-      seen.add(key)
-
-      out.push(value)
+    if (seen.has(key)) {
+      continue
     }
+
+    seen.add(key)
+
+    out.push(value)
   }
 
   return out

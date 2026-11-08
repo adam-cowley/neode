@@ -87,6 +87,62 @@ export class TraverseBuilder {
   }
 
   /**
+  Assemble the MATCH + hops + WHERE the run methods share.
+  */
+  private buildPattern(): { builder: Builder; aliases: string[]; start: Newable } {
+    const startConstructor = this.start()
+    const startSchema = getModel(startConstructor)
+
+    if (!(startSchema instanceof EntitySchema)) {
+      throw new TypeError('traverse() requires a registered model')
+    }
+
+    const builder = new Builder()
+
+    builder.match('t0', startSchema.getLabels(), this.startFilters)
+
+    const aliases = ['t0']
+
+    for (const [index, hop] of this.hops.entries()) {
+      const alias = `t${String(index + 1)}`
+
+      // A class is a function WITH a prototype; a lazy thunk is an arrow
+      const targetConstructor =
+        typeof hop.target === 'function' && hop.target.prototype !== undefined
+          ? hop.target
+          : undefined
+
+      const targetSchema = targetConstructor === undefined ? undefined : getModel(targetConstructor)
+
+      builder.relationship(hop.type, hop.direction, `r${String(index + 1)}`, hop.degrees)
+
+      builder.to(alias, targetSchema instanceof EntitySchema ? targetSchema.getLabels() : false)
+
+      aliases.push(alias)
+    }
+
+    for (const exclusion of this.exclusions) {
+      builder.whereRaw(exclusion)
+    }
+
+    if (this.orderSpec !== undefined) {
+      const { field, order } = this.orderSpec
+
+      if (order === undefined) {
+        builder.orderBy(field)
+      } else {
+        builder.orderBy(field, order)
+      }
+    }
+
+    if (this.limitCount !== undefined) {
+      builder.limit(this.limitCount)
+    }
+
+    return { builder, aliases, start: startConstructor }
+  }
+
+  /**
   Add one hop. `target` label-filters the hop's end node (a model class
   or a lazy thunk — forward refs); `degrees` ('1..2', '2', '...3') makes
   the hop variable-length.
@@ -168,58 +224,6 @@ export class TraverseBuilder {
     this.limitCount = limit
 
     return this
-  }
-
-  /**
-  Assemble the MATCH + hops + WHERE the run methods share.
-  */
-  private buildPattern(): { builder: Builder; aliases: string[]; start: Newable } {
-    const startConstructor = this.start()
-    const startSchema = getModel(startConstructor)
-
-    if (!(startSchema instanceof EntitySchema)) {
-      throw new TypeError('traverse() requires a registered model')
-    }
-
-    const builder = new Builder()
-
-    builder.match('t0', startSchema.getLabels(), this.startFilters)
-
-    const aliases = ['t0']
-
-    for (const [index, hop] of this.hops.entries()) {
-      const alias = `t${String(index + 1)}`
-
-      // A class is a function WITH a prototype; a lazy thunk is an arrow
-      const targetConstructor =
-        typeof hop.target === 'function' && hop.target.prototype !== undefined
-          ? hop.target
-          : undefined
-
-      const targetSchema = targetConstructor === undefined ? undefined : getModel(targetConstructor)
-
-      builder.relationship(hop.type, hop.direction, `r${String(index + 1)}`, hop.degrees)
-
-      builder.to(alias, targetSchema instanceof EntitySchema ? targetSchema.getLabels() : false)
-
-      aliases.push(alias)
-    }
-
-    for (const exclusion of this.exclusions) {
-      builder.whereRaw(exclusion)
-    }
-
-    if (this.orderSpec !== undefined) {
-      this.orderSpec.order === undefined
-        ? builder.orderBy(this.orderSpec.field)
-        : builder.orderBy(this.orderSpec.field, this.orderSpec.order)
-    }
-
-    if (this.limitCount !== undefined) {
-      builder.limit(this.limitCount)
-    }
-
-    return { builder, aliases, start: startConstructor }
   }
 
   /**

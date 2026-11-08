@@ -75,6 +75,19 @@ export interface CheckedPathRelatedConfig<T extends object> {
 }
 
 /**
+Implementation-facing union of every @RelatedOne / @RelatedMany config
+shape — all fields optional so the decorator body reads one shape without
+assertions. Not part of the public API.
+*/
+export interface AnyRelatedConfig {
+  type?: string
+  direction?: ProjectionDirection
+  path?: RelatedPathHop[]
+  fields?: string[]
+  target?: (() => Newable) | undefined
+}
+
+/**
 Checked form of `RelatedConfig` for the @RelatedOne / @RelatedMany
 overloads that carry a `target()`: `fields` must be keys of the target's
 instance type, so a typo is a compile error instead of a field silently

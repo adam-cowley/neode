@@ -4,9 +4,9 @@ import { PropertyType } from '../../meta/property-schema.js'
 import { toDirection } from '../../query/index.js'
 import type { PropertyPathHop } from '../../meta/property-schema.js'
 import type {
+  AnyRelatedConfig,
   CheckedPathRelatedConfig,
   CheckedRelatedConfig,
-  PathRelatedConfig,
   RelatedConfig,
   RelatedPathHop,
 } from './projection-config.interface.js'
@@ -35,19 +35,15 @@ against it and label-filters the final node. End nodes reached through
 several paths are deduplicated on hydration.
 */
 export function RelatedMany<T extends object>(
-  config: CheckedRelatedConfig<T>,
+  config: CheckedRelatedConfig<T> | CheckedPathRelatedConfig<T>,
 ): (value: undefined, context: ClassFieldDecoratorContext) => void
 export function RelatedMany(
-  config: RelatedConfig & { fields: string[]; target?: undefined },
-): (value: undefined, context: ClassFieldDecoratorContext) => void
-export function RelatedMany<T extends object>(
-  config: CheckedPathRelatedConfig<T>,
-): (value: undefined, context: ClassFieldDecoratorContext) => void
-export function RelatedMany(
-  config: { path: RelatedPathHop[]; fields: string[]; target?: undefined },
+  config:
+    | (RelatedConfig & { fields: string[]; target?: undefined })
+    | { path: RelatedPathHop[]; fields: string[]; target?: undefined },
 ): (value: undefined, context: ClassFieldDecoratorContext) => void
 export function RelatedMany(
-  config: RelatedConfig | PathRelatedConfig | { path: RelatedPathHop[]; fields: string[] },
+  config: AnyRelatedConfig,
 ): (value: undefined, context: ClassFieldDecoratorContext) => void {
   return function (_value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = memberName(context)
@@ -64,7 +60,7 @@ export function RelatedMany(
       // top-level `direction` do not apply. The last hop ends at the
       // property's target — kept on the property so the final node is
       // label-filtered like a single-hop projection.
-      if ('path' in config && config.path !== undefined) {
+      if (config.path !== undefined) {
         if (config.fields === undefined || config.fields.length === 0) {
           throw new Error(`@RelatedMany on "${propertyKey}" with 'path' requires 'fields'`)
         }
@@ -84,23 +80,21 @@ export function RelatedMany(
           }),
         )
 
-        const pathConfig = config as PathRelatedConfig
-        const entity: Newable | undefined = pathConfig.target?.()
+        const pathEntity: Newable | undefined = config.target?.()
 
-        if (entity !== undefined) {
-          property.setEntity(entity)
+        if (pathEntity !== undefined) {
+          property.setEntity(pathEntity)
         }
 
         return
       }
 
-      property.setRelationshipType((config as RelatedConfig).type)
-      property.setDirection(toDirection((config as RelatedConfig).direction))
+      property.setRelationshipType(config.type ?? '')
+      property.setDirection(toDirection(config.direction))
 
-      const single = config as RelatedConfig
-      const entity: Newable | undefined = single.target?.()
+      const entity: Newable | undefined = config.target?.()
 
-      if (entity === undefined && !single.fields) {
+      if (entity === undefined && !config.fields) {
         throw new Error(`@RelatedMany on "${propertyKey}" requires either 'fields' or a 'target()'`)
       }
 
