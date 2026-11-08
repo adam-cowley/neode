@@ -134,6 +134,22 @@ export interface CypherOptions {
 }
 
 /**
+Options for the hydrate overloads of the build-and-run sugar,
+`Neode#read` / `Neode#write` (NTS-559): with a `hydrate` class the rows
+are hydrated into entities of that class instead of returned raw.
+*/
+export interface HydrateQueryOptions {
+  /**
+  Column that holds the node to hydrate (default 'this')
+  */
+  alias?: string
+  /**
+  Per-call database override
+  */
+  database?: string
+}
+
+/**
 The connection port implemented by every backend.
 */
 export interface ConnectionProvider {

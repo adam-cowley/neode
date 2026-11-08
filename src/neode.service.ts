@@ -16,6 +16,7 @@ import type {
   ConnectionProvider,
   CypherOptions,
   GraphRelationship,
+  HydrateQueryOptions,
   QueryOutput,
   QueryParams as QueryParameters,
   Runner,
@@ -24,7 +25,7 @@ import type {
 import { elementIdOfEntity } from './element-id.js'
 import { setDefaultNeode } from './entity-methods.js'
 import { NeodeError } from './errors/index.js'
-import { hydrate } from './hydrate.js'
+import { hydrate, hydrateWhenRequested, splitHydrateArguments } from './hydrate.js'
 import { EntitySchema } from './meta/entity/entity-schema.js'
 import { getModel, getModels } from './meta/index.js'
 import {
@@ -330,37 +331,88 @@ export class Neode implements INeode {
   Build-and-run sugar (NTS-553): pass a Builder to build-and-run it, or a
   string to pass it straight through to readCypher. Caller-supplied
   parameters merge over the builder's own params. Routes READ.
+
+  NTS-559: with the `hydrate` option (the options object as the second
+  or third argument) the rows are instead hydrated into entities of the
+  given class, read from the `alias` column — the same overload
+  `cypher()` offers.
   */
+  async read<T>(
+    query: Builder | string,
+    options: HydrateQueryOptions & { hydrate: new (...arguments_: never[]) => T },
+  ): Promise<T[]>
   async read(
     query: Builder | string,
-    parameters: QueryParameters = {},
+    parameters?: QueryParameters,
     database?: string,
-  ): Promise<QueryOutput> {
+  ): Promise<QueryOutput>
+  async read<T>(
+    query: Builder | string,
+    parameters: QueryParameters | undefined,
+    options: HydrateQueryOptions & { hydrate: new (...arguments_: never[]) => T },
+  ): Promise<T[]>
+  async read(
+    query: Builder | string,
+    parametersOrOptions: QueryParameters | HydrateQueryOptions = {},
+    databaseOrOptions: string | HydrateQueryOptions = {},
+  ): Promise<QueryOutput | unknown[]> {
+    const { parameters, options, database } = splitHydrateArguments(
+      parametersOrOptions,
+      databaseOrOptions,
+    )
+
     if (typeof query === 'string') {
-      return this.readCypher(query, parameters, database)
+      const raw = await this.readCypher(query, parameters, database)
+
+      return hydrateWhenRequested(options, raw)
     }
 
     const built = query.build()
 
-    return this.readCypher(built.query, { ...built.params, ...parameters }, database)
+    const output = await this.readCypher(built.query, { ...built.params, ...parameters }, database)
+
+    return hydrateWhenRequested(options, output)
   }
 
   /**
   WRITE counterpart of read(): pass a Builder to build-and-run it, or a
   string to pass it straight through to writeCypher. Routes WRITE.
   */
+  async write<T>(
+    query: Builder | string,
+    options: HydrateQueryOptions & { hydrate: new (...arguments_: never[]) => T },
+  ): Promise<T[]>
   async write(
     query: Builder | string,
-    parameters: QueryParameters = {},
+    parameters?: QueryParameters,
     database?: string,
-  ): Promise<QueryOutput> {
+  ): Promise<QueryOutput>
+  async write<T>(
+    query: Builder | string,
+    parameters: QueryParameters | undefined,
+    options: HydrateQueryOptions & { hydrate: new (...arguments_: never[]) => T },
+  ): Promise<T[]>
+  async write(
+    query: Builder | string,
+    parametersOrOptions: QueryParameters | HydrateQueryOptions = {},
+    databaseOrOptions: string | HydrateQueryOptions = {},
+  ): Promise<QueryOutput | unknown[]> {
+    const { parameters, options, database } = splitHydrateArguments(
+      parametersOrOptions,
+      databaseOrOptions,
+    )
+
     if (typeof query === 'string') {
-      return this.writeCypher(query, parameters, database)
+      const raw = await this.writeCypher(query, parameters, database)
+
+      return hydrateWhenRequested(options, raw)
     }
 
     const built = query.build()
 
-    return this.writeCypher(built.query, { ...built.params, ...parameters }, database)
+    const output = await this.writeCypher(built.query, { ...built.params, ...parameters }, database)
+
+    return hydrateWhenRequested(options, output)
   }
 
   /**
@@ -375,7 +427,7 @@ export class Neode implements INeode {
   The unified raw query escape hatch: run any Cypher statement through
   the instance's connection, choosing READ or WRITE per call (`routing`,
   falling back to the connection's `defaultRouting`, then READ).
-  
+
   Rows come back JSON-safe (graph values — Node, Relationship, Path,
   Point — serialised to plain structures). With the `hydrate` option the
   rows are instead hydrated into entities of the given class, read from

@@ -1,5 +1,6 @@
 import { Neode } from '../../src/neode.service'
 import { Builder } from '../../src/query'
+import { defineModel } from '../../src/meta/map-schema'
 import {
   AccessMode,
   ConnectionProvider,
@@ -8,6 +9,12 @@ import {
   QueryRecord,
   TransactionHandle,
 } from '../../src/driver/types'
+
+// ---- Fixtures (per-file: decorator registry is global per module registry) --
+
+const SugarOrder = defineModel('SugarOrder', {
+  total: { type: 'number' },
+})
 
 // ---- ConnectionProvider fake (same pattern as cypher-facade.test.ts) --------
 
@@ -161,5 +168,110 @@ describe('Neode#read / Neode#write (build-and-run sugar)', () => {
     const output = await neode.read(new Builder().return('1 AS one'))
 
     expect(output.records[0].get('one')).toBe(1)
+  })
+})
+
+// NTS-559 — the hydrate overloads on read() / write()
+describe('Neode#read / Neode#write hydrate option', () => {
+  const nodeRow = (properties: Record<string, unknown>): QueryRecord => ({
+    get: (key: string) =>
+      key === 'this' ? { elementId: '4:unit-1', labels: ['SugarOrder'], properties } : undefined,
+    has: (key: string) => key === 'this',
+    keys: ['this'],
+  })
+
+  it('read(builder, params, { hydrate }) returns hydrated entities', async () => {
+    const neode = new Neode(new RecordingProvider([{ records: [nodeRow({ total: 10 })] }]))
+
+    const entities = await neode.read(
+      new Builder().match('this', 'SugarOrder').return('this'),
+      {},
+      {
+        hydrate: SugarOrder,
+      },
+    )
+
+    expect(entities).toHaveLength(1)
+    expect(entities[0]).toBeInstanceOf(SugarOrder)
+    expect(entities[0].total).toBe(10)
+  })
+
+  it('read(builder, { hydrate }) — the two-argument form — hydrates and passes no parameters', async () => {
+    const provider = new RecordingProvider([{ records: [nodeRow({ total: 11 })] }])
+    const neode = new Neode(provider)
+
+    const entities = await neode.read(new Builder().match('this', 'SugarOrder').return('this'), {
+      hydrate: SugarOrder,
+    })
+
+    expect(entities).toHaveLength(1)
+    expect(entities[0].total).toBe(11)
+    // the options object is never mistaken for query parameters
+    expect(provider.calls[0].params).toEqual({})
+  })
+
+  it('write(builder, params, { hydrate }) returns hydrated entities', async () => {
+    const neode = new Neode(new RecordingProvider([{ records: [nodeRow({ total: 5 })] }]))
+
+    const entities = await neode.write(
+      new Builder().create('this', 'SugarOrder', { total: 5 }).return('this'),
+      {},
+      { hydrate: SugarOrder },
+    )
+
+    expect(entities).toHaveLength(1)
+    expect(entities[0].total).toBe(5)
+  })
+
+  it('honours the alias and database options', async () => {
+    const provider = new RecordingProvider([
+      {
+        records: [
+          {
+            get: (key: string) =>
+              key === 'o'
+                ? { elementId: '4:unit-2', labels: ['SugarOrder'], properties: {} }
+                : undefined,
+            has: (key: string) => key === 'o',
+            keys: ['o'],
+          },
+        ],
+      },
+    ])
+    const neode = new Neode(provider)
+
+    const entities = await neode.read(
+      new Builder().match('o', 'SugarOrder').return('o'),
+      {},
+      {
+        hydrate: SugarOrder,
+        alias: 'o',
+        database: 'aux',
+      },
+    )
+
+    expect(provider.calls[0].database).toBe('aux')
+    expect(entities).toHaveLength(1)
+  })
+
+  it('tx.read / tx.write hydrate in the transaction scope', async () => {
+    const neode = new Neode(new RecordingProvider([{ records: [nodeRow({ total: 7 })] }]))
+
+    await neode.inReadTransaction(async (tx) => {
+      const entities = await tx.read(
+        new Builder().match('this', 'SugarOrder').return('this'),
+        undefined,
+        {
+          hydrate: SugarOrder,
+        },
+      )
+
+      expect(entities).toHaveLength(1)
+      expect(entities[0].total).toBe(7)
+
+      await tx.commit()
+
+      return null
+    })
   })
 })

@@ -73,6 +73,7 @@ export type {
   QueryParams,
   QuerySummary,
   CypherOptions,
+  HydrateQueryOptions,
   ConnectionOptions,
   GraphNode,
   GraphRelationship,

@@ -1,4 +1,9 @@
-import type { CypherOptions, QueryOutput, QueryParams as QueryParameters } from './driver/types.js'
+import type {
+  CypherOptions,
+  HydrateQueryOptions,
+  QueryOutput,
+  QueryParams as QueryParameters,
+} from './driver/types.js'
 import type { DeleteOptions } from './services/query/delete.service.js'
 import type { OrderSpec } from './services/query/get.service.js'
 import type { Builder } from './query/index.js'
@@ -50,6 +55,14 @@ export interface INeode {
   readCypher(query: string, parameters: QueryParameters, database?: string): Promise<QueryOutput>
   writeCypher(query: string, parameters: QueryParameters, database?: string): Promise<QueryOutput>
   /**
+  Hydrate variant (NTS-559): the options object as the second argument,
+  when there are no parameters to pass.
+  */
+  read<T>(
+    query: Builder | string,
+    options: HydrateQueryOptions & { hydrate: new (...arguments_: never[]) => T },
+  ): Promise<T[]>
+  /**
   Build-and-run sugar (NTS-553): a Builder is built once and run through
   readCypher (READ routing); a string passes straight through. Caller
   parameters merge over the builder's own params.
@@ -60,13 +73,40 @@ export interface INeode {
     database?: string,
   ): Promise<QueryOutput>
   /**
+  Hydrate variant (NTS-559): with a `hydrate` class the rows come back as
+  entities of that class, read from the `alias` column ('this' by default)
+  — the same overload shape `cypher()` offers.
+  */
+  read<T>(
+    query: Builder | string,
+    parameters: QueryParameters | undefined,
+    options: HydrateQueryOptions & { hydrate: new (...arguments_: never[]) => T },
+  ): Promise<T[]>
+  /**
   WRITE counterpart of read().
   */
+  /**
+  Hydrate variant (NTS-559): the options object as the second argument,
+  when there are no parameters to pass.
+  */
+  write<T>(
+    query: Builder | string,
+    options: HydrateQueryOptions & { hydrate: new (...arguments_: never[]) => T },
+  ): Promise<T[]>
   write(
     query: Builder | string,
     parameters?: QueryParameters,
     database?: string,
   ): Promise<QueryOutput>
+  /**
+  Hydrate variant (NTS-559): with a `hydrate` class the rows come back as
+  entities of that class, read from the `alias` column ('this' by default).
+  */
+  write<T>(
+    query: Builder | string,
+    parameters: QueryParameters | undefined,
+    options: HydrateQueryOptions & { hydrate: new (...arguments_: never[]) => T },
+  ): Promise<T[]>
   search<T>(
     constructor: new (...arguments_: never[]) => T,
     indexName: string,

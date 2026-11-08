@@ -1,4 +1,10 @@
-import type { QueryOutput, QueryRecord } from './driver/types.js'
+import type {
+  HydrateQueryOptions,
+  QueryOutput,
+  QueryParams as QueryParameters,
+  QueryRecord,
+} from './driver/types.js'
+import { jsonSafeRecord } from './driver/json-safe.js'
 import { getModel, getModels } from './meta/index.js'
 import { isGraphNode } from './services/type-guards.js'
 import type { EntitySchema } from './meta/entity/entity-schema.js'
@@ -76,6 +82,76 @@ export function hydrate<T>(
 
       return hydrateNode<T>(schema, constructor, node, eagerColumns(row, alias))
     })
+}
+
+/**
+JSON-safe the rows (the pass `Neode#cypher` gives its records) and hydrate
+them into entities when the caller requested a class; the raw output
+passes through untouched otherwise (NTS-559, the read()/write() hydrate
+overloads)
+*/
+export function hydrateWhenRequested<T>(
+  options: { hydrate?: new (...arguments_: never[]) => T; alias?: string },
+  output: QueryOutput,
+): QueryOutput | WithMethods<T>[] {
+  if (options.hydrate === undefined) {
+    return output
+  }
+
+  const rows: QueryOutput = {
+    records: output.records.map((record) => jsonSafeRecord(record)),
+    summary: output.summary,
+  }
+
+  return hydrate(options.hydrate, rows, options.alias)
+}
+
+type HydrateCallOptions = HydrateQueryOptions & {
+  hydrate?: new (...arguments_: never[]) => unknown
+}
+
+/**
+True when the second read()/write() argument carries the hydrate options
+object (NTS-559, the two-argument form) rather than positional
+parameters — an options object is recognised by a function-valued
+`hydrate` key, a class constructor, which can never be a legal Cypher
+parameter
+*/
+function isHydrateOptions(
+  value: QueryParameters | HydrateQueryOptions,
+): value is HydrateQueryOptions {
+  return 'hydrate' in value && typeof value['hydrate'] === 'function'
+}
+
+function isQueryParameters(value: QueryParameters | HydrateQueryOptions): value is QueryParameters {
+  return !isHydrateOptions(value)
+}
+
+/**
+Normalise the read()/write() argument shapes (facade and transaction
+scope): the third argument is the positional database (NTS-553) or the
+hydrate options object (NTS-559), and the NTS-559 two-argument form puts
+the options object in the second-argument position.
+*/
+export function splitHydrateArguments(
+  parametersOrOptions: QueryParameters | HydrateQueryOptions,
+  databaseOrOptions: string | HydrateCallOptions,
+): { parameters: QueryParameters; options: HydrateCallOptions; database: string | undefined } {
+  let options: HydrateCallOptions
+
+  if (typeof databaseOrOptions === 'string') {
+    options = {}
+  } else if (databaseOrOptions.hydrate === undefined && isHydrateOptions(parametersOrOptions)) {
+    options = parametersOrOptions
+  } else {
+    options = databaseOrOptions
+  }
+
+  return {
+    parameters: isQueryParameters(parametersOrOptions) ? parametersOrOptions : {},
+    options,
+    database: typeof databaseOrOptions === 'string' ? databaseOrOptions : options.database,
+  }
 }
 
 /**
