@@ -34,7 +34,9 @@ export function orderTerms(order: OrderSpec, alias: string): string[] {
   if ('field' in order && typeof order.field === 'string') {
     const direction = order.order
 
-    return [`${alias}.${order.field}${direction === undefined || direction === '' ? '' : ` ${direction}`}`]
+    return [
+      `${alias}.${order.field}${direction === undefined || direction === '' ? '' : ` ${direction}`}`,
+    ]
   }
 
   return Object.entries(order as Record<string, string>).map(([key, direction]) => {
