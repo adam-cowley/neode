@@ -142,7 +142,7 @@ const vectorHits = await knn(runner, 'Person', 'person_plot_vector', vector, 5)
 const textHits = await search(runner, 'Person', 'person_plot', toFulltextQuery(query))
 ```
 
-Indexes are declared on the model — `@Vector({ dimensions: 1536 })` for vectors (installed by `installSchema()`), `fulltext: true` on a property or `installFulltextIndexes(definitions)` for full-text.
+Indexes are declared on the model — `@Vector({ dimensions: 1536 })` for vectors (installed by `installSchema()`), `fulltext: true` on a property or `installFulltextIndexes(definitions)` for full-text. One caveat: vector search takes its top `k` neighbours _before_ filtering, so a filtered kNN can return fewer than `k` rows — over-fetch with a larger `k` and post-filter in your code.
 
 ## Docs
 
