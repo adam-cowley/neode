@@ -283,3 +283,91 @@ describe('embedding sugar: from + provider (NTS-449)', () => {
     expect(calls).toHaveLength(0)
   })
 })
+
+describe('vector round trip: save stores the vector, out transform on read (NTS-440)', () => {
+  it('stores the provider-computed vector and applies the out transform at hydration', async () => {
+    const provider = vi.fn((text: string) => Promise.resolve([text.length, 0.5, 1]))
+
+    const model = defineModel('Nts440RoundTrip', {
+      plot: 'string',
+      emb: {
+        type: 'any',
+        vector: { dimensions: 3, from: 'plot', provider },
+        // Reversing proves the out transform ran over the stored vector
+        transform: {
+          out: (value: unknown) => (Array.isArray(value) ? [...value].reverse() : value),
+        },
+      },
+    })
+
+    const { runner, calls } = mockRunner()
+
+    await new CreateService(runner).create(getModel(model)!, { plot: 'A hero rises' })
+
+    // The stored value is the vector, not the source text
+    expect(Object.values(calls[0].params)).toContainEqual([12, 0.5, 1])
+
+    const [entity] = hydrate(model, output([nodeRow({ plot: 'A hero rises', emb: [12, 0.5, 1] })]))
+
+    expect((entity as Record<string, unknown>)['emb']).toEqual([1, 0.5, 12])
+  })
+})
+
+describe('recompute only when the source is dirty (NTS-440)', () => {
+  const defineTrackedEmbedDoc = (provider: (text: string) => Promise<number[]>, name: string) =>
+    defineModel(name, {
+      id: { type: 'string', primary: true },
+      title: 'string',
+      emb: { type: 'any', vector: { dimensions: 3, from: 'title', provider } },
+    })
+
+  it('recomputes the vector from a dirty source and writes it even though the vector itself is clean', async () => {
+    const provider = vi.fn((text: string) => Promise.resolve([text.length, 0.5, 1]))
+    const schema = getModel(defineTrackedEmbedDoc(provider, 'Nts440DirtySource'))!
+
+    const { runner, calls } = mockRunner()
+
+    // Tracked save: only `title` changed; `emb` carries its stale stored value
+    await new MergeService(runner).save(
+      { id: '1', title: 'A rewritten title', emb: [0, 0, 0] },
+      schema,
+      new Set(['title']),
+    )
+
+    expect(provider).toHaveBeenCalledWith('A rewritten title')
+    // The stale vector is not written; the recomputed one is
+    expect(Object.values(calls[0].params)).not.toContainEqual([0, 0, 0])
+    expect(Object.values(calls[0].params)).toContainEqual([17, 0.5, 1])
+  })
+
+  it('keeps the vector without a provider call when the vector itself is dirty', async () => {
+    const provider = vi.fn((text: string) => Promise.resolve([1, 0.5, 1]))
+    const schema = getModel(defineTrackedEmbedDoc(provider, 'Nts440DirtyVector'))!
+
+    const { runner, calls } = mockRunner()
+
+    await new MergeService(runner).save(
+      { id: '1', title: 'A new title', emb: [7, 7, 7] },
+      schema,
+      new Set(['title', 'emb']),
+    )
+
+    expect(provider).not.toHaveBeenCalled()
+    expect(Object.values(calls[0].params)).toContainEqual([7, 7, 7])
+  })
+
+  it('pays no provider call when neither the source nor the vector is dirty', async () => {
+    const provider = vi.fn((text: string) => Promise.resolve([1, 0.5, 1]))
+    const schema = getModel(defineTrackedEmbedDoc(provider, 'Nts440CleanSave'))!
+
+    const { runner, calls } = mockRunner()
+
+    await new MergeService(runner).save(
+      { id: '1', title: 'Unchanged', emb: [0, 0, 0] },
+      schema,
+      new Set(),
+    )
+
+    expect(provider).not.toHaveBeenCalled()
+  })
+})

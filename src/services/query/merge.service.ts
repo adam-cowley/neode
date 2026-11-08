@@ -303,8 +303,11 @@ export class MergeService extends QueryService {
 
     // Resolve embedding sugar (NTS-449): a vector property declared with
     // `from` + `provider` computes its vector from the source property
-    // being written, unless the vector itself is explicitly provided
-    await applyEmbeddings(schema, model)
+    // being written, unless the vector itself is explicitly provided.
+    // Tracked saves (NTS-157) recompute only from a dirty source; the
+    // recomputed keys join the write set — their stored value is stale
+    // by definition, even though the instance itself did not change them
+    const recomputed = await applyEmbeddings(schema, model, dirtyKeys)
 
     // Apply `in` transforms (NTS-449): user value -> stored form, before
     // validation, so validation and the write see the same value
@@ -354,8 +357,13 @@ export class MergeService extends QueryService {
         continue
       }
 
-      // NTS-157: tracked instances write only their dirty keys
-      if (dirtyKeys !== undefined && !dirtyKeys.has(property.getKey())) {
+      // NTS-157: tracked instances write only their dirty keys — plus
+      // vector properties recomputed from a dirty source above
+      if (
+        dirtyKeys !== undefined &&
+        !dirtyKeys.has(property.getKey()) &&
+        !recomputed.includes(property.getKey())
+      ) {
         continue
       }
 

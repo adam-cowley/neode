@@ -43,10 +43,12 @@ export interface VectorConfig {
   /**
   Embedding sugar (NTS-449): the embedding function the user supplies
   (the library stays dependency-free) — called with the source property's
-  value whenever that source property is being written and the vector
-  property itself is not explicitly provided in the same payload
-  (an explicit vector value always wins). Failures surface as a
-  NeodeError naming the model and property.
+  value whenever that source is written and the vector property itself is
+  not explicitly provided in the same payload (an explicit vector value
+  always wins). On tracked saves (dirty tracking) the recompute runs only
+  when the source property is dirty — a clean source keeps its stored
+  vector and costs no provider call. Failures surface as a NeodeError
+  naming the model and property.
   */
   provider?: (text: string) => Promise<number[]>
 }

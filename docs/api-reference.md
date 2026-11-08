@@ -272,7 +272,7 @@ All of these are understood by `@Property` (and by the sugar decorators, which a
 | `hidden`          | Excluded from `toJson()` output.                                                                         |
 | `protected`       | Excluded from hydration input.                                                                           |
 | `transform`       | `{ in?, out? }` — value → stored form on writes (may be async), stored form → value at hydration (sync). |
-| `vector`          | Vector-index declaration over the property — `@Vector({ dimensions, … })` is the decorator form.         |
+| `vector`          | Vector-index declaration over the property — `@Vector({ dimensions, … })` is the decorator form. With `from` + `provider` the vector is computed on write from the source property (the library stays dependency-free); on `save()` it recomputes only when the source property is dirty, and an explicitly provided vector always wins. Vector properties persist through the dedicated vector write (`SET n.prop = $list`), never the inline pattern. |
 | _(any other key)_ | Treated as a validation rule — see [Validation rules](#validation-rules).                                |
 
 ### Property option decorators
