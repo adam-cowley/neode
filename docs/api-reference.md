@@ -459,7 +459,7 @@ neode.model('Person', {
 ```
 
 - **Property entries** are either a bare type name (`'number'`) or a full definition: `type` plus any of `array`, `default`, `primary`, `unique`, `onCreateSet`, `onMatchSet`, `alwaysSet`, `required`, `hidden`, `protected`, `readonly`, `index`, `exists` — plus validation rules (same [rule names](#validation-rules) as decorators).
-- **Relationship entries** take `relationship`, `direction`, `target`, `eager?`. A `properties` key is parsed but edge properties are not writable yet. A `cascade` key is accepted but ignored — pass [delete options](#the-neode-facade) instead.
+- **Relationship entries** take `relationship`, `direction`, `target`, `eager?`, and `cascade?` (per-relationship cascade: deleting a node also deletes the nodes reached through that relationship, recursively — each level applies its own annotations). A `properties` key is parsed but edge properties are not writable yet.
 - When no property is marked `primary`, the primary key falls back to `<first label lowercased>_id` (neode parity).
 
 Registration functions:
@@ -529,8 +529,11 @@ neode.detach<From, To>(constructor, from, to, relationshipKey): Promise<{ from: 
 // Remove the relationship of the key between the two nodes; returns both re-hydrated.
 
 neode.delete<T>(entity, options?: DeleteOptions | string, database?): Promise<void>
-// Plain DETACH DELETE; with options:
-//   { cascade: true }                        — delete related nodes recursively
+// Deleting honours the schema's per-relationship `cascade: true` annotations;
+// the options override them:
+//   (no options)                             — cascade annotated relationships only
+//   { cascade: true }                        — delete related nodes recursively, every relationship
+//   { cascade: false }                       — cascade nothing, not even annotated relationships
 //   { cascade: true, mode: 'detach' }        — remove relationships, keep nodes
 //   { cascade: true, depth: 10 }             — cap recursion (default 10)
 //   { soft: 'Archived' }                     — SET the label instead of deleting
@@ -709,21 +712,21 @@ await people.count({ age: 30 })
 
 `Repository<Entity>` methods:
 
-| Method          | Signature                                                             | Description                                                                                                                                                          |
-| --------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `find`          | `(id) => Promise<Entity \| undefined>`                                | By primary key.                                                                                                                                                      |
-| `findBy`        | `(params?) => Promise<Entity \| undefined>`                           | First match.                                                                                                                                                         |
-| `findAll`       | `(params?, options?: { order?, limit?, skip? }) => Promise<Entity[]>` | `order` takes the same `OrderSpec` forms as `all()`.                                                                                                                 |
-| `where`         | `(params?) => Promise<Entity[]>`                                      | Alias of `findAll(params)`.                                                                                                                                          |
-| `count`         | `(params?) => Promise<number>`                                        |                                                                                                                                                                      |
-| `save`          | `(object) => Promise<Entity>`                                         | MERGE on primary key.                                                                                                                                                |
-| `saveAll`       | `(objects) => Promise<Entity[]>`                                      | One save (one write transaction) at a time.                                                                                                                          |
-| `patch`         | `(entity, properties) => Promise<Entity>`                             | Apply a patch, then persist via save. Named `patch` so domain interfaces declaring their own `update(id, input)` can be implemented by subclasses (NTS-454/458/459). |
-| `delete`        | `(entityOrId, { ifExists? }) => Promise<void>`                        | By instance or primary key value. Throws on a missing ID; `{ ifExists: true }` silently no-ops (NTS-457).                                                            |
-| `increment`     | `(entityOrId, property, by?, { ifExists? }) => Promise<number>`       | Atomic `SET n.prop = coalesce(n.prop, 0) + by` (NTS-435). Returns the new value, or 0 when missing with `ifExists` (NTS-455).                                        |
-| `countBy`       | `(property, params?) => Promise<Record<string, number>>`              | Grouped counts over one declared property (NTS-453).                                                                                                                 |
-| `deleteAll`     | `(params?) => Promise<number>`                                        | One bulk `DETACH DELETE` of every match; returns the count. No cascade, no per-node events.                                                                          |
-| `getPrimaryKey` | `() => PropertySchema`                                                |                                                                                                                                                                      |
+| Method          | Signature                                                             | Description                                                                                                                                                                                                                                   |
+| --------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `find`          | `(id) => Promise<Entity \| undefined>`                                | By primary key.                                                                                                                                                                                                                               |
+| `findBy`        | `(params?) => Promise<Entity \| undefined>`                           | First match.                                                                                                                                                                                                                                  |
+| `findAll`       | `(params?, options?: { order?, limit?, skip? }) => Promise<Entity[]>` | `order` takes the same `OrderSpec` forms as `all()`.                                                                                                                                                                                          |
+| `where`         | `(params?) => Promise<Entity[]>`                                      | Alias of `findAll(params)`.                                                                                                                                                                                                                   |
+| `count`         | `(params?) => Promise<number>`                                        |                                                                                                                                                                                                                                               |
+| `save`          | `(object) => Promise<Entity>`                                         | MERGE on primary key.                                                                                                                                                                                                                         |
+| `saveAll`       | `(objects) => Promise<Entity[]>`                                      | One save (one write transaction) at a time.                                                                                                                                                                                                   |
+| `patch`         | `(entity, properties) => Promise<Entity>`                             | Apply a patch, then persist via save. Named `patch` so domain interfaces declaring their own `update(id, input)` can be implemented by subclasses (NTS-454/458/459).                                                                          |
+| `delete`        | `(entityOrId, { ifExists?, ...deleteOptions }) => Promise<void>`      | By instance or primary key value. Throws on a missing ID; `{ ifExists: true }` silently no-ops (NTS-457). Cascade options forward to the delete service — annotations decide by default, `{ cascade: true }` / `{ cascade: false }` override. |
+| `increment`     | `(entityOrId, property, by?, { ifExists? }) => Promise<number>`       | Atomic `SET n.prop = coalesce(n.prop, 0) + by` (NTS-435). Returns the new value, or 0 when missing with `ifExists` (NTS-455).                                                                                                                 |
+| `countBy`       | `(property, params?) => Promise<Record<string, number>>`              | Grouped counts over one declared property (NTS-453).                                                                                                                                                                                          |
+| `deleteAll`     | `(params?) => Promise<number>`                                        | One bulk `DETACH DELETE` of every match; returns the count. No cascade, no per-node events.                                                                                                                                                   |
+| `getPrimaryKey` | `() => PropertySchema`                                                |                                                                                                                                                                                                                                               |
 
 ### Custom repositories
 

@@ -279,6 +279,7 @@ export function mergeRelationshipProperty(
   isMany: boolean,
   isEager?: boolean,
   description?: string,
+  isCascade = false,
 ): RelationshipPropertySchema {
   const model = mergeModel(constructor)
 
@@ -293,6 +294,7 @@ export function mergeRelationshipProperty(
   relationship.setTarget(target)
   relationship.setMany(isMany)
   relationship.setEager(isEager ?? false)
+  relationship.setCascade(isCascade)
 
   // Agent-facing relationship explanation (NTS-445)
   if (description !== undefined) {

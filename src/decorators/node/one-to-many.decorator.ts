@@ -7,7 +7,8 @@ import { addRegistration, memberName } from '../registrations.js'
 Register a relationship property holding many related entities.
 Positional form: target entity (lazy reference), relationship type
 (omitted matches any type — the pattern renders type-less), direction
-(default BOTH), eager loading and an agent-facing description.
+(default BOTH), eager loading, an agent-facing description and
+per-relationship cascade.
 */
 export function OneToMany(
   entity: () => Newable,
@@ -15,6 +16,7 @@ export function OneToMany(
   direction?: Direction,
   isEager?: boolean,
   description?: string,
+  isCascade?: boolean,
 ): (value: undefined, context: ClassFieldDecoratorContext) => void {
   return function (_value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = memberName(context)
@@ -30,6 +32,7 @@ export function OneToMany(
         true,
         isEager,
         description,
+        isCascade,
       )
     })
   }

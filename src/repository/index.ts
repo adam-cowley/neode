@@ -9,6 +9,7 @@ import { Builder, eagerNode } from '../query/index.js'
 import { quote } from '../query/quote.js'
 import { applyOrder, type OrderSpec } from '../query/order-spec.js'
 import { getMergeFields } from '../services/query/merge.service.js'
+import type { DeleteOptions } from '../services/query/delete.service.js'
 import type { ScoredEntity } from '../services/query/search.service.js'
 import { fulltextIndexName } from '../services/schema/fulltext.service.js'
 import { isGraphNode, isRecord } from '../services/type-guards.js'
@@ -378,20 +379,20 @@ export class Repository<Entity> {
   */
   async delete(
     target: Entity | string | number,
-    options: { ifExists?: boolean; force?: boolean } = {},
+    options: DeleteOptions & { ifExists?: boolean } = {},
   ): Promise<void> {
+    // ifExists is repository-level (the ID lookup); the rest are the
+    // delete service's options — cascade in/out, force, soft, depth
+    const { ifExists, ...forwarded } = options
+
     if (isRecord(target)) {
-      return this.neode.delete(
-        target,
-        options.force === true ? { force: true } : undefined,
-        this.database,
-      )
+      return this.neode.delete(target, forwarded, this.database)
     }
 
     const entity = await this.find(target)
 
     if (entity === undefined) {
-      if (options.ifExists === true) {
+      if (ifExists === true) {
         return
       }
 
@@ -402,11 +403,7 @@ export class Repository<Entity> {
       throw new TypeError('Cannot delete: the found entity is not an object')
     }
 
-    return this.neode.delete(
-      entity,
-      options.force === true ? { force: true } : undefined,
-      this.database,
-    )
+    return this.neode.delete(entity, forwarded, this.database)
   }
 
   /**

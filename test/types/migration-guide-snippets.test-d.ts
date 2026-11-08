@@ -30,7 +30,7 @@ import Neode, {
   fromEnv,
   toJson,
 } from '../../src/index.js'
-import type { WithMethods } from '../../src/index.js'
+import type { SchemaDefinition, WithMethods } from '../../src/index.js'
 
 export function connectForDriver() {
   const driver = neo4j.driver('bolt://localhost:7687', neo4j.auth.basic('neo4j', 'password'))
@@ -241,6 +241,32 @@ export async function cascade(neode: Neode): Promise<void> {
     cascade: true,
     mode: 'detach', // remove the relationships, KEEP the related nodes
   })
+
+  // Per-relationship cascade annotations: a plain delete cascades only the
+  // annotated relationships; { cascade: true } takes every relationship
+  const factorySchema = {
+    id: { type: 'uuid', primary: true },
+    lines: {
+      type: 'relationships',
+      relationship: 'HAS',
+      direction: 'out',
+      target: 'AssemblyLine',
+      cascade: true,
+    },
+    warehouse: {
+      type: 'relationship',
+      relationship: 'HAS',
+      direction: 'out',
+      target: 'Warehouse',
+    },
+  } satisfies SchemaDefinition
+
+  defineModel('MigrationGuideFactory', factorySchema)
+
+  const factory = { id: 'factory-1', name: 'Factory 1' }
+
+  await neode.delete(factory) // assembly lines (and their machines, …) deleted; the warehouse survives
+  await neode.delete(factory, { cascade: true }) // everything, the warehouse too
 }
 
 export async function instanceMethods(neode: Neode): Promise<void> {

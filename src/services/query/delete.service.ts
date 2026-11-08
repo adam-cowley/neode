@@ -16,7 +16,9 @@ export const MAX_CASCADE_DEPTH = 10
 
 export interface DeleteOptions {
   /**
-  Cascade into the related entities declared on the schema
+  Cascade into the related entities declared on the schema: true cascades
+  every relationship, false none, undefined follows each relationship's
+  own `cascade` annotation
   */
   cascade?: boolean
 
@@ -56,6 +58,8 @@ export class DeleteService extends QueryService {
   /**
   Add an optional match of a related node plus its own cascades, then
   delete it. `depth` is the number of relationship hops from the root.
+  `selection` decides which relationships cascade: 'all' ignores the
+  annotations, 'annotated' follows only `cascade: true` declarations.
   */
   private addCascadeDelete(
     builder: Builder,
@@ -63,8 +67,13 @@ export class DeleteService extends QueryService {
     relationship: RelationshipPropertySchema,
     depth: number,
     maxDepth: number,
+    selection: 'all' | 'annotated',
   ): void {
     if (depth > maxDepth) {
+      return
+    }
+
+    if (selection === 'annotated' && !relationship.getCascade()) {
       return
     }
 
@@ -92,7 +101,14 @@ export class DeleteService extends QueryService {
 
     if (targetSchema instanceof EntitySchema) {
       for (const targetRelationship of targetSchema.getRelationships()) {
-        this.addCascadeDelete(builder, nodeAlias, targetRelationship, depth + 1, maxDepth)
+        this.addCascadeDelete(
+          builder,
+          nodeAlias,
+          targetRelationship,
+          depth + 1,
+          maxDepth,
+          selection,
+        )
       }
     }
 
@@ -101,11 +117,11 @@ export class DeleteService extends QueryService {
   }
 
   /**
-  Delete a node. Without options this is a plain DETACH DELETE.
-
-  Note: RelationshipPropertySchema has no per-relationship cascade flag,
-  so when cascading, every relationship declared on the schema cascades
-  (neode keys this off relationship.cascade()).
+  Delete a node. Without options, relationships annotated `cascade: true`
+  cascade (recursively, each level applying its own annotations);
+  relationships without the annotation survive. `{ cascade: true }`
+  cascades every relationship declared on the schema; `{ cascade: false }`
+  cascades none.
   */
   async delete(schema: EntitySchemaType, entity: object, options?: DeleteOptions): Promise<void> {
     if (!isRecord(entity)) {
@@ -153,9 +169,13 @@ export class DeleteService extends QueryService {
       return
     }
 
-    const isCascade = options?.cascade === true || options?.mode !== undefined
+    // Which relationships cascade: an explicit `{ cascade: true }` (or a
+    // detach mode) takes everything, `{ cascade: false }` nothing, and
+    // without options the schema's per-relationship annotations decide
+    const isAll = options?.cascade === true || options?.mode !== undefined
+    const selection: 'all' | 'annotated' = isAll ? 'all' : 'annotated'
 
-    if (isCascade && options.mode === 'detach') {
+    if (isAll && options.mode === 'detach') {
       // Delete the relationships to related nodes first, then the node
       // itself: related nodes survive (neode DeleteNode.js addDetachNode)
       for (const [index, relationship] of schema.getRelationships().entries()) {
@@ -174,21 +194,23 @@ export class DeleteService extends QueryService {
       }
 
       builder.detachDelete(THIS_NODE)
-    } else if (isCascade) {
+    } else if (options?.cascade === false) {
+      builder.detachDelete(THIS_NODE)
+    } else {
       // Recursively match and delete related nodes, bounded by depth
-      // (neode DeleteNode.js addCascadeDeleteNode)
+      // (neode DeleteNode.js addCascadeDeleteNode) — 'annotated' selection
+      // walks only the relationships declared `cascade: true`
       for (const relationship of schema.getRelationships()) {
         this.addCascadeDelete(
           builder,
           THIS_NODE,
           relationship,
           1,
-          options.depth ?? MAX_CASCADE_DEPTH,
+          options?.depth ?? MAX_CASCADE_DEPTH,
+          selection,
         )
       }
 
-      builder.detachDelete(THIS_NODE)
-    } else {
       builder.detachDelete(THIS_NODE)
     }
 

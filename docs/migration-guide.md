@@ -31,7 +31,7 @@ This guide covers everything that moved, plus what neode 1.0 gives you that neod
 6. **Port `neode.query()` call sites** — the builder is now a standalone `Builder` class you build and run yourself. → [The query builder](#the-query-builder)
 7. **Expect plain arrays** instead of `Collection` from `all()` / `get()`. → [Collections → plain arrays](#collections--plain-arrays)
 8. **Review error handling** — validation rules keep their Joi names over Zod, and `batch()` reports every failed statement. → [Validation](#validation-joi-rules--zod-same-names), [batch() and TransactionError](#batch-and-transactionerror)
-9. **Review cascade deletes** — the schema-level `cascade` key is ignored; cascade is now a delete-time option. → [Cascade delete](#cascade-delete--and-detach--now-both-work)
+9. **Review cascade deletes** — the schema-level `cascade: true` annotation cascades that relationship on every delete; `{ cascade: true }` on the delete call still takes everything. → [Cascade delete](#cascade-delete--and-detach--now-both-work)
 10. **Switch ids to elementId** — numeric internal node ids no longer exist on Neo4j 5+. → [IDs: internal ids → elementId](#ids-internal-ids--elementid)
 11. **Install constraints and indexes at boot** — `installSchema()` is new (0.4 never created them for you). → [Schema sync](#schema-sync-installschema--dropschema)
 
@@ -116,7 +116,7 @@ neode.withDirectory('./models') // model modules, name from filename
 
 Two schema-level differences to know about:
 
-- **`cascade` is not carried per relationship.** neode 1.0 takes cascade as a _delete-time_ option instead — see [Cascade delete](#cascade-delete--and-detach--now-both-work). The `cascade` key in a map schema is ignored.
+- **`cascade: 'delete' | 'detach'` becomes `cascade: true`.** The annotation is carried per relationship again: a plain delete cascades every relationship declared `cascade: true`, and `{ cascade: true }` on the delete call takes every relationship on the schema — see [Cascade delete](#cascade-delete--and-detach--now-both-work).
 - **Relationship `properties` (edge properties) are parsed but not writable yet** — a generated relationship entity is needed for edge-property saves.
 
 ### Path 2 — the decorator API
@@ -440,7 +440,29 @@ await neode.delete(adam, {
 ```
 
 - The instance method works too: `await adam.delete({ cascade: true, mode: 'detach' })`.
-- The per-relationship `cascade` key from a neode map schema is ignored — pass the delete options instead.
+- **Per-relationship cascade is declared on the schema again, as `cascade: true`** (neode 0.x's `cascade: 'delete' | 'detach'` spellings need converting): a plain delete cascades only the annotated relationships, recursively, each level applying its own annotations. `{ cascade: true }` on the delete call overrides the annotations and takes every relationship; `{ cascade: false }` takes none.
+
+  ```typescript
+  const factorySchema = {
+    id: { type: 'uuid', primary: true },
+    lines: {
+      type: 'relationships',
+      relationship: 'HAS',
+      direction: 'out',
+      target: 'AssemblyLine',
+      cascade: true,
+    },
+    warehouse: {
+      type: 'relationship',
+      relationship: 'HAS',
+      direction: 'out',
+      target: 'Warehouse',
+    },
+  }
+
+  await neode.delete(factory) // assembly lines (and their machines, …) deleted; the warehouse survives
+  await neode.delete(factory, { cascade: true }) // everything, the warehouse too
+  ```
 - A soft delete is available: `neode.delete(adam, { soft: 'Deleted' })` sets a `Deleted` label instead of deleting.
 - `Repository.deleteAll(params)` stays a single bulk `DETACH DELETE` with a count — no cascade, no per-node events.
 
