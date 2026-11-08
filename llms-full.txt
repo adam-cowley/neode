@@ -867,7 +867,7 @@ _source: serialise.ts_
 
 ### `TransactionalService` (class)
 
-The INeode surface scoped to one open transaction: every read/write runs through the TransactionHandle opened by `Neode#beginTransaction` until its commit/rollback, with the facade's model methods (create, merge, relate, …) mirrored inside that scope.
+The INeode surface scoped to one open transaction: every read/write runs through the TransactionHandle opened by `Neode#beginTransaction` until its commit/rollback, with the facade's model methods (create, merge, relate, …) mirrored inside that scope. The close endpoints are safe to sequence: a second commit() is a no-op and a rollback after a commit does nothing (the managed scopes commit on success), while a commit after a rollback throws.
 
 _source: transaction/transactional.service.ts_
 

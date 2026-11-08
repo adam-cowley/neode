@@ -110,7 +110,7 @@ Map-API reference:
 ### Repositories & transactions
 
 - `Repository` (class) — Active-record style data-access repository for one registered model — the TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
-- `TransactionalService` (class) — The INeode surface scoped to one open transaction: every read/write runs through the TransactionHandle opened by `Neode#beginTransaction` until its commit/rollback, with the facade's model methods (create, merge, relate, …) mirrored inside that scope.
+- `TransactionalService` (class) — The INeode surface scoped to one open transaction: every read/write runs through the TransactionHandle opened by `Neode#beginTransaction` until its commit/rollback, with the facade's model methods (create, merge, relate, …) mirrored inside that scope. The close endpoints are safe to sequence: a second commit() is a no-op and a rollback after a commit does nothing (the managed scopes commit on success), while a commit after a rollback throws.
 
 ## Install schema
 
@@ -226,7 +226,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `toCollection` (function) — Hydrate a raw query result into a Collection (neode's Factory.hydrate return shape)
 - `toDirection` (function) — Normalise a direction given in any supported spelling to a Direction. Unknown values fall back to BOTH (the most permissive direction), matching neode's behaviour of never throwing on a bad direction.
 - `toJson` (function) — Convert an entity into a JSON friendly object: plain properties (hidden and structural properties skipped), `_id` (elementId when the model carries an internal id property) and `_labels` (the schema's labels). Eagerly loaded relationships are serialised recursively.
-- `TransactionalService` (class) — The INeode surface scoped to one open transaction: every read/write runs through the TransactionHandle opened by `Neode#beginTransaction` until its commit/rollback, with the facade's model methods (create, merge, relate, …) mirrored inside that scope.
+- `TransactionalService` (class) — The INeode surface scoped to one open transaction: every read/write runs through the TransactionHandle opened by `Neode#beginTransaction` until its commit/rollback, with the facade's model methods (create, merge, relate, …) mirrored inside that scope. The close endpoints are safe to sequence: a second commit() is a no-op and a rollback after a commit does nothing (the managed scopes commit on success), while a commit after a rollback throws.
 - `TransactionError` (class) — Thrown by Neode.batch() when any statement of the batch fails and the transaction is rolled back (port of neode's TransactionError): - `errors` — per-statement error aligned with the input batch, null where the statement succeeded - `results` — results of the statements that succeeded before the failure - `details` — the failed statements only ({ index, query, params, error })
 - `TransactionHandle` (interface) — An explicit transaction: statements run in scope until commit/rollback.
 - `valueToJson` (function) — Convert a single property value into its JSON friendly shape.

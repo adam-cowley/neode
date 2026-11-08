@@ -39,12 +39,18 @@ import { hydrate, hydrateWhenRequested, splitHydrateArguments } from '../hydrate
 The INeode surface scoped to one open transaction: every read/write runs
 through the TransactionHandle opened by `Neode#beginTransaction` until its
 commit/rollback, with the facade's model methods (create, merge, relate,
-…) mirrored inside that scope.
+…) mirrored inside that scope. The close endpoints are safe to sequence:
+a second commit() is a no-op and a rollback after a commit does nothing
+(the managed scopes commit on success), while a commit after a rollback
+throws.
 */
 export class TransactionalService implements INeode {
   private readonly handle: TransactionHandle
 
   private readonly eventEmitter: EventEmitter
+
+  // 'open' until a terminal operation (commit/rollback) succeeded — the managed scopes read it to avoid a double close
+  private state: 'open' | 'committed' | 'rolled-back' = 'open'
 
   constructor(handle: TransactionHandle, eventEmitter: EventEmitter) {
     this.handle = handle
@@ -107,12 +113,48 @@ export class TransactionalService implements INeode {
     return this.handle
   }
 
+  /**
+  Commit the transaction. A second commit is a no-op (the managed scopes —
+  `Neode#inReadTransaction` / `Neode#inWriteTransaction` — commit on success,
+  so an explicit commit inside the work is optional); committing after a
+  rollback throws.
+  */
   async commit(): Promise<void> {
+    if (this.state === 'committed') {
+      return
+    }
+
+    if (this.state === 'rolled-back') {
+      throw new NeodeError(
+        'This transaction was already rolled back and cannot be committed — begin a new transaction.',
+      )
+    }
+
     await this.handle.commit()
+
+    this.state = 'committed'
   }
 
+  /**
+  Roll the transaction back. Rolling back an already-settled scope (committed
+  or rolled back) is a no-op — there is nothing left to roll back.
+  */
   async rollback(): Promise<void> {
+    if (this.state !== 'open') {
+      return
+    }
+
     await this.handle.rollback()
+
+    this.state = 'rolled-back'
+  }
+
+  /**
+  True once a terminal operation (commit or rollback) has succeeded on this
+  scope
+  */
+  isSettled(): boolean {
+    return this.state !== 'open'
   }
 
   async find<T>(

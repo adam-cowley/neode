@@ -537,7 +537,9 @@ export class Neode implements INeode {
   }
 
   /**
-  Run a unit of work within a READ transaction
+  Run a unit of work within a READ transaction: the transaction commits
+  on success unless the work committed explicitly, and rolls back when
+  the work throws
   */
   async inReadTransaction<T>(
     work: (tx: TransactionalService) => Promise<T>,
@@ -546,14 +548,28 @@ export class Neode implements INeode {
     const tx = await this.openReadTransaction(database)
 
     try {
-      return await work(tx)
+      const result = await work(tx)
+
+      if (!tx.isSettled()) {
+        await tx.commit()
+      }
+
+      return result
     } catch (error) {
+      // Already settled (the work committed explicitly, then threw): the
+      // commit stands — rethrow without touching the transaction
+      if (tx.isSettled()) {
+        throw error
+      }
+
       return await rollbackAfterFailure(tx.getTransaction(), error)
     }
   }
 
   /**
-  Run a unit of work within a WRITE transaction
+  Run a unit of work within a WRITE transaction: the transaction commits
+  on success unless the work committed explicitly, and rolls back when
+  the work throws
   */
   async inWriteTransaction<T>(
     work: (tx: TransactionalService) => Promise<T>,
@@ -562,8 +578,20 @@ export class Neode implements INeode {
     const tx = await this.openWriteTransaction(database)
 
     try {
-      return await work(tx)
+      const result = await work(tx)
+
+      if (!tx.isSettled()) {
+        await tx.commit()
+      }
+
+      return result
     } catch (error) {
+      // Already settled (the work committed explicitly, then threw): the
+      // commit stands — rethrow without touching the transaction
+      if (tx.isSettled()) {
+        throw error
+      }
+
       return await rollbackAfterFailure(tx.getTransaction(), error)
     }
   }
