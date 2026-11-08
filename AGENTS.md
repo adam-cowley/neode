@@ -74,7 +74,7 @@ Decorator reference:
 - `NodeEntity` (decorator) — Register the class as a node model: replays the property/relationship registrations queued by its field decorators, and labels the node with the class name (or `config.labels`).
 - `Number` (decorator) — Register a numeric (integer or float) property.
 - `OnCreateSet` (decorator) — Mark the property as set on create. Merges onto the existing property, so it can be stacked with a type decorator.
-- `OneToMany` (decorator) — Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading and an agent-facing description.
+- `OneToMany` (decorator) — Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading, an agent-facing description and per-relationship cascade.
 - `OneToOne` (decorator) — Register a relationship property holding one related entity. The target entity (`config.target()`) is required — standard decorators have no design:type reflection to infer it.
 - `OnMatchSet` (decorator) — Mark the property as set on match. Merges onto the existing property, so it can be stacked with a type decorator.
 - `OtherNode` (decorator) — On a relationship entity: the property holding the node at the far end of the relationship — the end node for an outgoing relationship, the start node for an incoming one (the direction-agnostic alternative to
@@ -170,6 +170,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 
 - `AccessMode` (type) — Session routing for a statement: 'READ' (replica-capable) or 'WRITE' (primaries). Where a query path leaves routing open, the facade's defaultRouting (itself defaulting to 'READ') decides; ConnectionProvider#run defaults to 'WRITE'.
 - `BatchStatementError` (interface) — A single failed statement within a batch.
+- `BoundBuilder` (class) — A Builder bound to an execution scope — the Neode facade or an open transaction (NTS-554): the plain Builder's fluent surface plus the .read() / .write() terminals, which build-and-run through Neode#read / Neode#write (or the TransactionalService mirrors, in-scope). Created by `neode.query()` / `tx.query()` — the standalone Builder never gains implicit execution.
 - `Builder` (class) — Fluent Cypher query builder. A statement-based builder: every `match()` / `create()` / `merge()` call starts a new statement segment; where clauses accumulate against the current segment and are flushed into it when the next segment starts or when `build()` is called. All user values are passed as query parameters - the generated query contains only aliases. The one exception is `RawExpression` property values (NTS-460), which render verbatim into patterns; bind the values they reference via `param(name, value)`.
 - `BulkChunk` (interface) — The result of one chunk: the rows attempted and the hydrated created/merged entities, in row order
 - `BulkOptions` (interface)
