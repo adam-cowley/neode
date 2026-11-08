@@ -38,18 +38,23 @@ function normalizeProperties(properties: Record<string, unknown>): Record<string
 
 /**
 Shallow clone of a driver temporal/point instance with every Integer field
-converted to a plain number (same prototype, so type checks still pass).
+converted to a plain number (same prototype, so instanceof and the
+duck-typed guards still recognise it). The original is returned untouched
+when it has no Integer fields — with driver 6's native-number temporals
+that is the common case, and identity survives.
 */
 function normalizeInternalIntegers(value: Record<string, unknown>): unknown {
   const clone = Object.assign(Object.create(Object.getPrototypeOf(value)), value)
+  let changed = false
 
   for (const [key, item] of Object.entries(clone)) {
     if (DriverInteger.isInteger(item)) {
       clone[key] = item.toNumber()
+      changed = true
     }
   }
 
-  return clone
+  return changed ? clone : value
 }
 
 /**
