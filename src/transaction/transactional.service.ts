@@ -26,6 +26,7 @@ import { RelateService } from '../services/query/relate.service.js'
 import { UpdateService } from '../services/query/update.service.js'
 import { WithinDistanceService } from '../services/query/within-distance.service.js'
 import { search, type ScoredEntity } from '../services/query/search.service.js'
+import { runObservers } from '../observers.js'
 import { isConstructorOf, isRecord } from '../services/type-guards.js'
 import { hydrate } from '../hydrate.js'
 
@@ -172,6 +173,12 @@ export class TransactionalService implements INeode {
 
     const schema = this.getSchema(entity.constructor)
 
+    // NTS-511: beforeSave runs before the dirty diff — mutations count
+    await runObservers(entity.constructor, 'beforeSave', entity, {
+      isNew: false,
+      database: undefined,
+    })
+
     const merge = new MergeService(this.handle)
 
     // NTS-157: tracked (hydrated) instances write only their dirty
@@ -202,6 +209,11 @@ export class TransactionalService implements INeode {
 
     // Emit the event the merge actually was: a create or an update
     this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
+
+    await runObservers(entity.constructor, 'afterSave', saved, {
+      isNew: created,
+      database: undefined,
+    })
 
     return saved
   }
@@ -284,12 +296,23 @@ export class TransactionalService implements INeode {
 
     const schema = this.getSchema(entity.constructor)
 
+    // NTS-511: beforeDelete can fail the delete (tx rolls back)
+    await runObservers(entity.constructor, 'beforeDelete', entity, {
+      isNew: false,
+      database: undefined,
+    })
+
     const service = new DeleteService(this.handle)
 
     await service.delete(schema, entity, typeof options === 'string' ? undefined : options)
 
     // Emit event
     this.eventEmitter.emit(EventType.NODE_DELETED, entity)
+
+    await runObservers(entity.constructor, 'afterDelete', entity, {
+      isNew: false,
+      database: undefined,
+    })
   }
 
   /**

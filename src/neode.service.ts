@@ -34,6 +34,7 @@ import {
   unknownDefinitionError,
 } from './meta/map-schema.js'
 import type { Newable } from './meta/newable.js'
+import { runObservers, observe, type ModelObservers } from './observers.js'
 import { type Ontology, ontology, ontologyMarkdown } from './meta/ontology.js'
 import type { RelationshipPropertySchema } from './meta/relationship-property-schema.js'
 import { resolveRepository } from './meta/repositories.js'
@@ -644,6 +645,13 @@ export class Neode implements INeode {
 
     const schema = this.getSchema(entityConstructor)
 
+    // NTS-511: beforeSave runs before the dirty check — an observer may
+    // mutate the entity into dirtiness. Errors fail the write.
+    await runObservers(entityConstructor, 'beforeSave', entity, {
+      isNew: false,
+      database,
+    })
+
     // NTS-157: tracked (hydrated) instances write only their dirty
     // scalar properties; a clean instance is a no-op — no transaction,
     // no query, no lifecycle events
@@ -679,6 +687,11 @@ export class Neode implements INeode {
     // the node or matched and updated an existing one
     this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
 
+    await runObservers(entityConstructor, 'afterSave', saved, {
+      isNew: created,
+      database,
+    })
+
     return saved
   }
 
@@ -692,6 +705,12 @@ export class Neode implements INeode {
     database?: string,
   ): Promise<T> {
     const schema = this.getSchema(constructor)
+
+    // NTS-511: beforeSave before the statement — errors fail the create
+    await runObservers(constructor, 'beforeSave', properties, {
+      isNew: true,
+      database,
+    })
 
     const tx = await this.writeTransaction(database)
 
@@ -720,6 +739,8 @@ export class Neode implements INeode {
 
       // Emit event
       this.eventEmitter.emit(EventType.NODE_CREATED, hydrated)
+
+      await runObservers(constructor, 'afterSave', hydrated, { isNew: true, database })
 
       return hydrated
     } catch (error) {
@@ -1348,6 +1369,15 @@ export class Neode implements INeode {
   }
 
   /**
+  Register lifecycle observers for a model (NTS-511): beforeSave runs
+  inside the write (an error fails it), afterSave/afterDelete run after
+  hydration. Returns the off function.
+  */
+  observe(model: Newable, observers: ModelObservers): () => void {
+    return observe(model, observers)
+  }
+
+  /**
   Delete a node. `options` threads the cascade modes through to the
   delete service; the legacy form `delete(entity, database)` — a string
   second argument, as accepted by INeode — is kept working.
@@ -1356,13 +1386,26 @@ export class Neode implements INeode {
     const schema = this.getSchema(constructorOf(entity))
 
     // A soft delete only SETs a label — the node stays, so it is not a
-    // deletion and must not fire NODE_DELETED
+    // deletion and must not fire NODE_DELETED. The declarative
+    // @SoftDelete stamp (NTS-510) counts as soft unless forced.
     const cascadeOptions: DeleteOptions | undefined =
       typeof options === 'string' ? undefined : options
+
+    const schemaSoft = schema.getSoftDelete()
+
+    const isSoft =
+      cascadeOptions?.force !== true &&
+      (schemaSoft !== undefined ||
+        (cascadeOptions?.soft !== undefined && cascadeOptions.soft !== ''))
 
     const tx = await this.writeTransaction(typeof options === 'string' ? options : database)
 
     try {
+      await runObservers(constructorOf(entity), 'beforeDelete', entity, {
+        isNew: false,
+        database,
+      })
+
       await new DeleteService(tx).delete(schema, entity, cascadeOptions)
 
       await tx.commit()
@@ -1370,7 +1413,12 @@ export class Neode implements INeode {
       return await rollbackAfterFailure(tx, error)
     }
 
-    if (cascadeOptions?.soft === undefined || cascadeOptions.soft === '') {
+    await runObservers(constructorOf(entity), 'afterDelete', entity, {
+      isNew: false,
+      database,
+    })
+
+    if (!isSoft && (cascadeOptions?.soft === undefined || cascadeOptions.soft === '')) {
       // Emit event
       this.eventEmitter.emit(EventType.NODE_DELETED, entity)
     }
