@@ -71,15 +71,66 @@ export function isStringFormed(value: unknown): value is { toString(): string } 
 }
 
 /**
+Every named key carries a finite number (the client-decoded temporal shape).
+*/
+function hasNumberComponents(value: unknown, keys: readonly string[]): boolean {
+  return (
+    isRecord(value) &&
+    keys.every((key) => {
+      const component = value[key]
+
+      return typeof component === 'number' && Number.isFinite(component)
+    })
+  )
+}
+
+/**
+The closed set of temporal-ish keys — a decoded value carrying one
+outside its kind's components is a different kind (a DateTime where a
+Date is required, an offset where none is allowed).
+*/
+const KNOWN_TEMPORAL_KEYS = new Set([
+  'year',
+  'month',
+  'day',
+  'hour',
+  'minute',
+  'second',
+  'nanosecond',
+  'timeZoneOffsetSeconds',
+  'timeZoneSuffixSeconds',
+])
+
+function hasOnlyOwnTemporalComponents(value: unknown, keys: readonly string[]): boolean {
+  return (
+    isRecord(value) &&
+    Object.keys(value).some((key) => KNOWN_TEMPORAL_KEYS.has(key) && !keys.includes(key))
+  )
+}
+
+/**
+The component keys each temporal kind carries once decoded.
+*/
+const TEMPORAL_COMPONENTS = {
+  date: ['year', 'month', 'day'],
+  time: ['hour', 'minute', 'second', 'nanosecond'],
+  datetime: ['year', 'month', 'day', 'hour', 'minute', 'second', 'nanosecond'],
+} as const
+
+/**
 A temporal value is valid when it is the driver instance itself, a
-JavaScript Date, epoch milliseconds, or a string the driver can parse
+JavaScript Date, epoch milliseconds, a string the driver can parse
 exactly (the same contract as convertPropertyValue, so anything that
-validates here will convert cleanly afterwards).
+validates here will convert cleanly afterwards), or a decoded temporal
+object from another backend carrying numeric components (the Relate
+client's CypherDate/CypherDateTime classes — the hydration shape on the
+embedded engine, NTS-508).
 */
 function temporalSchema(
   isInstance: (value: unknown) => boolean,
   fromString: (value: string) => unknown,
   label: string,
+  components: readonly string[],
 ): z.ZodType {
   return z.custom(
     (value) => {
@@ -109,11 +160,15 @@ function temporalSchema(
 
           return true
         } catch {
-          return false
+          // Fall through to the component check
         }
       }
 
-      return false
+      // Decoded temporal objects from other backends: numeric components,
+      // and none of a different kind
+      return (
+        hasNumberComponents(value, components) && !hasOnlyOwnTemporalComponents(value, components)
+      )
     },
     {
       message: `Expected a ${label} value (parseable string, Date, epoch number or driver instance)`,
@@ -125,30 +180,35 @@ export const dateSchema: z.ZodType = temporalSchema(
   (value) => isDate(value),
   (value) => DriverDate.fromString(value),
   'Neo4j Date',
+  TEMPORAL_COMPONENTS.date,
 )
 
 export const timeSchema: z.ZodType = temporalSchema(
   (value) => isTime(value),
   (value) => DriverTime.fromString(value),
   'Neo4j Time',
+  TEMPORAL_COMPONENTS.time,
 )
 
 export const datetimeSchema: z.ZodType = temporalSchema(
   (value) => isDateTime(value),
   (value) => DriverDateTime.fromString(value),
   'Neo4j DateTime',
+  TEMPORAL_COMPONENTS.datetime,
 )
 
 export const localtimeSchema: z.ZodType = temporalSchema(
   (value) => isLocalTime(value),
   (value) => DriverLocalTime.fromString(value),
   'Neo4j LocalTime',
+  TEMPORAL_COMPONENTS.time,
 )
 
 export const localdatetimeSchema: z.ZodType = temporalSchema(
   (value) => isLocalDateTime(value),
   (value) => DriverLocalDateTime.fromString(value),
   'Neo4j LocalDateTime',
+  TEMPORAL_COMPONENTS.datetime,
 )
 
 function isCoordinate(value: unknown): boolean {

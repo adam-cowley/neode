@@ -4,7 +4,7 @@ import { THIS_NODE } from '../../constants.js'
 import { hydrate } from '../../hydrate.js'
 import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { PropertyType, isProjectedProperty } from '../../meta/property-schema.js'
-import { getValueOrDefault } from '../../utilities.js'
+import { convertPropertyValue, getValueOrDefault } from '../../utilities.js'
 import {
   versionBump,
   applyEmbeddings,
@@ -147,7 +147,7 @@ export function processCreateRow(
 
     // Like the single-create pattern: unset and null properties are skipped
     if (value !== undefined && value !== null) {
-      values[property.getKey()] = value
+      values[property.getKey()] = convertPropertyValue(value, property)
     }
   }
 
@@ -204,7 +204,7 @@ export function processMergeRow(
     const value = getValueOrDefault(row, property, schema)
 
     if (value !== undefined) {
-      set[property.getKey()] = value
+      set[property.getKey()] = convertPropertyValue(value, property)
     }
   }
 

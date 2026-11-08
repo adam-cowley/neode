@@ -6,6 +6,7 @@ import { RawExpression } from './expressions.js'
 import { Relationship } from './relationship.js'
 import { Statement } from './statement.js'
 import { Where, OPERATOR_EQUALS } from './where.js'
+import { quote } from './quote.js'
 import { LabelPredicate } from './label-predicate.js'
 import { WhereBetween } from './where-between.js'
 import { WhereId } from './where-id.js'
@@ -926,32 +927,20 @@ export class Builder {
   }
 
   /**
-  Persist a vector property through Neo4j's space-efficient vector
-  storage procedure (NTS-449): `CALL db.create.setNodeVectorProperty(...)`
-  for nodes, `db.create.setRelationshipVectorProperty` for
-  relationships. Rendered as its own CALL clause after the statement's
-  SET clauses.
+  Persist a vector property as a plain `SET alias.prop = $param` list —
+  the portable form, writable on every engine (the packed storage
+  procedure `db.create.setNodeVectorProperty` is server-only and fails on
+  embedded engines; NTS-507). The vector index picks SET lists up; the
+  bulk path writes the same shape.
   */
-  setVectorProperty(
-    alias: string,
-    property: string,
-    value: unknown,
-    target: 'node' | 'relationship' = 'node',
-  ): this {
+  setVectorProperty(alias: string, property: string, value: unknown): this {
     const parameterAlias = `set_${String(this.parameterCount)}`
     this.params[parameterAlias] = value
     this.parameterCount++
 
-    const procedure =
-      target === 'relationship'
-        ? 'db.create.setRelationshipVectorProperty'
-        : 'db.create.setNodeVectorProperty'
-
-    this.activeStatement.call(
-      `CALL ${procedure}(${alias}, ${JSON.stringify(property)}, $${parameterAlias})`,
-    )
-
-    return this
+    // Backtick-quoted property key: double quotes are string literals,
+    // not identifiers — the strict parsers reject them here
+    return this.setExpr(`${alias}.${quote(property)}`, `$${parameterAlias}`)
   }
 
   /**

@@ -7,6 +7,9 @@ import {
   InternalId,
   DateTime,
   OneToMany,
+  Point,
+  Date,
+  Property,
 } from '../../src/decorators'
 import { Direction } from '../../src/query'
 import { getModel } from '../../src/meta'
@@ -32,6 +35,24 @@ class BulkPerson {
 
   @DateTime()
   createdAt: string
+}
+
+@NodeEntity()
+class BulkPlace {
+  @InternalId()
+  _id: string
+
+  @Property({ type: 'string', primary: true })
+  placeID: string
+
+  @Property({ type: 'string' })
+  name: string
+
+  @Point()
+  located: unknown
+
+  @Date()
+  founded: string
 }
 
 @NodeEntity()
@@ -705,5 +726,91 @@ describe('findManyAndCount / chunk / lazy (NTS-166)', () => {
 
       await expect(walk()).rejects.toThrow(/cursor property/i)
     })
+  })
+})
+
+// ---- NTS-506: bulk rows convert property values like the single path ----
+
+describe('bulk value conversion (NTS-506)', () => {
+  let backend: TestBackend
+
+  beforeAll(async () => {
+    backend = await openBackend()
+  })
+
+  afterEach(async () => {
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  it('mergeMany converts @Point and @Date values exactly like create()', async () => {
+    const rows = [
+      {
+        placeID: 'p1',
+        name: 'Origin',
+        located: { latitude: 35.68, longitude: 139.69 },
+        founded: '1950-04-01',
+      },
+      {
+        placeID: 'p2',
+        name: 'Near',
+        located: { latitude: 51.51, longitude: -0.13 },
+        founded: '1960-06-15',
+      },
+    ]
+
+    const chunks = await new BulkService(backend.neode.getConnection()).mergeMany(
+      BulkPlace,
+      getModel(BulkPlace),
+      rows,
+    )
+
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0]?.entities).toHaveLength(2)
+
+    const stored = await backend.neode.readCypher(
+      'MATCH (p:BulkPlace) RETURN p.placeID AS id, p.located AS located, p.founded AS founded ORDER BY p.placeID',
+      {},
+    )
+
+    expect(stored.records).toHaveLength(2)
+
+    const origin = stored.records[0]
+    const point = origin?.get('located') as { srid?: number; x?: number; y?: number }
+
+    // Converted to a driver Point (geographic SRID 4326, longitude as x) —
+    // not the raw { latitude, longitude } object
+    expect(point).toMatchObject({ srid: 4326, x: 139.69, y: 35.68 })
+
+    const founded = origin?.get('founded') as { year?: number }
+
+    expect(founded).toMatchObject({ year: 1950, month: 4, day: 1 })
+  })
+
+  it('createMany converts too', async () => {
+    await new BulkService(backend.neode.getConnection()).createMany(
+      BulkPlace,
+      getModel(BulkPlace),
+      [
+        {
+          placeID: 'p3',
+          name: 'Converted',
+          located: { latitude: 1.35, longitude: 103.82 },
+          founded: '1971-09-03',
+        },
+      ],
+    )
+
+    const output = await backend.neode.readCypher(
+      'MATCH (p:BulkPlace { placeID: "p3" }) RETURN p.located AS located',
+      {},
+    )
+
+    const point = output.records[0]?.get('located') as { srid?: number }
+
+    expect(point.srid).toBe(4326)
   })
 })

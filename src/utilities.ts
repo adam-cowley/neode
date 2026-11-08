@@ -723,7 +723,6 @@ export function setPropertyInBuilder(
   alias: string,
   property: PropertySchema,
   value: unknown,
-  target: 'node' | 'relationship' = 'node',
 ): Builder {
   if (value === undefined || value === null) {
     // Un-set via `SET this.prop = null` — Cypher removes the property,
@@ -746,7 +745,7 @@ export function setPropertyInBuilder(
   // storage procedure (NTS-449); the ON CREATE SET / ON MATCH SET
   // variants do not apply to procedure calls
   if (property.getVector() !== undefined) {
-    return builder.setVectorProperty(alias, property.getKey(), value, target)
+    return builder.setVectorProperty(alias, property.getKey(), value)
   }
 
   // TODO: Handle complex types (temporals, points) — Phase 4

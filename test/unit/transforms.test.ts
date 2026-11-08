@@ -11,7 +11,7 @@ import type { EntitySchema } from '../../src/meta/entity/entity-schema'
 import type { GraphNode, QueryOutput, QueryRecord, Runner } from '../../src/driver/types'
 
 /**
- * Embedding transforms + the setNodeVectorProperty write path (NTS-449).
+ * Embedding transforms + the vector write path (NTS-449, portable SET form NTS-507).
  * The runner is mocked — no database involved (knn.test.ts pattern).
  */
 
@@ -174,27 +174,27 @@ describe('out transforms (NTS-449)', () => {
 describe('vector write path (NTS-449)', () => {
   const schema = (): EntitySchema => getModel(VectorMovie)!
 
-  it('renders the setNodeVectorProperty procedure call on create; scalar siblings stay plain', async () => {
+  it('renders a plain SET for the vector property on create; scalar siblings stay inline', async () => {
     const { runner, calls } = mockRunner()
 
     await new CreateService(runner).create(schema(), { title: 'Matrix', emb: [1, 2, 3] })
 
     expect(calls).toHaveLength(1)
-    expect(calls[0].query).toContain('CALL db.create.setNodeVectorProperty(this, "emb", $')
+    expect(calls[0].query).toContain('SET this.`emb` = $set_')
     // Scalar sibling is an inline CREATE pattern property, not a procedure
     expect(calls[0].query).toContain('title: $this_title')
-    // The vector value rides the procedure parameter, not the pattern
+    // The vector value rides its SET parameter, not the pattern
     expect(calls[0].params['this_emb']).toBeUndefined()
     expect(Object.values(calls[0].params)).toContainEqual([1, 2, 3])
   })
 
-  it('renders the procedure call on save (no identity: CREATE path) with inline scalar siblings', async () => {
+  it('renders the SET form on save (no identity: CREATE path) with inline scalar siblings', async () => {
     const { runner, calls } = mockRunner()
 
     await new MergeService(runner).save({ title: 'Matrix', emb: [1, 2, 3] }, schema())
 
     expect(calls).toHaveLength(1)
-    expect(calls[0].query).toContain('CALL db.create.setNodeVectorProperty(this, "emb", $')
+    expect(calls[0].query).toContain('SET this.`emb` = $set_')
     // save() without a pk/unique property CREATEs (never a bare MERGE over
     // an arbitrary node) — the scalar sibling rides the inline pattern
     expect(calls[0].query).toContain('CREATE (this:VectorMovie { title: $this_title })')
@@ -211,7 +211,8 @@ describe('vector write path (NTS-449)', () => {
     })
 
     expect(calls).toHaveLength(1)
-    expect(calls[0].query).toContain('CALL db.create.setNodeVectorProperty(this, "emb", $')
+    // The vector assignment rides the coalesced SET clause
+    expect(calls[0].query).toContain('this.`emb` = $set_')
 
     // The += map carries only the scalar sibling
     const mapParam = Object.values(calls[0].params).find(
@@ -231,7 +232,7 @@ describe('embedding sugar: from + provider (NTS-449)', () => {
     await new CreateService(runner).create(getModel(model)!, { plot: 'A hero rises' })
 
     expect(provider).toHaveBeenCalledWith('A hero rises')
-    expect(calls[0].query).toContain('CALL db.create.setNodeVectorProperty(this, "emb", $')
+    expect(calls[0].query).toContain('SET this.`emb` = $set_')
     expect(Object.values(calls[0].params)).toContainEqual([12, 0.5, 1])
   })
 

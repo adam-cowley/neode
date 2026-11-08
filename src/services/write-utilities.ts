@@ -155,13 +155,13 @@ export function setRelationshipEntityProperties(
       const entryValues = isRecord(value) ? Object.values(value) : []
 
       for (const entryValue of entryValues) {
-        setPropertyInBuilder(builder, relationshipAlias, property, entryValue, 'relationship')
+        setPropertyInBuilder(builder, relationshipAlias, property, entryValue)
       }
 
       continue
     }
 
-    setPropertyInBuilder(builder, relationshipAlias, property, value, 'relationship')
+    setPropertyInBuilder(builder, relationshipAlias, property, value)
   }
 }
 

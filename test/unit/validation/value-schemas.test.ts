@@ -77,6 +77,41 @@ describe('value-schemas', () => {
       expect(dateSchema.safeParse(neo4j.DateTime.fromStandardDate(new Date())).success).toBe(false)
     })
 
+    it('should accept decoded temporal objects with numeric components (NTS-508)', () => {
+      // The embedded engine's hydration shape: the client's decoded classes
+      expect(dateSchema.safeParse({ year: 1950, month: 4, day: 1 }).success).toBe(true)
+      expect(
+        datetimeSchema.safeParse({
+          year: 1950,
+          month: 4,
+          day: 1,
+          hour: 10,
+          minute: 30,
+          second: 0,
+          nanosecond: 0,
+        }).success,
+      ).toBe(true)
+      expect(
+        localdatetimeSchema.safeParse({
+          year: 1950,
+          month: 4,
+          day: 1,
+          hour: 10,
+          minute: 30,
+          second: 0,
+          nanosecond: 0,
+        }).success,
+      ).toBe(true)
+      expect(
+        localtimeSchema.safeParse({ hour: 10, minute: 30, second: 0, nanosecond: 0 }).success,
+      ).toBe(true)
+
+      // A missing component is not a temporal
+      expect(dateSchema.safeParse({ year: 1950, month: 4 }).success).toBe(false)
+      // Non-numeric components are not a temporal
+      expect(dateSchema.safeParse({ year: '1950', month: 4, day: 1 }).success).toBe(false)
+    })
+
     it('should accept timezone-aware datetime strings only', () => {
       expect(datetimeSchema.safeParse('2020-06-15T10:30:00Z').success).toBe(true)
       expect(datetimeSchema.safeParse('2020-06-15T10:30:00+02:00').success).toBe(true)

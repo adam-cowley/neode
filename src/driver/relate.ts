@@ -171,6 +171,46 @@ interface RelateClientModule {
   Database: {
     open(uri: string, options?: { readOnly?: boolean }): RelateDatabase
   }
+  /**
+  The typed value classes the ABI binds (TYPED_PUTS instance checks)
+  */
+  CypherPoint: new (
+    srid: number,
+    x: number,
+    y: number,
+    z?: number,
+  ) => object
+  CypherDate: new (year: number, month: number, day: number) => object
+  CypherTime: new (
+    hour: number,
+    minute: number,
+    second: number,
+    nanosecond: number,
+    offsetSeconds: number | null,
+    zoneId: string | null,
+  ) => object
+  CypherLocalTime: new (hour: number, minute: number, second: number, nanosecond: number) => object
+  CypherLocalDateTime: new (
+    year: number,
+    month: number,
+    day: number,
+    hour: number,
+    minute: number,
+    second: number,
+    nanosecond: number,
+  ) => object
+  CypherDateTime: new (
+    year: number,
+    month: number,
+    day: number,
+    hour: number,
+    minute: number,
+    second: number,
+    nanosecond: number,
+    offsetSeconds: number | null,
+    zoneId: string | null,
+  ) => object
+  CypherDuration: new (months: number, days: number, seconds: number, nanoseconds: number) => object
 }
 
 function moduleDirectory(): string {
@@ -290,6 +330,190 @@ async function classified<T>(
   }
 }
 
+/**
+The relate ABI binds only the client's own typed classes — driver value
+instances (Point, the temporals, Duration) reaching parameters raw would
+reject as "must be a plain object". Convert them, duck-typed: the library
+never imports the driver's value constructors.
+*/
+function normalizeParameters(parameters?: QueryParameters): QueryParameters {
+  return parameters === undefined
+    ? {}
+    : Object.fromEntries(
+        Object.entries(parameters).map(([key, value]) => [key, normalizeParameterValue(value)]),
+      )
+}
+
+/**
+Parameter maps recurse through normalizeParameterValue, not the row decoder.
+*/
+function normalizeParameterProperties(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, normalizeParameterValue(item)]),
+  )
+}
+
+function normalizeParameterValue(value: unknown): unknown {
+  if (value === null || value === undefined) {
+    return value
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeParameterValue(item))
+  }
+
+  if (!isRecord(value)) {
+    return value
+  }
+
+  return driverValueToCypher(value) ?? normalizeParameterProperties(value)
+}
+
+function isNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+/**
+A driver temporal field: a plain number, or the driver's Integer object
+({ low, high }) the temporal types still carry internally
+*/
+function asNumber(value: unknown): number | undefined {
+  if (isNumber(value)) {
+    return value
+  }
+
+  if (isRecord(value) && isNumber(value['low']) && isNumber(value['high'])) {
+    return value['low'] + value['high'] * 4_294_967_296
+  }
+
+  return undefined
+}
+
+/**
+The listed keys as finite numbers (or driver Integers), or undefined when
+any is missing or not numeric — the duck-type guard AND the accessor in one
+*/
+function numbers(value: Record<string, unknown>, keys: string[]): number[] | undefined {
+  const out: number[] = []
+
+  for (const key of keys) {
+    const candidate = asNumber(value[key])
+
+    if (candidate === undefined) {
+      return undefined
+    }
+
+    out.push(candidate)
+  }
+
+  return out
+}
+
+function driverValueToCypher(value: Record<string, unknown>): unknown {
+  const client = requireRelateClient()
+
+  // Point: { srid, x, y[, z] }
+  const point = numbers(value, ['srid', 'x', 'y'])
+
+  if (point !== undefined) {
+    const [srid, x, y] = point
+
+    if (srid === undefined || x === undefined || y === undefined) {
+      return undefined
+    }
+
+    const z = asNumber(value['z'])
+
+    return z === undefined
+      ? new client.CypherPoint(srid, x, y)
+      : new client.CypherPoint(srid, x, y, z)
+  }
+
+  const duration = numbers(value, ['months', 'days', 'seconds', 'nanoseconds'])
+
+  if (duration !== undefined) {
+    const [months, days, seconds, nanoseconds] = duration
+
+    return months === undefined ||
+      days === undefined ||
+      seconds === undefined ||
+      nanoseconds === undefined
+      ? undefined
+      : new client.CypherDuration(months, days, seconds, nanoseconds)
+  }
+
+  const dateFields = numbers(value, ['year', 'month', 'day'])
+
+  // Time-of-day only: { hour, minute, second, nanosecond[, timeZoneOffsetSeconds] }
+  if (dateFields === undefined) {
+    const time = numbers(value, ['hour', 'minute', 'second', 'nanosecond'])
+
+    if (time === undefined) {
+      return undefined
+    }
+
+    const [hour, minute, second, nanosecond] = time
+
+    if (
+      hour === undefined ||
+      minute === undefined ||
+      second === undefined ||
+      nanosecond === undefined
+    ) {
+      return undefined
+    }
+
+    const timeOffset = asNumber(value['timeZoneOffsetSeconds'])
+
+    return timeOffset === undefined
+      ? new client.CypherLocalTime(hour, minute, second, nanosecond)
+      : new client.CypherTime(hour, minute, second, nanosecond, timeOffset, null)
+  }
+
+  const [year, month, day] = dateFields
+
+  if (year === undefined || month === undefined || day === undefined) {
+    return undefined
+  }
+
+  if (value['hour'] === undefined) {
+    return new client.CypherDate(year, month, day)
+  }
+
+  const timeFields = numbers(value, ['hour', 'minute', 'second', 'nanosecond'])
+
+  if (timeFields === undefined) {
+    return undefined
+  }
+
+  const [hour, minute, second, nanosecond] = timeFields
+
+  if (
+    hour === undefined ||
+    minute === undefined ||
+    second === undefined ||
+    nanosecond === undefined
+  ) {
+    return undefined
+  }
+
+  const offset = asNumber(value['timeZoneOffsetSeconds'])
+  const suffix = asNumber(value['timeZoneSuffixSeconds'])
+
+  return offset === undefined && suffix === undefined
+    ? new client.CypherLocalDateTime(year, month, day, hour, minute, second, nanosecond)
+    : new client.CypherDateTime(
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        nanosecond,
+        offset ?? null,
+        null,
+      )
+}
 class RelateTransactionHandle implements TransactionHandle {
   private open = true
 
@@ -309,7 +533,7 @@ class RelateTransactionHandle implements TransactionHandle {
     }
 
     const result = await classified(
-      this.connection.queryAsync(statement, parameters),
+      this.connection.queryAsync(statement, normalizeParameters(parameters)),
       statement,
       parameters,
     )
@@ -393,7 +617,7 @@ export class RelateConnectionProvider implements ConnectionProvider {
     }
 
     const result = await classified(
-      this.connection.queryAsync(statement, parameters),
+      this.connection.queryAsync(statement, normalizeParameters(parameters)),
       statement,
       parameters,
     )
