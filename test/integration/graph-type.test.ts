@@ -212,4 +212,48 @@ describe('graph types (NTS-548)', () => {
 
     await neode.dropGraphType()
   })
+
+  it('extends and alters the installed graph type (NTS-551)', async () => {
+    if (!supportsGraphTypes) {
+      return
+    }
+
+    const neode = new Neode(backend.connection, true)
+
+    await neode.installGraphType()
+
+    // ADD: a new element type (declared on a registered model installed
+    // after the first SET — here simulated by extending with a hand-built
+    // definition, the same shape deriveGraphType produces)
+    const extended = await neode.extendGraphType({
+      nodes: [{ label: 'GtStudio', properties: [{ name: 'name', type: 'STRING' }] }],
+      relationships: [
+        {
+          type: 'GT_PRODUCED',
+          source: 'GtStudio',
+          target: 'GtMovie',
+          properties: [{ name: 'year', type: 'INTEGER' }],
+        },
+      ],
+    })
+
+    expect(extended[0]?.success).toBe(true)
+    expect(extended[0]?.statement.startsWith('ALTER CURRENT GRAPH TYPE ADD {')).toBe(true)
+
+    expect(await shownGraphType()).toContain('GtStudio')
+
+    // ALTER: redefine an existing element type (uniqueness stripped —
+    // key/uniqueness constraints remain unchanged server-side)
+    const altered = await neode.alterGraphType({
+      nodes: [{ label: 'GtMovie', properties: [{ name: 'title', type: 'STRING' }] }],
+    })
+
+    expect(altered[0]?.success).toBe(true)
+    expect(altered[0]?.statement.startsWith('ALTER CURRENT GRAPH TYPE ALTER {')).toBe(true)
+
+    // The altered element type is enforced: a GtMovie without title fails
+    await expect(backend.connection.run('CREATE (:GtMovie { released: 2026 })')).rejects.toThrow()
+
+    await neode.dropGraphType()
+  })
 })

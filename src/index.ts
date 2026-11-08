@@ -108,6 +108,9 @@ export type { VectorIndexDefinition } from './services/schema/vector.service.js'
 export {
   GraphTypeService,
   deriveGraphType,
+  deriveGraphTypeElementsOnly,
+  graphTypeAddStatement,
+  graphTypeAlterStatement,
   graphTypeSetStatement,
   graphTypeDropStatement,
 } from './services/schema/graph-type.service.js'

@@ -94,6 +94,7 @@ import { type VectorIndexDefinition, VectorIndexService } from './services/schem
 import {
   GraphTypeService,
   type GraphTypeConstraintDefinition,
+  type GraphTypeDefinition,
 } from './services/schema/graph-type.service.js'
 import { constructorOf, isConstructorOf, isRecord } from './services/type-guards.js'
 import { type BatchStatementError, TransactionError } from './transaction/errors.js'
@@ -1105,6 +1106,26 @@ export class Neode implements INeode {
     options: { constraints?: GraphTypeConstraintDefinition[] } = {},
   ): Promise<SchemaResult[]> {
     return new GraphTypeService(this.connection, this.enterprise).drop(options)
+  }
+
+  /**
+  Extend the installed graph type with the derived (or given) new element
+  types and constraint items — `ALTER CURRENT GRAPH TYPE ADD` (NTS-551).
+  Only additions are valid: existing element types cannot be modified.
+  */
+  async extendGraphType(definition?: GraphTypeDefinition): Promise<SchemaResult[]> {
+    return new GraphTypeService(this.connection, this.enterprise).extend(definition)
+  }
+
+  /**
+  Redefine existing element types in the installed graph type —
+  `ALTER CURRENT GRAPH TYPE ALTER` (NTS-551). Without a definition, the
+  model-derived element types are redefined with their key/uniqueness
+  constraints stripped (those remain unchanged server-side and cannot be
+  altered).
+  */
+  async alterGraphType(definition?: GraphTypeDefinition): Promise<SchemaResult[]> {
+    return new GraphTypeService(this.connection, this.enterprise).alter(definition)
   }
 
   /**

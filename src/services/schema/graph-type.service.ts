@@ -536,6 +536,110 @@ export function deriveGraphType(
 }
 
 /**
+`ALTER CURRENT GRAPH TYPE ADD { ... }` — NTS-551: add new element types and
+constraint items to the existing graph type. Only additions are valid: an
+ADD cannot modify an existing element type, and independent constraints
+cannot be added to labels/types that already serve as identifying ones —
+server-side rejections surface in the SchemaResult error.
+*/
+export function graphTypeAddStatement(definition: GraphTypeDefinition): string {
+  const statements = [...elements(definition), ...constraintItems(definition)]
+
+  if (statements.length === 0) {
+    throw new TypeError(
+      'Cannot extend a graph type: no node or relationship element types or constraints derived from the registered models',
+    )
+  }
+
+  return `ALTER CURRENT GRAPH TYPE ADD {${statements.join(', ')}}`
+}
+
+/**
+`ALTER CURRENT GRAPH TYPE ALTER { ... }` — NTS-551: replace the definition
+of existing element types (it redefines them to exactly what is given —
+partially defining an element type does not leave the omitted parts
+unchanged). Key/uniqueness constraints cannot be included: they cannot be
+altered server-side and remain unchanged instead, so definitions carrying
+them are rejected rather than silently redefined without them.
+*/
+export function graphTypeAlterStatement(definition: GraphTypeDefinition): string {
+  if ((definition.constraints ?? []).length > 0) {
+    throw new TypeError(
+      'ALTER cannot include constraint items — key/uniqueness constraints remain unchanged',
+    )
+  }
+
+  const uniqueBearers = definition.nodes
+    .map(
+      (node) =>
+        [
+          node.label,
+          node.properties
+            ?.filter((property) => property.unique === true)
+            .map((property) => property.name) ?? [],
+        ] as const,
+    )
+    .filter(([, names]) => names.length > 0)
+
+  if (uniqueBearers.length > 0) {
+    throw new TypeError(
+      `ALTER cannot include key/uniqueness constraints — remove them from the element types: ${uniqueBearers.map(([label, names]) => `${label}(${names.join(', ')})`).join(', ')}`,
+    )
+  }
+
+  const statements = elements(definition)
+
+  if (statements.length === 0) {
+    throw new TypeError('Cannot alter a graph type: no node or relationship element types given')
+  }
+
+  return `ALTER CURRENT GRAPH TYPE ALTER {${statements.join(', ')}}`
+}
+
+/**
+Derives a graph type and strips its constraint items + any uniqueness
+flags — the key/uniqueness shape ALTER leaves unchanged (NTS-551)
+*/
+export function deriveGraphTypeElementsOnly(): GraphTypeDefinition {
+  const derived = deriveGraphType()
+
+  const stripUniqueness = (
+    properties: GraphTypePropertyDefinition[] | undefined,
+  ): GraphTypePropertyDefinition[] | undefined => {
+    if (properties === undefined) {
+      return undefined
+    }
+
+    const kept: GraphTypePropertyDefinition[] = []
+
+    for (const property of properties) {
+      if (property.unique !== true) {
+        kept.push(property)
+      }
+    }
+
+    return kept
+  }
+
+  const nodes = derived.nodes.map((node) => {
+    const properties = stripUniqueness(node.properties)
+
+    return { ...node, ...(properties !== undefined && { properties }) }
+  })
+
+  const relationships = derived.relationships?.map((relationship) => {
+    const properties = stripUniqueness(relationship.properties)
+
+    return { ...relationship, ...(properties !== undefined && { properties }) }
+  })
+
+  return {
+    nodes,
+    ...(relationships !== undefined && { relationships }),
+  }
+}
+
+/**
 The one-statement result shape, with the statement reported even when it
 could not run (enterprise gating)
 */
@@ -551,11 +655,15 @@ function graphTypeResult(action: ConstraintAction, statement: string): SchemaRes
 }
 
 function graphTypeUnsupported(action: ConstraintAction): SchemaResult {
+  const verbs: Record<ConstraintAction, string> = {
+    [ConstraintAction.CREATE]: 'SET',
+    [ConstraintAction.DROP]: 'DROP',
+    [ConstraintAction.ADD]: 'ADD',
+    [ConstraintAction.ALTER]: 'ALTER',
+  }
+
   return {
-    ...graphTypeResult(
-      action,
-      `-- ALTER CURRENT GRAPH TYPE ${action === ConstraintAction.CREATE ? 'SET' : 'DROP'} { ... }`,
-    ),
+    ...graphTypeResult(action, `-- ALTER CURRENT GRAPH TYPE ${verbs[action]} { ... }`),
     error: new Error(
       'Graph types are Enterprise Edition only (Neo4j 2026.02+): enable the enterprise flag ' +
         '(new Neode(connection, true) / NEO4J_ENTERPRISE=true / setEnterprise(true)) before installing',
@@ -604,5 +712,28 @@ export class GraphTypeService {
     return this.enterprise
       ? this.run(ConstraintAction.DROP, graphTypeDropStatement(deriveGraphType(options)))
       : [graphTypeUnsupported(ConstraintAction.DROP)]
+  }
+
+  /**
+  NTS-551 — `ALTER CURRENT GRAPH TYPE ADD`: add the derived (or given)
+  element types and constraint items to the existing graph type
+  */
+  async extend(definition: GraphTypeDefinition = deriveGraphType()): Promise<SchemaResult[]> {
+    return this.enterprise
+      ? this.run(ConstraintAction.ADD, graphTypeAddStatement(definition))
+      : [graphTypeUnsupported(ConstraintAction.ADD)]
+  }
+
+  /**
+  NTS-551 — `ALTER CURRENT GRAPH TYPE ALTER`: redefine the given (or
+  derived, constraint-stripped) element types. Key/uniqueness constraints
+  are not part of an ALTER and remain unchanged server-side.
+  */
+  async alter(
+    definition: GraphTypeDefinition = deriveGraphTypeElementsOnly(),
+  ): Promise<SchemaResult[]> {
+    return this.enterprise
+      ? this.run(ConstraintAction.ALTER, graphTypeAlterStatement(definition))
+      : [graphTypeUnsupported(ConstraintAction.ALTER)]
   }
 }

@@ -9,6 +9,14 @@ import { quote } from '../../query/quote.js'
 export const ConstraintAction = {
   CREATE: 'CREATE',
   DROP: 'DROP',
+  /**
+  NTS-551 — graph type extension (`ALTER CURRENT GRAPH TYPE ADD`)
+  */
+  ADD: 'ADD',
+  /**
+  NTS-551 — graph type element-type redefinition (`ALTER CURRENT GRAPH TYPE ALTER`)
+  */
+  ALTER: 'ALTER',
 } as const
 
 export type ConstraintAction = (typeof ConstraintAction)[keyof typeof ConstraintAction]

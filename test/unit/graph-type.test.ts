@@ -17,6 +17,9 @@ import { Direction } from '../../src/query/direction'
 import {
   GraphTypeService,
   deriveGraphType,
+  deriveGraphTypeElementsOnly,
+  graphTypeAddStatement,
+  graphTypeAlterStatement,
   graphTypeConstraintName,
   graphTypeDropStatement,
   graphTypeSetStatement,
@@ -405,6 +408,88 @@ describe('composite REQUIRE constraints (NTS-552)', () => {
       properties: ['stars', 'day'],
       kind: 'UNIQUE',
     })
+  })
+})
+
+// ---- ADD / ALTER verbs (NTS-551) ---------------------------------------------
+
+describe('graphTypeAddStatement / graphTypeAlterStatement (NTS-551)', () => {
+  it('renders ADD with element types and constraint items', () => {
+    expect(
+      graphTypeAddStatement({
+        nodes: [{ label: 'Company', properties: [{ name: 'name', type: 'STRING' }] }],
+        relationships: [
+          {
+            type: 'WORKS_FOR',
+            source: 'Person',
+            target: 'Company',
+            properties: [{ name: 'role', type: 'STRING' }],
+          },
+        ],
+        constraints: [
+          { name: 'company_key', labelOrType: 'Company', properties: ['name'], kind: 'KEY' },
+        ],
+      }),
+    ).toBe(
+      'ALTER CURRENT GRAPH TYPE ADD {' +
+        '(:`Company` => {`name` :: STRING}), ' +
+        '(:`Person`)-[:`WORKS_FOR` => {`role` :: STRING}]->(:`Company`), ' +
+        'CONSTRAINT `company_key` FOR (n:`Company`) REQUIRE (n.`name`) IS KEY}',
+    )
+  })
+
+  it('renders ALTER with element types only', () => {
+    expect(
+      graphTypeAlterStatement({
+        nodes: [
+          {
+            label: 'Robot',
+            implies: ['Machine'],
+            properties: [{ name: 'id', type: 'INTEGER', nullable: false }],
+          },
+        ],
+        relationships: [
+          {
+            type: 'LIVES_IN',
+            source: 'Resident',
+            target: 'City',
+            properties: [{ name: 'since', type: 'ANY', nullable: false }],
+          },
+        ],
+      }),
+    ).toBe(
+      'ALTER CURRENT GRAPH TYPE ALTER {' +
+        '(:`Robot` => :`Machine` {`id` :: INTEGER NOT NULL}), ' +
+        '(:`Resident`)-[:`LIVES_IN` => {`since` :: ANY NOT NULL}]->(:`City`)}',
+    )
+  })
+
+  it('ALTER rejects constraint items and uniqueness flags', () => {
+    expect(() =>
+      graphTypeAlterStatement({
+        nodes: [{ label: 'City' }],
+        constraints: [{ labelOrType: 'City', properties: ['name'], kind: 'KEY' }],
+      }),
+    ).toThrow(/cannot include constraint items/i)
+
+    expect(() =>
+      graphTypeAlterStatement({
+        nodes: [{ label: 'City', properties: [{ name: 'name', type: 'STRING', unique: true }] }],
+      }),
+    ).toThrow(/cannot include key\/uniqueness/i)
+  })
+
+  it('ALTER of the derived definition strips the hoisted constraints (they remain unchanged)', () => {
+    const statement = graphTypeAlterStatement(deriveGraphTypeElementsOnly())
+
+    expect(statement.startsWith('ALTER CURRENT GRAPH TYPE ALTER {')).toBe(true)
+    expect(statement).not.toContain('CONSTRAINT')
+    expect(statement).not.toContain('IS UNIQUE')
+  })
+
+  it('ADD/ALTER of an empty definition throws', () => {
+    expect(() => graphTypeAddStatement({ nodes: [] })).toThrow(TypeError)
+    expect(() => graphTypeAlterStatement({ nodes: [] })).toThrow(TypeError)
   })
 })
 
