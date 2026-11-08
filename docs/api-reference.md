@@ -1096,6 +1096,7 @@ toFulltextQuery(text: string, maxTerms?: number): string
 - `search` — full-text search over a full-text index (`CALL db.index.fulltext.queryNodes`), returning hydrated entities with their relevance score, best match first. The query string is bound as a parameter, so Lucene syntax characters in it are still parsed as such — pass user text through `toFulltextQuery` first (it strips Lucene special characters and operators, lowercases, and caps the term count).
 - `knn` — k-nearest-neighbour search over a vector index. With the default `auto` mode the Cypher 25 `SEARCH` clause is attempted first and the `queryNodes` procedure is the fallback; `mode: 'search-clause' | 'procedure'` pins one form.
 - `model` takes a registered class or its schema; `ScoredEntity<T>` is `{ entity: T, score: number }`; `KnnMode` is `'auto' | 'search-clause' | 'procedure'`.
+- **Pitfall — top-k before filters:** the vector search picks its top `k` neighbours _before_ any filter is applied (the same behaviour Spring Data Neo4j and neomodel warn about), so a filtered kNN can return fewer than `k` rows — or none. Over-fetch by requesting a larger `k`, then filter the hydrated entities in your code.
 
 The facade wrappers (`neode.search(...)`, `neode.knn(...)`) pass the instance's connection for you.
 
