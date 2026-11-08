@@ -4,6 +4,7 @@ import { THIS_NODE } from '../../constants.js'
 import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { applyOrder, type OrderSpec } from '../../query/order-spec.js'
 import { QueryService } from './query.service.js'
+import { applySoftDeleteFilter } from './soft-delete.js'
 
 // The order forms live in the shared query module (the Repository uses the
 // same ones) — re-exported here to keep the established import path
@@ -21,6 +22,8 @@ export class GetService extends QueryService {
     const builder = new Builder()
 
     builder.match(THIS_NODE, schema.getLabels())
+
+    applySoftDeleteFilter(builder, schema)
 
     for (const property of schema.getProperties()) {
       const key = property.getKey()

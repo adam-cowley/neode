@@ -10,6 +10,7 @@ import { isRecord } from '../services/type-guards.js'
 import { NeodeError } from '../errors/index.js'
 import { projectionNode } from './projection.js'
 import { hydrateProjection } from './hydrate.js'
+import { applySoftDeleteFilter } from '../services/query/soft-delete.js'
 
 /**
 True for the related-projection kinds that support nested filters / sort
@@ -249,6 +250,8 @@ export class ProjectionService {
 
     builder.match(THIS_NODE, schema.getLabels())
 
+    applySoftDeleteFilter(builder, schema)
+
     const bound = applyFilters(builder, schema, parameters)
 
     applyOrder(builder, order, schema, bound)
@@ -274,6 +277,8 @@ export class ProjectionService {
 
     builder.match(THIS_NODE, schema.getLabels(), { [primaryKey.getKey()]: value })
 
+    applySoftDeleteFilter(builder, schema)
+
     const results = await this.run<T>(constructor, schema, builder, 1)
 
     return results[0]
@@ -290,6 +295,8 @@ export class ProjectionService {
     const builder = new Builder()
 
     builder.match(THIS_NODE).whereId(THIS_NODE, elementId)
+
+    applySoftDeleteFilter(builder, schema)
 
     const results = await this.run<T>(constructor, schema, builder, 1)
 

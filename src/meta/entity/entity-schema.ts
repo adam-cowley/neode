@@ -30,6 +30,13 @@ export class EntitySchema {
   protected relationships = new Map<string, RelationshipPropertySchema>()
   protected entityType: EntityType = EntityType.NodeEntity
 
+  /**
+  Declarative soft delete (NTS-510): when set, delete() stamps the label
+  + deletedAt instead of DETACH DELETE, and every standard read filters
+  the label out
+  */
+  protected softDelete?: { label: string }
+
   constructor(entityType: EntityType = EntityType.NodeEntity) {
     this.entityType = entityType
   }
@@ -40,6 +47,14 @@ export class EntitySchema {
   */
   private modelName(): string {
     return this.labels.join(':') || 'entity'
+  }
+
+  setSoftDelete(label: string): void {
+    this.softDelete = { label }
+  }
+
+  getSoftDelete(): { label: string } | undefined {
+    return this.softDelete
   }
 
   setLabels(labels: string[]): void {

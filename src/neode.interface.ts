@@ -1,4 +1,5 @@
 import type { CypherOptions, QueryOutput, QueryParams as QueryParameters } from './driver/types.js'
+import type { DeleteOptions } from './services/query/delete.service.js'
 import type { OrderSpec } from './services/query/get.service.js'
 import type { ScoredEntity } from './services/query/search.service.js'
 
@@ -19,7 +20,7 @@ export interface INeode {
     database?: string,
   ): Promise<T | undefined>
   save<T>(entity: T, database?: string): Promise<T>
-  delete(entity: object, database?: string): Promise<void>
+  delete(entity: object, options?: DeleteOptions | string, database?: string): Promise<void>
   /**
   All nodes of the given constructor, optionally filtered/ordered/paged —
   the projection-aware read: models declaring read-model decorators

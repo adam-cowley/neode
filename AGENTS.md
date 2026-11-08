@@ -89,6 +89,7 @@ Decorator reference:
 - `RelationshipEntity` (decorator) — Register the class as a relationship model: replays the field registrations queued by its property decorators and marks the metamodel entry as a relationship.
 - `RelationshipExists` (decorator) — NTS-137 — relationship existence projected as an inline `EXISTS { }` boolean in the read query. `where` uses `node` as the variable convention for the target node. Example: ```ts
 - `Required` (decorator) — Mark the property as required. Merges onto the existing property, so it can be stacked with a type decorator.
+- `SoftDelete` (decorator) — Declarative soft delete (NTS-510): mark the model so delete() stamps a label + deletedAt instead of DETACH DELETE, and every standard read (find / findAll / all / projections / repository reads) filters the label out. Restore with restore(); hard-delete with delete(force). The label defaults to 'Deleted'; the stamp property is `deletedAt` (declared implicitly, server-stamped with datetime()).
 - `StartNode` (decorator) — On a relationship entity: the property holding the node at the relationship's start.
 - `String` (decorator) — Register a string property.
 - `Time` (decorator) — Register a time property.
@@ -128,6 +129,7 @@ await neode.installSchema()
 - `applySchemaDrift` (function) — Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450).
 - `formatSchemaDrift` (function) — Human-readable multi-line drift report, grouped by action (missing / stale / mismatched), one line per object plus its fix statement. Pure function — no database access (NTS-450).
 - `FulltextIndexDefinition` (interface) — A full-text index to keep installed on the database
+- `fulltextIndexName` (function)
 - `FulltextIndexService` (class) — Installs/drops the given full-text index definitions, following the same result-reporting pattern as SchemaService
 - `InspectOptions` (interface) — Which objects count as "declared" for the inspection: pass the full-text/vector index definitions and the enterprise flag your installSchema call used, so the diff is not polluted by false "extra" entries.
 - `inspectSchema` (function) — Read the installed schema (SHOW CONSTRAINTS / SHOW INDEXES) and diff it against the declared schema
@@ -139,6 +141,7 @@ await neode.installSchema()
 - `SchemaInspection` (interface) — The full inspectSchema result: constraint and index diffs against the declared models.
 - `SchemaObject` (interface) — One constraint or index as inspected from the database (SHOW CONSTRAINTS / SHOW INDEXES).
 - `VectorIndexDefinition` (interface) — A vector index to keep installed on the database
+- `vectorIndexName` (function)
 - `VectorIndexService` (class) — Installs/drops the given vector index definitions, following the same result-reporting pattern as SchemaService
 
 ## Query
@@ -179,6 +182,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `ManyAndCount` (interface) — Non-paginated `{ items, total }` read (Prisma's findManyAndCount)
 - `Neo4jConnectionProvider` (class) — ConnectionProvider over a neo4j-driver `Driver` (Bolt): Neo4j Community/Enterprise, Aura, Memgraph, or `relate serve`. Result values are normalised out of driver types (Node, Relationship, Integer, temporal, Point) into the plain GraphNode/GraphRelationship shapes; driver errors are mapped through the typed error taxonomy.
 - `OffsetPaginateOptions` (interface) — Property -> direction pagination (the classic form): paginate(model, filter, { page, limit, order? })
+- `OrderSpec` (type) — Ordering spec, matching neode's all() forms: - `'name'` - order by one property ascending - `['name', 'age']` - order by several properties - `{ name: 'DESC' }` - property -> direction map - `[{ name: 'DESC' }, { age: 'ASC' }]` - list of property -> direction maps - `{ field: 'name', order: 'DESC' }` - two-arg (key, direction) descriptor
 - `Page` (interface) — Offset/page result
 - `PaginateOptions` (type) — The union of the two pagination modes PaginateService accepts — the options shape (page vs cursor) selects the mode.
 - `PaginateService` (class) — Pagination helpers. Two modes, selected by the options shape: - `{ page, limit, order? }` — offset pagination over two autocommit reads (data + COUNT), returning { items, total, page, limit, totalPages } - `{ limit, orderBy?, after?/before? }` — keyset pagination on a temporal property (`WHERE this.createdAt > datetime($cursor)`), returning { items, nextCursor, hasMore }
@@ -193,6 +197,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `RawExpression` (class) — A raw Cypher expression used as an inline pattern property value (NTS-460): rendered verbatim into the pattern — `{ prop: <expression> }` — instead of being bound as a parameter. Variable references (`row.answers`), server-side calls (`datetime()`) and parameter references (`$name`, bound via `Builder#param`) are all legal; the expression must never interpolate data.
 - `RelateConnectionProvider` (class) — ConnectionProvider over the embedded Relate engine (@relate/relate) — in-process, no Bolt server. The engine is a soft dependency, loaded at construction time; the client shapes are structural so it stays that way.
 - `Repository` (class) — Active-record style data-access repository for one registered model — the TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
+- `requireRelateClient` (function) — Resolve the Relate client module and native library. The client is not yet published to npm, so it is loaded from disk: 1. `RELATE_CLIENT_PATH` env var, or 2. the sibling `relate` repository checkout (`../relate/clients/javascript`) The native library location is passed through via `RELATE_LIB` (see the Relate client's loader) — detected automatically here when a sibling repository checkout exists.
 - `Runner` (interface) — Anything able to run statements in its scope (autocommit or transaction).
 - `ScoredEntity` (interface) — A hydrated entity with the relevance score of the index that matched it
 - `search` (function) — Full-text search over a full-text index (`CALL db.index.fulltext.queryNodes`), returning hydrated entities with their relevance score, best match first. The query string is bound as a parameter, so Lucene syntax characters in it are still parsed as such — pass user text through `toFulltextQuery` first.
@@ -211,7 +216,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 ```ts
 import { knn, search, toFulltextQuery } from 'neode'
 
-const vectorHits = await knn(runner, 'Person', 'person_plot_vector', vector, 5)
+const vectorHits = await knn(runner, "Person", "person_plot_vector", vector, 5)
 const textHits = await search(runner, 'Person', 'person_plot', toFulltextQuery(query))
 ```
 
@@ -243,7 +248,7 @@ const name = testId('person') // unique per-run ids, safe for parallel suites
 - `runSeeders` (function) — Run seeders in order against one Neode instance.
 - `seededRandom` (function) — A deterministic PRNG (mulberry32) for reproducible fixtures (NTS-167): seed it once and use it inside property `fake` generators — the same seed produces the same sequence, so seeded fixtures stay stable across runs. const random = seededRandom(42)
 - `Seeder` (class) — Base class for seeders (NTS-167): `runSeeders()` calls seed() once per seeder, in order. Write idempotently inside seed() — `neode.mergeOn(model, match, set)` or `neode.merge(model, properties)` MERGE on the node's merge fields — so rerunning the runner updates instead of duplicating.
-- `splitCypherStatements` (function) — Split a script's contents into statements. Semicolons split statements except when they appear inside: - single- or double-quoted string literals (backslash escapes honoured), - backtick-quoted identifiers (`` `a``b` `` doubling honoured), - `--`and`//`line comments, and`/*` block comments (to the closer). Chunks that hold nothing but whitespace and comments are dropped, and each remaining statement is trimmed. Comments that belong to a statement are kept — they are legal Cypher.
+- `splitCypherStatements` (function) — Split a script's contents into statements. Semicolons split statements except when they appear inside: - single- or double-quoted string literals (backslash escapes honoured), - backtick-quoted identifiers (`` `a``b` `` doubling honoured), - `--` and `//` line comments, and `/*` block comments (to the closer). Chunks that hold nothing but whitespace and comments are dropped, and each remaining statement is trimmed. Comments that belong to a statement are kept — they are legal Cypher.
 - `testId` (function) — Unique identifier for test data — `test-<timestamp>-<random>` by default, safe as a property value (letters, digits and hyphens only).
 - `verifyConnectivity` (function) — Check that a database is reachable right now, using a throwaway driver constructed from the config (closed again afterwards). Note the check runs with whatever connectionTimeout the config carries — the driver's default applies otherwise.
 - `waitUntilReachable` (function) — Retry verifyConnectivity with exponential-ish backoff until the database is reachable or the timeout elapses (then: ConnectivityTimeoutError).
@@ -281,7 +286,5 @@ const systemPrompt = [
 
 // Or expose it over MCP as a resource / tool result:
 server.resource('graph-ontology', () => ontologyMarkdown())
-server.tool('describe-ontology', async () => ({
-  content: [{ type: 'text', text: JSON.stringify(ontology()) }],
-}))
+server.tool('describe-ontology', async () => ({ content: [{ type: 'text', text: JSON.stringify(ontology()) }] }))
 ```

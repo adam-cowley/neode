@@ -14,6 +14,8 @@ import { fulltextIndexName } from '../services/schema/fulltext.service.js'
 import { isGraphNode, isRecord } from '../services/type-guards.js'
 import { hydrateNode } from '../utilities.js'
 import { hasProjectedProperties } from '../projection/index.js'
+import { projectionNode } from '../projection/projection.js'
+import { applySoftDeleteFilter } from '../services/query/soft-delete.js'
 
 /**
 Ordering, paging and row-limit options shared by findAll() and where()
@@ -22,6 +24,11 @@ export interface FindOptions {
   order?: OrderSpec
   limit?: number
   skip?: number
+  /**
+  Read soft-deleted entities too (NTS-510). Standard reads exclude the
+  @SoftDelete label; this opts back in.
+  */
+  includeDeleted?: boolean
 }
 
 /**
@@ -98,14 +105,17 @@ export class Repository<Entity> {
 
   /**
   Match every node of the entity's labels, filtered on the schema's
-  declared properties only (GetService parity: unknown keys are ignored)
+  declared properties only (GetService parity: unknown keys are ignored).
+  The soft-delete filter applies unless hasIncludeDeleted is set.
   */
-  private matchAll(parameters: Partial<Entity> = {}): Builder {
+  private matchAll(parameters: Partial<Entity> = {}, hasIncludeDeleted = false): Builder {
     const record = parameters as Record<string, unknown>
 
     const builder = new Builder()
 
     builder.match(THIS_NODE, this.schema.getLabels())
+
+    applySoftDeleteFilter(builder, this.schema, hasIncludeDeleted)
 
     for (const property of this.schema.getProperties()) {
       const key = property.getKey()
@@ -119,6 +129,15 @@ export class Repository<Entity> {
   }
 
   private returnNodes(builder: Builder): void {
+    // Projected models read through the projection's RETURN map — the
+    // includeDeleted bypass renders it directly (the neode.all delegate
+    // always applies the soft-delete filter)
+    if (hasProjectedProperties(this.schema)) {
+      builder.return(projectionNode(THIS_NODE, this.schema))
+
+      return
+    }
+
     // Eager Loading: when the schema declares eager relationships the
     // root node is returned as a map projection (QueryService parity)
     const hasEagerRelationships = this.schema
@@ -188,7 +207,9 @@ export class Repository<Entity> {
   Plain models keep the local Builder path.
   */
   async findAll(parameters: Partial<Entity> = {}, options: FindOptions = {}): Promise<Entity[]> {
-    if (hasProjectedProperties(this.schema)) {
+    const hasIncludeDeleted = options.includeDeleted === true
+
+    if (!hasIncludeDeleted && hasProjectedProperties(this.schema)) {
       return this.neode.all<Entity>(
         this.entity,
         parameters,
@@ -199,7 +220,7 @@ export class Repository<Entity> {
       )
     }
 
-    const builder = this.matchAll(parameters)
+    const builder = this.matchAll(parameters, hasIncludeDeleted)
 
     if (options.order !== undefined) {
       applyOrder(builder, options.order)
@@ -322,16 +343,49 @@ export class Repository<Entity> {
   }
 
   /**
+  Undo a soft delete (NTS-510): remove the @SoftDelete label and the
+  deletedAt stamp, returning the re-hydrated entity. Throws when the
+  model does not declare @SoftDelete. Accepts an entity or a primary key
+  value.
+  */
+  async restore(target: Entity | string | number): Promise<Entity | undefined> {
+    const soft = this.schema.getSoftDelete()
+
+    if (soft === undefined) {
+      throw new Error(
+        `Cannot restore ${this.getLabels().join(':')} — the model does not declare @SoftDelete`,
+      )
+    }
+
+    const primaryKey = this.getPrimaryKey().getKey()
+    const id = isRecord(target) ? target[primaryKey] : target
+
+    const builder = new Builder().match(THIS_NODE, this.schema.getLabels(), { [primaryKey]: id })
+
+    builder.remove(`${THIS_NODE}:${quote(soft.label)}`, `${THIS_NODE}.deletedAt`)
+
+    const { query, params } = builder.build()
+
+    await this.neode.writeCypher(query, params, this.database)
+
+    return this.find(id)
+  }
+
+  /**
   Delete by primary key value or by entity instance. Pass `{ ifExists: true }`
   to silently no-op when the entity does not exist (NTS-457) — the default
   throws so callers learn about missing IDs.
   */
   async delete(
     target: Entity | string | number,
-    options: { ifExists?: boolean } = {},
+    options: { ifExists?: boolean; force?: boolean } = {},
   ): Promise<void> {
     if (isRecord(target)) {
-      return this.neode.delete(target, this.database)
+      return this.neode.delete(
+        target,
+        options.force === true ? { force: true } : undefined,
+        this.database,
+      )
     }
 
     const entity = await this.find(target)
@@ -348,7 +402,11 @@ export class Repository<Entity> {
       throw new TypeError('Cannot delete: the found entity is not an object')
     }
 
-    return this.neode.delete(entity, this.database)
+    return this.neode.delete(
+      entity,
+      options.force === true ? { force: true } : undefined,
+      this.database,
+    )
   }
 
   /**

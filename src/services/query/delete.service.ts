@@ -27,6 +27,12 @@ export interface DeleteOptions {
   mode?: 'delete' | 'detach'
 
   /**
+  Hard-delete even on a @SoftDelete model (NTS-510): DETACH DELETE the
+  node instead of stamping the soft-delete label
+  */
+  force?: boolean
+
+  /**
   Maximum cascade depth, defaults to {@link MAX_CASCADE_DEPTH}
   */
   depth?: number
@@ -117,6 +123,22 @@ export class DeleteService extends QueryService {
     const criteria = matchCriteriaForEntity(schema, entity)
 
     builder.matchEntity(THIS_NODE, schema, criteria)
+
+    // Declarative soft delete (NTS-510): SET the label + stamp instead of
+    // deleting the node, unless the caller forces a hard delete
+    const soft = schema.getSoftDelete()
+
+    if (soft !== undefined && options?.force !== true) {
+      builder
+        .set(`${THIS_NODE}:${quote(soft.label)}`, undefined)
+        .setExpr(`${THIS_NODE}.\`deletedAt\``, 'datetime()')
+
+      const { query, params } = builder.build()
+
+      await this.runner.run(query, params)
+
+      return
+    }
 
     // Soft delete: SET the label instead of deleting the node
     const softLabel = options?.soft

@@ -429,6 +429,12 @@ Set the Neode instance used by entity instance methods (`person.save()`, `person
 
 _source: entity-methods.ts_
 
+### `SoftDelete` (decorator)
+
+Declarative soft delete (NTS-510): mark the model so delete() stamps a label + deletedAt instead of DETACH DELETE, and every standard read (find / findAll / all / projections / repository reads) filters the label out. Restore with restore(); hard-delete with delete(force). The label defaults to 'Deleted'; the stamp property is `deletedAt` (declared implicitly, server-stamped with datetime()).
+
+_source: decorators/node/soft-delete.decorator.ts_
+
 ### `StartNode` (decorator)
 
 On a relationship entity: the property holding the node at the relationship's start.
@@ -683,6 +689,12 @@ Property -> direction pagination (the classic form): paginate(model, filter, { p
 
 _source: services/query/paginate.service.ts_
 
+### `OrderSpec` (type)
+
+Ordering spec, matching neode's all() forms: - `'name'` - order by one property ascending - `['name', 'age']` - order by several properties - `{ name: 'DESC' }` - property -> direction map - `[{ name: 'DESC' }, { age: 'ASC' }]` - list of property -> direction maps - `{ field: 'name', order: 'DESC' }` - two-arg (key, direction) descriptor
+
+_source: query/order-spec.ts_
+
 ### `Page` (interface)
 
 Offset/page result
@@ -766,6 +778,12 @@ _source: driver/relate.ts_
 Active-record style data-access repository for one registered model — the TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
 
 _source: repository/index.ts_
+
+### `requireRelateClient` (function)
+
+Resolve the Relate client module and native library. The client is not yet published to npm, so it is loaded from disk: 1. `RELATE_CLIENT_PATH` env var, or 2. the sibling `relate` repository checkout (`../relate/clients/javascript`) The native library location is passed through via `RELATE_LIB` (see the Relate client's loader) — detected automatically here when a sibling repository checkout exists.
+
+_source: driver/relate.ts_
 
 ### `Runner` (interface)
 
@@ -867,6 +885,10 @@ A full-text index to keep installed on the database
 
 _source: services/schema/fulltext.service.ts_
 
+### `fulltextIndexName` (function)
+
+_source: services/schema/fulltext.service.ts_
+
 ### `FulltextIndexService` (class)
 
 Installs/drops the given full-text index definitions, following the same result-reporting pattern as SchemaService
@@ -928,6 +950,10 @@ _source: services/schema/inspect.service.ts_
 ### `VectorIndexDefinition` (interface)
 
 A vector index to keep installed on the database
+
+_source: services/schema/vector.service.ts_
+
+### `vectorIndexName` (function)
 
 _source: services/schema/vector.service.ts_
 
