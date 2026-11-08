@@ -91,7 +91,10 @@ import {
 } from './services/schema/inspect.service.js'
 import { type SchemaResult, SchemaService } from './services/schema/schema.service.js'
 import { type VectorIndexDefinition, VectorIndexService } from './services/schema/vector.service.js'
-import { GraphTypeService } from './services/schema/graph-type.service.js'
+import {
+  GraphTypeService,
+  type GraphTypeConstraintDefinition,
+} from './services/schema/graph-type.service.js'
 import { constructorOf, isConstructorOf, isRecord } from './services/type-guards.js'
 import { type BatchStatementError, TransactionError } from './transaction/errors.js'
 import { TransactionalService } from './transaction/transactional.service.js'
@@ -1079,17 +1082,29 @@ export class Neode implements INeode {
   Derive the graph type from the registered models and set it as the
   database's enforced schema (NTS-548). Enterprise Edition + Neo4j 2026.02+
   only; `ALTER CURRENT GRAPH TYPE SET` replaces any existing graph type and
-  constraints, so this is deliberately standalone from installSchema()
+  constraints, so this is deliberately standalone from installSchema().
+
+  `options.constraints` appends named `CONSTRAINT ... FOR ... REQUIRE`
+  items (NTS-549) — the only way to constrain labels/types that are not
+  identifying ones, e.g. `{ labelOrType: 'Animal', properties: ['id'],
+  kind: 'UNIQUE' }`
   */
-  async installGraphType(): Promise<SchemaResult[]> {
-    return new GraphTypeService(this.connection, this.enterprise).create()
+  async installGraphType(
+    options: { constraints?: GraphTypeConstraintDefinition[] } = {},
+  ): Promise<SchemaResult[]> {
+    return new GraphTypeService(this.connection, this.enterprise).create(options)
   }
 
   /**
-  Drop the graph type elements derived from the registered models (NTS-548)
+  Drop the graph type elements derived from the registered models (NTS-548),
+  including the named constraint items (NTS-549) — dropping an element type
+  removes its dependent constraints but leaves its uniqueness/key ones,
+  which only go by name
   */
-  async dropGraphType(): Promise<SchemaResult[]> {
-    return new GraphTypeService(this.connection, this.enterprise).drop()
+  async dropGraphType(
+    options: { constraints?: GraphTypeConstraintDefinition[] } = {},
+  ): Promise<SchemaResult[]> {
+    return new GraphTypeService(this.connection, this.enterprise).drop(options)
   }
 
   /**

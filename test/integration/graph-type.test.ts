@@ -140,4 +140,39 @@ describe('graph types (NTS-548)', () => {
     expect(results[0]?.success).toBe(false)
     expect(results[0]?.error?.message).toContain('Enterprise')
   })
+
+  it('installs named constraints on non-identifying labels (NTS-549)', async () => {
+    if (!supportsGraphTypes) {
+      return
+    }
+
+    const neode = new Neode(backend.connection, true)
+
+    // GtMovie is an element type; GtOrphan is constrained without being one
+    const installed = await neode.installGraphType({
+      constraints: [
+        {
+          name: 'gt_orphan_tag_unique',
+          labelOrType: 'GtOrphan',
+          properties: ['tag'],
+          kind: 'UNIQUE',
+        },
+      ],
+    })
+
+    expect(installed[0]?.success).toBe(true)
+
+    const shown = await shownGraphType()
+
+    expect(shown).toContain('gt_orphan_tag_unique')
+
+    // The named constraint enforces: create one node, then a duplicate fails
+    await backend.connection.run("CREATE (:GtOrphan { tag: 'one' })")
+    await expect(backend.connection.run("CREATE (:GtOrphan { tag: 'one' })")).rejects.toThrow()
+
+    // The name is addressable in DROP CONSTRAINT
+    await backend.connection.run('DROP CONSTRAINT gt_orphan_tag_unique')
+
+    await neode.dropGraphType()
+  })
 })

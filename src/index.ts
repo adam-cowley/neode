@@ -112,11 +112,14 @@ export {
   graphTypeDropStatement,
 } from './services/schema/graph-type.service.js'
 export type {
+  GraphTypeConstraintDefinition,
+  GraphTypeConstraintKind,
   GraphTypeDefinition,
   GraphTypeNodeDefinition,
   GraphTypeRelationshipDefinition,
   GraphTypePropertyDefinition,
 } from './services/schema/graph-type.service.js'
+export { graphTypeConstraintName } from './services/schema/graph-type.service.js'
 export { inspectSchema } from './services/schema/inspect.service.js'
 export type {
   SchemaInspection,

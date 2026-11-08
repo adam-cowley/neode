@@ -17,6 +17,7 @@ import { Direction } from '../../src/query/direction'
 import {
   GraphTypeService,
   deriveGraphType,
+  graphTypeConstraintName,
   graphTypeDropStatement,
   graphTypeSetStatement,
 } from '../../src/services/schema/graph-type.service'
@@ -174,11 +175,18 @@ describe('deriveGraphType', () => {
     const person = graphType.nodes.find((node) => node.label === 'GtPerson')
 
     expect(person?.properties).toEqual([
-      // @Uuid({ primary: true }): the primary key implies unique
-      { name: 'id', type: 'STRING', unique: true },
       { name: 'name', type: 'STRING', nullable: false },
       { name: 'aliases', type: 'LIST<STRING NOT NULL>' },
     ])
+
+    // NTS-549 — the @Uuid({ primary: true }) uniqueness is hoisted into a
+    // named constraint item instead of an inline IS UNIQUE
+    expect(graphType.constraints).toContainEqual({
+      labelOrType: 'GtPerson',
+      relationship: false,
+      properties: ['id'],
+      kind: 'UNIQUE',
+    })
   })
 
   it('derives relationship element types with resolved ends and entity properties', () => {
@@ -223,6 +231,88 @@ describe('deriveGraphType', () => {
     expect(statement.startsWith('ALTER CURRENT GRAPH TYPE SET {')).toBe(true)
     expect(statement).toContain('(:`GtEmployee` => :`GtResident` {`email` :: STRING NOT NULL})')
     expect(statement).toContain('()-[:`GT_SEES` =>]->()')
+
+    // NTS-549 — hoisted uniqueness renders as a named CONSTRAINT item with
+    // the deterministic <label>_<prop>_unique name
+    expect(statement).toContain(
+      'CONSTRAINT `gtperson_id_unique` FOR (n:`GtPerson`) REQUIRE (n.`id`) IS UNIQUE',
+    )
+  })
+
+  it('drops named constraint items alongside the element types (NTS-549)', () => {
+    // Dropping an element type removes its dependent constraints but
+    // LEAVES its uniqueness/key ones — those only go by name
+    const statement = graphTypeDropStatement(graphType)
+
+    expect(statement).toContain('CONSTRAINT `gtperson_id_unique`')
+    expect(statement).toContain('(:`GtPerson` =>)')
+  })
+})
+
+// ---- Named constraints + non-identifying labels (NTS-549) --------------------
+
+describe('graph type constraint items (NTS-549)', () => {
+  it('renders user-declared constraints on non-identifying labels', () => {
+    const statement = graphTypeSetStatement({
+      nodes: [
+        { label: 'Pet', implies: ['Animal'], properties: [{ name: 'name', type: 'STRING' }] },
+      ],
+      constraints: [
+        // Animal is only an implied label here — derivation cannot constrain it
+        { name: 'animal_id', labelOrType: 'Animal', properties: ['id'], kind: 'UNIQUE' },
+        { name: 'pet_name_key', labelOrType: 'Pet', properties: ['name'], kind: 'KEY' },
+      ],
+    })
+
+    expect(statement).toContain(
+      'CONSTRAINT `animal_id` FOR (n:`Animal`) REQUIRE (n.`id`) IS UNIQUE',
+    )
+    expect(statement).toContain('CONSTRAINT `pet_name_key` FOR (n:`Pet`) REQUIRE (n.`name`) IS KEY')
+  })
+
+  it('renders constraints on relationship types and existence/type kinds', () => {
+    const statement = graphTypeSetStatement({
+      nodes: [{ label: 'City', properties: [{ name: 'name', type: 'STRING' }] }],
+      relationships: [{ type: 'STAYED_IN', properties: [{ name: 'endDate', type: 'DATE' }] }],
+      constraints: [
+        {
+          labelOrType: 'STAYED_IN',
+          relationship: true,
+          properties: ['startDate'],
+          kind: 'EXISTS',
+        },
+        {
+          name: 'stayed_type',
+          labelOrType: 'STAYED_IN',
+          relationship: true,
+          properties: ['endDate'],
+          kind: 'TYPE',
+          type: 'DATE',
+        },
+      ],
+    })
+
+    expect(statement).toContain(
+      'CONSTRAINT `stayed_in_startdate_exists` FOR ()-[r:`STAYED_IN`]->() REQUIRE (r.`startDate`) IS NOT NULL',
+    )
+    expect(statement).toContain(
+      'CONSTRAINT `stayed_type` FOR ()-[r:`STAYED_IN`]->() REQUIRE (r.`endDate`) IS :: DATE',
+    )
+  })
+
+  it('generates a deterministic name when none is given', () => {
+    expect(
+      graphTypeConstraintName({ labelOrType: 'Person', properties: ['ssn'], kind: 'KEY' }),
+    ).toBe('person_ssn_key')
+  })
+
+  it('rejects existence/type constraints over more than one property', () => {
+    expect(() =>
+      graphTypeSetStatement({
+        nodes: [{ label: 'City' }],
+        constraints: [{ labelOrType: 'City', properties: ['a', 'b'], kind: 'EXISTS' }],
+      }),
+    ).toThrow(TypeError)
   })
 })
 
