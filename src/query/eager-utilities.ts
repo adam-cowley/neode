@@ -10,6 +10,15 @@ export const EAGER_TYPE = '__EAGER_TYPE__'
 export const MAX_EAGER_DEPTH = 3
 
 /**
+The variable an eager pattern binds the related node to — exported because
+the lazy relation loader (NTS-558) matches the target node under the same
+name before hydrating it.
+*/
+export function eagerNodeVariable(alias: string, name: string): string {
+  return `${alias}_${name}_node`
+}
+
+/**
 Build a pattern to use in an eager load statement:
 `<name>: [ <pattern> | <fields> ]`, with a `[0]` suffix on singular
 relationships.
@@ -30,7 +39,7 @@ export function eagerPattern(
   const type = relationship.getType()
   const direction = relationship.getDirection()
   const relationshipVariable = `${alias}_${name}_rel`
-  const nodeVariable = `${alias}_${name}_node`
+  const nodeVariable = eagerNodeVariable(alias, name)
 
   const targetSchema = getModel(relationship.getTarget()) as EntitySchema | undefined
 

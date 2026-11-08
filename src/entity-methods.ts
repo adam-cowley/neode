@@ -26,6 +26,7 @@ import type { EntitySchema } from './meta/entity/entity-schema.js'
 import type { Newable } from './meta/newable.js'
 import type { Neode } from './neode.service.js'
 import { toJson } from './serialise.js'
+import type { LoadOptions } from './services/query/load-relation.service.js'
 import type { DeleteOptions } from './services/query/delete.service.js'
 import type { DetachResult } from './services/query/detach.service.js'
 import { constructorOf as constructorOfInstance } from './services/type-guards.js'
@@ -182,6 +183,23 @@ export interface EntityMethods {
   detachFrom<To extends object>(other: To, relationshipKey: string): Promise<DetachResult<this, To>>
 
   /**
+  Lazy-load one relationship in place (NTS-558) — the loader the
+  RelationNotLoadedError message promises. Traverses the declared
+  relationship, hydrates the related entities through the regular
+  hydration path, and materializes the result as an own property so
+  strict relation access (NTS-155) reads it back without throwing.
+
+  `options` pushes order/skip/limit into the traversal's ORDER BY /
+  LIMIT — the sorted, truncated related reads otherwise needing a raw
+  Builder. Many-keys resolve to the loaded entities, one-keys to the
+  entity or undefined.
+  */
+  load<K extends Exclude<keyof this, keyof EntityMethods> & string>(
+    key: K,
+    options?: LoadOptions,
+  ): Promise<this[K]>
+
+  /**
   Whether the instance has unsaved changes — any (or, with `key`, the
   given property key) since its last persisted snapshot (Eloquent-style
   dirty tracking, NTS-157). Instances that have never been hydrated or
@@ -241,6 +259,7 @@ interface MethodImpl {
     other: object,
     relationshipKey: string,
   ): Promise<DetachResult<object, object>>
+  load(this: object, key: string, options?: LoadOptions): Promise<unknown>
 }
 
 const methods: MethodImpl = {
@@ -325,6 +344,10 @@ const methods: MethodImpl = {
 
   async detachFrom(this, other, relationshipKey) {
     return requireNeode().detach(requireConstructor(this), this, other, relationshipKey)
+  },
+
+  async load(this, key, options) {
+    return requireNeode().loadRelation(requireConstructor(this), this, key, options)
   },
 
   isDirty(this, key) {
