@@ -10,6 +10,7 @@ import type { RelationshipPropertySchema } from '../../meta/relationship-propert
 import { convertPropertyValue, matchCriteriaForEntity } from '../../utilities.js'
 import { QueryService } from './query.service.js'
 import { NeodeError } from '../../errors/index.js'
+import { assertWritableDirection } from '../write-utilities.js'
 import { constructorOf, isGraphRelationship } from '../type-guards.js'
 
 /**
@@ -123,6 +124,8 @@ export class RelateService extends QueryService {
     properties: Record<string, unknown> = {},
     isForceCreate = false,
   ): Promise<GraphRelationship | undefined> {
+    assertWritableDirection(relationship)
+
     const targetSchema = requireTargetSchema(toEntity, relationship)
 
     // Edge-entity properties are writes like any other: convert to the

@@ -80,6 +80,21 @@ function stampCreateTimestamps(schema: EntitySchema, properties: Record<string, 
 }
 
 /**
+Write paths reject Direction.BOTH up front: BOTH renders an undirected
+match pattern (`-[r:T]-`), and Neo4j cannot create or merge a relationship
+without a direction (NTS-483)
+*/
+export function assertWritableDirection(relationship: RelationshipPropertySchema): void {
+  if (relationship.getDirection() === Direction.BOTH) {
+    throw new NeodeError(
+      `Relationship "${relationship.getKey()}" is declared with direction BOTH, which is ` +
+        'match-only: Neo4j cannot create an undirected relationship. ' +
+        'Set direction OUTGOING or INCOMING to write this relationship.',
+    )
+  }
+}
+
+/**
 The relationship entity property holding the node at the far end of the
 given relationship (mirrors MergeService.save)
 */
@@ -88,6 +103,8 @@ export function getOtherProperty(
   targetSchema: EntitySchema,
   targetEntity: unknown,
 ): PropertySchema {
+  assertWritableDirection(relationship)
+
   const direction = relationship.getDirection()
 
   const otherProperty = targetSchema.getProperties().find((property) => {
@@ -509,6 +526,9 @@ async function createTarget(
   value: unknown,
   depth: number,
 ): Promise<void> {
+  // Reject before creating anything: BOTH is match-only (NTS-483)
+  assertWritableDirection(relationship)
+
   const targetEntity = relationship.getTarget()
 
   const targetSchema = typeof targetEntity === 'function' ? getModel(targetEntity) : undefined
@@ -582,6 +602,8 @@ async function relateNodes(
   targetSchema: EntitySchema,
   entity: unknown,
 ): Promise<void> {
+  assertWritableDirection(relationship)
+
   const from = 'from'
   const to = 'to'
   const relationshipAlias = 'rel'
