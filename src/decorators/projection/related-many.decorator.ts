@@ -86,11 +86,19 @@ export function RelatedMany(
           property.setEntity(pathEntity)
         }
 
+        if (config.where !== undefined) {
+          property.setWhere(config.where)
+        }
+
         return
       }
 
       property.setRelationshipType(config.type ?? '')
       property.setDirection(toDirection(config.direction))
+
+      if (config.where !== undefined) {
+        property.setWhere(config.where)
+      }
 
       const entity: Newable | undefined = config.target?.()
 

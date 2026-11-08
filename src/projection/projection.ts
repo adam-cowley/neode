@@ -158,7 +158,12 @@ function relatedProjection(alias: string, property: PropertySchema): string {
       ? `node.${fields[0] ?? ''}`
       : `node { ${fields.map((field) => `.${field}`).join(', ')} }`
 
-  const comprehension = `[ ${relationshipPattern(alias, property)} | ${pattern} ]`
+  // NTS-547 — WHERE inside the comprehension filters elements per path
+  // (`node` = the target node, `this` = the annotated node)
+  const where = property.getWhere()
+  const filter = where !== undefined && where.length > 0 ? ` WHERE ${where}` : ''
+
+  const comprehension = `[ ${relationshipPattern(alias, property)}${filter} | ${pattern} ]`
 
   // First related node only for the singular form
   return isMany ? `${key}: ${comprehension}` : `${key}: ${comprehension}[0]`

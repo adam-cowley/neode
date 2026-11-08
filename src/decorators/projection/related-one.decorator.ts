@@ -77,10 +77,14 @@ export function RelatedOne(
           }),
         )
 
-        const entity: Newable | undefined = config.target?.()
+        const pathEntity: Newable | undefined = config.target?.()
 
-        if (entity !== undefined) {
-          property.setEntity(entity)
+        if (pathEntity !== undefined) {
+          property.setEntity(pathEntity)
+        }
+
+        if (config.where !== undefined) {
+          property.setWhere(config.where)
         }
 
         return
@@ -88,6 +92,10 @@ export function RelatedOne(
 
       property.setRelationshipType(config.type ?? '')
       property.setDirection(toDirection(config.direction))
+
+      if (config.where !== undefined) {
+        property.setWhere(config.where)
+      }
 
       // With a field subset the target class is not needed for hydration;
       // without one it drives full-entity eager loading and is required

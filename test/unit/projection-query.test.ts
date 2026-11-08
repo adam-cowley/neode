@@ -79,6 +79,7 @@ class ProjectionQueryModel {
     ],
     target: () => ProjectionQueryLesson,
     fields: ['slug'],
+    where: 'NOT (this)-[:BLOCKED]->(node)',
   })
   peerLessons: string[]
 
@@ -133,9 +134,9 @@ describe('projection Cypher composition (NTS-135/136/137/138)', () => {
       'siblingCourseTitles: [ (this)-[:`NEXT_COURSE`]->(this_h1)<-[:`IN_COURSE`]-(node:`ProjectionQueryCourse`) | node.title ]',
     )
 
-    // ...with a label-filtered intermediate hop
+    // ...with a label-filtered intermediate hop and a WHERE fragment
     expect(query).toContain(
-      'peerLessons: [ (this)-[:`IN_COURSE`]->(this_h1)<-[:`COHORT`]-(this_h2:`ProjectionQueryModel`)-[:`COMPLETED_LESSON`]->(node:`ProjectionQueryLesson`) | node.slug ]',
+      'peerLessons: [ (this)-[:`IN_COURSE`]->(this_h1)<-[:`COHORT`]-(this_h2:`ProjectionQueryModel`)-[:`COMPLETED_LESSON`]->(node:`ProjectionQueryLesson`) WHERE NOT (this)-[:BLOCKED]->(node) | node.slug ]',
     )
 
     // ...singular form takes the first element

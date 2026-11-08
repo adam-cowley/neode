@@ -39,6 +39,11 @@ export interface RelatedConfig {
   Target entity; resolved from design:type when omitted (full-entity form)
   */
   target?: () => Newable
+  /**
+  NTS-547 — WHERE fragment inside the pattern comprehension: `node` is the
+  target node, `this` the annotated node (e.g. 'NOT (this)-[:CONTAINS]->(node)')
+  */
+  where?: string
 }
 
 /**
@@ -62,6 +67,11 @@ export interface PathRelatedConfig {
   Target entity of the final hop — checks `fields` and label-filters the end
   */
   target?: () => Newable
+  /**
+  WHERE fragment inside the comprehension: `node` = final node, `this` = the
+  annotated node (e.g. 'NOT (this)-[:CONTAINS]->(node)')
+  */
+  where?: string
 }
 
 /**
@@ -72,6 +82,11 @@ export interface CheckedPathRelatedConfig<T extends object> {
   path: RelatedPathHop[]
   target: () => new (...arguments_: never[]) => T
   fields: (keyof T & string)[]
+  /**
+  WHERE fragment inside the comprehension: `node` = final node, `this` = the
+  annotated node
+  */
+  where?: string
 }
 
 /**
@@ -85,6 +100,7 @@ export interface AnyRelatedConfig {
   path?: RelatedPathHop[]
   fields?: string[]
   target?: (() => Newable) | undefined
+  where?: string | undefined
 }
 
 /**
@@ -107,6 +123,11 @@ export interface CheckedRelatedConfig<T extends object> {
   Field subset to project; omit for full-entity eager loading
   */
   fields?: (keyof T & string)[]
+  /**
+  WHERE fragment inside the pattern comprehension: `node` is the target node,
+  `this` the annotated node
+  */
+  where?: string
 }
 
 /**
