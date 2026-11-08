@@ -58,6 +58,7 @@ import { FindService } from './services/query/find.service.js'
 import { FindByIdService } from './services/query/find-by-id.service.js'
 import { GetService, type OrderSpec } from './services/query/get.service.js'
 import { type KnnMode, knn } from './services/query/knn.service.js'
+import { type LoadOptions, LoadRelationService } from './services/query/load-relation.service.js'
 import { getMergeFields, MergeService } from './services/query/merge.service.js'
 import { rollbackAfterFailure } from './transaction/rollback.js'
 import {
@@ -990,6 +991,36 @@ export class Neode implements INeode {
 
     try {
       const result = await new DetachService(tx).detach(schema, from, to, relationship)
+
+      await tx.commit()
+
+      return result
+    } catch (error) {
+      return await rollbackAfterFailure(tx, error)
+    }
+  }
+
+  /**
+  Lazy relation load (NTS-558): traverse ONE declared relationship off a
+  hydrated entity — the loader the RelationNotLoadedError message
+  promises — and materialize the result as an own property on the
+  instance, so strict relation access (NTS-155) reads it back without
+  throwing. `options` pushes order/skip/limit into the traversal's
+  ORDER BY / SKIP / LIMIT.
+  */
+  async loadRelation(
+    constructor: Newable,
+    entity: object,
+    relationshipKey: string,
+    options?: LoadOptions,
+  ): Promise<unknown> {
+    const schema = this.getSchema(constructor)
+    const relationship = this.requireRelationship(schema, relationshipKey)
+
+    const tx = await this.readTransaction()
+
+    try {
+      const result = await new LoadRelationService(tx).load(schema, entity, relationship, options)
 
       await tx.commit()
 

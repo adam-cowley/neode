@@ -17,28 +17,45 @@ export type OrderSpec =
   | { field: string; order?: string }
 
 /**
+Render an OrderSpec into `alias.field direction` terms — the text an
+ORDER BY clause consumes. applyOrder and the lazy relation loader's
+in-comprehension ORDER BY (NTS-558) share this renderer, so the accepted
+order forms stay identical everywhere.
+*/
+export function orderTerms(order: OrderSpec, alias: string): string[] {
+  if (typeof order === 'string') {
+    return [`${alias}.${order}`]
+  }
+
+  if (Array.isArray(order)) {
+    return order.flatMap((entry) => orderTerms(entry as OrderSpec, alias))
+  }
+
+  if ('field' in order && typeof order.field === 'string') {
+    const direction = order.order
+
+    return [`${alias}.${order.field}${direction === undefined || direction === '' ? '' : ` ${direction}`}`]
+  }
+
+  return Object.entries(order as Record<string, string>).map(([key, direction]) => {
+    return `${alias}.${key}${direction === '' ? '' : ` ${direction}`}`
+  })
+}
+
+/**
 Apply an ordering spec against the builder, prefixing each field with the
-node alias so callers can use bare property names.
+node alias (default: the query's root alias) so callers can use bare
+property names.
 
 Shared by the query services and the Repository so the accepted order
 forms stay identical everywhere.
 */
-export function applyOrder(builder: Builder, order?: OrderSpec): void {
+export function applyOrder(builder: Builder, order?: OrderSpec, alias: string = THIS_NODE): void {
   if (order === undefined || order === '') {
     return
   }
 
-  if (typeof order === 'string') {
-    builder.orderBy(`${THIS_NODE}.${order}`)
-  } else if (Array.isArray(order)) {
-    for (const entry of order) {
-      applyOrder(builder, entry)
-    }
-  } else if ('field' in order && typeof order.field === 'string') {
-    builder.orderBy({ field: `${THIS_NODE}.${order.field}`, order: order.order })
-  } else {
-    for (const [key, direction] of Object.entries(order as Record<string, string>)) {
-      builder.orderBy(`${THIS_NODE}.${key}`, direction)
-    }
+  for (const term of orderTerms(order, alias)) {
+    builder.orderBy(term)
   }
 }
