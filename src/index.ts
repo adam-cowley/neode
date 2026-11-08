@@ -28,6 +28,7 @@ export type { EntityMethods, WithMethods } from './entity-methods.js'
 // Strict relation access (NTS-155)
 export { setStrictRelationAccess } from './strict-relation-access.js'
 export { observe, clearObservers, type ModelObservers, type ObserverContext } from './observers.js'
+export { TraverseBuilder, type Hop, type TraversalRow } from './traverse.js'
 
 // Map-based schema definitions
 export {

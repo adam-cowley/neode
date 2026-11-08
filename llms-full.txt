@@ -1113,11 +1113,41 @@ _source: errors/transient.ts_
 
 Collection, serialisation and other shared exports.
 
+### `clearObservers` (function)
+
+Test seam: drop every registered observer.
+
+_source: observers.ts_
+
 ### `fromEnv` (function)
 
 Load a .env file (dotenv does not clobber variables already set in process.env), map the NEO4J_* variables to a connection config and construct the neo4j driver. `driverConfig` — anything neo4j.driver accepts, e.g. `disableLosslessIntegers: true` — is forwarded verbatim, merged over the env-derived values.
 
 _source: from-env.ts_
+
+### `Hop` (interface)
+
+One hop of a traversal (NTS-512): a relationship type, a direction, an optional target model (label-filtering the hop) and optional variable degrees (`*1..2`).
+
+_source: traverse.ts_
+
+### `ModelObservers` (interface)
+
+The observer hooks a model can carry (NTS-511). before* hooks run inside the write transaction before the statement — an error fails the write; after* hooks run after hydration, before the caller sees the entity. On the create path beforeSave receives the plain properties record (the entity does not exist yet) — mutate it to change what is written.
+
+_source: observers.ts_
+
+### `observe` (function)
+
+Register observers for a model (NTS-511). Returns the off function. Unknown models throw — observers attach to registered models only.
+
+_source: observers.ts_
+
+### `ObserverContext` (interface)
+
+Hook context: whether this write creates the node (reliable on afterSave; beforeSave on the save path sees false, on the create path true), and the database the write targets.
+
+_source: observers.ts_
 
 ### `setStrictRelationAccess` (function)
 
@@ -1130,6 +1160,18 @@ _source: strict-relation-access.ts_
 Sanitise free user text into a safe full-text query string: Lucene syntax characters and uppercase boolean operators stripped, terms lowercased and capped at `maxTerms` (default 12). Pass user text through this before `search()` / `Repository#search` — binding the string as a parameter stops Cypher injection, but the Lucene parser still 500s on syntax characters (`(`, `"`, `*`, `AND`, …).
 
 _source: services/index-support/lucene.ts_
+
+### `TraversalRow` (interface)
+
+One row of a traversal result: the hydrated entity per hop position, starting with the origin node.
+
+_source: traverse.ts_
+
+### `TraverseBuilder` (class)
+
+The traversal builder (NTS-512): typed multi-hop reads — chain hops, run, get hydrated entities per hop position. Row semantics: one row per matched path (variable-degree hops fan out). ```ts const rows = await neode.traverse(Product) .hop('SUPPLIED_BY', 'out', Supplier) .hop('COVERS', 'in', Territory, { degrees: '1..2' }) .run() rows[0].nodes // [Product, Supplier, Territory] hydrated ```
+
+_source: traverse.ts_
 
 ### `ValidationDetail` (interface)
 

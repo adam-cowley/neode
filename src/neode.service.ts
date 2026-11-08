@@ -25,7 +25,7 @@ import { elementIdOfEntity } from './element-id.js'
 import { setDefaultNeode } from './entity-methods.js'
 import { NeodeError } from './errors/index.js'
 import { hydrate } from './hydrate.js'
-import type { EntitySchema } from './meta/entity/entity-schema.js'
+import { EntitySchema } from './meta/entity/entity-schema.js'
 import { getModel, getModels } from './meta/index.js'
 import {
   defineModel,
@@ -35,6 +35,7 @@ import {
 } from './meta/map-schema.js'
 import type { Newable } from './meta/newable.js'
 import { runObservers, observe, type ModelObservers } from './observers.js'
+import { TraverseBuilder } from './traverse.js'
 import { type Ontology, ontology, ontologyMarkdown } from './meta/ontology.js'
 import type { RelationshipPropertySchema } from './meta/relationship-property-schema.js'
 import { resolveRepository } from './meta/repositories.js'
@@ -1375,6 +1376,18 @@ export class Neode implements INeode {
   */
   observe(model: Newable, observers: ModelObservers): () => void {
     return observe(model, observers)
+  }
+
+  /**
+  Typed multi-hop traversal (NTS-512): chain hops, run, read hydrated
+  rows — one row per matched path, origin entity first.
+  */
+  traverse(model: Newable): TraverseBuilder {
+    if (!(getModel(model) instanceof EntitySchema)) {
+      throw new NeodeError('traverse() requires a registered model — register it first')
+    }
+
+    return new TraverseBuilder(this.getRunner(), () => model)
   }
 
   /**
