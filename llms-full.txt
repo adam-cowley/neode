@@ -127,11 +127,19 @@ Register a float property.
 
 _source: decorators/node/float.decorator.ts_
 
+### `getModel` (function)
+
+_source: meta/index.ts_
+
 ### `getModelByName` (function)
 
 Get a previously defined model constructor by name
 
 _source: meta/map-schema.ts_
+
+### `getModels` (function)
+
+_source: meta/index.ts_
 
 ### `getModelsByName` (function)
 
@@ -1172,6 +1180,12 @@ _source: traverse.ts_
 The traversal builder (NTS-512): typed multi-hop reads — chain hops, run, get hydrated entities per hop position. Row semantics: one row per matched path (variable-degree hops fan out). ```ts const rows = await neode.traverse(Product) .hop('SUPPLIED_BY', 'out', Supplier) .hop('COVERS', 'in', Territory, { degrees: '1..2' }) .run() rows[0].nodes // [Product, Supplier, Territory] hydrated ```
 
 _source: traverse.ts_
+
+### `validate` (function)
+
+Validate an object against an entity schema. Runs the Zod schema for every registered property (type base + rules), collecting all issues — like Joi's abortEarly: false — and throwing a ValidationError when anything fails. Unknown keys are always allowed (allowUnknown): only registered properties are validated. undefined is skipped unless the property is required; null behaves the same (a required property fails with `"<key>" is required`, an optional property passes).
+
+_source: validation/index.ts_
 
 ### `ValidationDetail` (interface)
 

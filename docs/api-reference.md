@@ -775,6 +775,72 @@ await applySchemaDrift(connection, drift, { dropStale?: boolean }) // idempotent
 - `applySchemaDrift` — apply the missing objects idempotently; mismatched objects are never auto-applied; stale objects only dropped with `dropStale: true`. Each statement is reported with a `SchemaResult`.
 - The facade mirrors these as `neode.inspectSchema(options?)`, `neode.schemaDiff(options?)`, `neode.formatSchemaDiff(diff)` and `neode.applySchemaDiff(diff, options?)` — they pass the instance's connection and declared index definitions for you.
 
+## Soft delete
+
+`@SoftDelete` (NTS-510) turns delete into a stamp and makes every standard read exclude the stamped rows — a global filter you don't have to remember:
+
+```typescript
+import { SoftDelete } from 'neode'
+
+@NodeEntity()
+@SoftDelete() // label defaults to 'Deleted'
+class Product {
+  @Primary() @Property({ type: 'number' }) productID!: number
+  @Property({ type: 'string' }) name!: string
+}
+
+await repo.delete('p1') // SETs :Deleted + deletedAt = datetime()
+await repo.find('p1') // undefined — filtered
+await repo.findAll({}, { includeDeleted: true }) // opts back in
+await repo.restore('p1') // removes the label + stamp
+await repo.delete('p1', { force: true }) // real DETACH DELETE
+```
+
+- The filter applies to `find` / `findById` / `findBy` / `findAll` / `all()` / projections / `count()` / `countBy()` and both transaction scopes.
+- `deleteAll()` stays a hard bulk delete by design; full-text and kNN search do not filter (they hit the index directly) — filter those results or use standard reads.
+- `restore(entityOrId)` throws on models without `@SoftDelete`.
+
+## Observers
+
+`neode.observe(Model, hooks)` (NTS-511) — lifecycle hooks composed over the write paths of both scopes (facade and open transactions). Registration order runs; an error in a before-hook fails the write and rolls the transaction back:
+
+```typescript
+const off = neode.observe(Product, {
+  beforeSave: (entity) => {
+    entity.slug ??= slugify(entity.name)
+  }, // create path: receives the properties record
+  afterSave: (entity, { isNew }) => audit.log(isNew ? 'created' : 'updated', entity),
+  beforeDelete: (entity) => {
+    if (entity.protected) throw new Error('protected')
+  },
+  afterDelete: (entity) => audit.log('deleted', entity),
+})
+```
+
+- `beforeSave` runs before the dirty diff, so observer mutations count as changes; on the create path it receives the mutable properties record (the entity does not exist yet).
+- `afterSave` context: `{ isNew, database }` — `isNew` mirrors whether the merge created the node.
+- Soft deletes fire `beforeDelete`/`afterDelete` (the entity left the read model) but not the `NODE_DELETED` event (the node stays).
+- Returns the off function.
+
+## Traversals
+
+`neode.traverse(Model)` (NTS-512) — typed multi-hop reads through the Builder, one hydrated row per matched path:
+
+```typescript
+const rows = await neode
+  .traverse(Product)
+  .where({ productID: 1 }) // declared-property filters on the start node
+  .hop('SUPPLIED_BY', 'out', Supplier) // class or lazy thunk
+  .hop('COVERS', 'in', Territory, { degrees: '1..2' }) // variable-length hop
+  .run()
+
+rows[0].nodes // [Product, Supplier, Territory] — hydrated entities
+```
+
+- Each node is hydrated with the registered model whose labels match the node (most specific wins); unmatched nodes come back as raw driver nodes.
+- Variable degrees fan out rows (one per matched path). Relationship properties are available via `Repository#matchEntity`-style follow-ups or raw reads.
+- Hops render through the same parameterised Builder as everything else — no string interpolation.
+
 ## Connection providers
 
 The database-agnostic port every backend implements:
@@ -825,6 +891,72 @@ Integration suites pick a backend with `OGM_TEST_BACKEND` and probe what it supp
 | `memgraph`         | External Memgraph — same env vars                                                                                                                                       |
 
 Probed capabilities: `edition`, `constraints` (unique/existence + indexes), `temporals`, `points`, `multiDatabase` — skip tests the backend can't support (e.g. enterprise-only constraints on Community).
+
+## Consumer field guide
+
+Everything below was learned building a real consumer app (the Northwind demo) — the things the API reference can't tell you.
+
+### Tooling with stage-3 decorators
+
+The decorators are standard TC39 (no `experimentalDecorators`, no `reflect-metadata`). Not every TypeScript toolchain lowers them yet:
+
+| Tool                      | Decorated model files                      | Notes                                                                                                        |
+| ------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `vitest` (esbuild)        | ✅ works                                   | The library's own test suite runs on this                                                                    |
+| `esbuild` (bundler)       | ✅ works                                   | Use for app/server bundles containing decorated classes                                                      |
+| `tsdown` / rolldown / oxc | ❌ passes decorators through untransformed | oxc#9170 — output throws `SyntaxError`. Bundle undecorated library code only, or mark the library `external` |
+| Vite ≤ 7 (esbuild)        | ✅ works                                   |                                                                                                              |
+| Vite 8+ (oxc)             | ❌ same oxc gap                            | Workaround: `@rolldown/plugin-babel` + `@babel/plugin-proposal-decorators`                                   |
+| `tsx`                     | ✅ works (esbuild underneath)              |                                                                                                              |
+
+When bundling a server that imports `neode`, keep it **external** (`--external:neode`): the package resolves its optional embedded-engine client relative to its own location, which survives the node_modules symlink only when unbundled.
+
+### Writing values by property type
+
+What each type accepts on write (all write paths — `create`/`save`/`merge`/`update`/bulk — run values through the same conversion), and what hydration hands back:
+
+| Type                       | Accepted on write                                                                                                  | Hydrated as                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| `string`                   | string (numbers coerced)                                                                                           | string                                      |
+| `number` / `int` / `float` | number; integer-valued reads arrive as a lazy numeric — coerce with `+value`                                       | number                                      |
+| `boolean`                  | boolean                                                                                                            | boolean                                     |
+| `uuid`                     | string (generated when unset)                                                                                      | string                                      |
+| `datetime`                 | ISO string **with zone** (`2020-01-01T00:00:00Z`) or driver instance; a zone-less string is rejected by the server | driver `DateTime` / decoded temporal object |
+| `date`                     | `YYYY-MM-DD` string or driver instance                                                                             | driver `Date` / `{ year, month, day }`      |
+| `time` / `localtime`       | `HH:mm:ss(.sss)Z?`                                                                                                 | driver `Time` / `{ hour, … }`               |
+| `localdatetime`            | zone-less ISO datetime                                                                                             | decoded object                              |
+| `duration`                 | `{ months, days, seconds, nanoseconds }` (an ISO string is NOT accepted)                                           | driver `Duration`                           |
+| `point`                    | `{ latitude, longitude[, height] }` (→ SRID 4326) or `{ x, y[, z] }` (→ cartesian 7203) or driver `Point`          | driver `Point` `{ srid, x, y }`             |
+| arrays                     | as above with `array: true`                                                                                        | list                                        |
+
+Three rules the hard way teaches:
+
+1. **Absent beats empty string.** `''` is Joi-unset on write (skipped) but some engines reject empty-string _parameters_ outright — write the property as absent, not empty.
+2. **`undefined` keys don't survive raw statements.** The OGM's own write paths skip them; a hand-rolled Builder statement must compact the record first (`Object.entries(...).filter(([, v]) => v !== undefined)`).
+3. **Relationship keys ≠ relationship types.** `relate(entity, other, 'placedBy')` takes the declared FIELD key; the Cypher pattern uses the TYPE (`:PLACED_BY`). The projection decorators take types.
+
+### Embedded engine vs real server
+
+What differs when running tests on the embedded engine (`OGM_TEST_BACKEND=relate`, zero setup) vs a real Neo4j:
+
+| Capability                                       | Embedded Relate                       | Real Neo4j 5/2025               |
+| ------------------------------------------------ | ------------------------------------- | ------------------------------- |
+| Constraints, range/fulltext/vector indexes       | ✅                                    | ✅                              |
+| `COUNT { }` / `EXISTS { }` subquery projections  | ✅                                    | ✅                              |
+| Pattern comprehensions in RETURN (`@RelatedOne`) | ✅                                    | ✅                              |
+| Vector writes via plain `SET n.prop = $list`     | ✅                                    | ✅                              |
+| `db.create.setNodeVectorProperty` procedure      | ❌                                    | ✅ (the library never needs it) |
+| Empty-string query parameters                    | ❌ rejected — write absent properties | ✅                              |
+| Property-existence constraints, multi-database   | ❌ (Enterprise features)              | Enterprise                      |
+
+### App structure that scales
+
+Two scopes, one rule: **repositories take `INeode`** (the minimal interface — they keep working inside `openWriteTransaction()` scopes), **services take the concrete facade** (they own transactions, runners, pagination). The demo's split:
+
+- `models/` — decorators + validation, no logic
+- `repositories/` — queries on the `INeode` surface (reads, `Builder` + `readCypher`, simple writes)
+- `services/` — orchestration on the facade: `openWriteTransaction()`, `PaginateService(runner)`, `knn(runner, …)`, `batch()`
+- `api/` — a listen-free Hono app (`app.request()` in tests, no network)
 
 ## Instance methods
 
