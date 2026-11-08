@@ -91,6 +91,7 @@ import {
 } from './services/schema/inspect.service.js'
 import { type SchemaResult, SchemaService } from './services/schema/schema.service.js'
 import { type VectorIndexDefinition, VectorIndexService } from './services/schema/vector.service.js'
+import { GraphTypeService } from './services/schema/graph-type.service.js'
 import { constructorOf, isConstructorOf, isRecord } from './services/type-guards.js'
 import { type BatchStatementError, TransactionError } from './transaction/errors.js'
 import { TransactionalService } from './transaction/transactional.service.js'
@@ -1072,6 +1073,23 @@ export class Neode implements INeode {
   */
   async dropVectorIndexes(definitions: VectorIndexDefinition[]): Promise<SchemaResult[]> {
     return new VectorIndexService(this.connection, definitions).drop()
+  }
+
+  /**
+  Derive the graph type from the registered models and set it as the
+  database's enforced schema (NTS-548). Enterprise Edition + Neo4j 2026.02+
+  only; `ALTER CURRENT GRAPH TYPE SET` replaces any existing graph type and
+  constraints, so this is deliberately standalone from installSchema()
+  */
+  async installGraphType(): Promise<SchemaResult[]> {
+    return new GraphTypeService(this.connection, this.enterprise).create()
+  }
+
+  /**
+  Drop the graph type elements derived from the registered models (NTS-548)
+  */
+  async dropGraphType(): Promise<SchemaResult[]> {
+    return new GraphTypeService(this.connection, this.enterprise).drop()
   }
 
   /**

@@ -881,6 +881,12 @@ Apply the missing objects of a drift idempotently — every CREATE carries IF NO
 
 _source: services/schema/drift.service.ts_
 
+### `deriveGraphType` (function)
+
+Derive the graph type from the registered models (the same walk the ontology emits): node models become node element types (first label identifies, the rest are implied), their relationship declarations become relationship element types. Duplicate identifying labels/types: first model wins — anything the server rejects surfaces in the SchemaResult error
+
+_source: services/schema/graph-type.service.ts_
+
 ### `formatSchemaDrift` (function)
 
 Human-readable multi-line drift report, grouped by action (missing / stale / mismatched), one line per object plus its fix statement. Pure function — no database access (NTS-450).
@@ -902,6 +908,48 @@ _source: services/schema/fulltext.service.ts_
 Installs/drops the given full-text index definitions, following the same result-reporting pattern as SchemaService
 
 _source: services/schema/fulltext.service.ts_
+
+### `GraphTypeDefinition` (interface)
+
+A complete graph type: the shape derived from the registered models
+
+_source: services/schema/graph-type.service.ts_
+
+### `graphTypeDropStatement` (function)
+
+`ALTER CURRENT GRAPH TYPE DROP { ... }` — drops the element types by identifying label/relationship type (dropping an element type drops the constraints it enforced)
+
+_source: services/schema/graph-type.service.ts_
+
+### `GraphTypeNodeDefinition` (interface)
+
+Node element type: `(:Label => :Implied1&:Implied2 { ... })`
+
+_source: services/schema/graph-type.service.ts_
+
+### `GraphTypePropertyDefinition` (interface)
+
+One property of a node/relationship element type: rendered `name :: TYPE`, plus `NOT NULL` when `nullable` is false and `IS UNIQUE` when `unique`
+
+_source: services/schema/graph-type.service.ts_
+
+### `GraphTypeRelationshipDefinition` (interface)
+
+Relationship element type: `(:Source)-[:TYPE => { ... }]->(:Target)`. Both ends optional (BOTH-direction relationships render bare ends)
+
+_source: services/schema/graph-type.service.ts_
+
+### `GraphTypeService` (class)
+
+Applies the model-derived graph type with one SET/DROP statement, following the same result-reporting pattern as the other schema services
+
+_source: services/schema/graph-type.service.ts_
+
+### `graphTypeSetStatement` (function)
+
+`ALTER CURRENT GRAPH TYPE SET { ... }` — replaces the database's existing graph type and constraints
+
+_source: services/schema/graph-type.service.ts_
 
 ### `InspectOptions` (interface)
 

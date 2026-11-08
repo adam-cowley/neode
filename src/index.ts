@@ -105,6 +105,18 @@ export { FulltextIndexService } from './services/schema/fulltext.service.js'
 export type { FulltextIndexDefinition } from './services/schema/fulltext.service.js'
 export { VectorIndexService } from './services/schema/vector.service.js'
 export type { VectorIndexDefinition } from './services/schema/vector.service.js'
+export {
+  GraphTypeService,
+  deriveGraphType,
+  graphTypeSetStatement,
+  graphTypeDropStatement,
+} from './services/schema/graph-type.service.js'
+export type {
+  GraphTypeDefinition,
+  GraphTypeNodeDefinition,
+  GraphTypeRelationshipDefinition,
+  GraphTypePropertyDefinition,
+} from './services/schema/graph-type.service.js'
 export { inspectSchema } from './services/schema/inspect.service.js'
 export type {
   SchemaInspection,
