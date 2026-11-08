@@ -37,6 +37,22 @@ function normalizeProperties(properties: Record<string, unknown>): Record<string
 }
 
 /**
+Shallow clone of a driver temporal/point instance with every Integer field
+converted to a plain number (same prototype, so type checks still pass).
+*/
+function normalizeInternalIntegers(value: Record<string, unknown>): unknown {
+  const clone = Object.assign(Object.create(Object.getPrototypeOf(value)), value)
+
+  for (const [key, item] of Object.entries(clone)) {
+    if (DriverInteger.isInteger(item)) {
+      clone[key] = item.toNumber()
+    }
+  }
+
+  return clone
+}
+
+/**
 Walk a driver result value and normalize driver-specific types
 (Node, Relationship, Integer, temporal, point) into plain JS shapes.
 */
@@ -69,12 +85,12 @@ export function normalizeDriverValue(value: unknown): unknown {
     }
   }
 
-  // Temporal / spatial types expose a toString that round-trips the value;
-  // they are passed through as-is for now (deep value mapping lands with
-  // the property-type layer) but their internal integers are normalized.
-  // The driver's duck-typed guards check identifier properties, so they also
-  // recognise instances from a second copy of neo4j-driver (pnpm/link
-  // setups) that `instanceof` would miss and mangle into plain objects.
+  // Temporal / spatial types pass through — but their internal Integer
+  // fields (Point.srid, Date.year, Time.nanosecond, …) are normalized to
+  // plain numbers, matching how property integers are treated above. The
+  // clone keeps the driver prototype, so instanceof and the driver's
+  // duck-typed guards (including a second copy of neo4j-driver in
+  // pnpm/link setups) still recognise it.
   if (
     isDateTime(value) ||
     isDate(value) ||
@@ -84,7 +100,7 @@ export function normalizeDriverValue(value: unknown): unknown {
     isDuration(value) ||
     isPoint(value)
   ) {
-    return value
+    return normalizeInternalIntegers(value as unknown as Record<string, unknown>)
   }
 
   if (Array.isArray(value)) {
