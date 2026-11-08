@@ -316,6 +316,98 @@ describe('graph type constraint items (NTS-549)', () => {
   })
 })
 
+// ---- Composite REQUIRE constraints (NTS-552) ---------------------------------
+
+describe('composite REQUIRE constraints (NTS-552)', () => {
+  it('derives composite uniques as named REQUIRE ... IS UNIQUE items', () => {
+    @NodeEntity()
+    class Nts552Unique {
+      @Property({ type: 'string' })
+      name!: string
+
+      // array form: composite unique over exactly these properties
+      @Property({ type: 'string', unique: ['name', 'email'] })
+      email!: string
+    }
+
+    const derived = deriveGraphType()
+    const node = derived.nodes.find((n) => n.label === 'Nts552Unique')
+
+    // The property map carries both properties without inline flags
+    expect(node?.properties?.map((p) => p.name)).toEqual(['name', 'email'])
+
+    expect(derived.constraints).toContainEqual({
+      labelOrType: 'Nts552Unique',
+      relationship: false,
+      properties: ['name', 'email'],
+      kind: 'UNIQUE',
+    })
+
+    expect(graphTypeSetStatement(derived)).toContain(
+      'CONSTRAINT `nts552unique_name_email_unique` FOR (n:`Nts552Unique`) REQUIRE (n.`name`, n.`email`) IS UNIQUE',
+    )
+  })
+
+  it('maps composite indexes to REQUIRE ... IS KEY (a graph type enforces, not indexes)', () => {
+    @NodeEntity()
+    class Nts552Key {
+      @Property({ type: 'number', index: ['code', 'region'] })
+      code!: number
+    }
+
+    expect(deriveGraphType().constraints).toContainEqual({
+      labelOrType: 'Nts552Key',
+      relationship: false,
+      properties: ['code', 'region'],
+      kind: 'KEY',
+    })
+  })
+
+  it('deduplicates groups declared on more than one of their properties', () => {
+    @NodeEntity()
+    class Nts552Shared {
+      @Property({ type: 'string', unique: ['a', 'b'] })
+      a!: string
+
+      @Property({ type: 'string', unique: ['a', 'b'] })
+      b!: string
+    }
+
+    expect(
+      deriveGraphType().constraints?.filter((c) => c.labelOrType === 'Nts552Shared'),
+    ).toHaveLength(1)
+  })
+
+  it('derives composite REQUIRE items from relationship entities', () => {
+    @RelationshipEntity()
+    class Nts552Rated {
+      @Property({ type: 'int', unique: ['stars', 'day'] })
+      stars!: number
+
+      @StartNode(() => GtMovie)
+      source!: GtMovie
+
+      @EndNode(() => GtMovie)
+      target!: GtMovie
+    }
+
+    // The entity's properties join the element type of a declaration that
+    // targets it — standalone relationship entities derive nothing
+    @NodeEntity()
+    class Nts552Rater {
+      @OneToOne({ type: 'NTS552_RATED', target: () => Nts552Rated, direction: Direction.OUTGOING })
+      rated!: Nts552Rated
+    }
+
+    expect(deriveGraphType().constraints).toContainEqual({
+      labelOrType: 'NTS552_RATED',
+      relationship: true,
+      properties: ['stars', 'day'],
+      kind: 'UNIQUE',
+    })
+  })
+})
+
 // ---- Service (enterprise gating + result reporting) -------------------------
 
 describe('GraphTypeService', () => {

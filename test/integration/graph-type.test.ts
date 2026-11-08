@@ -55,6 +55,15 @@ class GtPerson {
   name!: string
 }
 
+@NodeEntity()
+class Nts552Install {
+  @Property({ type: 'int', unique: ['region', 'code'] })
+  code!: number
+
+  @Property({ type: 'string' })
+  region!: string
+}
+
 let backend: TestBackend
 let supportsGraphTypes = false
 
@@ -172,6 +181,34 @@ describe('graph types (NTS-548)', () => {
 
     // The name is addressable in DROP CONSTRAINT
     await backend.connection.run('DROP CONSTRAINT gt_orphan_tag_unique')
+
+    await neode.dropGraphType()
+  })
+
+  it('installs composite REQUIRE constraints from model flags (NTS-552)', async () => {
+    if (!supportsGraphTypes) {
+      return
+    }
+
+    const neode = new Neode(backend.connection, true)
+
+    // Nts552Install is declared with a composite unique over two properties
+    // (see the model below); the server canonicalises it to a named
+    // CONSTRAINT ... REQUIRE (...) IS UNIQUE item
+    const installed = await neode.installGraphType()
+
+    expect(installed[0]?.success).toBe(true)
+
+    const shown = await shownGraphType()
+
+    expect(shown).toContain('nts552install_region_code_unique')
+
+    // Enforcement: both properties together must be unique AND present
+    await backend.connection.run("CREATE (:Nts552Install { code: 1, region: 'EU' })")
+    await expect(
+      backend.connection.run("CREATE (:Nts552Install { code: 1, region: 'EU' })"),
+    ).rejects.toThrow()
+    await expect(backend.connection.run('CREATE (:Nts552Install { code: 1 })')).rejects.toThrow()
 
     await neode.dropGraphType()
   })

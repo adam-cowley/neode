@@ -205,11 +205,13 @@ const renderConstraint = (constraint: GraphTypeConstraintDefinition): string => 
     constraint.relationship === true
       ? `()-[${variable}:${quote(constraint.labelOrType)}]->()`
       : `(${variable}:${quote(constraint.labelOrType)})`
+  // One parenthesised list — the server's canonical spelling for both the
+  // single (`(n.address)`) and composite (`(n.name, n.ssn)`) forms
   const properties = constraint.properties
-    .map((property) => `(${variable}.${quote(property)})`)
+    .map((property) => `${variable}.${quote(property)}`)
     .join(', ')
 
-  return `CONSTRAINT ${quote(constraint.name ?? graphTypeConstraintName(constraint))} FOR ${target} REQUIRE ${properties} ${constraintPredicate(constraint)}`
+  return `CONSTRAINT ${quote(constraint.name ?? graphTypeConstraintName(constraint))} FOR ${target} REQUIRE (${properties}) ${constraintPredicate(constraint)}`
 }
 
 /**
@@ -292,6 +294,47 @@ const graphTypeProperties = (properties: PropertySchema[]): GraphTypePropertyDef
   }
 
   return output
+}
+
+/**
+NTS-552 — composite `REQUIRE (n.a, n.b) IS ...` constraint groups of a
+model: `compositeUnique` → IS UNIQUE, `compositeIndex` → IS KEY (a graph
+type enforces rather than indexes — KEY, the strongest composite
+constraint, is the closest graph-type equivalent of a composite index).
+Declared on any of the group's properties; deduplicated per property list.
+*/
+const compositeConstraintGroups = (
+  labelOrType: string,
+  isRelationship: boolean,
+  properties: PropertySchema[],
+): GraphTypeConstraintDefinition[] => {
+  const groups: GraphTypeConstraintDefinition[] = []
+  const seen = new Set<string>()
+
+  const declare = (members: string[] | undefined, kind: 'UNIQUE' | 'KEY'): void => {
+    if (members === undefined || members.length === 0) {
+      return
+    }
+
+    // Deduplicated by the declared property list; a group declared on more
+    // than one of its properties repeats the same list
+    const key = `${kind}:${members.join(',')}`
+
+    if (seen.has(key)) {
+      return
+    }
+
+    seen.add(key)
+
+    groups.push({ labelOrType, relationship: isRelationship, properties: members, kind })
+  }
+
+  for (const property of properties) {
+    declare(property.getCompositeUnique(), 'UNIQUE')
+    declare(property.getCompositeIndex(), 'KEY')
+  }
+
+  return groups
 }
 
 /**
@@ -423,7 +466,10 @@ export function deriveGraphType(
       const mappable = graphTypeProperties(model.getProperties())
       const hoisted = hoistUniqueness(label, false, mappable)
 
-      constraints.push(...hoisted.constraints)
+      constraints.push(
+        ...hoisted.constraints,
+        ...compositeConstraintGroups(label, false, model.getProperties()),
+      )
 
       // A node element type requires implied labels or a non-empty
       // property map — skip bare-label models the server would reject
@@ -448,6 +494,7 @@ export function deriveGraphType(
       const direction = relationship.getDirection()
       let farLabel: string | undefined
       let properties: GraphTypePropertyDefinition[] = []
+      let relationshipEntityProperties: PropertySchema[] = []
 
       try {
         const targetSchema = getModel(relationship.getTarget())
@@ -456,6 +503,7 @@ export function deriveGraphType(
           const far = relationshipEntityFarLabel(targetSchema, direction)
           farLabel = far.label
           properties = far.properties
+          relationshipEntityProperties = targetSchema.getProperties()
         } else {
           farLabel = targetSchema.getLabels()[0]
         }
@@ -465,7 +513,10 @@ export function deriveGraphType(
 
       const hoisted = hoistUniqueness(type, true, properties)
 
-      constraints.push(...hoisted.constraints)
+      constraints.push(
+        ...hoisted.constraints,
+        ...compositeConstraintGroups(type, true, relationshipEntityProperties),
+      )
 
       const elementType = relationshipElementType(
         type,
