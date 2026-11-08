@@ -540,7 +540,7 @@ export class Neode implements INeode {
 
   async find<T>(
     constructor: new (...arguments_: never[]) => T,
-    value: string,
+    value: string | number,
     database?: string,
   ): Promise<T | undefined> {
     const schema = this.getSchema(constructor)

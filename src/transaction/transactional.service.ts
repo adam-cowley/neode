@@ -111,7 +111,7 @@ export class TransactionalService implements INeode {
 
   async find<T>(
     constructor: new (...arguments_: never[]) => T,
-    value: string,
+    value: string | number,
     database?: string,
   ): Promise<T | undefined> {
     this.ignoreDatabaseOverride(database)

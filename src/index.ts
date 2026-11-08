@@ -113,6 +113,9 @@ export type {
 export { BulkService } from './services/query/bulk.service.js'
 export type { BulkChunk, BulkOptions } from './services/query/bulk.service.js'
 export { PaginateService } from './services/query/paginate.service.js'
+export { vectorIndexName } from './services/schema/vector.service.js'
+export { fulltextIndexName } from './services/schema/fulltext.service.js'
+export type { OrderSpec } from './query/order-spec.js'
 export type {
   Page,
   CursorPage,

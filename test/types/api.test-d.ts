@@ -73,3 +73,22 @@ describe('public API type inference', () => {
     expectTypeOf(builder.make).returns.toEqualTypeOf<Promise<TypePerson | TypePerson[]>>()
   })
 })
+
+describe('INeode#find id typing (NTS-502)', () => {
+  it('accepts string | number ids on every scope', () => {
+    const neode = {} as unknown as import('../../src/index.js').default
+    const tx = {} as unknown as import('../../src/index.js').INeode
+
+    class NumKey {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- typing fixture
+      id!: number
+    }
+
+    expectTypeOf(neode.find<NumKey>)
+      .parameter(1)
+      .toEqualTypeOf<string | number>()
+    expectTypeOf(tx.find<NumKey>)
+      .parameter(1)
+      .toEqualTypeOf<string | number>()
+  })
+})
