@@ -127,10 +127,18 @@ await neode.installSchema()
 
 - `ApplySchemaDiffOptions` (interface) — Options for applySchemaDrift.
 - `applySchemaDrift` (function) — Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450).
+- `deriveGraphType` (function) — Derive the graph type from the registered models (the same walk the ontology emits): node models become node element types (first label identifies, the rest are implied), their relationship declarations become relationship element types. Duplicate identifying labels/types: first model wins — anything the server rejects surfaces in the SchemaResult error
 - `formatSchemaDrift` (function) — Human-readable multi-line drift report, grouped by action (missing / stale / mismatched), one line per object plus its fix statement. Pure function — no database access (NTS-450).
 - `FulltextIndexDefinition` (interface) — A full-text index to keep installed on the database
 - `fulltextIndexName` (function)
 - `FulltextIndexService` (class) — Installs/drops the given full-text index definitions, following the same result-reporting pattern as SchemaService
+- `GraphTypeDefinition` (interface) — A complete graph type: the shape derived from the registered models
+- `graphTypeDropStatement` (function) — `ALTER CURRENT GRAPH TYPE DROP { ... }` — drops the element types by identifying label/relationship type (dropping an element type drops the constraints it enforced)
+- `GraphTypeNodeDefinition` (interface) — Node element type: `(:Label => :Implied1&:Implied2 { ... })`
+- `GraphTypePropertyDefinition` (interface) — One property of a node/relationship element type: rendered `name :: TYPE`, plus `NOT NULL` when `nullable` is false and `IS UNIQUE` when `unique`
+- `GraphTypeRelationshipDefinition` (interface) — Relationship element type: `(:Source)-[:TYPE => { ... }]->(:Target)`. Both ends optional (BOTH-direction relationships render bare ends)
+- `GraphTypeService` (class) — Applies the model-derived graph type with one SET/DROP statement, following the same result-reporting pattern as the other schema services
+- `graphTypeSetStatement` (function) — `ALTER CURRENT GRAPH TYPE SET { ... }` — replaces the database's existing graph type and constraints
 - `InspectOptions` (interface) — Which objects count as "declared" for the inspection: pass the full-text/vector index definitions and the enterprise flag your installSchema call used, so the diff is not polluted by false "extra" entries.
 - `inspectSchema` (function) — Read the installed schema (SHOW CONSTRAINTS / SHOW INDEXES) and diff it against the declared schema
 - `SchemaDiff` (interface) — The declared-vs-installed diff for one schema family (constraints or indexes): the raw object lists plus the names that only appear on one side.

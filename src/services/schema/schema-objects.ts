@@ -20,6 +20,7 @@ export const ConstraintType = {
   FULLTEXT: 'FULLTEXT',
   VECTOR: 'VECTOR',
   PROPERTY_TYPE: 'PROPERTY_TYPE',
+  GRAPH_TYPE: 'GRAPH_TYPE',
 } as const
 
 export type ConstraintType = (typeof ConstraintType)[keyof typeof ConstraintType]
