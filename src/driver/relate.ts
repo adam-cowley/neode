@@ -594,7 +594,6 @@ export class RelateConnectionProvider implements ConnectionProvider {
   begin() until its commit/rollback.
   */
   private queue: Promise<void> = Promise.resolve()
-  private txOpen = false
 
   constructor(database: RelateDatabase, namespace = 'neo4j') {
     requireRelateClient() // the native library is loaded at require-time
@@ -609,22 +608,31 @@ export class RelateConnectionProvider implements ConnectionProvider {
   interface and ignored here.
   */
   async run(statement: string, parameters?: QueryParameters): Promise<QueryOutput> {
-    if (this.txOpen) {
-      throw new NeodeError(
-        "A transaction is open on this connection: use the transaction's own " +
-          'methods for statements that belong to it, or commit/rollback first',
+    // An autocommit statement is an implicit one-statement transaction:
+    // it waits its turn on the same queue as beginTransaction() instead
+    // of failing while a transaction holds the slot (NTS-545). The
+    // transaction handles' own runs do not come through here, so no
+    // deadlock is possible.
+    const previous = this.queue
+
+    let release!: () => void
+    this.queue = new Promise<void>((resolve) => (release = resolve))
+
+    await previous
+
+    try {
+      const result = await classified(
+        this.connection.queryAsync(statement, normalizeParameters(parameters)),
+        statement,
+        parameters,
       )
-    }
 
-    const result = await classified(
-      this.connection.queryAsync(statement, normalizeParameters(parameters)),
-      statement,
-      parameters,
-    )
-
-    return {
-      records: result.rows.map((row) => new RelateQueryRecord(result.columns, row)),
-      summary: { counters: result.stats },
+      return {
+        records: result.rows.map((row) => new RelateQueryRecord(result.columns, row)),
+        summary: { counters: result.stats },
+      }
+    } finally {
+      release()
     }
   }
 
@@ -636,11 +644,9 @@ export class RelateConnectionProvider implements ConnectionProvider {
 
     await previous
 
-    this.txOpen = true
     this.connection.begin()
 
     return new RelateTransactionHandle(this.connection, () => {
-      this.txOpen = false
       release()
     })
   }

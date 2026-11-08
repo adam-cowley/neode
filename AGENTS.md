@@ -216,7 +216,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 ```ts
 import { knn, search, toFulltextQuery } from 'neode'
 
-const vectorHits = await knn(runner, 'Person', 'person_plot_vector', vector, 5)
+const vectorHits = await knn(runner, "Person", "person_plot_vector", vector, 5)
 const textHits = await search(runner, 'Person', 'person_plot', toFulltextQuery(query))
 ```
 
@@ -248,7 +248,7 @@ const name = testId('person') // unique per-run ids, safe for parallel suites
 - `runSeeders` (function) — Run seeders in order against one Neode instance.
 - `seededRandom` (function) — A deterministic PRNG (mulberry32) for reproducible fixtures (NTS-167): seed it once and use it inside property `fake` generators — the same seed produces the same sequence, so seeded fixtures stay stable across runs. const random = seededRandom(42)
 - `Seeder` (class) — Base class for seeders (NTS-167): `runSeeders()` calls seed() once per seeder, in order. Write idempotently inside seed() — `neode.mergeOn(model, match, set)` or `neode.merge(model, properties)` MERGE on the node's merge fields — so rerunning the runner updates instead of duplicating.
-- `splitCypherStatements` (function) — Split a script's contents into statements. Semicolons split statements except when they appear inside: - single- or double-quoted string literals (backslash escapes honoured), - backtick-quoted identifiers (`` `a``b` `` doubling honoured), - `--`and`//`line comments, and`/*` block comments (to the closer). Chunks that hold nothing but whitespace and comments are dropped, and each remaining statement is trimmed. Comments that belong to a statement are kept — they are legal Cypher.
+- `splitCypherStatements` (function) — Split a script's contents into statements. Semicolons split statements except when they appear inside: - single- or double-quoted string literals (backslash escapes honoured), - backtick-quoted identifiers (`` `a``b` `` doubling honoured), - `--` and `//` line comments, and `/*` block comments (to the closer). Chunks that hold nothing but whitespace and comments are dropped, and each remaining statement is trimmed. Comments that belong to a statement are kept — they are legal Cypher.
 - `testId` (function) — Unique identifier for test data — `test-<timestamp>-<random>` by default, safe as a property value (letters, digits and hyphens only).
 - `verifyConnectivity` (function) — Check that a database is reachable right now, using a throwaway driver constructed from the config (closed again afterwards). Note the check runs with whatever connectionTimeout the config carries — the driver's default applies otherwise.
 - `waitUntilReachable` (function) — Retry verifyConnectivity with exponential-ish backoff until the database is reachable or the timeout elapses (then: ConnectivityTimeoutError).
@@ -286,7 +286,5 @@ const systemPrompt = [
 
 // Or expose it over MCP as a resource / tool result:
 server.resource('graph-ontology', () => ontologyMarkdown())
-server.tool('describe-ontology', async () => ({
-  content: [{ type: 'text', text: JSON.stringify(ontology()) }],
-}))
+server.tool('describe-ontology', async () => ({ content: [{ type: 'text', text: JSON.stringify(ontology()) }] }))
 ```
