@@ -1,3 +1,4 @@
+import { warnDeprecated } from '../../deprecate.js'
 import { mergeProperty } from '../../meta/index.js'
 import { PropertyType } from '../../meta/property-schema.js'
 import type { PropertyConfig } from '../property-config.interface.js'
@@ -11,6 +12,7 @@ Register a string property.
 export function String(
   config?: PropertyConfig,
 ): (value: undefined, context: ClassFieldDecoratorContext) => void {
+  warnDeprecated('@String', "@Property({ type: 'string' })")
   return function (_value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = memberName(context)
 

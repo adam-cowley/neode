@@ -1,6 +1,11 @@
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { extractDocs } from '../../scripts/generate-agent-docs.ts'
+import {
+  extractDocs,
+  renderLlmsTxt,
+  renderPages,
+  renderSkillMd,
+} from '../../scripts/generate-agent-docs.ts'
 
 // Generator runs over src/ only (~120 small files, no node_modules)
 const docs = extractDocs(fileURLToPath(new URL('../../src', import.meta.url)))
@@ -62,5 +67,64 @@ describe('generate-agent-docs extraction', () => {
       (symbol) => symbol.name === 'ontologyMarkdown',
     )
     expect(ontology?.summary).toContain('prompt-ready markdown')
+  })
+})
+
+describe('per-page markdown (NTS-163)', () => {
+  const pages = renderPages(docs, '0.0.0-test')
+  const paths = pages.map((page) => page.path)
+
+  it('emits one page per doc area plus schema reference and ontology', () => {
+    expect(paths).toEqual([
+      ...docs.areas.map(
+        (area) => `docs/agent/${area.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`,
+      ),
+      'docs/agent/schema-reference.md',
+      'docs/agent/agent-ontology-api.md',
+    ])
+  })
+
+  it('version-pins every page and carries the not-training-data note', () => {
+    for (const page of pages) {
+      expect(page.content, page.path).toContain('v0.0.0-test')
+      expect(page.content, page.path).toContain('not training data')
+    }
+  })
+
+  it('every docs/agent link in llms.txt resolves to a generated page', () => {
+    const llms = renderLlmsTxt(docs, '0.0.0-test')
+    const links = [...llms.matchAll(/\]\(([^)]+)\)/g)].map((match) => match[1] ?? '')
+    for (const link of links) {
+      if (!link.startsWith('docs/agent/')) continue
+      expect(paths, link).toContain(link)
+    }
+    expect(links).toContain('docs/agent/querying.md')
+    expect(links).toContain('skills/neode/SKILL.md')
+  })
+})
+
+describe('skills pack (NTS-163)', () => {
+  const skill = renderSkillMd('0.0.0-test')
+
+  it('is an installable skill: frontmatter name + description', () => {
+    expect(skill.startsWith('---\nname: neode\ndescription: ')).toBe(true)
+  })
+
+  it('covers define / query / relate / transact and common mistakes', () => {
+    for (const section of [
+      '## Define models',
+      '## Query',
+      '## Relate',
+      '## Transact',
+      '## Common mistakes',
+    ]) {
+      expect(skill, section).toContain(section)
+    }
+  })
+
+  it('version-pins, warns off training data, and names the @String replacement', () => {
+    expect(skill).toContain('v0.0.0-test')
+    expect(skill).toContain('not training data')
+    expect(skill).toContain("@Property({ type: 'string' })")
   })
 })

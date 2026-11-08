@@ -6,14 +6,15 @@
 
 Decorator-based Object Graph Mapper for Neo4j and Cypher-compatible graph databases.
 Full reference: [llms-full.txt](llms-full.txt). Agent workflow guide: [AGENTS.md](AGENTS.md).
+Agent skill pack: [skills/neode/SKILL.md](skills/neode/SKILL.md).
 
 ## Sections
 
-- [Model definition](llms-full.txt#model-definition) — Decorators and the map-based defineModel API for declaring nodes, properties and relationships.
-- [Querying](llms-full.txt#querying) — Query builder, repositories, raw Cypher, transactions, hydration, drivers and read-model projections.
-- [Schema management](llms-full.txt#schema-management) — Indexes, constraints, full-text and vector indexes, schema inspection and drift workflow.
-- [Testing & ops](llms-full.txt#testing-ops) — wipe()/testId() test utilities, factory seeding, connectivity checks and Cypher-script helpers.
-- [Errors](llms-full.txt#errors) — Typed error taxonomy and driver-error classification.
-- [Core](llms-full.txt#core) — Collection, serialisation and other shared exports.
-- [Schema reference](llms-full.txt#schema-reference) — Every field of PropertyDefinition / RelationshipDefinition / SchemaDefinition with its type and JSDoc description.
-- [Agent ontology API](llms-full.txt#agent-ontology-api) — ontology() / ontologyMarkdown() emit the live graph schema for Text2Cypher and MCP.
+- [Model definition](docs/agent/model-definition.md) — Decorators and the map-based defineModel API for declaring nodes, properties and relationships.
+- [Querying](docs/agent/querying.md) — Query builder, repositories, raw Cypher, transactions, hydration, drivers and read-model projections.
+- [Schema management](docs/agent/schema-management.md) — Indexes, constraints, full-text and vector indexes, schema inspection and drift workflow.
+- [Testing & ops](docs/agent/testing-ops.md) — wipe()/testId() test utilities, factory seeding, connectivity checks and Cypher-script helpers.
+- [Errors](docs/agent/errors.md) — Typed error taxonomy and driver-error classification. House rule: every error message names the fix — reload the entity on OptimisticLockError, add the named key to the `with` load spec on RelationNotLoadedError.
+- [Core](docs/agent/core.md) — Collection, serialisation and other shared exports.
+- [Schema reference](docs/agent/schema-reference.md) — Every field of PropertyDefinition / RelationshipDefinition / SchemaDefinition with its type and JSDoc description.
+- [Agent ontology API](docs/agent/agent-ontology-api.md) — ontology() / ontologyMarkdown() emit the live graph schema for Text2Cypher and MCP.
