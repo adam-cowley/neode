@@ -572,7 +572,7 @@ export function renderAgentsMd(docs: ExtractedDocs, version: string): string {
     '```ts',
     "import { knn, search, toFulltextQuery } from 'neode'",
     '',
-    'const vectorHits = await knn(runner, "Person", "person_plot_vector", vector, 5)',
+    "const vectorHits = await knn(runner, 'Person', 'person_plot_vector', vector, 5)",
     "const textHits = await search(runner, 'Person', 'person_plot', toFulltextQuery(query))",
     '```',
     '',

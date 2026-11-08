@@ -246,6 +246,7 @@ function wireRelationshipModel(
     definition.type === 'relationships' || definition.type === 'nodes',
     definition.eager,
     definition.description,
+    definition.cascade,
   )
 }
 

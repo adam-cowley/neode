@@ -27,6 +27,14 @@ export class RelationshipPropertySchema {
   private eager = false
 
   /**
+  Per-relationship cascade (delete-time default): deleting a node deletes
+  the nodes reached through this relationship, recursively. The delete's
+  explicit options win — `{ cascade: true }` cascades every relationship,
+  `{ cascade: false }` cascades none
+  */
+  private isCascade = false
+
+  /**
   Free-text explanation emitted by the agent ontology (NTS-445)
   */
   private description: string | undefined
@@ -97,6 +105,14 @@ export class RelationshipPropertySchema {
 
   getEager(): boolean {
     return this.eager
+  }
+
+  setCascade(isCascade: boolean): void {
+    this.isCascade = isCascade
+  }
+
+  getCascade(): boolean {
+    return this.isCascade
   }
 
   setDescription(description: string): void {

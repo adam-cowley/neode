@@ -25,6 +25,7 @@ export function OneToOne(
         false,
         config.eager,
         config.description,
+        config.cascade,
       )
     })
   }
