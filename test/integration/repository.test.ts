@@ -196,4 +196,35 @@ describe('Repository', () => {
       expect(await movies.count()).toBe(0)
     })
   })
+
+  describe('upsert', () => {
+    it('creates the node when the merge fields match nothing', async () => {
+      const created = await movies.upsert({ title: 'Alien', released: 1979 })
+
+      expect(created).toBeInstanceOf(Movie)
+      expect(await movies.count({ title: 'Alien' })).toBe(1)
+    })
+
+    it('updates the same node instead of duplicating when the merge fields match', async () => {
+      await movies.upsert({ title: 'Alien', released: 1979 })
+      const updated = await movies.upsert({ title: 'Alien', released: 2003 })
+
+      expect(await movies.count({ title: 'Alien' })).toBe(1)
+      expect(updated?.released).toBe(2003)
+    })
+
+    it('merges inside an open write transaction', async () => {
+      const tx = await backend.neode.openWriteTransaction()
+
+      try {
+        const merged = await tx.merge(Movie, { title: 'Tx Alien', released: 1979 })
+
+        expect(merged).toBeInstanceOf(Movie)
+      } finally {
+        await tx.commit()
+      }
+
+      expect(await movies.count({ title: 'Tx Alien' })).toBe(1)
+    })
+  })
 })

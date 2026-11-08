@@ -20,7 +20,8 @@ import { DetachService, type DetachResult } from '../services/query/detach.servi
 import { FindByIdService } from '../services/query/find-by-id.service.js'
 import { FindService } from '../services/query/find.service.js'
 import { GetService, type OrderSpec } from '../services/query/get.service.js'
-import { MergeService } from '../services/query/merge.service.js'
+import { MergeService, getMergeFields } from '../services/query/merge.service.js'
+import { INTERNAL_ID } from '../constants.js'
 import { RelateService } from '../services/query/relate.service.js'
 import { UpdateService } from '../services/query/update.service.js'
 import { WithinDistanceService } from '../services/query/within-distance.service.js'
@@ -203,6 +204,69 @@ export class TransactionalService implements INeode {
     this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
 
     return saved
+  }
+
+  /**
+  MERGE a node of the given constructor on its merge fields (the unique
+  and indexed properties present in `properties` form the match,
+  everything else is set) — mirror of the facade's merge, in this
+  transaction's scope
+  */
+  async merge<T>(
+    constructor: new (...arguments_: never[]) => T,
+    properties: Record<string, unknown> = {},
+    database?: string,
+  ): Promise<T | undefined> {
+    this.ignoreDatabaseOverride(database)
+
+    const schema = this.getSchema(constructor)
+
+    // Entity instances (or arrays of them) in the properties mean
+    // relationship writes — those go through the save() path, which
+    // already creates/relates nested relationships (facade parity)
+    const hasRelationshipValues = schema.getRelationships().some((relationship) => {
+      const value = properties[relationship.getKey()]
+
+      if (value === undefined || value === null) {
+        return false
+      }
+
+      return Array.isArray(value) ? value.length > 0 : typeof value === 'object'
+    })
+
+    if (hasRelationshipValues) {
+      const constructed = new constructor()
+
+      if (!isRecord(constructed)) {
+        throw new NeodeError('The model constructor did not produce an entity object')
+      }
+
+      Object.assign(constructed, properties)
+
+      return this.save(constructed)
+    }
+
+    const mergeKeys = new Set(getMergeFields(schema).map((property) => property.getKey()))
+    const entries = Object.entries(properties)
+
+    const match = Object.fromEntries(entries.filter(([key]) => mergeKeys.has(key)))
+    const set = Object.fromEntries(entries.filter(([key]) => !mergeKeys.has(key)))
+
+    const output = await new MergeService(this.handle).mergeOn(schema, match, set)
+
+    const firstRecord = output.records[0]
+
+    if (firstRecord === undefined) {
+      throw new NeodeError('mergeOn returned no records')
+    }
+
+    const elementId = firstRecord.get(INTERNAL_ID)
+
+    if (typeof elementId !== 'string') {
+      throw new NeodeError('mergeOn did not return an elementId')
+    }
+
+    return new FindByIdService(this.handle).find<T>(constructor, schema, elementId)
   }
 
   /**

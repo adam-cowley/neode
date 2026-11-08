@@ -19,6 +19,17 @@ export interface INeode {
   ): Promise<T | undefined>
   save<T>(entity: T, database?: string): Promise<T>
   delete(entity: object, database?: string): Promise<void>
+  /**
+  MERGE a node of the given constructor on its merge fields (the unique
+  and indexed properties present in `properties` form the match,
+  everything else is set) and return the hydrated entity — the seam
+  Repository#upsert builds on
+  */
+  merge<T>(
+    constructor: new (...arguments_: never[]) => T,
+    properties: Record<string, unknown>,
+    database?: string,
+  ): Promise<T | undefined>
   readCypher(query: string, parameters: QueryParameters, database?: string): Promise<QueryOutput>
   writeCypher(query: string, parameters: QueryParameters, database?: string): Promise<QueryOutput>
   search<T>(

@@ -8,6 +8,7 @@ import type { INeode } from '../neode.interface.js'
 import { Builder, eagerNode } from '../query/index.js'
 import { quote } from '../query/quote.js'
 import { applyOrder, type OrderSpec } from '../query/order-spec.js'
+import { getMergeFields } from '../services/query/merge.service.js'
 import type { ScoredEntity } from '../services/query/search.service.js'
 import { fulltextIndexName } from '../services/schema/fulltext.service.js'
 import { isGraphNode, isRecord } from '../services/type-guards.js'
@@ -269,6 +270,38 @@ export class Repository<Entity> {
     Object.assign(entity, properties)
 
     return this.save(entity)
+  }
+
+  /**
+  Create-or-update in one statement (TypeORM upsert parity): MERGE on the
+  model's merge fields (unique / indexed properties) and SET everything
+  else, returning the hydrated entity. `properties` must carry at least
+  one merge field to match on, and the model must declare one — an
+  unguarded MERGE would silently create a new node per call.
+
+  Validation, defaults, server-side timestamps and @Version bumps all
+  apply, because the statement runs through the regular merge path.
+  */
+  async upsert(properties: Partial<Entity> & Record<string, unknown>): Promise<Entity | undefined> {
+    const mergeFields = getMergeFields(this.schema)
+
+    if (mergeFields.length === 0) {
+      throw new Error(
+        `Cannot upsert ${this.getLabels().join(':')} — the model declares no unique or indexed properties to match on. Declare one (@Unique / @Index / @Property({ unique: true })).`,
+      )
+    }
+
+    const hasMatchKey = mergeFields.some((field) => properties[field.getKey()] !== undefined)
+
+    if (!hasMatchKey) {
+      const keys = mergeFields.map((field) => field.getKey()).join(', ')
+
+      throw new Error(
+        `Cannot upsert ${this.getLabels().join(':')} — properties must include at least one merge field to match on: [${keys}]`,
+      )
+    }
+
+    return this.neode.merge(this.entity, properties, this.database)
   }
 
   /**

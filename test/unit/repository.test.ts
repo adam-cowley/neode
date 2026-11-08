@@ -32,6 +32,15 @@ class Movie {
   }
 }
 
+@NodeEntity()
+class Loose {
+  @InternalId()
+  _id: string
+
+  @String()
+  name: string
+}
+
 // ---- INeode stub ------------------------------------------------------------
 
 function record(value: unknown): QueryRecord {
@@ -70,6 +79,14 @@ function stubNeode(output: Partial<QueryOutput> = {}) {
           limit?: number,
         ) => Promise<unknown[]>
       >(),
+    merge:
+      vi.fn<
+        (
+          constructor: unknown,
+          properties: Record<string, unknown>,
+          database?: string,
+        ) => Promise<unknown>
+      >(),
   }
 
   mocks.find.mockResolvedValue(undefined)
@@ -79,6 +96,7 @@ function stubNeode(output: Partial<QueryOutput> = {}) {
   mocks.readCypher.mockResolvedValue({ records: [], ...output })
   mocks.writeCypher.mockResolvedValue({ records: [], ...output })
   mocks.search.mockResolvedValue([])
+  mocks.merge.mockResolvedValue(undefined)
 
   return { neode: mocks as unknown as INeode, mocks }
 }
@@ -280,6 +298,45 @@ describe('Repository', () => {
       expect(updated).toBe(entity)
       expect(updated.released).toBe(2003)
       expect(mocks.save.mock.calls[0][0]).toBe(entity)
+    })
+  })
+
+  describe('upsert', () => {
+    it('merges on the given properties and returns the hydrated entity', async () => {
+      const { neode, mocks } = stubNeode()
+      const merged = Movie.build({ id: 'u1', title: 'Alien', released: 1979 })
+      mocks.merge.mockResolvedValue(merged)
+
+      const repo = new Repository<Movie>(neode, Movie)
+      const result = await repo.upsert({ title: 'Alien', released: 1979 })
+
+      expect(mocks.merge).toHaveBeenCalledWith(Movie, { title: 'Alien', released: 1979 }, undefined)
+      expect(result).toBe(merged)
+    })
+
+    it('passes the database through', async () => {
+      const { neode, mocks } = stubNeode()
+
+      const repo = new Repository<Movie>(neode, Movie, 'other-db')
+      await repo.upsert({ title: 'Alien' })
+
+      expect(mocks.merge).toHaveBeenCalledWith(Movie, { title: 'Alien' }, 'other-db')
+    })
+
+    it('throws when the model declares no unique or indexed properties', async () => {
+      const { neode } = stubNeode()
+
+      const repo = new Repository<Loose>(neode, Loose)
+
+      await expect(repo.upsert({ name: 'Nope' })).rejects.toThrow(/unique or indexed/i)
+    })
+
+    it('throws when the properties carry no merge field to match on', async () => {
+      const { neode } = stubNeode()
+
+      const repo = new Repository<Movie>(neode, Movie)
+
+      await expect(repo.upsert({ released: 1979 })).rejects.toThrow(/merge field/i)
     })
   })
 
