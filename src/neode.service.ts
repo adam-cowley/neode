@@ -45,6 +45,7 @@ import { type RunCypherScriptOptions, runCypherScript } from './ops/index.js'
 import { hasProjectedProperties } from './projection/index.js'
 import { ProjectionService } from './projection/projection.service.js'
 import { Builder } from './query/index.js'
+import { BoundBuilder } from './query/bound-builder.js'
 import { quote } from './query/quote.js'
 import type { Repository } from './repository/index.js'
 import { FactoryBuilder } from './services/factory.service.js'
@@ -1569,11 +1570,14 @@ export class Neode implements INeode {
   }
 
   /**
-  Return a new query Builder (neode parity): chain
-  `.execute(neode.getConnection())` to run the built statement
+  Return a Builder bound to this instance (neode parity, extended by
+  NTS-554): chain the fluent builder methods, then run the result with
+  the .read() / .write() terminals (READ / WRITE routing through
+  Neode#read/#write) — or the inherited .execute(getConnection()) as
+  before. A `database` argument is forwarded to the terminals.
   */
-  query(): Builder {
-    return new Builder()
+  query(database?: string): BoundBuilder {
+    return new BoundBuilder(this, database)
   }
 
   /**

@@ -15,6 +15,7 @@ import { elementIdOfEntity } from '../element-id.js'
 import type { RelationshipPropertySchema } from '../meta/relationship-property-schema.js'
 import type { INeode } from '../neode.interface.js'
 import type { Builder } from '../query/index.js'
+import { BoundBuilder } from '../query/bound-builder.js'
 import { NeodeError } from '../errors/index.js'
 import { DeleteService, type DeleteOptions } from '../services/query/delete.service.js'
 import { DetachService, type DetachResult } from '../services/query/detach.service.js'
@@ -499,6 +500,18 @@ export class TransactionalService implements INeode {
     const built = query.build()
 
     return this.writeCypher(built.query, { ...built.params, ...parameters })
+  }
+
+  /**
+  A Builder bound to this transaction (NTS-554): the fluent surface with
+  .read() / .write() terminals, which build-and-run in this transaction's
+  scope. A `database` argument is acknowledged for facade parity — a
+  transaction handle is bound to one database at open time.
+  */
+  query(database?: string): BoundBuilder {
+    this.ignoreDatabaseOverride(database)
+
+    return new BoundBuilder(this)
   }
 
   async cypher<T>(

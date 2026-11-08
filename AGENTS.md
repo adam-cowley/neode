@@ -170,6 +170,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 
 - `AccessMode` (type) — Session routing for a statement: 'READ' (replica-capable) or 'WRITE' (primaries). Where a query path leaves routing open, the facade's defaultRouting (itself defaulting to 'READ') decides; ConnectionProvider#run defaults to 'WRITE'.
 - `BatchStatementError` (interface) — A single failed statement within a batch.
+- `BoundBuilder` (class) — A Builder bound to an execution scope — the Neode facade or an open transaction (NTS-554): the plain Builder's fluent surface plus the .read() / .write() terminals, which build-and-run through Neode#read / Neode#write (or the TransactionalService mirrors, in-scope). Created by `neode.query()` / `tx.query()` — the standalone Builder never gains implicit execution.
 - `Builder` (class) — Fluent Cypher query builder. A statement-based builder: every `match()` / `create()` / `merge()` call starts a new statement segment; where clauses accumulate against the current segment and are flushed into it when the next segment starts or when `build()` is called. All user values are passed as query parameters - the generated query contains only aliases. The one exception is `RawExpression` property values (NTS-460), which render verbatim into patterns; bind the values they reference via `param(name, value)`.
 - `BulkChunk` (interface) — The result of one chunk: the rows attempted and the hydrated created/merged entities, in row order
 - `BulkOptions` (interface)
