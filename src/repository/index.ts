@@ -13,6 +13,7 @@ import type { ScoredEntity } from '../services/query/search.service.js'
 import { fulltextIndexName } from '../services/schema/fulltext.service.js'
 import { isGraphNode, isRecord } from '../services/type-guards.js'
 import { hydrateNode } from '../utilities.js'
+import { hasProjectedProperties } from '../projection/index.js'
 
 /**
 Ordering, paging and row-limit options shared by findAll() and where()
@@ -180,8 +181,24 @@ export class Repository<Entity> {
   /**
   All entities matching the given properties (declared properties only —
   unknown keys are ignored), ordered/paged/limited by options.
+
+  Models declaring read-model decorators (@RelatedOne/@RelationshipCount/…)
+  read through the projection-aware path (NTS-501): the facade's all()
+  returns every projected value hydrated, matching neode.all() semantics.
+  Plain models keep the local Builder path.
   */
   async findAll(parameters: Partial<Entity> = {}, options: FindOptions = {}): Promise<Entity[]> {
+    if (hasProjectedProperties(this.schema)) {
+      return this.neode.all<Entity>(
+        this.entity,
+        parameters,
+        options.order,
+        options.limit,
+        options.skip,
+        this.database,
+      )
+    }
+
     const builder = this.matchAll(parameters)
 
     if (options.order !== undefined) {

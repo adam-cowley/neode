@@ -1,4 +1,5 @@
 import type { CypherOptions, QueryOutput, QueryParams as QueryParameters } from './driver/types.js'
+import type { OrderSpec } from './services/query/get.service.js'
 import type { ScoredEntity } from './services/query/search.service.js'
 
 /**
@@ -19,6 +20,20 @@ export interface INeode {
   ): Promise<T | undefined>
   save<T>(entity: T, database?: string): Promise<T>
   delete(entity: object, database?: string): Promise<void>
+  /**
+  All nodes of the given constructor, optionally filtered/ordered/paged —
+  the projection-aware read: models declaring read-model decorators
+  (@RelatedOne/@RelationshipCount/…) come back hydrated with their
+  projected values (NTS-501)
+  */
+  all<T>(
+    constructor: new (...arguments_: never[]) => T,
+    parameters?: Record<string, unknown>,
+    order?: OrderSpec,
+    limit?: number,
+    skip?: number,
+    database?: string,
+  ): Promise<T[]>
   /**
   MERGE a node of the given constructor on its merge fields (the unique
   and indexed properties present in `properties` form the match,
