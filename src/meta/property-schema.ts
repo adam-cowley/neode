@@ -3,6 +3,18 @@ import type { Direction } from '../query/index.js'
 import type { VectorConfig, TransformConfig } from './schema-definition.interface.js'
 import type { EntitySchema } from './entity/entity-schema.js'
 
+/**
+NTS-547 — one hop of a @RelatedOne / @RelatedMany multi-hop `path`:
+direction already normalised to a Direction, target kept as a lazy
+reference (resolved at render time — the target model may be registered
+after the decorator runs).
+*/
+export interface PropertyPathHop {
+  type: string
+  direction: Direction
+  target?: () => Newable
+}
+
 export const PropertyType = {
   ANY: 0,
   INTERNAL_ID: 1,
@@ -209,6 +221,13 @@ export class PropertySchema {
   */
   private minHops: number | undefined
   private maxHops: number | undefined
+
+  /**
+  NTS-547 — @RelatedOne / @RelatedMany multi-hop path (in decorator order).
+  When set, the projection chains the hops instead of the single
+  `type`/`direction` pattern; the last hop ends at the projected node.
+  */
+  private path: PropertyPathHop[] | undefined
 
   /**
   @LabelPresent: the label tested for
@@ -507,6 +526,14 @@ export class PropertySchema {
 
   getMaxHops(): number | undefined {
     return this.maxHops
+  }
+
+  setPath(path: PropertyPathHop[]): void {
+    this.path = path
+  }
+
+  getPath(): PropertyPathHop[] | undefined {
+    return this.path
   }
 
   setLabel(label: string): void {

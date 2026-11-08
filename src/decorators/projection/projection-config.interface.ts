@@ -7,6 +7,18 @@ Direction accepted in any spelling ('out' / 'in' / 'both', or a Direction)
 export type ProjectionDirection = Direction | 'in' | 'out' | 'both'
 
 /**
+NTS-547 — one hop of a @RelatedOne / @RelatedMany multi-hop `path`.
+`direction` defaults to BOTH; `target` label-filters the hop's end node
+(intermediate hops only need it for filtering — the LAST hop ends at the
+property's `target()`).
+*/
+export interface RelatedPathHop {
+  type: string
+  direction?: ProjectionDirection
+  target?: () => Newable
+}
+
+/**
 NTS-135 — config for @RelatedOne / @RelatedMany.
 
 `fields` omitted → full-entity eager loading (target resolved from
@@ -27,6 +39,39 @@ export interface RelatedConfig {
   Target entity; resolved from design:type when omitted (full-entity form)
   */
   target?: () => Newable
+}
+
+/**
+NTS-547 — config for @RelatedOne / @RelatedMany with a multi-hop `path`:
+the declarative version of "entities reached through a chain of
+relationships" (e.g. products co-ordered with this one). `fields` is
+required — path reads support the projected (fields-subset) form only.
+`target()` is the LAST hop's end; when given, `fields` is type-checked
+against it and the final node is label-filtered.
+*/
+export interface PathRelatedConfig {
+  /**
+  The hops, in traversal order from the annotated node
+  */
+  path: RelatedPathHop[]
+  /**
+  Field subset to project from the final node
+  */
+  fields: string[]
+  /**
+  Target entity of the final hop — checks `fields` and label-filters the end
+  */
+  target?: () => Newable
+}
+
+/**
+Checked form of `PathRelatedConfig`: `fields` must be keys of the final
+hop's target instance type.
+*/
+export interface CheckedPathRelatedConfig<T extends object> {
+  path: RelatedPathHop[]
+  target: () => new (...arguments_: never[]) => T
+  fields: (keyof T & string)[]
 }
 
 /**

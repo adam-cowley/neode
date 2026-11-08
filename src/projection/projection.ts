@@ -3,6 +3,7 @@ import { Direction } from '../query/index.js'
 import { EntitySchema } from '../meta/entity/entity-schema.js'
 import { NeodeError } from '../errors/index.js'
 import { quote } from '../query/quote.js'
+import type { Newable } from '../meta/newable.js'
 import type { PropertySchema } from '../meta/property-schema.js'
 import { PropertyType, isProjectedProperty } from '../meta/property-schema.js'
 import { RelationshipPropertySchema } from '../meta/relationship-property-schema.js'
@@ -21,8 +22,14 @@ expressions — instead of chasing each relationship with its own query.
 Target node labels as a Cypher label pattern (':A:B'), or ''
 */
 function targetLabels(property: PropertySchema): string {
-  const entity = property.getEntity()
+  return labelsPattern(property.getEntity())
+}
 
+/**
+Label pattern for a hop's end model (':A:B'), or '' — unregistered or
+absent targets render type-less
+*/
+function labelsPattern(entity: Newable | undefined): string {
   // Fields-subset properties carry no target entity (it is not needed for
   // their projection) — no label pattern to append
   if (entity === undefined) {
@@ -71,6 +78,27 @@ Relationship pattern with the target node bound to `node` — the variable
 convention for `where` fragments (and what the subqueries count / test).
 */
 function relationshipPattern(alias: string, property: PropertySchema): string {
+  // NTS-547 — multi-hop path: chain the hops from the root alias, the last
+  // hop binding the `node` variable (same convention as the single hop)
+  const path = property.getPath()
+
+  if (path !== undefined && path.length > 0) {
+    const segments: string[] = [`(${alias})`]
+
+    path.forEach((hop, index) => {
+      const last = index === path.length - 1
+      const to = last ? 'node' : `${alias}_h${String(index + 1)}`
+      const arrowIn = hop.direction === Direction.INCOMING ? '<' : ''
+      const arrowOut = hop.direction === Direction.OUTGOING ? '>' : ''
+      const type = hop.type.length > 0 ? `[:${quote(hop.type)}]` : '[]'
+      const labels = last ? targetLabels(property) : labelsPattern(hop.target?.())
+
+      segments.push(`${arrowIn}-${type}-${arrowOut}(${to}${labels})`)
+    })
+
+    return segments.join('')
+  }
+
   const direction = property.getDirection() ?? Direction.OUTGOING
 
   const type = (property.getRelationshipType() ?? '')

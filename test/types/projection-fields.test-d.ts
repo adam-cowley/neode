@@ -14,6 +14,22 @@ class Course {
   status!: string
 }
 
+// Compile-time negatives, pre-built so the error anchors at the decorator
+// application (fresh literals anchor overload errors per property, which a
+// suppression comment cannot chase across an overload set)
+const badFields = {
+  type: 'IN_COURSE',
+  direction: 'out' as const,
+  target: () => Course,
+  fields: ['nosuch'],
+}
+
+const badPathFields = {
+  path: [{ type: 'NEXT_COURSE', direction: 'out' as const }],
+  target: () => Course,
+  fields: ['nosuch'],
+}
+
 @NodeEntity()
 class Learner {
   // checked overload: fields must be keys of the target
@@ -34,26 +50,38 @@ class Learner {
   nextCourses?: Pick<Course, 'title'>[]
 
   // @ts-expect-error 'nosuch' is not a field of Course
-  @RelatedOne({
-    type: 'IN_COURSE',
-    direction: 'out',
-    target: () => Course,
-    fields: ['nosuch'],
-  })
+  @RelatedOne(badFields)
   badCourse?: unknown
 
   // @ts-expect-error 'nosuch' is not a field of Course
-  @RelatedMany({
-    type: 'NEXT_COURSE',
-    direction: 'out',
-    target: () => Course,
-    fields: ['nosuch'],
-  })
+  @RelatedMany(badFields)
   badCourses?: unknown
+
+  // NTS-547 — path form: checked against the final hop's target too
+  @RelatedMany({
+    path: [
+      { type: 'NEXT_COURSE', direction: 'out' },
+      { type: 'IN_COURSE', direction: 'in' },
+    ],
+    target: () => Course,
+    fields: ['title'],
+  })
+  siblingCourses?: Pick<Course, 'title'>[]
+
+  // @ts-expect-error 'nosuch' is not a field of Course
+  @RelatedMany(badPathFields)
+  badPathCourses?: unknown
 
   // unchecked overload: fields without a target stays legal
   @RelatedMany({ type: 'COMPLETED_LESSON', fields: ['slug'] })
   completedSlugs?: string[]
+
+  // unchecked path overload: fields without a target stays legal
+  @RelatedMany({
+    path: [{ type: 'COMPLETED_LESSON', direction: 'out' }],
+    fields: ['slug'],
+  })
+  pathSlugs?: string[]
 }
 
 // Compile-time negative only — deliberately not registered: @NodeEntity
@@ -68,6 +96,7 @@ describe('@RelatedOne / @RelatedMany fields checking', () => {
   it('accepts fields that exist on the target', () => {
     expectTypeOf<Learner['course']>().toEqualTypeOf<Pick<Course, 'title' | 'status'> | undefined>()
     expectTypeOf<Learner['nextCourses']>().toEqualTypeOf<Pick<Course, 'title'>[] | undefined>()
+    expectTypeOf<Learner['siblingCourses']>().toEqualTypeOf<Pick<Course, 'title'>[] | undefined>()
     expectTypeOf<Orphan['noShape']>().toEqualTypeOf<unknown>()
   })
 })
