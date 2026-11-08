@@ -307,7 +307,11 @@ bump by exactly 1 (created rows take the ON CREATE stamp instead)
 function rowVersionBump(schema: EntitySchema): string[] {
   const property = versionProperty(schema)
 
-  return property === undefined ? [] : [versionBump(THIS_NODE, property.getKey())]
+  // A full assignment: the bare bump expression is only valid inside
+  // setExpr(), where the target is part of the clause (NTS-528)
+  return property === undefined
+    ? []
+    : [`${THIS_NODE}.${property.getKey()} = ${versionBump(THIS_NODE, property.getKey())}`]
 }
 
 /**

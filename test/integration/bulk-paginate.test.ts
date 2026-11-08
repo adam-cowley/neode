@@ -2,6 +2,7 @@ import { openBackend, TestBackend } from './support/backend'
 import {
   NodeEntity,
   Uuid,
+  Version,
   String,
   Number,
   InternalId,
@@ -35,6 +36,22 @@ class BulkPerson {
 
   @DateTime()
   createdAt: string
+}
+
+@NodeEntity()
+class BulkVersioned {
+  @InternalId()
+  _id: string
+
+  @Property({ type: 'string', primary: true })
+  key: string
+
+  @Property({ type: 'number' })
+  hits: number
+
+  @Version()
+  @Property({ type: 'number' })
+  version: number
 }
 
 @NodeEntity()
@@ -812,5 +829,52 @@ describe('bulk value conversion (NTS-506)', () => {
     const point = output.records[0]?.get('located') as { srid?: number }
 
     expect(point.srid).toBe(4326)
+  })
+})
+
+// ---- NTS-528: bulk mergeMany on a @Version model renders valid Cypher ----
+
+describe('bulk mergeMany with @Version (NTS-528)', () => {
+  let backend: TestBackend
+
+  beforeAll(async () => {
+    backend = await openBackend()
+  })
+
+  afterEach(async () => {
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  it('merges a versioned model: creates at 0, bumps on match', async () => {
+    const service = new BulkService(backend.neode.getConnection())
+
+    await service.mergeMany(BulkVersioned, getModel(BulkVersioned), [{ key: 'k1', hits: 1 }])
+
+    const first = await backend.neode.readCypher(
+      'MATCH (b:BulkVersioned) RETURN b.version AS v',
+      {},
+    )
+
+    // The client decodes ints as a lazy numeric (JSON shows the number)
+    const firstVersion = first.records[0]?.get('v') as unknown as number
+
+    expect(firstVersion + 0).toBe(0)
+
+    await service.mergeMany(BulkVersioned, getModel(BulkVersioned), [{ key: 'k1', hits: 5 }])
+
+    const second = await backend.neode.readCypher(
+      'MATCH (b:BulkVersioned) RETURN b.version AS v, b.hits AS h',
+      {},
+    )
+
+    const version = second.records[0]?.get('v') as unknown as number
+    const hits = second.records[0]?.get('h') as unknown as number
+
+    expect(version + 0).toBe(1)
+    expect(hits + 0).toBe(5)
   })
 })
