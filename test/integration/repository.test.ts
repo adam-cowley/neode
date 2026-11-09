@@ -186,11 +186,14 @@ describe('Repository', () => {
       expect(await movies.count({ released: 1997 })).toBe(0)
     })
 
-    it('deletes everything when called without params', async () => {
+    it('deletes everything when confirmed with { all: true }', async () => {
       await movies.save(Movie.create('Alien', 1979))
       await movies.save(Movie.create('Aliens', 1986))
 
-      const deleted = await movies.deleteAll()
+      // An unfiltered deleteAll is refused (NTS-595 destructive guard)
+      await expect(movies.deleteAll()).rejects.toThrow(/deleteAll\(\) refused/)
+
+      const deleted = await movies.deleteAll({ all: true })
 
       expect(deleted).toBe(2)
       expect(await movies.count()).toBe(0)

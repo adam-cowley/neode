@@ -8,11 +8,34 @@ import type { EntitySchema as EntitySchemaType } from '../../meta/entity/entity-
 import type { RelationshipPropertySchema } from '../../meta/relationship-property-schema.js'
 import { QueryService } from './query.service.js'
 import { isRecord } from '../type-guards.js'
+import { NeodeError } from '../../errors/neode-error.js'
 
 /**
-Maximum cascade deletion depth (neode DeleteNode.js parity)
+Maximum depth of the self-referential cascade walk — the delete-path
+counterpart of MAX_TRAVERSE_DEPTH (traverse) and MAX_CREATE_DEPTH
+(services/write-utilities). Overridable per call with the `depth` option
+of {@link DeleteOptions} (NTS-595).
 */
 export const MAX_CASCADE_DEPTH = 10
+
+/**
+Guard for the bulk deleteAll paths (NTS-595, following the NTS-578
+destructive-guards precedent): a call with no filters deletes EVERY node
+carrying the model's labels, so it is refused unless confirmed with
+`all: true` — a filtered call proceeds as the fast bulk wipe.
+*/
+export function assertDeleteAllScope(parameters: Record<string, unknown>, labels: string[]): void {
+  const filters = Object.keys(parameters).filter((key) => key !== 'all')
+
+  if (filters.length === 0 && parameters['all'] !== true) {
+    throw new NeodeError(
+      `deleteAll() refused on ${labels.join(':') || 'model'} — with no filters it deletes ` +
+        'every node carrying the model’s labels, including nodes your filters would ' +
+        'have hidden. Pass at least one filter to delete a subset, or { all: true } to ' +
+        'confirm the wipe.',
+    )
+  }
+}
 
 export interface DeleteOptions {
   /**
@@ -48,18 +71,21 @@ export interface DeleteOptions {
 
 export class DeleteService extends QueryService {
   /**
-  Carry-over state while one delete() statement is being built: the node
-  aliases bound so far and whether the previous clause was a DELETE.
-  Cypher requires `WITH` between DELETE and the next MATCH — the carried
-  aliases keep every still-referenced binding in scope (42N24).
+  Carry-over state while one delete() statement is being built: whether
+  the previous clause was a DELETE. Cypher requires `WITH` between DELETE
+  and the next MATCH — each new cascade frame re-states only the alias
+  chain its remaining clauses reference, with DISTINCT so the rows
+  sibling frames already fanned out do not cross-multiply (NTS-595).
   */
-  private buildContext = { bound: [THIS_NODE] as string[], deleted: false }
+  private buildContext = { deleted: false }
 
   /**
   Add an optional match of a related node plus its own cascades, then
   delete it. `depth` is the number of relationship hops from the root.
   `selection` decides which relationships cascade: 'all' ignores the
   annotations, 'annotated' follows only `cascade: true` declarations.
+  `scope` is the alias chain from the root to `fromAlias` — exactly the
+  bindings the remaining frames still reference.
   */
   private addCascadeDelete(
     builder: Builder,
@@ -68,6 +94,7 @@ export class DeleteService extends QueryService {
     depth: number,
     maxDepth: number,
     selection: 'all' | 'annotated',
+    scope: string[],
   ): void {
     if (depth > maxDepth) {
       return
@@ -84,20 +111,17 @@ export class DeleteService extends QueryService {
 
     const targetSchema = typeof target === 'function' ? getModel(target) : undefined
 
-    // A sibling cascade segment deleted before this MATCH — carry the
-    // bindings over (this frame's patterns and the pending deletes of
-    // enclosing frames reference them)
+    // The previous frame deleted its matches — re-state this frame's
+    // alias chain (DISTINCT collapses the rows the previous frame fanned
+    // out, so sibling subtrees never cross-multiply)
     if (this.buildContext.deleted) {
-      builder.with(...this.buildContext.bound)
+      builder.withDistinct(...scope)
     }
 
     builder
       .optionalMatch(fromAlias)
       .relationship(relationship.getType(), relationship.getDirection(), relationshipAlias)
       .to(nodeAlias, targetSchema instanceof EntitySchema ? targetSchema.getLabels() : false)
-
-    this.buildContext.bound.push(nodeAlias)
-    this.buildContext.deleted = false
 
     if (targetSchema instanceof EntitySchema) {
       for (const targetRelationship of targetSchema.getRelationships()) {
@@ -108,6 +132,7 @@ export class DeleteService extends QueryService {
           depth + 1,
           maxDepth,
           selection,
+          [...scope, nodeAlias],
         )
       }
     }
@@ -131,7 +156,7 @@ export class DeleteService extends QueryService {
     const builder = new Builder()
 
     // Reset the per-query build state: service instances are reused
-    this.buildContext = { bound: [THIS_NODE], deleted: false }
+    this.buildContext = { deleted: false }
 
     // Match by the entity's identity: elementId when known, else the
     // primary key — with a clear error when neither is available
@@ -141,10 +166,15 @@ export class DeleteService extends QueryService {
     builder.matchEntity(THIS_NODE, schema, criteria)
 
     // Declarative soft delete (NTS-510): SET the label + stamp instead of
-    // deleting the node, unless the caller forces a hard delete
+    // deleting the node, unless the caller forces a hard delete. The
+    // match is gated on the label NOT being there yet: the label is what
+    // hides the node from reads, so an already soft-deleted node matches
+    // zero rows and a repeat delete is a no-op (deletedAt never re-stamped)
     const soft = schema.getSoftDelete()
 
     if (soft !== undefined && options?.force !== true) {
+      builder.whereLabel(THIS_NODE, soft.label, true)
+
       builder
         .set(`${THIS_NODE}:${quote(soft.label)}`, undefined)
         .setExpr(`${THIS_NODE}.\`deletedAt\``, 'datetime()')
@@ -181,7 +211,7 @@ export class DeleteService extends QueryService {
       for (const [index, relationship] of schema.getRelationships().entries()) {
         // A previous segment deleted its relationships — carry `this` over
         if (index > 0) {
-          builder.with(...this.buildContext.bound)
+          builder.withDistinct(THIS_NODE)
         }
 
         const relationshipAlias = `${THIS_NODE}_${relationship.getKey()}_rel`
@@ -208,6 +238,7 @@ export class DeleteService extends QueryService {
           1,
           options?.depth ?? MAX_CASCADE_DEPTH,
           selection,
+          [THIS_NODE],
         )
       }
 

@@ -101,6 +101,43 @@ npm i neo4j-driver@^6
 - `strictPropertyInitialization` no longer disabled: entities declared in
   TypeScript need `!` on decorator-populated fields (see §1).
 
+## 6. Delete semantics (NTS-595, pre-1.0 breaking changes)
+
+Two intentional breaking changes on the write path — both approved as
+pre-1.0 corrections:
+
+- **Cascade is annotated-only.** `delete()` now cascades only into
+  relationships explicitly declared `cascade: true`; un-annotated
+  relationships are detached, not deleted — their target nodes survive.
+  To delete every related node regardless of annotations, pass
+  `{ cascade: true }`; `{ cascade: false }` cascades nothing. Before,
+  an unannotated relationship's targets were deleted too.
+
+  ```ts
+  // before: delete() destroyed the Warehouse as well
+  // after: only the annotated `lines` chain is deleted
+  await neode.delete(factory)
+  await neode.delete(factory, { cascade: true }) // old behaviour, opt in
+  ```
+
+- **`deleteAll()` is guarded.** Calling it with no filters now throws —
+  with no filters it deletes every node carrying the model's labels.
+  Pass at least one filter to delete a subset, or `{ all: true }` to
+  confirm the wipe (the same destructive-guard model as `wipe()`,
+  NTS-578).
+
+  ```ts
+  await repo.deleteAll() // now throws, with a fix hint
+  await repo.deleteAll({ status: 'stale' }) // filtered subset
+  await repo.deleteAll({ all: true }) // confirmed full wipe
+  ```
+
+Also new on the delete path: the self-referential cascade walk is capped
+at `MAX_CASCADE_DEPTH = 10` hops (exported from the package root,
+overridable per call with the `depth` option of `delete()`), and
+`@SoftDelete` deletes are idempotent — a repeat soft delete is a no-op
+that never re-stamps `deletedAt`.
+
 ## Questions
 
 The full migration plan and per-phase notes live in `docs/migration-notes.md`;

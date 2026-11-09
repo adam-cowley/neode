@@ -40,6 +40,10 @@ export { setDeprecationWarnings } from './deprecate.js'
 export { observe, clearObservers, type ModelObservers, type ObserverContext } from './observers.js'
 export { TraverseBuilder, MAX_TRAVERSE_DEPTH, type Hop, type TraversalRow } from './traverse.js'
 
+// Delete-path cascade depth cap (NTS-595) — the write-side counterpart of
+// MAX_TRAVERSE_DEPTH (NTS-593)
+export { MAX_CASCADE_DEPTH } from './services/query/delete.service.js'
+
 // Map-based schema definitions
 export {
   defineModel,
