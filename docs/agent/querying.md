@@ -193,7 +193,7 @@ _source: driver/json-safe.ts_
 
 ### `knn` (function)
 
-k-nearest-neighbour search over a vector index, returning hydrated entities with their similarity score, best match first. With the default `auto` mode the Cypher 25 `SEARCH` clause is attempted first and the queryNodes procedure is used as a fallback; when the backend supports neither a combined error is raised. NTS-162 — the model's named read filters apply to both query forms (a `WHERE` over the matched / YIELDed rows); `filters.withoutFilters` disables names for this call.
+k-nearest-neighbour search over a vector index, returning hydrated entities with their similarity score, best match first. With the default `auto` mode the Cypher 25 `SEARCH` clause is attempted first and the queryNodes procedure is used as a fallback; when the backend supports neither a combined error is raised. NTS-162 — the model's named read filters apply to both query forms (a `WHERE` over the matched / YIELDed rows); `filters.withoutFilters` disables names for this call. NTS-584 — the filters are a post-filter over the index's top-k: the SEARCH clause's in-index `WHERE` only takes property predicates over properties registered as additional filter properties on the vector index (which neode's index definitions never declare) and has no label predicates, so the soft-delete filter can never go there. Filtered searches therefore over-fetch round over round until k rows survive the filters or the round cap gives up — k is filled whenever that many valid neighbours exist.
 
 _source: services/query/knn.service.ts_
 
@@ -350,6 +350,12 @@ _source: services/query/filters.ts_
 Options for the model reads that accept a load spec (NTS-560).
 
 _source: query/load-spec.ts_
+
+### `RelateConnectionOptions` (interface)
+
+Options for the embedded Relate provider.
+
+_source: driver/relate.ts_
 
 ### `RelateConnectionProvider` (class)
 

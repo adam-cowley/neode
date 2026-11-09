@@ -736,7 +736,7 @@ _source: driver/json-safe.ts_
 
 ### `knn` (function)
 
-k-nearest-neighbour search over a vector index, returning hydrated entities with their similarity score, best match first. With the default `auto` mode the Cypher 25 `SEARCH` clause is attempted first and the queryNodes procedure is used as a fallback; when the backend supports neither a combined error is raised. NTS-162 — the model's named read filters apply to both query forms (a `WHERE` over the matched / YIELDed rows); `filters.withoutFilters` disables names for this call.
+k-nearest-neighbour search over a vector index, returning hydrated entities with their similarity score, best match first. With the default `auto` mode the Cypher 25 `SEARCH` clause is attempted first and the queryNodes procedure is used as a fallback; when the backend supports neither a combined error is raised. NTS-162 — the model's named read filters apply to both query forms (a `WHERE` over the matched / YIELDed rows); `filters.withoutFilters` disables names for this call. NTS-584 — the filters are a post-filter over the index's top-k: the SEARCH clause's in-index `WHERE` only takes property predicates over properties registered as additional filter properties on the vector index (which neode's index definitions never declare) and has no label predicates, so the soft-delete filter can never go there. Filtered searches therefore over-fetch round over round until k rows survive the filters or the round cap gives up — k is filled whenever that many valid neighbours exist.
 
 _source: services/query/knn.service.ts_
 
@@ -893,6 +893,12 @@ _source: services/query/filters.ts_
 Options for the model reads that accept a load spec (NTS-560).
 
 _source: query/load-spec.ts_
+
+### `RelateConnectionOptions` (interface)
+
+Options for the embedded Relate provider.
+
+_source: driver/relate.ts_
 
 ### `RelateConnectionProvider` (class)
 
@@ -1534,7 +1540,7 @@ _source: traverse.ts_
 
 ### `TraverseBuilder` (class)
 
-The traversal builder (NTS-512): typed multi-hop reads — chain hops, run, get hydrated entities per hop position. Row semantics: one row per matched path (variable-degree hops fan out). Aggregate reads (NTS-547): declare `groupBy()` / `countDistinct()` and read the result with `runAggregates()` — group aliases come back hydrated, counts as numbers. `orderBy()` / `limit()` shape either mode. ```ts const rows = await neode.traverse(Product) .hop('SUPPLIED_BY', 'out', Supplier) .hop('COVERS', 'in', Territory, { degrees: '1..2' }) .run() rows[0].nodes // [Product, Supplier, Territory] hydrated // co-purchase style: ranked, capped, excluding the origin's own edges const ranked = await neode.traverse(Order) .where({ orderID }) .hop('CONTAINS', 'out', Product) .hop('CONTAINS', 'in', Order) .hop('CONTAINS', 'out', Product) .exclude('t0', 'CONTAINS', 't3') .groupBy('t3') .countDistinct('t2', 'times') .orderBy('times', 'DESC') .limit(5) .runAggregates() ```
+The traversal builder (NTS-512): typed multi-hop reads — chain hops, run, get hydrated entities per hop position. Row semantics: one row per matched path (variable-degree hops fan out). Aggregate reads (NTS-547): declare `groupBy()` / `countDistinct()` and read the result with `runAggregates()` — group aliases come back hydrated, counts as numbers. `orderBy()` / `limit()` shape either mode. Every aliased node whose model is known (the origin and each hop with a target model) carries that model's named read filters (NTS-162, NTS-574): soft-deleted and filtered-out nodes drop out of the paths and the counts. `withoutFilters()` opts named filters out for the traversal; hops without a target model have no model to filter by and stay unfiltered. ```ts const rows = await neode.traverse(Product) .hop('SUPPLIED_BY', 'out', Supplier) .hop('COVERS', 'in', Territory, { degrees: '1..2' }) .run() rows[0].nodes // [Product, Supplier, Territory] hydrated // co-purchase style: ranked, capped, excluding the origin's own edges const ranked = await neode.traverse(Order) .where({ orderID }) .hop('CONTAINS', 'out', Product) .hop('CONTAINS', 'in', Order) .hop('CONTAINS', 'out', Product) .exclude('t0', 'CONTAINS', 't3') .groupBy('t3') .countDistinct('t2', 'times') .orderBy('times', 'DESC') .limit(5) .runAggregates() ```
 
 _source: traverse.ts_
 
