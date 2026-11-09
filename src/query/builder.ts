@@ -460,6 +460,16 @@ export class Builder {
   }
 
   /**
+  Bind the current segment's whole pattern to a path variable — renders as
+  `MATCH <variable> = <pattern>` on the segment's MATCH keyword (NTS-593)
+  */
+  asPath(variable: string): this {
+    this.activeStatement.asPath(variable)
+
+    return this
+  }
+
+  /**
   Add an optional match to the query
   */
   optionalMatch(alias?: string, labels?: string | string[] | false): this {
@@ -963,6 +973,19 @@ export class Builder {
     }
 
     this.activeStatement.return(...values)
+
+    return this
+  }
+
+  /**
+  `RETURN DISTINCT …` (NTS-593)
+  */
+  returnDistinct(...values: string[]): this {
+    if (this.current === undefined) {
+      this.statement()
+    }
+
+    this.activeStatement.returnDistinct(...values)
 
     return this
   }

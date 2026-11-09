@@ -161,10 +161,10 @@ export function assertDegrees(degrees: number | string): string {
 }
 
 /**
-LIMIT / SKIP must be a safe non-negative integer: they are interpolated
-into the statement, not bound.
+LIMIT / SKIP / depth caps must be a safe non-negative integer: they are
+interpolated into the statement, not bound.
 */
-export function assertCount(value: number, what: 'limit' | 'skip'): number {
+export function assertCount(value: number, what: 'limit' | 'skip' | 'depth'): number {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new NeodeError(
       `Invalid ${what} ${String(value)} in query — ${what} must be a non-negative integer. ` +
