@@ -114,6 +114,7 @@ import type {
 } from './services/schema/generate.service.js'
 import {
   GraphTypeService,
+  type GraphTypeCreateOptions,
   type GraphTypeConstraintDefinition,
   type GraphTypeDefinition,
 } from './services/schema/graph-type.service.js'
@@ -802,7 +803,10 @@ export class Neode implements INeode {
   }
 
   /**
-  Run statements to drop the schema
+  Run statements to drop the schema. DESTRUCTIVE: drops every constraint and
+  index the registered models declare on the connected database (by
+  deterministic name, so objects other applications created under other
+  names are untouched) — never run it against a database you do not own.
   */
   async dropSchema(): Promise<SchemaResult[]> {
     const service = new SchemaService(this.connection, this.enterprise)
@@ -1542,7 +1546,8 @@ export class Neode implements INeode {
   /**
   Apply the missing objects of a schema drift idempotently; stale
   objects are only dropped with `dropStale: true` (dropping is
-  destructive). Reports each statement like installSchema (NTS-450)
+  destructive: they are installed on the connected database, which on a
+  shared one may belong to other applications). Reports each statement like installSchema (NTS-450)
   */
   async applySchemaDiff(
     diff: SchemaDrift,
@@ -1582,23 +1587,29 @@ export class Neode implements INeode {
   /**
   Derive the graph type from the registered models and set it as the
   database's enforced schema (NTS-548). Enterprise Edition + Neo4j 2026.02+
-  only; `ALTER CURRENT GRAPH TYPE SET` replaces any existing graph type and
-  constraints, so this is deliberately standalone from installSchema().
+  only; deliberately standalone from installSchema().
+
+  Non-destructive by default (NTS-578): only the missing element types and
+  constraint items are `ADD`ed; foreign graph type objects (other apps on a
+  shared database) are left alone, and definitions that differ are reported
+  as failed results rather than rewritten. `replace: true` opts into
+  `ALTER CURRENT GRAPH TYPE SET`, replacing the server's whole graph type —
+  refused when it would drop objects no registered model declares, unless
+  `canDropUndeclared: true`.
 
   `options.constraints` appends named `CONSTRAINT ... FOR ... REQUIRE`
   items (NTS-549) — the only way to constrain labels/types that are not
   identifying ones, e.g. `{ labelOrType: 'Animal', properties: ['id'],
   kind: 'UNIQUE' }`
   */
-  async installGraphType(
-    options: { constraints?: GraphTypeConstraintDefinition[] } = {},
-  ): Promise<SchemaResult[]> {
+  async installGraphType(options: GraphTypeCreateOptions = {}): Promise<SchemaResult[]> {
     return new GraphTypeService(this.connection, this.enterprise).create(options)
   }
 
   /**
   Drop the graph type elements derived from the registered models (NTS-548),
-  including the named constraint items (NTS-549) — dropping an element type
+  including the named constraint items (NTS-549). DESTRUCTIVE: it drops
+  those element types from the connected database's graph type — dropping an element type
   removes its dependent constraints but leaves its uniqueness/key ones,
   which only go by name
   */

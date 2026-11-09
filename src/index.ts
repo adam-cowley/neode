@@ -134,6 +134,7 @@ export {
   parseGraphTypeSpecification,
 } from './services/schema/graph-type.service.js'
 export type {
+  GraphTypeCreateOptions,
   GraphTypeConstraintDefinition,
   GraphTypeConstraintKind,
   GraphTypeDefinition,
@@ -216,7 +217,7 @@ export type {
   RunCypherScriptOptions,
 } from './ops/index.js'
 export { wipe, testId, seededRandom, Seeder, runSeeders } from './testing/index.js'
-export type { WipeTarget } from './testing/index.js'
+export type { WipeFailure, WipeOptions, WipeReport, WipeTarget } from './testing/index.js'
 
 // Query builder additions (NTS-143/144/128)
 export { WhereNull, LabelPredicate } from './query/index.js'

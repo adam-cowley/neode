@@ -1078,7 +1078,7 @@ _source: services/schema/drift.service.ts_
 
 ### `applySchemaDrift` (function)
 
-Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450).
+Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive: on a shared database "stale" objects may belong to other applications — review the drift first). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450).
 
 _source: services/schema/drift.service.ts_
 
@@ -1182,6 +1182,12 @@ Deterministic name for a graph type constraint item (the same `<label>_<props>_<
 
 _source: services/schema/graph-type.service.ts_
 
+### `GraphTypeCreateOptions` (interface)
+
+Options for installing the model-derived graph type (NTS-578)
+
+_source: services/schema/graph-type.service.ts_
+
 ### `GraphTypeDefinition` (interface)
 
 A complete graph type: the shape derived from the registered models
@@ -1214,7 +1220,7 @@ _source: services/schema/graph-type.service.ts_
 
 ### `GraphTypeService` (class)
 
-Applies the model-derived graph type with one SET/DROP statement, following the same result-reporting pattern as the other schema services
+Applies the model-derived graph type with one ADD/SET/DROP statement, following the same result-reporting pattern as the other schema services
 
 _source: services/schema/graph-type.service.ts_
 
@@ -1262,7 +1268,7 @@ _source: services/schema/drift.service.ts_
 
 One drifted schema object: what it is, where it lives, and the exact statement(s) that would resolve the drift (NTS-450)
 
-_source: services/schema/drift.service.ts_
+_source: services/schema/graph-type.service.ts_
 
 ### `SchemaDriftGroup` (interface)
 
@@ -1388,7 +1394,25 @@ _source: ops/verify-connectivity.ts_
 
 ### `wipe` (function)
 
-Wipe the database clean for a test run: DETACH DELETE every node, reset the graph type to empty (NTS-550 — graph-type-derived constraints only go with the type; Enterprise servers only, best-effort), then drop every constraint and index the database currently has. Standalone on purpose — SchemaService derives DROP statements from the registered models, while wipe() discovers them from the database itself (small duplication of its statement shapes, accepted). Index drops are best-effort: built-in indexes (e.g. the token lookup store on real servers) cannot be dropped and are ignored. Constraint drops are best-effort too: on servers that had a graph type installed, SHOW CONSTRAINTS lists graph-type-derived constraints whose DROP CONSTRAINT may fail even after the reset.
+Wipe the database clean for a test run: DETACH DELETE every node (batched, `CALL { } IN TRANSACTIONS` where supported), reset the graph type to empty (NTS-550 — graph-type-derived constraints only go with the type; Enterprise servers only), then drop every constraint and index the database currently has. DESTRUCTIVE (NTS-578): this destroys whatever database the runner points at, so it refuses to run without `{ confirm: true }` (or `NEODE_ALLOW_WIPE=true`), refuses a non-local `uri` (or `NEO4J_URI`) unless `allowRemote: true`, and verifies the connected database name when `database` is given. Never point it at a shared database. Standalone on purpose — SchemaService derives DROP statements from the registered models, while wipe() discovers them from the database itself (small duplication of its statement shapes, accepted). Only "unsupported syntax" errors are tolerated (graph types on Community / pre-2026.02 servers); everything else — authentication, permissions, connectivity — is thrown. Constraint and index drops that fail are listed in the returned report's `failed` instead of being swallowed; built-in lookup indexes are skipped.
+
+_source: testing/wipe.ts_
+
+### `WipeFailure` (interface)
+
+One schema object wipe() tried to drop and could not
+
+_source: testing/wipe.ts_
+
+### `WipeOptions` (interface)
+
+Guard options for wipe() (NTS-578). wipe() is destructive on whatever database the runner points at, so it refuses to run without an explicit opt-in.
+
+_source: testing/wipe.ts_
+
+### `WipeReport` (interface)
+
+What wipe() did. Returned instead of `void` (NTS-578): awaiting wipe() and ignoring the result keeps working.
 
 _source: testing/wipe.ts_
 

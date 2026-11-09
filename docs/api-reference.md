@@ -1243,7 +1243,7 @@ import { verifyConnectivity, waitUntilReachable, wipe, testId, splitCypherStatem
 
 await verifyConnectivity({ uri: 'bolt://localhost:7687', auth?, config?, database? })
 await waitUntilReachable({ uri, … }, { timeout?: 30_000, interval?: 500, check? })
-await wipe(neode) // DETACH DELETE everything, then drop all constraints + indexes
+await wipe(neode, { confirm: true, database?, uri?, allowRemote?, batchSize? }) // DESTRUCTIVE: batched DETACH DELETE, reset graph type, drop all constraints + indexes → WipeReport
 const id = testId('person') // 'person-<timestamp>-<random>'
 const statements = splitCypherStatements(script) // semicolon-split, comment/string aware
 await runCypherScript(runner, script, { onStatement?(statement, index) })
@@ -1251,7 +1251,7 @@ await runCypherScript(runner, script, { onStatement?(statement, index) })
 
 - `verifyConnectivity` — check a database is reachable right now, with a throwaway driver (closed again afterwards).
 - `waitUntilReachable` — retry with backoff until reachable or the timeout elapses (then: `ConnectivityTimeoutError`).
-- `wipe` — wipe the database clean for a test run: DETACH DELETE every node, then drop every constraint and index the database currently has. Standalone on purpose — `installSchema()` derives statements from the registered models, `wipe()` from the database itself. Index drops are best-effort (built-in indexes are ignored).
+- `wipe` — wipe the database clean for a test run: DETACH DELETE every node, then drop every constraint and index the database currently has. Standalone on purpose — `installSchema()` derives statements from the registered models, `wipe()` from the database itself. **Destructive (NTS-578):** refuses without `{ confirm: true }` (or `NEODE_ALLOW_WIPE=true`), refuses a non-local `uri` / `NEO4J_URI` unless `allowRemote: true`, and pins the connected database name when `database` is given. Only unsupported-syntax errors are tolerated; failed drops are listed in the returned `WipeReport.failed`.
 - `splitCypherStatements` / `runCypherScript` — split a `.cypher` script into statements (semicolons inside strings, backtick identifiers and comments don't split), then run them sequentially, failing fast on the first error.
 - `testId(prefix?)` — unique per-run ids, safe as property values, safe for parallel suites.
 

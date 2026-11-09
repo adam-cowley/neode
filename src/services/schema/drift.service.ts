@@ -22,46 +22,20 @@ import {
   vectorIndexName,
 } from './vector.service.js'
 import {
-  type GraphTypeConstraintDefinition,
-  type GraphTypeDefinition,
-  type GraphTypeNodeDefinition,
-  type GraphTypePropertyDefinition,
-  type GraphTypeRelationshipDefinition,
   currentGraphType,
   deriveGraphType,
-  graphTypeAddStatement,
-  graphTypeAlterStatement,
-  graphTypeConstraintName,
-  graphTypeDropStatement,
-  graphTypeSetStatement,
+  graphTypeDriftGroup,
+  type GraphTypeDrift,
+  type SchemaDriftEntry,
   parseGraphTypeSpecification,
 } from './graph-type.service.js'
+export type { GraphTypeDrift, SchemaDriftEntry } from './graph-type.service.js'
 import {
   type InspectOptions,
   type SchemaDiff,
   type SchemaObject,
   inspectSchema,
 } from './inspect.service.js'
-
-/**
-One drifted schema object: what it is, where it lives, and the exact
-statement(s) that would resolve the drift (NTS-450)
-*/ export interface SchemaDriftEntry {
-  name: string
-  type: string
-  labelsOrTypes: string[]
-  properties: string[]
-  /**
-  The CREATE statement that would install the object — present on
-  missing and mismatched entries
-  */
-  createStatement?: string | undefined
-  /**
-  The DROP statement that would remove the object — present on stale
-  and mismatched entries
-  */
-  dropStatement?: string | undefined
-}
 
 /**
 Drift of one schema family (constraints or indexes), grouped by action
@@ -92,25 +66,6 @@ export interface SchemaDrift {
   full `SET` replace.
   */
   graphType?: GraphTypeDrift
-}
-
-/**
-NTS-550 — drift of the graph type: the installed canonical specification
-versus the model-derived definition, per element
-*/
-export interface GraphTypeDrift {
-  /**
-  The installed canonical specification string (undefined: none installed)
-  */
-  installed: string | undefined
-  /**
-  The declared `ALTER CURRENT GRAPH TYPE SET { ... }` — the full-replace
-  fix statement
-  */
-  declaredStatement: string
-  missing: SchemaDriftEntry[]
-  stale: SchemaDriftEntry[]
-  mismatched: SchemaDriftEntry[]
 }
 
 /**
@@ -309,222 +264,6 @@ const isSameDefinition = (declared: SchemaObject, installed: SchemaObject): bool
   hasSameValues(declared.labelsOrTypes, installed.labelsOrTypes) &&
   hasSameValues(declared.properties, installed.properties)
 
-// ---- Graph type family (NTS-550) ---------------------------------------------
-
-function compareStrings(a: string, b: string): number {
-  if (a < b) {
-    return -1
-  }
-
-  if (a > b) {
-    return 1
-  }
-
-  return 0
-}
-
-/**
-`name::TYPE[!]` signature — whitespace-insensitive property comparison
-*/
-const propertySignature = (property: GraphTypePropertyDefinition): string =>
-  `${property.name}::${property.type.replaceAll(' ', '')}${property.nullable === false ? '!' : ''}`
-
-const signatureSet = (properties: GraphTypePropertyDefinition[] | undefined): string[] => {
-  const signatures = (properties ?? []).map((property) => propertySignature(property))
-
-  signatures.sort(compareStrings)
-
-  return signatures
-}
-
-const sortedCopy = (values: string[]): string[] => {
-  const copy = [...values]
-
-  copy.sort(compareStrings)
-
-  return copy
-}
-
-const isSameNodeDefinition = (
-  declared: GraphTypeNodeDefinition,
-  installed: GraphTypeNodeDefinition,
-): boolean => {
-  const declaredImplies = sortedCopy(declared.implies ?? [])
-  const installedImplies = sortedCopy(installed.implies ?? [])
-
-  return (
-    hasSameValues(declaredImplies, installedImplies) &&
-    hasSameValues(signatureSet(declared.properties), signatureSet(installed.properties))
-  )
-}
-
-const isSameRelationshipDefinition = (
-  declared: GraphTypeRelationshipDefinition,
-  installed: GraphTypeRelationshipDefinition,
-): boolean =>
-  declared.source === installed.source &&
-  declared.target === installed.target &&
-  hasSameValues(signatureSet(declared.properties), signatureSet(installed.properties))
-
-const isSameConstraintContent = (
-  declared: GraphTypeConstraintDefinition,
-  installed: GraphTypeConstraintDefinition,
-): boolean =>
-  declared.kind === installed.kind &&
-  declared.labelOrType === installed.labelOrType &&
-  (declared.relationship === true) === (installed.relationship === true) &&
-  (declared.kind !== 'TYPE' || declared.type === installed.type) &&
-  hasSameValues(sortedCopy(declared.properties), sortedCopy(installed.properties))
-
-/**
-Diff the installed graph type against the derived definition, per element
-(nodes and relationship element types by identifying label/type, named
-constraint items by content — the server generates names for the unnamed
-ones). Fix statements reuse the statement builders: ADD for missing
-elements, DROP for stale, ALTER for redefinitions.
-*/
-function graphTypeDriftGroup(
-  installed: GraphTypeDefinition,
-  declared: GraphTypeDefinition,
-  installedSpecification: string | undefined,
-): GraphTypeDrift {
-  const missing: SchemaDriftEntry[] = []
-  const stale: SchemaDriftEntry[] = []
-  const mismatched: SchemaDriftEntry[] = []
-  const base = { type: ConstraintType.GRAPH_TYPE } as const
-
-  const installedNodes = new Map(installed.nodes.map((node) => [node.label, node]))
-  const declaredNodes = new Map(declared.nodes.map((node) => [node.label, node]))
-
-  for (const [label, node] of declaredNodes) {
-    const installedNode = installedNodes.get(label)
-
-    if (installedNode === undefined) {
-      missing.push({
-        ...base,
-        name: label,
-        labelsOrTypes: [label],
-        properties: (node.properties ?? []).map((property) => property.name),
-        createStatement: graphTypeAddStatement({ nodes: [node], relationships: [] }),
-      })
-    } else if (!isSameNodeDefinition(node, installedNode)) {
-      mismatched.push({
-        ...base,
-        name: label,
-        labelsOrTypes: [label],
-        properties: (node.properties ?? []).map((property) => property.name),
-        createStatement: graphTypeAlterStatement({ nodes: [node], relationships: [] }),
-        dropStatement: graphTypeDropStatement({ nodes: [{ label }], relationships: [] }),
-      })
-    }
-  }
-
-  for (const [label, node] of installedNodes) {
-    if (!declaredNodes.has(label)) {
-      stale.push({
-        ...base,
-        name: label,
-        labelsOrTypes: [label],
-        properties: (node.properties ?? []).map((property) => property.name),
-        dropStatement: graphTypeDropStatement({ nodes: [{ label }], relationships: [] }),
-      })
-    }
-  }
-
-  const installedRelationships = new Map(
-    (installed.relationships ?? []).map((relationship) => [relationship.type, relationship]),
-  )
-  const declaredRelationships = new Map(
-    (declared.relationships ?? []).map((relationship) => [relationship.type, relationship]),
-  )
-
-  for (const [type, relationship] of declaredRelationships) {
-    const installedRelationship = installedRelationships.get(type)
-
-    if (installedRelationship === undefined) {
-      missing.push({
-        ...base,
-        name: type,
-        labelsOrTypes: [type],
-        properties: (relationship.properties ?? []).map((property) => property.name),
-        createStatement: graphTypeAddStatement({ nodes: [], relationships: [relationship] }),
-      })
-    } else if (!isSameRelationshipDefinition(relationship, installedRelationship)) {
-      mismatched.push({
-        ...base,
-        name: type,
-        labelsOrTypes: [type],
-        properties: (relationship.properties ?? []).map((property) => property.name),
-        createStatement: graphTypeAlterStatement({ nodes: [], relationships: [relationship] }),
-        dropStatement: graphTypeDropStatement({ nodes: [], relationships: [{ type }] }),
-      })
-    }
-  }
-
-  for (const [type, relationship] of installedRelationships) {
-    if (!declaredRelationships.has(type)) {
-      stale.push({
-        ...base,
-        name: type,
-        labelsOrTypes: [type],
-        properties: (relationship.properties ?? []).map((property) => property.name),
-        dropStatement: graphTypeDropStatement({ nodes: [], relationships: [{ type }] }),
-      })
-    }
-  }
-
-  const installedConstraints = installed.constraints ?? []
-  const declaredConstraints = declared.constraints ?? []
-
-  for (const constraint of declaredConstraints) {
-    const isAbsent = installedConstraints.every(
-      (installed_) => !isSameConstraintContent(constraint, installed_),
-    )
-
-    if (isAbsent) {
-      missing.push({
-        ...base,
-        name: constraint.name ?? graphTypeConstraintName(constraint),
-        labelsOrTypes: [constraint.labelOrType],
-        properties: constraint.properties,
-        createStatement: graphTypeAddStatement({
-          nodes: [],
-          relationships: [],
-          constraints: [constraint],
-        }),
-      })
-    }
-  }
-
-  for (const constraint of installedConstraints) {
-    const isUndeclared = declaredConstraints.every(
-      (declared_) => !isSameConstraintContent(declared_, constraint),
-    )
-
-    if (isUndeclared) {
-      stale.push({
-        ...base,
-        name: constraint.name ?? '',
-        labelsOrTypes: [constraint.labelOrType],
-        properties: constraint.properties,
-        dropStatement: graphTypeDropStatement({
-          nodes: [],
-          relationships: [],
-          constraints: [constraint],
-        }),
-      })
-    }
-  }
-
-  return {
-    installed: installedSpecification,
-    declaredStatement: graphTypeSetStatement(declared),
-    missing,
-    stale,
-    mismatched,
-  }
-}
-
 function driftGroup(
   group: SchemaDiff,
   vectors: Map<string, VectorIndexDefinition>,
@@ -706,7 +445,9 @@ export function formatSchemaDrift(drift: SchemaDrift): string {
 /**
 Apply the missing objects of a drift idempotently — every CREATE
 carries IF NOT EXISTS. Stale objects are only dropped with
-`dropStale: true` (dropping is destructive). Mismatched objects are
+`dropStale: true` (dropping is destructive: on a shared database "stale"
+objects may belong to other applications — review the drift first).
+Mismatched objects are
 never applied automatically. Each statement is reported with a
 SchemaResult, following the SchemaService pattern (NTS-450).
 */
