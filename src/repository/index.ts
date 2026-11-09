@@ -11,6 +11,7 @@ import type { LoadedEntity, QueryLoadSpec, ReadOptions, WithSpec } from '../quer
 import { quote } from '../query/quote.js'
 import { applyOrder, type OrderSpec } from '../query/order-spec.js'
 import { getMergeFields } from '../services/query/merge.service.js'
+import { assertDeleteAllScope } from '../services/query/delete.service.js'
 import type { DeleteOptions } from '../services/query/delete.service.js'
 import type { ScoredEntity } from '../services/query/search.service.js'
 import { fulltextIndexName } from '../services/schema/fulltext.service.js'
@@ -636,13 +637,18 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   /**
   Delete every entity matching params and return the number deleted.
 
+  Guarded (NTS-595, NTS-578 destructive-guards precedent): a call with no
+  filters deletes every node carrying the model's labels and is refused —
+  pass at least one filter, or `{ all: true }` to confirm the wipe.
+
   shortcut: one DETACH DELETE statement rather than per-node deletes,
   so per-node delete events and cascade options do not apply — switch to
   a loop over delete() when cascading bulk deletes are needed. A bulk
-  write: named read filters do not apply (NTS-162), every node carrying
-  the model's labels is deleted.
+  write: named read filters do not apply (NTS-162).
   */
-  async deleteAll(parameters: Partial<Entity> = {}): Promise<number> {
+  async deleteAll(parameters: Partial<Entity> & { all?: true } = {}): Promise<number> {
+    assertDeleteAllScope(parameters, this.getLabels())
+
     const builder = this.matchAll(parameters, undefined, true)
 
     builder.detachDelete(THIS_NODE)

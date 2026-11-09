@@ -1,6 +1,7 @@
 import { vi } from 'vitest'
 import { Repository } from '../../src/repository'
 import { WITHOUT_ALL_FILTERS } from '../../src/services/query/filters'
+import { NeodeError } from '../../src/errors/neode-error'
 import type { INeode } from '../../src/neode.interface'
 import { GraphNode, QueryOutput, QueryRecord } from '../../src/driver/types'
 import {
@@ -407,16 +408,26 @@ describe('Repository', () => {
       expect(Object.values(params)).toContain(1979)
     })
 
-    it('clears every node of the label when called without params', async () => {
+    it('clears every node of the label when confirmed with { all: true }', async () => {
       const { neode, mocks } = stubNeode({ records: [record(0)] })
 
       const repo = new Repository<Movie>(neode, Movie)
-      await repo.deleteAll()
+      await repo.deleteAll({ all: true })
 
       const query = mocks.writeCypher.mock.calls[0][0]
 
       expect(query).not.toContain('WHERE')
       expect(query).toContain('DETACH DELETE this')
+    })
+
+    it('refuses an unfiltered call with a fix hint (NTS-595)', async () => {
+      const { neode } = stubNeode({ records: [] })
+
+      const repo = new Repository<Movie>(neode, Movie)
+
+      await expect(repo.deleteAll()).rejects.toThrow(/deleteAll\(\) refused on Movie/)
+      await expect(repo.deleteAll()).rejects.toThrow(/\{ all: true \}/)
+      await expect(repo.deleteAll({})).rejects.toThrow(NeodeError)
     })
   })
 

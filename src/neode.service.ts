@@ -60,7 +60,11 @@ import { FactoryBuilder } from './services/factory.service.js'
 import { WITHOUT_ALL_FILTERS } from './services/query/filters.js'
 import { type BulkChunk, type BulkOptions, BulkService } from './services/query/bulk.service.js'
 import { CreateService } from './services/query/create.service.js'
-import { type DeleteOptions, DeleteService } from './services/query/delete.service.js'
+import {
+  type DeleteOptions,
+  DeleteService,
+  assertDeleteAllScope,
+} from './services/query/delete.service.js'
 import { type DetachResult, DetachService } from './services/query/detach.service.js'
 import {
   type SyncEdgesOptions,
@@ -2123,7 +2127,11 @@ export class Neode implements INeode {
   /**
   DETACH DELETE every node of the given constructor matching the given
   properties, returning the deleted count (neode's Model.deleteAll,
-  extended with a count return)
+  extended with a count return).
+
+  Guarded like Repository.deleteAll (NTS-595): an unfiltered call is
+  refused — pass at least one property, or `{ all: true }` to confirm
+  the wipe.
   */
   async deleteAll(
     constructor: Newable,
@@ -2131,6 +2139,8 @@ export class Neode implements INeode {
     database?: string,
   ): Promise<number> {
     const schema = this.getSchema(constructor)
+
+    assertDeleteAllScope(parameters_, schema.getLabels())
 
     const builder = new Builder().match('n', schema.getLabels())
 

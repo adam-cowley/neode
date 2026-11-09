@@ -139,11 +139,14 @@ describe('P4.11 parity shims', () => {
       expect(await count('MATCH (n:Pet) RETURN count(n) AS c')).toBe(1)
     })
 
-    it('deletes every node of the label when no properties are given', async () => {
+    it('deletes every node of the label when confirmed with { all: true }', async () => {
       await backend.neode.save(Person.create('A'))
       await backend.neode.save(Person.create('B'))
 
-      expect(await backend.neode.deleteAll(Person)).toBe(2)
+      // An unfiltered deleteAll is refused (NTS-595 destructive guard)
+      await expect(backend.neode.deleteAll(Person)).rejects.toThrow(/deleteAll\(\) refused/)
+
+      expect(await backend.neode.deleteAll(Person, { all: true })).toBe(2)
       expect(await count('MATCH (n:Person) RETURN count(n) AS c')).toBe(0)
     })
   })
