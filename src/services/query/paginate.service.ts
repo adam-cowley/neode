@@ -2,7 +2,6 @@ import { Builder } from '../../query/index.js'
 import { assertCount, propertyReference } from '../../query/quote.js'
 import { THIS_NODE } from '../../constants.js'
 import type { QueryParams as QueryParameters, QueryRecord } from '../../driver/types.js'
-import { hydrate } from '../../hydrate.js'
 import { valueToJson } from '../../serialise.js'
 import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import type { PropertySchema } from '../../meta/property-schema.js'
@@ -11,8 +10,10 @@ import { QueryService } from './query.service.js'
 import { type OrderSpec, applyOrder } from './get.service.js'
 import { NeodeError } from '../../errors/index.js'
 import { labelPattern } from './bulk.service.js'
-import { isGraphNode } from '../type-guards.js'
+import { isGraphNode, isRecord } from '../type-guards.js'
+import { EAGER_ID } from '../../query/eager-utilities.js'
 import { applyReadFilters, readFilterFragment, type ReadFilterOptions } from './filters.js'
+import { shapeNodeRows } from './shape.js'
 
 /**
 Property the cursor keyset defaults to when orderBy is not given
@@ -300,6 +301,12 @@ export class PaginateService extends QueryService {
     applyFilter(data, schema, filter)
     applyOrder(data, options.order)
 
+    // NTS-592 — SKIP/LIMIT pages need a total order or rows shift between
+    // reads and pages overlap or skip. The caller's order stays first;
+    // the unique elementId is appended as the tiebreaker (and is the
+    // whole order when none was given)
+    data.orderBy(`elementId(${THIS_NODE})`)
+
     const items = await this.return<T>(
       constructor,
       schema,
@@ -398,6 +405,13 @@ export class PaginateService extends QueryService {
       conditions.push(`${propertyReference(THIS_NODE, filterKey)} = $${parameter}`)
     }
 
+    // NTS-592 — a null key never matches a keyset comparison (NULL > x is
+    // null) and a null boundary cannot form a cursor, so rows with a null
+    // key are excluded deterministically: a walk covers every row with a
+    // set key exactly once instead of silently stopping mid-data or
+    // comparing against datetime(null)
+    conditions.push(`${propertyReference(THIS_NODE, key)} IS NOT NULL`)
+
     if (cursor !== undefined) {
       // Composite cursors tie-break on elementId, so keyset pages never
       // skip rows sharing the boundary value; scalar cursors (and raw
@@ -423,13 +437,27 @@ export class PaginateService extends QueryService {
 
     // A total order (property, elementId) — equal property values keep a
     // stable walk order
+
+    // NTS-592 — cursor mode returns through the same eager-aware RETURN
+    // fragment as offset mode (QueryService.returnFragment), so eager
+    // relationships load identically in both. The comprehension's filter
+    // parameters bind onto a scratch builder and merge into the
+    // hand-written statement's parameters.
+    const scratch = new Builder()
+
+    const returnFragment = this.returnFragment(schema, scratch, filters)
+
+    for (const [name, value] of Object.entries(scratch.build().params)) {
+      parameters[name] = value
+    }
+
     const query = [
       `MATCH (${THIS_NODE}${labelPattern(schema.getLabels())})`,
       conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '',
       `ORDER BY ${propertyReference(THIS_NODE, key)} ${isForward ? 'ASC' : 'DESC'}, elementId(${THIS_NODE}) ${isForward ? 'ASC' : 'DESC'}`,
       // One row over the page size answers hasMore
       `LIMIT ${String(assertCount(limit, 'limit') + 1)}`,
-      `RETURN ${THIS_NODE}`,
+      `RETURN ${returnFragment}`,
     ]
       .filter((line) => line.length > 0)
       .join('\n')
@@ -450,20 +478,28 @@ export class PaginateService extends QueryService {
           return records
         }, [])
 
-    const items = hydrate<T>(constructor, { records: ordered }, THIS_NODE)
+    // Shaped through the one result-shaping layer (NTS-566): the root
+    // column is the eager projection map when the schema declares eager
+    // relationships, a plain node otherwise
+    const items = shapeNodeRows<T>(ordered, schema, constructor, THIS_NODE)
 
     // The boundary item of the walk: forward, the newest row fetched;
     // backward, the oldest (the first row of the ascending items)
     const boundary = ordered[isForward ? ordered.length - 1 : 0]
 
-    const boundaryNode: unknown = boundary === undefined ? undefined : boundary.get(THIS_NODE)
+    const { value: boundaryValue, id: boundaryId } =
+      boundary === undefined
+        ? { value: undefined, id: undefined }
+        : boundaryCursor(boundary.get(THIS_NODE), key)
 
+    const cursorValue = toCursorValue(boundaryValue, property)
+
+    // A boundary whose key cannot travel as a cursor (null, or a value
+    // the serialiser cannot carry) ends the walk — never a cursor that
+    // compares against datetime(null) (NTS-592)
     const nextCursor =
-      hasMore && isGraphNode(boundaryNode)
-        ? JSON.stringify([
-            toCursorValue(boundaryNode.properties[key], property),
-            boundaryNode.elementId,
-          ])
+      hasMore && cursorValue !== undefined && boundaryId !== undefined
+        ? JSON.stringify([cursorValue, boundaryId])
         : undefined
 
     return { items, nextCursor, hasMore }
@@ -636,6 +672,26 @@ export class PaginateService extends QueryService {
       }
     }
   }
+}
+
+/**
+Read the cursor key property and elementId off a boundary row's node
+column — a plain GraphNode or the eager projection map (both shapes
+shapeNodeRows hydrates, NTS-592 cursor/offset RETURN parity). Undefined
+on either side means the page cannot form a cursor.
+*/
+function boundaryCursor(node: unknown, key: string): { value: unknown; id: string | undefined } {
+  if (isGraphNode(node)) {
+    return { value: node.properties[key], id: node.elementId }
+  }
+
+  if (isRecord(node) && Object.hasOwn(node, EAGER_ID)) {
+    const id: unknown = node[EAGER_ID]
+
+    return { value: node[key], id: typeof id === 'string' ? id : undefined }
+  }
+
+  return { value: undefined, id: undefined }
 }
 
 /**
