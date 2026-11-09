@@ -532,7 +532,11 @@ export class Neode implements INeode {
   the `alias` column ('this' by default, matching the query builder's
   return alias).
   */
-  cypher(query: string, parameters?: QueryParameters, options?: CypherOptions): Promise<QueryOutput>
+  cypher(
+    query: string,
+    parameters?: QueryParameters,
+    options?: Omit<CypherOptions, 'hydrate'>,
+  ): Promise<QueryOutput>
   cypher<T>(
     query: string,
     parameters: QueryParameters | undefined,

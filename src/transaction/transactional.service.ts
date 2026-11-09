@@ -858,12 +858,20 @@ export class TransactionalService implements INeode {
     return new BoundBuilder(this)
   }
 
-  async cypher<T>(
+  // Raw overload first: the hydrate overload takes priority when listed
+  // first and a raw call falls into it as Promise<unknown[]> (NTS-616). The
+  // raw options omit `hydrate` so a hydrate object literal falls through to
+  // the hydrate overload instead of matching this one.
+  async cypher(
     query: string,
     parameters?: QueryParameters,
-    options?: { hydrate: new (...arguments_: never[]) => T; alias?: string },
+    options?: { alias?: string },
+  ): Promise<QueryOutput>
+  async cypher<T>(
+    query: string,
+    parameters: QueryParameters | undefined,
+    options: { alias?: string; hydrate: new (...arguments_: never[]) => T },
   ): Promise<T[]>
-  async cypher(query: string, parameters?: QueryParameters, options?: object): Promise<QueryOutput>
   async cypher(
     query: string,
     parameters: QueryParameters = {},
