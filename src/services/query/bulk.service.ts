@@ -396,36 +396,72 @@ Bulk rows are transformed per row before the shared validate-and-reduce
 pass: embedding sugar first (NTS-449), then `in` transforms — the same
 order and semantics as the single create / merge paths. Each row is
 copied, so the caller's records are left untouched.
+
+Rows run through a bounded-concurrency pass (NTS-597): an embedding
+provider is a remote service, and one call per row all at once would
+overwhelm it.
 */
+const MAX_PREPARE_CONCURRENCY = 8
+
+/**
+Map over items with at most `limit` tasks in flight, preserving item
+order in the results.
+*/
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = []
+
+  let next = 0
+
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next
+
+      next += 1
+
+      const item = items[index]
+
+      if (item !== undefined) {
+        results[index] = await task(item)
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+
+  return results
+}
+
 async function prepareRows(
   rows: Record<string, unknown>[],
   schema: EntitySchema,
 ): Promise<{ rows: Record<string, unknown>[]; derivedSets: string[] }> {
   const derivedKeys = new Map<string, string>()
 
-  const prepared = await Promise.all(
-    rows.map(async (row) => {
-      const copy = { ...row }
+  const prepared = await mapWithConcurrency(rows, MAX_PREPARE_CONCURRENCY, async (row) => {
+    const copy = { ...row }
 
-      await applyEmbeddings(schema, copy)
+    await applyEmbeddings(schema, copy)
 
-      // Stored derived properties (NTS-569): compute-side values land on
-      // the row and flow through the reduce like hand-set values. A
-      // cypher-side set from any row becomes a statement-level SET item —
-      // the expression reads each row's node values, so it is correct per
-      // row; rows that kept an explicit value are protected by the
-      // coalesce on the row below.
-      const { cypherSets } = deriveProperties(schema, copy)
+    // Stored derived properties (NTS-569): compute-side values land on
+    // the row and flow through the reduce like hand-set values. A
+    // cypher-side set from any row becomes a statement-level SET item —
+    // the expression reads each row's node values, so it is correct per
+    // row; rows that kept an explicit value are protected by the
+    // coalesce on the row below.
+    const { cypherSets } = deriveProperties(schema, copy)
 
-      for (const { key, cypher } of cypherSets) {
-        derivedKeys.set(key, cypher)
-      }
+    for (const { key, cypher } of cypherSets) {
+      derivedKeys.set(key, cypher)
+    }
 
-      await applyInTransforms(schema, copy)
+    await applyInTransforms(schema, copy)
 
-      return copy
-    }),
-  )
+    return copy
+  })
 
   const derivedSets = [...derivedKeys].map(
     ([key, cypher]) => `${THIS_NODE}.${key} = coalesce(row.${key}, ${cypher})`,
@@ -464,7 +500,12 @@ async function inWriteTransaction(
 /**
 Bulk CREATE and MERGE via UNWIND: one managed write transaction per
 chunk, one UNWIND statement per transaction, rows validated and reduced
-to property maps exactly like the single-create / merge paths
+to property maps exactly like the single-create / merge paths.
+
+Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the
+earlier chunks committed — bulk writes are not atomic across chunks. Row
+preparation bounds its embedding-provider calls at MAX_PREPARE_CONCURRENCY
+in flight.
 */
 export class BulkService extends QueryService {
   private async writeChunks<T>(

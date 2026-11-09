@@ -15,12 +15,13 @@ import { assertDeleteAllScope } from '../services/query/delete.service.js'
 import type { DeleteOptions } from '../services/query/delete.service.js'
 import type { ScoredEntity } from '../services/query/search.service.js'
 import { fulltextIndexName } from '../services/schema/fulltext.service.js'
-import { isRecord } from '../services/type-guards.js'
+import { isGraphNode, isRecord } from '../services/type-guards.js'
 import {
   SERVER_TIMESTAMP,
   timestampProperty,
   versionBump,
   versionProperty,
+  deriveProperties,
 } from '../services/write-utilities.js'
 import { shapeNodeRows } from '../services/query/shape.js'
 import { hasProjectedProperties } from '../projection/index.js'
@@ -730,7 +731,46 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       builder.setExpr(`${THIS_NODE}.${versionKey}`, versionBump(THIS_NODE, versionKey))
     }
 
-    builder.return(`${THIS_NODE}.${key} AS value`)
+    // NTS-597: a stored derived property with the counter among its sources
+    // recomputes on increment. Cypher-side derivations ride the same
+    // statement — sequential SET clauses read the bumped counter. Compute-
+    // side ones cannot run in the database: the statement also returns the
+    // post-write node, and the recomputed values follow in a second,
+    // targeted write.
+    const counterKey = declared.getKey()
+    const dirtyCounter = new Set([counterKey])
+
+    const derivedSets = deriveProperties(this.schema, {}, dirtyCounter).cypherSets
+
+    // NTS-597: the WITH boundary splits the derived SET into its own
+    // clause — SET items inside one clause do not observe each other's
+    // writes on every backend (the embedded Relate engine evaluates a
+    // clause against the pre-statement state), and the expressions must
+    // read the bumped counter
+    if (derivedSets.length > 0) {
+      builder.with(THIS_NODE)
+    }
+
+    for (const { key: derivedKey, cypher } of derivedSets) {
+      builder.setExpr(`${THIS_NODE}.${quote(derivedKey)}`, cypher)
+    }
+
+    const shouldRecomputeFromCounter = this.schema.getProperties().some((property) => {
+      const derived = property.getDerived()
+
+      if (derived === undefined || typeof derived.compute !== 'function') {
+        return false
+      }
+
+      const sources = Array.isArray(derived.from) ? derived.from : []
+
+      return property.getKey() !== counterKey && sources.includes(counterKey)
+    })
+
+    builder.return(
+      `${THIS_NODE}.${key} AS value`,
+      ...(shouldRecomputeFromCounter ? [THIS_NODE] : []),
+    )
 
     const { query, params } = builder.build()
     const output = await this.neode.writeCypher(query, params, this.database)
@@ -745,7 +785,36 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       throw new NeodeError(`Cannot increment: entity not found for ${String(target)}`)
     }
 
-    return Repository.toCount(firstRecord.get('value'))
+    const value = Repository.toCount(firstRecord.get('value'))
+
+    if (shouldRecomputeFromCounter) {
+      const written: unknown = firstRecord.get(THIS_NODE)
+
+      if (isGraphNode(written)) {
+        const postState: Record<string, unknown> = { ...written.properties }
+
+        const post = deriveProperties(this.schema, postState, dirtyCounter)
+
+        if (post.recomputed.length > 0) {
+          const patch = Object.fromEntries(
+            post.recomputed.map((derivedKey): [string, unknown] => [
+              derivedKey,
+              postState[derivedKey],
+            ]),
+          )
+
+          const followUp = new Builder()
+            .match(THIS_NODE, this.schema.getLabels(), { [primaryKey]: id })
+            .set(THIS_NODE, patch, '+=')
+
+          const statement = followUp.build()
+
+          await this.neode.writeCypher(statement.query, statement.params, this.database)
+        }
+      }
+    }
+
+    return value
   }
 
   /**

@@ -346,14 +346,15 @@ function toOutputValue(
   value: unknown,
   property: PropertySchema,
   depth: number | undefined,
+  seen: Set<object>,
 ): unknown {
   // Nested entities (eagerly loaded relationships, arrays of entities)
   if (Array.isArray(value)) {
-    return value.map((item) => toOutputValue(item, property, depth))
+    return value.map((item) => toOutputValue(item, property, depth, seen))
   }
 
   if (isEntity(value)) {
-    return toJson(value, childJsonOptions(depth))
+    return toJson(value, childJsonOptions(depth), seen)
   }
 
   return valueToJson(value, property)
@@ -386,17 +387,26 @@ export function valueToJson(value: unknown, property: PropertySchema): unknown {
 }
 
 /**
-Convert an entity into a JSON friendly object: plain properties (hidden and
-structural properties skipped), `_id` (elementId when the model carries an
-internal id property) and `_labels` (the schema's labels). Eagerly loaded
-relationships are serialised recursively.
+Convert an entity into a JSON friendly object: plain properties (hidden,
+protected and structural properties skipped), `_id` (elementId when the
+model carries an internal id property) and `_labels` (the schema's labels).
+Eagerly loaded relationships are serialised recursively.
 
 `options.relationships` (NTS-564) controls relationship serialisation —
 `include` / `exclude` name declared relationships, `depth` bounds the
 levels. Without options the serialisation is exactly as before: every
 loaded relationship, unlimited depth.
+
+`seen` (NTS-597) tracks the entities on the current serialisation path —
+a graph that re-reaches one of its own ancestors (a cycle) throws a
+NeodeError instead of overflowing the stack. Shared (non-cyclic) sub-graphs
+serialise in full.
 */
-export function toJson(entity: unknown, options?: ToJsonOptions): Record<string, unknown> {
+export function toJson(
+  entity: unknown,
+  options?: ToJsonOptions,
+  seen: Set<object> = new Set<object>(),
+): Record<string, unknown> {
   const instance = isRecord(entity) ? entity : undefined
   const schema = instance === undefined ? undefined : getModel(instance.constructor)
 
@@ -408,6 +418,16 @@ export function toJson(entity: unknown, options?: ToJsonOptions): Record<string,
         'register the class with @NodeEntity or defineModel() first',
     )
   }
+
+  if (seen.has(instance)) {
+    throw new NeodeError(
+      `Cannot serialise "${schema.getLabels().join(':')}": the object graph contains a cycle — ` +
+        'an entity was re-reached while it is still being serialised, which would never terminate. ' +
+        'Bound the serialisation with the relationships "depth" option, or break the cycle.',
+    )
+  }
+
+  seen.add(instance)
 
   const properties = schema.getProperties()
   const internalId = properties.find((property) => property.getType() === PropertyType.INTERNAL_ID)
@@ -421,7 +441,7 @@ export function toJson(entity: unknown, options?: ToJsonOptions): Record<string,
   for (const property of properties) {
     const key = property.getKey()
 
-    if (property.isHidden() || NON_OUTPUT_TYPES.has(property.getType())) {
+    if (property.isHidden() || property.isProtected() || NON_OUTPUT_TYPES.has(property.getType())) {
       continue
     }
 
@@ -432,7 +452,7 @@ export function toJson(entity: unknown, options?: ToJsonOptions): Record<string,
       continue
     }
 
-    output[key] = toOutputValue(value, property, depth)
+    output[key] = toOutputValue(value, property, depth, seen)
   }
 
   // Eagerly loaded relationships: single entities or arrays of entities.
@@ -456,9 +476,13 @@ export function toJson(entity: unknown, options?: ToJsonOptions): Record<string,
     }
 
     output[key] = Array.isArray(value)
-      ? value.map((item) => toJson(item, childOptions))
-      : toJson(value, childOptions)
+      ? value.map((item) => toJson(item, childOptions, seen))
+      : toJson(value, childOptions, seen)
   }
+
+  // Path semantics: a shared (non-cyclic) sub-graph serialises in full —
+  // only a re-reached ANCESTOR is a cycle
+  seen.delete(instance)
 
   return output
 }
