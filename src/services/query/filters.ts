@@ -125,6 +125,91 @@ export function clearFilterParams(): void {
 }
 
 /**
+Copy the string literal or backtick identifier starting at `start` (the
+opening quote) verbatim, honouring backslash escapes in strings and
+backtick doubling in identifiers. Stops after the matching closer, or at
+the end of the fragment for an unterminated one.
+*/
+function copyVerbatim(source: string, start: number, closer: string): string {
+  let out = source.charAt(start)
+  let index = start + 1
+
+  while (index < source.length) {
+    const char = source.charAt(index)
+
+    if (closer !== '`' && char === '\\') {
+      out += char + source.charAt(index + 1)
+      index += 2
+
+      continue
+    }
+
+    if (closer === '`' && char === '`' && source.charAt(index + 1) === '`') {
+      out += '``'
+      index += 2
+
+      continue
+    }
+
+    out += char
+    index++
+
+    if (char === closer) {
+      return out
+    }
+  }
+
+  return out
+}
+
+/**
+Rewrite the documented `node` variable convention in a filter's where
+fragment to the filtered node's actual alias (NTS-585). The rewrite is
+precise: whole-token only (`anode` / `node2` never match), string literals
+('…' / "…") and backtick identifiers are copied verbatim, and a `node`
+preceded by `.` (a `x.node` property name), `$` (a `$node` parameter name)
+or `:` (a `:node` label) is left alone.
+*/
+function rewriteFilterAlias(where: string, alias: string): string {
+  let out = ''
+  let index = 0
+
+  while (index < where.length) {
+    const char = where.charAt(index)
+
+    if (['"', "'", '`'].includes(char)) {
+      const literal = copyVerbatim(where, index, char)
+
+      out += literal
+      index += literal.length
+
+      continue
+    }
+
+    // whole-word `node`, but not .node (property), $node (parameter) or
+    // :node (label)
+    const previous = index === 0 ? '' : where.charAt(index - 1)
+
+    if (
+      !['.', '$', ':'].includes(previous) &&
+      !/\w/.test(previous) &&
+      !/\w/.test(where.charAt(index + 4)) &&
+      where.startsWith('node', index)
+    ) {
+      out += alias
+      index += 4
+
+      continue
+    }
+
+    out += char
+    index++
+  }
+
+  return out
+}
+
+/**
 The named read filters active for one query, soft delete included as the
 reserved `softDelete` filter (NTS-510 label check — labels-as-state,
 NTS-128: a soft-deleted node carries the swapped label, so excluding it is
@@ -164,12 +249,13 @@ export function readFilterClauses(
 
     if (filter.where !== undefined && filter.where !== '') {
       // `node` is the documented variable convention of a filter's where —
-      // rewritten to the filtered node's actual variable here. Values in
-      // string literals would be rewritten too: pass them as parameters.
-      // The replacer function keeps `$` in the alias out of replacement
-      // pattern semantics; the parens keep a top-level OR in the fragment
-      // from escaping the AND-join.
-      clauses.push(`(${filter.where.replaceAll(/\bnode\b/g, () => alias)})`)
+      // rewritten to the filtered node's actual variable here. Property
+      // names (`x.node`), `$node` parameters, `:node` labels and string
+      // literals are left alone (rewriteFilterAlias); values a filter
+      // needs must still be passed as parameters, not literals.
+      // The parens keep a top-level OR in the fragment from escaping the
+      // AND-join.
+      clauses.push(`(${rewriteFilterAlias(filter.where, alias)})`)
     }
 
     const value = resolveFilterValue(filter.name)

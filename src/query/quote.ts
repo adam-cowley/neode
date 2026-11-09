@@ -25,6 +25,72 @@ export function safeKey(key: string): string {
   return IDENTIFIER.test(key) ? key : quote(key)
 }
 
+const PRE_QUOTED_LABEL = /^`(?:[^`]|``)*`$/
+
+/**
+Backtick-quote a node label only when needed. Idempotent (NTS-585): a
+plain identifier (`Person`) and an already backtick-quoted label
+(`` `My Label` ``) pass through unchanged, so callers may pass pre-quoted
+labels without them being double-quoted.
+*/
+export function quoteLabel(label: string): string {
+  return IDENTIFIER.test(label) || PRE_QUOTED_LABEL.test(label) ? label : quote(label)
+}
+
+/**
+Split a colon-joined label string (`'A:B'`) into its labels. A colon inside
+a backtick-quoted identifier is not a separator (`` `A:B` `` is one label).
+*/
+function splitLabelList(labels: string): string[] {
+  const parts: string[] = []
+  let current = ''
+  let isInsideQuotes = false
+  let index = 0
+
+  while (index < labels.length) {
+    const char = labels.charAt(index)
+
+    index++
+
+    if (isInsideQuotes) {
+      current += char
+
+      if (char === '`') {
+        // doubled backtick stays inside the identifier
+        if (labels.charAt(index) === '`') {
+          current += '`'
+          index++
+        } else {
+          isInsideQuotes = false
+        }
+      }
+    } else if (char === '`') {
+      isInsideQuotes = true
+      current += char
+    } else if (char === ':') {
+      parts.push(current)
+      current = ''
+    } else {
+      current += char
+    }
+  }
+
+  parts.push(current)
+
+  return parts
+}
+
+/**
+Colon-joined label pattern for a label or list: the string form may carry
+several labels (`'A:B'`), an array is one label per entry. Plain labels
+keep their readable rendering, everything else is escaped (see quoteLabel).
+*/
+export function quoteLabels(labels: string | string[]): string {
+  const list = Array.isArray(labels) ? labels : splitLabelList(labels)
+
+  return list.map(quoteLabel).join(':')
+}
+
 /**
 `alias.key` with the key escaped as needed (see safeKey).
 */

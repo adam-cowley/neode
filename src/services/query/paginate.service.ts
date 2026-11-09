@@ -1,5 +1,5 @@
 import { Builder } from '../../query/index.js'
-import { assertCount } from '../../query/quote.js'
+import { assertCount, propertyReference } from '../../query/quote.js'
 import { THIS_NODE } from '../../constants.js'
 import type { QueryParams as QueryParameters, QueryRecord } from '../../driver/types.js'
 import { hydrate } from '../../hydrate.js'
@@ -395,7 +395,7 @@ export class PaginateService extends QueryService {
       const parameter = `filter_${filterKey.replaceAll(/[^a-z0-9]+/gi, '_')}`
 
       parameters[parameter] = filter[filterKey]
-      conditions.push(`${THIS_NODE}.${filterKey} = $${parameter}`)
+      conditions.push(`${propertyReference(THIS_NODE, filterKey)} = $${parameter}`)
     }
 
     if (cursor !== undefined) {
@@ -412,8 +412,8 @@ export class PaginateService extends QueryService {
 
       conditions.push(
         id === undefined
-          ? `${THIS_NODE}.${key} ${comparison} ${casted}`
-          : `(${THIS_NODE}.${key} ${comparison} ${casted} OR (${THIS_NODE}.${key} = ${casted} AND elementId(${THIS_NODE}) ${comparison} $cursorId))`,
+          ? `${propertyReference(THIS_NODE, key)} ${comparison} ${casted}`
+          : `(${propertyReference(THIS_NODE, key)} ${comparison} ${casted} OR (${propertyReference(THIS_NODE, key)} = ${casted} AND elementId(${THIS_NODE}) ${comparison} $cursorId))`,
       )
 
       if (id !== undefined) {
@@ -426,7 +426,7 @@ export class PaginateService extends QueryService {
     const query = [
       `MATCH (${THIS_NODE}${labelPattern(schema.getLabels())})`,
       conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '',
-      `ORDER BY ${THIS_NODE}.${key} ${isForward ? 'ASC' : 'DESC'}, elementId(${THIS_NODE}) ${isForward ? 'ASC' : 'DESC'}`,
+      `ORDER BY ${propertyReference(THIS_NODE, key)} ${isForward ? 'ASC' : 'DESC'}, elementId(${THIS_NODE}) ${isForward ? 'ASC' : 'DESC'}`,
       // One row over the page size answers hasMore
       `LIMIT ${String(assertCount(limit, 'limit') + 1)}`,
       `RETURN ${THIS_NODE}`,

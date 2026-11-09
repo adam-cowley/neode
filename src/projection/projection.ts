@@ -10,7 +10,7 @@ import {
 import { type Builder, Direction } from '../query/index.js'
 import { EntityType, EntitySchema } from '../meta/entity/entity-schema.js'
 import { NeodeError } from '../errors/index.js'
-import { propertyReference, quote } from '../query/quote.js'
+import { propertyReference, quote, safeKey } from '../query/quote.js'
 import type { LoadSpec, RelationQuery } from '../query/load-spec.js'
 import type { Newable } from '../meta/newable.js'
 import type { PropertySchema } from '../meta/property-schema.js'
@@ -256,8 +256,8 @@ function relatedProjection(
 
   const pattern =
     fields.length === 1
-      ? `node.${fields[0] ?? ''}`
-      : `node { ${fields.map((field) => `.${field}`).join(', ')} }`
+      ? `node.${safeKey(fields[0] ?? '')}`
+      : `node { ${fields.map((field) => `.${safeKey(field)}`).join(', ')} }`
 
   // NTS-547/162 — WHERE inside the comprehension filters elements per path
   // (`node` = the target node, `this` = the annotated node): the property's
@@ -265,7 +265,7 @@ function relatedProjection(
   const comprehension = `[ ${relationshipPattern(alias, property)}${relatedFilter(alias, property, context)} | ${pattern} ]`
 
   // First related node only for the singular form
-  return isMany ? `${key}: ${comprehension}` : `${key}: ${comprehension}[0]`
+  return isMany ? `${safeKey(key)}: ${comprehension}` : `${safeKey(key)}: ${comprehension}[0]`
 }
 
 /**
@@ -284,11 +284,11 @@ function projectedProperty(
   }
 
   if (type === PropertyType.RELATIONSHIP_COUNT) {
-    return `${key}: COUNT { ${relationshipPattern(alias, property)}${relatedFilter(alias, property, context)} }`
+    return `${safeKey(key)}: COUNT { ${relationshipPattern(alias, property)}${relatedFilter(alias, property, context)} }`
   }
 
   if (type === PropertyType.RELATIONSHIP_EXISTS) {
-    return `${key}: EXISTS { ${relationshipPattern(alias, property)}${relatedFilter(alias, property, context)} }`
+    return `${safeKey(key)}: EXISTS { ${relationshipPattern(alias, property)}${relatedFilter(alias, property, context)} }`
   }
 
   if (type === PropertyType.LABEL_PRESENT) {
@@ -298,11 +298,15 @@ function projectedProperty(
       throw new NeodeError(`@LabelPresent property "${key}" requires a label`)
     }
 
-    return `${key}: ${alias}:${quote(label)}`
+    return `${safeKey(key)}: ${alias}:${quote(label)}`
   }
 
-  // COMPUTED runs in TypeScript after hydration
-  return type === PropertyType.EXPRESSION ? `${key}: ${property.getExpression() ?? ''}` : ''
+  // COMPUTED runs in TypeScript after hydration. The expression itself is
+  // the decorator's raw-Cypher escape hatch (NTS-138) — only the
+  // projection key is escaped (NTS-585)
+  return type === PropertyType.EXPRESSION
+    ? `${safeKey(key)}: ${property.getExpression() ?? ''}`
+    : ''
 }
 
 /**
