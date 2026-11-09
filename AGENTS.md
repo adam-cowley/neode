@@ -4,8 +4,18 @@
 
 Package version: **1.0.0-next.1** (from package.json).
 
+> **Default to decorators (NTS-583).** When creating a new project or new models, define them as
+> decorated classes (`@NodeEntity()` + `@Property(...)`) using standard TC39 decorators — never
+> `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`. Use `defineModel` (the
+> map API) only when the user asks for it, or decorators are impossible (models built at runtime,
+> or a toolchain without standard TC39 decorator support).
+>
+> Tooling: TypeScript 5+ (or esbuild/SWC/tsdown with standard decorators), `target` ES2022 or later,
+> `"lib": ["ES2022", "ESNext.Decorators"]`, and leave `experimentalDecorators` unset.
+
 ## Rules (enforced — read before changing this repo)
 
+- New models are decorated classes by default; `defineModel` only when asked for or decorators are impossible (see the rule above).
 - Standard TC39 decorators only; never add `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`.
 - No `any`. No `@ts-ignore` (use `@ts-expect-error` with a reason).
 - Never add an `eslint-disable` without a specific rule name and a `-- reason`. Never disable a rule file-wide.
@@ -29,7 +39,7 @@ pnpm add neode
 
 ## Define models
 
-Two equivalent APIs. Decorators:
+Decorators are the default — use them for every new model:
 
 ```ts
 import { NodeEntity, Property, Unique } from 'neode'
@@ -41,7 +51,7 @@ class Person {
 }
 ```
 
-Map API (no decorators, same registry):
+Alternative: the Map API (no decorators, same registry). Only when the user asks for it or decorators are impossible:
 
 ```ts
 import { defineModel } from 'neode'
@@ -103,7 +113,7 @@ Decorator reference:
 - `Vector` (decorator) — Declare a vector index over the property (NTS-447): `installSchema()` creates the index with the deterministic `vectorIndexName()` naming, `dropSchema()` drops it, and `knn()` searches it. Merges onto the existing property, so it can be stacked with a type decorator.
 - `Version` (decorator) — Optimistic locking (NTS-158): mark the property as the model's version — stamped 0 on create, incremented by 1 on every write addressed to the node, and checked with `WHERE n.version = $expected` when the instance carries the version it was hydrated with. A mismatch (the node changed underneath you) throws `OptimisticLockError` — reload the entity and retry. Version is per node only: writes reached through another node's save (nested relationship targets) never bump it. Stack it with a type decorator (e.g. `@Number()`) for a declared type. Merges onto the existing property, so it can be stacked.
 
-Map-API reference:
+Map-API reference (alternative — not the default):
 
 - `defineModel` (function) — Register a model from a map-based schema definition (neode parity), returning the generated virtual class for the model.
 - `extendModel` (function) — neode's extend(): register `as` as a clone of the model `name` with `as` added as an extra label and `schema` merged over the original definition.

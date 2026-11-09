@@ -2,6 +2,8 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   extractDocs,
+  renderAgentsMd,
+  renderLlmsFull,
   renderLlmsTxt,
   renderPages,
   renderSkillMd,
@@ -126,5 +128,37 @@ describe('skills pack (NTS-163)', () => {
     expect(skill).toContain('v0.0.0-test')
     expect(skill).toContain('not training data')
     expect(skill).toContain("@Property({ type: 'string' })")
+  })
+})
+
+describe('decorators-first default (NTS-583)', () => {
+  const outputs: Array<[string, string]> = [
+    ['AGENTS.md', renderAgentsMd(docs, '0.0.0-test')],
+    ['llms.txt', renderLlmsTxt(docs, '0.0.0-test')],
+    ['llms-full.txt', renderLlmsFull(docs, '0.0.0-test')],
+    ['SKILL.md', renderSkillMd('0.0.0-test')],
+    ...renderPages(docs, '0.0.0-test').map((page) => [page.path, page.content] as [string, string]),
+  ]
+
+  it('states the decorators-default rule in every generated output', () => {
+    for (const [name, content] of outputs) {
+      expect(content, name).toContain('Default to decorators')
+      expect(content, name).toContain('`defineModel` (the')
+      expect(content, name).toContain('experimentalDecorators')
+      expect(content, name).toContain('reflect-metadata')
+    }
+  })
+
+  it('shows the rule before the model-definition guidance in AGENTS.md', () => {
+    const agents = renderAgentsMd(docs, '0.0.0-test')
+    expect(agents.indexOf('Default to decorators')).toBeLessThan(agents.indexOf('## Rules'))
+    expect(agents).not.toContain('Two equivalent APIs')
+  })
+
+  it('presents the map API as the alternative, decorators first', () => {
+    const skill = renderSkillMd('0.0.0-test')
+    expect(skill).not.toContain('Two equivalent APIs')
+    expect(skill.indexOf('@NodeEntity()')).toBeLessThan(skill.indexOf('defineModel('))
+    expect(skill).toContain('Alternative')
   })
 })

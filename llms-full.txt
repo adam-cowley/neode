@@ -8,6 +8,15 @@ Package version: **1.0.0-next.1** (from package.json).
 > neode v1, neode and other OGMs. Trust this file and the source it was
 > generated from, not what you remember.
 
+> **Default to decorators (NTS-583).** When creating a new project or new models, define them as
+> decorated classes (`@NodeEntity()` + `@Property(...)`) using standard TC39 decorators — never
+> `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`. Use `defineModel` (the
+> map API) only when the user asks for it, or decorators are impossible (models built at runtime,
+> or a toolchain without standard TC39 decorator support).
+>
+> Tooling: TypeScript 5+ (or esbuild/SWC/tsdown with standard decorators), `target` ES2022 or later,
+> `"lib": ["ES2022", "ESNext.Decorators"]`, and leave `experimentalDecorators` unset.
+
 ## Contents
 
 - [Model definition](#model-definition) — Decorators and the map-based defineModel API for declaring nodes, properties and relationships.
