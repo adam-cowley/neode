@@ -44,6 +44,10 @@ async function main(): Promise<number> {
       ...(cliArguments.labels !== undefined && { labels: cliArguments.labels }),
     })
 
+    for (const warning of result.warnings) {
+      process.stderr.write(`warning: ${warning}\n`)
+    }
+
     if (result.models.length === 0) {
       process.stderr.write('No node labels with data found — nothing to generate.\n')
 
