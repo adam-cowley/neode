@@ -1,7 +1,6 @@
 import { NodeEntity, OneToMany, OneToOne, Property } from '../../src/decorators'
 import { Direction } from '../../src/query'
-import { eagerNode } from '../../src/query/eager-utilities'
-import { parseLoadLevel } from '../../src/services/query/load-relation.service'
+import { eagerNode, parseLoadLevel } from '../../src/query/eager-utilities'
 import { getModel } from '../../src/meta'
 import { Builder } from '../../src/query'
 

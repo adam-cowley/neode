@@ -170,7 +170,7 @@ _source: neode.interface.ts_
 
 ### `InstanceLoadLevel` (type)
 
-The per-instance load spec (NTS-498): relationship key -> request. A key's value is `true` (load all), a LoadOptions object (order / skip / limit / withoutFilters — the NTS-558 options), or a nested spec object one more level down the declared relationship graph (`person.load({ pets: { toys: true } })`). The four option keys are reserved at every level: a relationship named exactly `order`, `skip`, `limit` or `withoutFilters` cannot be nested-loaded through the spec — the single-key load(key) form still reaches it. shortcut: without the NTS-154 model map the key domain is every non-method key of the entity type — plain property keys and relationship-entity keys type-check here and the runtime rejects them, naming the declared relationships at that level.
+The per-instance load spec (NTS-498): relationship key -> request. A key's value is `true` (load all), a LoadOptions object (order / skip / limit / withoutFilters — the NTS-558 options), or a nested spec object one more level down the declared relationship graph (`person.load({ pets: { toys: true } })`). The four option keys are reserved at every level: a relationship named exactly `order`, `skip`, `limit` or `withoutFilters` cannot be nested-loaded through the spec — the single-key load(key) form still reaches it. shortcut: the NTS-154 model map drives the QUERY-level `with` spec (QueryLoadSpec) — this instance surface keeps the every-non-method-key domain, because the map hangs off the constructor and `this` here is the instance; a map-checked instance spec needs a constructor→instance type link (see docs/decisions/0002-typing-eager-loads.md).
 
 _source: entity-methods.ts_
 

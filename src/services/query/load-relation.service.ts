@@ -6,7 +6,14 @@ import { getModel } from '../../meta/index.js'
 import type { Newable } from '../../meta/newable.js'
 import type { RelationshipPropertySchema } from '../../meta/relationship-property-schema.js'
 import { Builder } from '../../query/index.js'
-import { eagerNode, eagerNodeVariable, type ParsedLoadLevel } from '../../query/eager-utilities.js'
+import {
+  eagerNode,
+  eagerNodeVariable,
+  parseLoadLevel,
+  parseTargetSchema,
+  type ParsedLoadLevel,
+} from '../../query/eager-utilities.js'
+import type { LoadOptions } from '../../query/load-spec.js'
 import { applyOrder, type OrderSpec } from '../../query/order-spec.js'
 import { relationProperty } from '../../projection/projection.js'
 import { hydrateNode } from '../../utilities.js'
@@ -14,22 +21,6 @@ import { isNodeLike, isRecord } from '../type-guards.js'
 import { QueryService } from './query.service.js'
 import { applyReadFilters, type ReadFilterOptions } from './filters.js'
 import type { Runner } from '../../driver/types.js'
-
-/**
-Traversal options for a lazy relation load (`instance.load(key, options)`,
-NTS-558): pushed into the traversal's ORDER BY / SKIP / LIMIT — the sorted
-and truncated related reads that otherwise drop callers to a raw Builder
-(e.g. newest-20 history).
-*/
-export interface LoadOptions {
-  order?: OrderSpec
-  skip?: number
-  limit?: number
-  /**
-  Named read filters to disable for this load (NTS-162)
-  */
-  withoutFilters?: string[]
-}
 
 /**
 The related() scope surface (NTS-497): Builder-style verbs composed on
@@ -75,124 +66,6 @@ interface RelatedReadState {
   nodeVariable: string
   targetSchema: EntitySchema
   target: Newable
-}
-
-/**
-The registered node-entity schema a relationship's spec level parses
-against — unregistered and relationship-entity targets throw the
-descriptive load errors (the same texts relatedRead raises for the
-single-key path).
-*/
-function parseTargetSchema(
-  schema: EntitySchema,
-  relationship: RelationshipPropertySchema,
-): EntitySchema {
-  const key = relationship.getKey()
-
-  const target = relationship.getTarget()
-  // getModel declares non-nullable but returns undefined for
-  // unregistered models — cast to the checked edge (as relatedRead does)
-  const targetSchema = getModel(target) as EntitySchema | undefined
-
-  if (targetSchema === undefined) {
-    throw new NeodeError(
-      `${schema.getLabels()[0] ?? 'entity'}.${key} targets an unregistered model — cannot load '${key}'`,
-    )
-  }
-
-  if (targetSchema.getType() === EntityType.RelationshipEntity) {
-    throw new NeodeError(
-      `${schema.getLabels()[0] ?? 'entity'}.${key} targets a relationship entity — ` +
-        'the load spec hydrates node models only',
-    )
-  }
-
-  return targetSchema
-}
-
-/**
-The OrderSpec forms a spec level's `order` key accepts — the same shapes
-all() / load(key, { order }) take. Entries apply as-is: a malformed entry
-renders no ORDER BY term, as applyOrder treats any non-term.
-*/
-function isOrderSpec(value: unknown): value is OrderSpec {
-  return (
-    typeof value === 'string' ||
-    (Array.isArray(value) &&
-      value.every((entry) => typeof entry === 'string' || isRecord(entry))) ||
-    isRecord(value)
-  )
-}
-
-/**
-Parse and validate one level of a per-instance load spec (NTS-498) against
-the declared relationship graph. `true` is the plain level (load all); a
-spec object's reserved keys (`order` / `skip` / `limit` / `withoutFilters`)
-are the level's traversal options and every other key must name a
-relationship declared on the level's schema — the value descends one more
-level down. Unknown keys throw the schema's descriptive error, naming the
-valid relationships at that level.
-
-shortcut: a relationship named exactly one of the reserved keys cannot be
-nested-loaded through the spec — single-key load(key) still reaches it.
-*/
-export function parseLoadLevel(schema: EntitySchema, value: unknown): ParsedLoadLevel {
-  if (value === true) {
-    return { nested: new Map() }
-  }
-
-  if (!isRecord(value)) {
-    throw new NeodeError(
-      `The load spec entry on ${schema.getLabels().join(':') || 'entity'} ` +
-        'must be true or a spec object of relationship keys',
-    )
-  }
-
-  const level: ParsedLoadLevel = { nested: new Map() }
-
-  for (const [key, child] of Object.entries(value)) {
-    if (key === 'order') {
-      if (!isOrderSpec(child)) {
-        throw new NeodeError(
-          'The load spec "order" must be an OrderSpec — a property name, a list, or a property -> direction map',
-        )
-      }
-
-      level.order = child
-
-      continue
-    }
-
-    if (key === 'skip' || key === 'limit') {
-      if (typeof child !== 'number') {
-        throw new NeodeError(`The load spec "${key}" must be a number`)
-      }
-
-      level[key] = child
-
-      continue
-    }
-
-    if (key === 'withoutFilters') {
-      if (!Array.isArray(child) || child.some((name) => typeof name !== 'string')) {
-        throw new NeodeError('The load spec "withoutFilters" must be an array of filter names')
-      }
-
-      level.withoutFilters = child
-
-      continue
-    }
-
-    // Throws the schema's descriptive error naming the valid
-    // relationships when the key is undeclared
-    const relationship = schema.getRelationship(key)
-
-    const targetSchema = parseTargetSchema(schema, relationship)
-
-    level.nested.set(key, parseLoadLevel(targetSchema, child))
-  }
-
-  return level
 }
 
 /**

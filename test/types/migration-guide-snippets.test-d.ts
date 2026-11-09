@@ -315,9 +315,13 @@ export function events(neode: Neode): void {
 
 describe('migration guide snippets', () => {
   it('facade queries return plain arrays of entities, not a Collection', () => {
-    const all = Neode.prototype['all']<Person>
+    async function probe(neode: Neode): Promise<void> {
+      const people = await neode.all(Person, {}, 'name')
 
-    expectTypeOf(all).returns.toEqualTypeOf<Promise<Person[]>>()
+      expectTypeOf(people).toEqualTypeOf<Person[]>()
+    }
+
+    expectTypeOf(probe).returns.toEqualTypeOf<Promise<void>>()
   })
 
   it('the builder builds a query plus parameters', () => {

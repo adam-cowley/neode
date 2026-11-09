@@ -6,7 +6,13 @@
  * position would be evaluated at runtime.
  */
 import { describe, expectTypeOf, it } from 'vitest'
-import type { LoadSpec, ReadOptions, RelationQuery, WithSpec } from '../../src/query/load-spec.js'
+import type {
+  LoadSpec,
+  QueryLoadLevel,
+  ReadOptions,
+  RelationQuery,
+  WithSpec,
+} from '../../src/query/load-spec.js'
 import type { FindOptions } from '../../src/repository/index.js'
 import { Builder } from '../../src/query/index.js'
 
@@ -69,7 +75,9 @@ describe('the `with` load spec (NTS-560)', () => {
       with: { orders: (relation) => relation.orderBy('orderDate', 'DESC').limit(2) },
     }
 
-    expectTypeOf(options.with).toEqualTypeOf<WithSpec<SpecCustomer> | undefined>()
+    // NTS-154 refined the spec type: nested levels + the object/array-key
+    // filter (LoadOptions trim keys included), replacing the flat WithSpec
+    expectTypeOf(options.with).toEqualTypeOf<QueryLoadLevel<SpecCustomer> | undefined>()
 
     // @ts-expect-error — unknown relationship keys are rejected here too
     const wrong: FindOptions<SpecCustomer> = { with: { orderz: true } }
