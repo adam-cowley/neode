@@ -82,7 +82,11 @@ export type {
   RelationQuery,
   WithSpec,
 } from './query/load-spec.js'
-export type { ManyAndCount, FindManyAndCountOptions, StreamOptions } from './services/query/paginate.service.js'
+export type {
+  ManyAndCount,
+  FindManyAndCountOptions,
+  StreamOptions,
+} from './services/query/paginate.service.js'
 
 // Wipe option plumbing (the documented surface passes literals)
 export type { WipeFailure, WipeOptions } from './testing/index.js'
