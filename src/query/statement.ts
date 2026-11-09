@@ -19,6 +19,8 @@ export class Statement {
   private readonly onMatchSetValues: SetClause[] = []
   private readonly valuesToRemove: string[] = []
   private readonly callValues: string[] = []
+  private pathVariable?: string
+  private distinctReturn = false
 
   private limitValue?: number
   private skipValue?: number
@@ -29,6 +31,17 @@ export class Statement {
 
   match(match: Match | Relationship): this {
     this.pattern.push(match)
+
+    return this
+  }
+
+  /**
+  Bind the segment's whole pattern to a path variable (`MATCH p = <pattern>`,
+  NTS-593) — the handle variable-length hops read their mid-path nodes
+  through (`all(n IN tail(nodes(p)) WHERE …)`)
+  */
+  asPath(variable: string): this {
+    this.pathVariable = variable
 
     return this
   }
@@ -67,6 +80,16 @@ export class Statement {
     this.returnValues.push(...values)
 
     return this
+  }
+
+  /**
+  `RETURN DISTINCT <values>` (NTS-593): variable-length hops fan out one row
+  per path — DISTINCT collapses the paths that reach the same nodes
+  */
+  returnDistinct(...values: string[]): this {
+    this.distinctReturn = true
+
+    return this.return(...values)
   }
 
   set(key: string, value: string, operator = '='): this {
@@ -130,7 +153,12 @@ export class Statement {
     if (this.pattern.length > 0) {
       const pattern = this.pattern.map((pattern) => pattern.toString()).join('')
 
-      output.push(shouldIncludePrefix ? `${this.prefix} ${pattern}` : pattern)
+      // The path binding is part of the MATCH keyword form — a bare pattern
+      // (pattern()) renders without it
+      const binding =
+        shouldIncludePrefix && this.pathVariable !== undefined ? `${this.pathVariable} = ` : ''
+
+      output.push(shouldIncludePrefix ? `${this.prefix} ${binding}${pattern}` : pattern)
     }
 
     if (this.whereClauses.length > 0) {
@@ -191,7 +219,7 @@ export class Statement {
     }
 
     if (this.returnValues.length > 0) {
-      output.push(`RETURN ${this.returnValues.join(', ')}`)
+      output.push(`RETURN ${this.distinctReturn ? 'DISTINCT ' : ''}${this.returnValues.join(', ')}`)
     }
 
     if (this.orderClauses.length > 0) {
