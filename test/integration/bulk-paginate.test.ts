@@ -538,6 +538,42 @@ describe('paginate', () => {
       expect(page.hasMore).toBe(false)
     })
 
+    it('completes the walk when some rows lack the cursor key (NTS-592)', async () => {
+      // Four rows, three with the key removed. The old walk took a null
+      // boundary into the cursor ('[null, …]') and the next page crashed
+      // on datetime('[null, …]') — or stopped silently on a non-temporal
+      // key. Null-key rows are now excluded deterministically: the walk
+      // covers the set-key rows and ends cleanly.
+      await new BulkService(backend.connection).createMany(
+        BulkPerson,
+        schema(),
+        Array.from({ length: 4 }, (_, i) => ({ name: `Person ${i}`, visits: i })),
+      )
+
+      await backend.connection.run(
+        "MATCH (p:BulkPerson) WHERE p.name <> 'Person 0' REMOVE p.createdAt",
+      )
+
+      // createMany does not stamp @DateTime — set the one key explicitly
+      await backend.connection.run(
+        'MATCH (p:BulkPerson { name: $name }) SET p.createdAt = datetime($when)',
+        { name: 'Person 0', when: '2026-01-01T00:00:00Z' },
+      )
+
+      const seen: BulkPerson[] = []
+
+      for await (const person of paginate.lazy<BulkPerson>(
+        BulkPerson,
+        schema(),
+        {},
+        { limit: 2, orderBy: 'createdAt' },
+      )) {
+        seen.push(person)
+      }
+
+      expect(seen.map((person) => person.name)).toEqual(['Person 0'])
+    })
+
     it('rejects an unknown cursor property and ambiguous options', async () => {
       await expect(
         paginate.paginate(BulkPerson, schema(), {}, { limit: 2, orderBy: 'nope' }),
