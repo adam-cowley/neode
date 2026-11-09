@@ -12,7 +12,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import EsmNeode, { fromEnv, getModel } from '../../dist/index.mjs'
+import EsmNeode, { fromEnv, getModelByName } from '../../dist/index.mjs'
 
 const require = createRequire(import.meta.url)
 const cjs = require('../../dist/index.cjs') as typeof import('../../dist/index.mjs')
@@ -45,13 +45,13 @@ describe('built dist: withDirectory', () => {
   it('registers models from a directory in the ESM build', () => {
     const neode = new EsmNeode({} as never).withDirectory(directory)
 
-    expect(getModel(neode.model('DistDirEsm')).getProperty('name').getType()).toBeDefined()
+    expect(getModelByName('DistDirEsm')).toBeDefined()
   })
 
   it('registers models from a directory in the CJS build', () => {
     const neode = new cjs.default({} as never).withDirectory(directory)
 
-    expect(cjs.getModel(neode.model('DistDirCjs')).getProperty('name').getType()).toBeDefined()
+    expect(cjs.getModelByName('DistDirCjs')).toBeDefined()
   })
 })
 

@@ -101,35 +101,17 @@ Options for the unified raw query entry, `Neode#cypher`.
 
 _source: driver/types.ts_
 
-### `DeclaredRelationships` (type)
-
-The declared relationship map of a model constructor (NTS-154), read off the class's phantom `neodeRelationships` static — `undefined` when the model declares none (the `with` spec then falls back to the inferred object/array-key domain, see QueryLoadLevel). TS cannot read the TC39 decorator context's field registrations at the type level (no `emitDecoratorMetadata` in this repo — decision 0001), so the map is the one declaration the author adds per model. The runtime EntitySchema stays the source of truth: a key the map misses is rejected by the runtime validation with the same descriptive error as before.
-
-_source: query/load-spec.ts_
-
 ### `Direction` (const)
 
 Direction of a relationship pattern. BOTH renders an undirected match pattern (`-[r:TYPE]-`), matching relationships of the type in either direction. Undirected is match-only: Neo4j cannot create a relationship without a direction, so the write paths (relate / create / save) reject BOTH with a descriptive error — set OUTGOING or INCOMING to write (NTS-483). Accepts the legacy case-insensitive 'IN' / 'OUT' / 'BOTH' spellings anywhere a direction is taken.
 
 _source: query/direction.ts_
 
-### `EdgeFindResult` (type)
-
-The find() result of an edge-returning read, mirroring the cardinality of the plain FindResult: `RelationshipEdgeRead<T>[]` for a many-key, `RelationshipEdgeRead<T> | undefined` for a one-key. Tuple-wrapped so a union FindResult (`T | undefined`) never distributes. The row shape itself (RelationshipEdgeRead) lives in the one result-shaping module (NTS-566).
-
-_source: services/query/load-relation.service.ts_
-
 ### `EventType` (const)
 
 Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neode.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() when the merge created the node, createMany() | hydrated entity | | NODE_UPDATED | save() when the merge matched an existing node, update(), the label writes (addLabel / removeLabel / soft delete) | hydrated entity | | NODE_MERGED | mergeOn() (also behind merge(), Repository#upsert and mergeMany()) | hydrated entity | | NODE_DELETED | delete() (hard deletes), deleteAll() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
 
 _source: common/events.ts_
-
-### `FindManyAndCountOptions` (interface)
-
-findManyAndCount() options — they trim the data read only; `total` always counts the whole filter (Prisma parity)
-
-_source: services/query/paginate.service.ts_
 
 ### `GraphNode` (interface)
 
@@ -167,12 +149,6 @@ Hydrate one row of a projection read (NTS-135/136/137/138). The RETURN map proje
 
 _source: projection/hydrate.ts_
 
-### `HydrateQueryOptions` (interface)
-
-Options for the hydrate overloads of the build-and-run sugar, `Neode#read` / `Neode#write` (NTS-559): with a `hydrate` class the rows are hydrated into entities of that class instead of returned raw.
-
-_source: driver/types.ts_
-
 ### `instrumentConnectionProvider` (function)
 
 Instrument a provider transparently: property reads the wrapper doesn't satisfy — duck-typed introspection such as `connection.database` on the neo4j provider — forward to the inner provider, so consumers holding `Neode#getConnection()` see through the instrumentation.
@@ -207,27 +183,11 @@ _source: services/query/knn.service.ts_
 
 _source: query/label-predicate.ts_
 
-### `LoadedEntity` (type)
+### `MAX_CASCADE_DEPTH` (const)
 
-_source: query/load-spec.ts_
+Maximum depth of the self-referential cascade walk — the delete-path counterpart of MAX_TRAVERSE_DEPTH (traverse) and MAX_CREATE_DEPTH (services/write-utilities). Overridable per call with the `depth` option of (NTS-595).
 
-### `LoadOptions` (interface)
-
-Traversal options for a lazy relation load (`instance.load(key, options)`, NTS-558): pushed into the traversal's ORDER BY / SKIP / LIMIT — the sorted and truncated related reads that otherwise drop callers to a raw Builder.
-
-_source: query/load-spec.ts_
-
-### `LoadSpec` (type)
-
-One entry of a load spec (NTS-560): a callback decorating the relation's read. `true` (a plain request) is also accepted at the `with` key.
-
-_source: query/load-spec.ts_
-
-### `ManyAndCount` (interface)
-
-Non-paginated `{ items, total }` read (Prisma's findManyAndCount)
-
-_source: services/query/paginate.service.ts_
+_source: services/query/delete.service.ts_
 
 ### `Neo4jConnectionProvider` (class)
 
@@ -289,18 +249,6 @@ Payload of QUERY_EXECUTED, emitted once per executed statement.
 
 _source: common/events.ts_
 
-### `QueryLoadLevel` (type)
-
-One nested level of a `with` load spec, keyed off the entity's DECLARED FIELD types (no map entry required): the LoadOptions trim keys (order / skip / limit / withoutFilters) sit beside the relationship keys, exactly the object `parseLoadLevel` (NTS-498) reads at runtime — a relationship named exactly like a reserved option key is unusable in the spec, as the runtime reserves it. Relationship keys descend recursively through the declared field types: an array field loads many (`Item[]` in the narrowed return), an entity field loads one (`Item | undefined`).
-
-_source: query/load-spec.ts_
-
-### `QueryLoadSpec` (type)
-
-The `with` load spec checked against the type-level model map (NTS-154), keyed by the model CONSTRUCTOR: - with a `neodeRelationships` phantom static: the spec's keys must be DECLARED RELATIONSHIPS (`keyof` the map entry, intersected with the class's own fields) — property keys, method keys and typos are type errors; - without one: the inferred fallback domain (QueryLoadLevel) — keys whose declared field type can hold related entities. Every level also accepts the LoadOptions trim keys and descends through the declared field types, mirroring parseLoadLevel at runtime.
-
-_source: query/load-spec.ts_
-
 ### `QueryOutput` (interface)
 
 A query result, independent of the underlying client.
@@ -331,77 +279,17 @@ A raw Cypher expression used as an inline pattern property value (NTS-460): rend
 
 _source: query/expressions.ts_
 
-### `readFilterFragment` (function)
-
-The raw WHERE fragment for the read paths that write their statements by hand (keyset pagination, full-text search, kNN): the active clauses joined with AND, plus the parameters to merge into the statement's parameters.
-
-_source: services/query/filters.ts_
-
-### `ReadFilterOptions` (interface)
-
-Per-query filter options, accepted by every filtered read (NTS-162): - `withoutFilters` — disable named filters for this query only; each name is independent (disabling one leaves the others active, EF named-filter model). `softDelete` names the built-in
-
-_source: services/query/filters.ts_
-
-### `ReadOptions` (interface)
-
-Options for the model reads that accept a load spec (NTS-560).
-
-_source: query/load-spec.ts_
-
-### `RelateConnectionOptions` (interface)
-
-Options for the embedded Relate provider.
-
-_source: driver/relate.ts_
-
 ### `RelateConnectionProvider` (class)
 
 ConnectionProvider over the embedded Relate engine (@relate/relate) — in-process, no Bolt server. The engine is a soft dependency, loaded at construction time; the client shapes are structural so it stays that way.
 
 _source: driver/relate.ts_
 
-### `RelatedQuery` (class)
-
-The scope instance.related(key) returns (NTS-497): the queryable generalisation of load() — Builder-style verbs (where / orderBy / limit / skip) composed ON TOP of the relationship traversal, with the terminal find() / first() / count() running it and hydrating the related entities through the regular hydration path (projection-aware: nested eager relationships ride the eager map projection, as at load()). The related target's own global filters (NTS-162) apply inside the traversal read — a filtered-out target yields an empty result, never an error, and the parent row is never affected (plain MATCH — no OPTIONAL MATCH, NTS-565). NTS-499 extends the scope with relationship-aware reads: whereRelationship() filters on the EDGE's own properties (the predicate joins the traversal's WHERE, composed with the target predicates of where()), and withRelationship() returns each row as `{ node, edge }` — the hydrated target alongside the traversed GraphRelationship. Both ride the same flat MATCH: no new clause shapes, no OPTIONAL MATCH. The typed view of the scope is the RelatedScope interface, projected through EntityMethods.related — the class is the runtime engine, its terminals answering `unknown` exactly as MethodImpl.load does. Each terminal runs its own READ scope: verbs are recorded at chain time and replayed onto a fresh traversal per terminal. count() counts the matching related nodes — the row-shaping verbs (order / skip / limit) do not affect it, as with a total alongside a paged read.
-
-_source: services/query/load-relation.service.ts_
-
-### `RelatedScope` (interface)
-
-The related() scope surface (NTS-497): Builder-style verbs composed on top of one declared relationship traversal, with the terminals running the composed statement. Property names are bare ("year") — the scope prefixes them with the related node's variable, exactly as RelationQuery does at load-spec replay (NTS-560). Every verb returns the scope for chaining. `T` is the related entity type; `FindResult` is what find() resolves to — `T[]` for a many-key, `T | undefined` for a one-key (the declared relationship property's own type).
-
-_source: services/query/load-relation.service.ts_
-
-### `RelationQuery` (interface)
-
-The sub-builder a load spec callback receives (NTS-560): the comprehension / subquery-legal operations only — where, orderBy, limit, skip. No return(), no writes, no statement segments. Property names are bare ("orderDate") — the loader prefixes them with the related node's variable. Every method returns the view for chaining.
-
-_source: query/load-spec.ts_
-
-### `RelationshipEdgeRead` (interface)
-
-One result row of an edge-returning related() read (NTS-499): the hydrated related entity (`node`) alongside the traversed relationship itself (`edge`, the normalized GraphRelationship — type, elementId, endpoints and properties). The seed of the NTS-566 result-shape contract: flat, named, no wrapper classes.
-
-_source: services/query/shape.ts_
-
-### `RelationshipSerialisationOptions` (interface)
-
-Relationship serialisation control for toJson() (NTS-564): which of the entity's declared relationships serialise, and how many levels deep. - `include` — opt-in: only these declared relationships serialise. A declared key that is not loaded on the instance serialises nothing (toJson never reads the database — load first via `with` / load()). - `exclude` — opt-out: every loaded relationship except these. - `depth` — how many relationship LEVELS serialise (1 = the entity's own relationships, nested entities serialise their properties only); omit for unlimited (the default). Values below 1 serialise no relationships. Keys in include / exclude must be declared relationships — unknown keys throw the schema's descriptive error naming the valid relationship keys (the NTS-498 pattern). Both lists apply to the serialised entity's own relationships; `depth` is what bounds the nesting below it.
-
-_source: serialise.ts_
-
 ### `Repository` (class)
 
 Active-record style data-access repository for one registered model — constructor-generic over the model CONSTRUCTOR (NTS-563): the `with` load spec of find / findAll is map-checked against the model's `neodeRelationships` phantom static and the returns narrow, the same with() contract as the facade paths (NTS-154) — the TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
 
 _source: repository/index.ts_
-
-### `requireRelateClient` (function)
-
-Resolve the Relate client module and native library. The client is not yet published to npm, so it is loaded from disk: 1. `RELATE_CLIENT_PATH` env var, or 2. the sibling `relate` repository checkout (`../relate/clients/javascript`) The native library location is passed through via `RELATE_LIB` (see the Relate client's loader) — detected automatically here when a sibling repository checkout exists.
-
-_source: driver/relate.ts_
 
 ### `Runner` (interface)
 
@@ -427,12 +315,6 @@ Set the process-wide DEFAULT for the parameter a named filter's `where` referenc
 
 _source: services/query/filters.ts_
 
-### `StreamOptions` (interface)
-
-lazy() options — the keyset walk behind cursor pagination
-
-_source: services/query/paginate.service.ts_
-
 ### `SyncEdgesOptions` (interface)
 
 Options for syncEdges (NTS-161): `properties` is applied to the edges NEWLY related by the sync — common edges are left untouched.
@@ -442,10 +324,6 @@ _source: services/query/sync.service.ts_
 ### `SyncEdgesResult` (interface)
 
 What a sync did: how many edges were related and how many detached (zero and zero for a no-op sync — nothing is written)
-
-_source: services/query/sync.service.ts_
-
-### `SyncService` (class)
 
 _source: services/query/sync.service.ts_
 
@@ -467,12 +345,6 @@ Convert an entity into a JSON friendly object: plain properties (hidden, protect
 
 _source: serialise.ts_
 
-### `ToJsonOptions` (interface)
-
-Options for toJson() (NTS-564). Every key is optional — a call without options serialises exactly as before.
-
-_source: serialise.ts_
-
 ### `TransactionalService` (class)
 
 The INeode surface scoped to one open transaction: every read/write runs through the TransactionHandle opened by `Neode#beginTransaction` until its commit/rollback, with the facade's model methods (create, merge, relate, …) mirrored inside that scope. The close endpoints are safe to sequence: a second commit() is a no-op and a rollback after a commit does nothing (the managed scopes commit on success), while a commit after a rollback throws.
@@ -490,12 +362,6 @@ _source: transaction/errors.ts_
 An explicit transaction: statements run in scope until commit/rollback.
 
 _source: driver/types.ts_
-
-### `TransactionOptions` (interface)
-
-Options for `Neode#transaction` — routing and database are per transaction (the transaction's session decides them once at open time).
-
-_source: transaction/ambient.ts_
 
 ### `valueToJson` (function)
 
@@ -520,9 +386,3 @@ _source: services/query/filters.ts_
 The reserved withoutFilters entry that disables EVERY named filter for the query — the write paths' internal re-hydration (save / create / merge use FindByIdService to re-read the row they just wrote) must find rows the current filter view hides. Filters are a read policy; writes never read through them.
 
 _source: services/query/filters.ts_
-
-### `WithSpec` (type)
-
-The `with` load spec on find / findAll / all (NTS-560): relationship key -> request. Keys must name relationships declared on the model — unknown keys are rejected at compile time when the model type is known and throw a NeodeError at runtime.
-
-_source: query/load-spec.ts_

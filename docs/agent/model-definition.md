@@ -129,31 +129,17 @@ Named global filter (NTS-162): declare a named read filter on the model and it a
 
 _source: decorators/node/filter.decorator.ts_
 
-### `FilterDefinition` (interface)
-
-One named global filter (NTS-162), declared with
-
-_source: meta/entity/entity-schema.ts_
-
 ### `Float` (decorator)
 
 Register a float property.
 
 _source: decorators/node/float.decorator.ts_
 
-### `getModel` (function)
-
-_source: meta/index.ts_
-
 ### `getModelByName` (function)
 
 Get a previously defined model constructor by name
 
 _source: meta/map-schema.ts_
-
-### `getModels` (function)
-
-_source: meta/index.ts_
 
 ### `getModelsByName` (function)
 
@@ -182,12 +168,6 @@ _source: decorators/node/index.decorator.ts_
 The public API surface of the Neode facade, as implemented by both the facade (autocommit scope) and TransactionalService (one open transaction). Accept this type when a function should work over either scope.
 
 _source: neode.interface.ts_
-
-### `InstanceLoadLevel` (type)
-
-The per-instance load spec (NTS-498): relationship key -> request. A key's value is `true` (load all), a LoadOptions object (order / skip / limit / withoutFilters — the NTS-558 options), or a nested spec object one more level down the declared relationship graph (`person.load({ pets: { toys: true } })`). The four option keys are reserved at every level: a relationship named exactly `order`, `skip`, `limit` or `withoutFilters` cannot be nested-loaded through the spec — the single-key load(key) form still reaches it. shortcut: the NTS-154 model map drives the QUERY-level `with` spec (QueryLoadSpec) — this instance surface keeps the every-non-method-key domain, because the map hangs off the constructor and `this` here is the instance; a map-checked instance spec needs a constructor→instance type link (see docs/decisions/0002-typing-eager-loads.md).
-
-_source: entity-methods.ts_
 
 ### `InternalId` (decorator)
 
@@ -373,12 +353,6 @@ Read-model projection definitions (NTS-135/136/137/138) — the map-based API fo
 
 _source: meta/schema-definition.interface.ts_
 
-### `RelationshipCardinality` (type)
-
-How many edges a relationship may hold from one node (NTS-161): `one` (exactly one — enforced as at-most-one at write time), `zeroOrOne` (at most one, none is fine) or `many` (unrestricted — the default). Read paths are untouched: cardinality is a write-time guard.
-
-_source: meta/relationship-property-schema.ts_
-
 ### `RelationshipConfig` (interface)
 
 _source: decorators/relationship-config.interface.ts_
@@ -514,12 +488,6 @@ _source: decorators/node/updated-at.decorator.ts_
 Register a UUID property: validated as a UUID string, defaulting to a random UUID v4 on create (an explicit `config.default` wins).
 
 _source: decorators/node/uuid.decorator.ts_
-
-### `ValidationRules` (interface)
-
-Validation rules accepted on a property definition (neode's Joi rule names, ported in src/validation/rule-table.ts). Every non-metamodel key of a map-schema property definition travels to the validator as a rule (mergeProperty persists it via PropertySchema#setRules), so these are the keys the published map API accepts alongside the structural options. Rules are applied on top of the property's base type: a rule the base type does not support throws at validation time (rule-table's failUnsupported), and boolean rules must be exactly `true`.
-
-_source: meta/schema-definition.interface.ts_
 
 ### `Vector` (decorator)
 

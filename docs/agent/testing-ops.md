@@ -109,18 +109,6 @@ Wipe the database clean for a test run: DETACH DELETE every node (batched, `CALL
 
 _source: testing/wipe.ts_
 
-### `WipeFailure` (interface)
-
-One schema object wipe() tried to drop and could not
-
-_source: testing/wipe.ts_
-
-### `WipeOptions` (interface)
-
-Guard options for wipe() (NTS-578). wipe() is destructive on whatever database the runner points at, so it refuses to run without an explicit opt-in.
-
-_source: testing/wipe.ts_
-
 ### `WipeReport` (interface)
 
 What wipe() did. Returned instead of `void` (NTS-578): awaiting wipe() and ignoring the result keeps working.
