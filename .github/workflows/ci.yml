@@ -64,8 +64,13 @@ jobs:
       # The tarball must ship dist/ (git-dep installs depend on `prepare`)
       - name: Packed tarball includes dist/
         run: |
-          npm pack --dry-run --ignore-scripts --json > pack.json
-          node -e "const f=JSON.parse(require('fs').readFileSync('pack.json','utf8'))[0].files.map(x=>x.path);for(const p of ['dist/index.mjs','dist/index.cjs','dist/index.d.mts'])if(!f.includes(p)){console.error('missing '+p);process.exit(1)}"
+          # npm 10 (Node 22) still runs `prepare` for pack and its build output
+          # lands on stdout, so read the file listing npm prints on stderr
+          # rather than parsing --json.
+          npm pack --dry-run 2> pack.txt > /dev/null
+          for p in dist/index.mjs dist/index.cjs dist/index.d.mts; do
+            grep -q " $p\$" pack.txt || { echo "missing $p"; cat pack.txt; exit 1; }
+          done
 
   # Real Neo4j servers via Testcontainers, over the supported server line.
   # Relate (embedded) needs its FFI client built locally (cargo build -p
