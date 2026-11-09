@@ -4,7 +4,7 @@ import type { EntitySchema } from '../meta/entity/entity-schema.js'
 import { EntityType } from '../meta/entity/entity-schema.js'
 import type { RelationshipPropertySchema } from '../meta/relationship-property-schema.js'
 import { NeodeError } from '../errors/index.js'
-import { applyOrder, type OrderSpec } from './order-spec.js'
+import { applyOrder, orderTerms, type OrderSpec } from './order-spec.js'
 import { applyReadFilters, type ReadFilterOptions } from '../services/query/filters.js'
 import { isRecord } from '../services/type-guards.js'
 
@@ -197,6 +197,9 @@ export function parseLoadLevel(schema: EntitySchema, value: unknown): ParsedLoad
           'The load spec "order" must be an OrderSpec — a property name, a list, or a property -> direction map',
         )
       }
+
+      // Validate eagerly so a hostile direction / field fails at parse time
+      orderTerms(child, 'x')
 
       level.order = child
 

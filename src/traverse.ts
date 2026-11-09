@@ -5,7 +5,14 @@ import { hydrateNode } from './utilities.js'
 import { isGraphNode } from './services/type-guards.js'
 import { Builder, type Direction } from './query/index.js'
 import type { GraphNode, QueryOutput } from './driver/types.js'
-import { quote } from './query/quote.js'
+import {
+  assertAlias,
+  assertCount,
+  assertReference,
+  assertDirection,
+  assertDegrees,
+  quote,
+} from './query/quote.js'
 import { applyReadFilters, type ReadFilterOptions } from './services/query/filters.js'
 
 /**
@@ -174,7 +181,7 @@ export class TraverseBuilder {
     }
 
     if (degrees !== undefined) {
-      hop.degrees = degrees
+      hop.degrees = assertDegrees(degrees)
     }
 
     this.hops.push(hop)
@@ -209,7 +216,9 @@ export class TraverseBuilder {
   origin order already contains).
   */
   exclude(fromAlias: string, type: string, toAlias: string): this {
-    this.exclusions.push(`NOT (${fromAlias})-[:${quote(type)}]->(${toAlias})`)
+    this.exclusions.push(
+      `NOT (${assertAlias(fromAlias, 'exclude()')})-[:${quote(type)}]->(${assertAlias(toAlias, 'exclude()')})`,
+    )
 
     return this
   }
@@ -228,7 +237,10 @@ export class TraverseBuilder {
   "how many distinct paths reach the end through this node").
   */
   countDistinct(alias: string, as: string): this {
-    this.countSpec = { alias, as }
+    this.countSpec = {
+      alias: assertAlias(alias, 'countDistinct()'),
+      as: assertAlias(as, 'countDistinct()'),
+    }
 
     return this
   }
@@ -237,6 +249,12 @@ export class TraverseBuilder {
   Order the result rows (aggregate alias or node property).
   */
   orderBy(field: string, order?: 'ASC' | 'DESC'): this {
+    assertReference(field, 'orderBy()')
+
+    if (order !== undefined) {
+      assertDirection(order, 'orderBy()')
+    }
+
     this.orderSpec = order === undefined ? { field } : { field, order }
 
     return this
@@ -246,7 +264,7 @@ export class TraverseBuilder {
   Cap the number of returned rows.
   */
   limit(limit: number): this {
-    this.limitCount = limit
+    this.limitCount = assertCount(limit, 'limit')
 
     return this
   }

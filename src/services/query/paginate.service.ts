@@ -1,4 +1,5 @@
 import { Builder } from '../../query/index.js'
+import { assertCount } from '../../query/quote.js'
 import { THIS_NODE } from '../../constants.js'
 import type { QueryParams as QueryParameters, QueryRecord } from '../../driver/types.js'
 import { hydrate } from '../../hydrate.js'
@@ -427,7 +428,7 @@ export class PaginateService extends QueryService {
       conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '',
       `ORDER BY ${THIS_NODE}.${key} ${isForward ? 'ASC' : 'DESC'}, elementId(${THIS_NODE}) ${isForward ? 'ASC' : 'DESC'}`,
       // One row over the page size answers hasMore
-      `LIMIT ${String(limit + 1)}`,
+      `LIMIT ${String(assertCount(limit, 'limit') + 1)}`,
       `RETURN ${THIS_NODE}`,
     ]
       .filter((line) => line.length > 0)

@@ -7,6 +7,7 @@ import type { PropertySchema } from '../meta/property-schema.js'
 import { PropertyType } from '../meta/property-schema.js'
 import type { OrderSpec } from '../services/query/get.service.js'
 import { NeodeError } from '../errors/index.js'
+import { assertDirection, propertyReference } from '../query/quote.js'
 import { loadSpecCalls, projectionNode } from './projection.js'
 import { shapeProjectionRows } from '../services/query/shape.js'
 import { applyReadFilters, type ReadFilterOptions } from '../services/query/filters.js'
@@ -119,7 +120,7 @@ function applyFilters(
         bindTraversal(sub, property, alias, filters)
 
         for (const [field, fieldValue] of Object.entries(value)) {
-          sub.where(`${alias}.${field}`, fieldValue)
+          sub.where(propertyReference(alias, field), fieldValue)
         }
 
         return sub
@@ -157,8 +158,8 @@ function collectedSort(
   return `${builder.collectExpr(
     (sub) => {
       bindTraversal(sub, property, sortAlias, filters)
-      sub.return(`${sortAlias}.${field}`)
-      sub.orderBy(`${sortAlias}.${field}`)
+      sub.return(propertyReference(sortAlias, field))
+      sub.orderBy(propertyReference(sortAlias, field))
 
       return sub
     },
@@ -184,19 +185,22 @@ function collectOrder(
   }
 
   if (typeof order === 'string') {
-    keys.push({ expression: `${THIS_NODE}.${order}`, order: '' })
+    keys.push({ expression: propertyReference(THIS_NODE, order), order: '' })
   } else if (Array.isArray(order)) {
     for (const entry of order) {
       collectOrder(builder, entry, schema, keys, bindings, filters)
     }
   } else if ('field' in order && typeof order.field === 'string') {
-    keys.push({ expression: `${THIS_NODE}.${order.field}`, order: order.order ?? '' })
+    keys.push({
+      expression: propertyReference(THIS_NODE, order.field),
+      order: assertDirection(order.order ?? ''),
+    })
   } else {
     for (const [key, field] of Object.entries(order as Record<string, string>)) {
       const property = schema.hasProperty(key) ? schema.getProperty(key) : undefined
 
       if (property === undefined || !isRelatedProjection(property)) {
-        keys.push({ expression: `${THIS_NODE}.${key}`, order: field })
+        keys.push({ expression: propertyReference(THIS_NODE, key), order: assertDirection(field) })
 
         continue
       }
