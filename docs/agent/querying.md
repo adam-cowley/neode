@@ -104,6 +104,12 @@ Direction of a relationship pattern. BOTH renders an undirected match pattern (`
 
 _source: query/direction.ts_
 
+### `EdgeFindResult` (type)
+
+The find() result of an edge-returning read, mirroring the cardinality of the plain FindResult: `RelationshipEdgeRead<T>[]` for a many-key, `RelationshipEdgeRead<T> | undefined` for a one-key. Tuple-wrapped so a union FindResult (`T | undefined`) never distributes.
+
+_source: services/query/load-relation.service.ts_
+
 ### `EventType` (const)
 
 Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neode.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() when the merge created the node | hydrated entity | | NODE_UPDATED | save() when the merge matched an existing node | hydrated entity | | NODE_MERGED | reserved (mergeOn) | — | | NODE_DELETED | delete() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
@@ -344,7 +350,7 @@ _source: driver/relate.ts_
 
 ### `RelatedQuery` (class)
 
-The scope instance.related(key) returns (NTS-497): the queryable generalisation of load() — Builder-style verbs (where / orderBy / limit / skip) composed ON TOP of the relationship traversal, with the terminal find() / first() / count() running it and hydrating the related entities through the regular hydration path (projection-aware: nested eager relationships ride the eager map projection, as at load()). The related target's own global filters (NTS-162) apply inside the traversal read — a filtered-out target yields an empty result, never an error, and the parent row is never affected (plain MATCH — no OPTIONAL MATCH, NTS-565). The typed view of the scope is the RelatedScope interface, projected through EntityMethods.related — the class is the runtime engine, its terminals answering `unknown` exactly as MethodImpl.load does. Each terminal runs its own READ scope: verbs are recorded at chain time and replayed onto a fresh traversal per terminal. count() counts the matching related nodes — the row-shaping verbs (order / skip / limit) do not affect it, as with a total alongside a paged read.
+The scope instance.related(key) returns (NTS-497): the queryable generalisation of load() — Builder-style verbs (where / orderBy / limit / skip) composed ON TOP of the relationship traversal, with the terminal find() / first() / count() running it and hydrating the related entities through the regular hydration path (projection-aware: nested eager relationships ride the eager map projection, as at load()). The related target's own global filters (NTS-162) apply inside the traversal read — a filtered-out target yields an empty result, never an error, and the parent row is never affected (plain MATCH — no OPTIONAL MATCH, NTS-565). NTS-499 extends the scope with relationship-aware reads: whereRelationship() filters on the EDGE's own properties (the predicate joins the traversal's WHERE, composed with the target predicates of where()), and withRelationship() returns each row as `{ node, edge }` — the hydrated target alongside the traversed GraphRelationship. Both ride the same flat MATCH: no new clause shapes, no OPTIONAL MATCH. The typed view of the scope is the RelatedScope interface, projected through EntityMethods.related — the class is the runtime engine, its terminals answering `unknown` exactly as MethodImpl.load does. Each terminal runs its own READ scope: verbs are recorded at chain time and replayed onto a fresh traversal per terminal. count() counts the matching related nodes — the row-shaping verbs (order / skip / limit) do not affect it, as with a total alongside a paged read.
 
 _source: services/query/load-relation.service.ts_
 
@@ -359,6 +365,12 @@ _source: services/query/load-relation.service.ts_
 The sub-builder a load spec callback receives (NTS-560): the comprehension / subquery-legal operations only — where, orderBy, limit, skip. No return(), no writes, no statement segments. Property names are bare ("orderDate") — the loader prefixes them with the related node's variable. Every method returns the view for chaining.
 
 _source: query/load-spec.ts_
+
+### `RelationshipEdgeRead` (interface)
+
+One result row of an edge-returning related() read (NTS-499): the hydrated related entity (`node`) alongside the traversed relationship itself (`edge`, the normalized GraphRelationship — type, elementId, endpoints and properties). The seed of the NTS-566 result-shape contract: flat, named, no wrapper classes.
+
+_source: services/query/load-relation.service.ts_
 
 ### `Repository` (class)
 

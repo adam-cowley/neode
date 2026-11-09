@@ -4,7 +4,10 @@ test:types` (vitest typecheck mode) — no runtime assertions here.
 */
 import { describe, expectTypeOf, it } from 'vitest'
 import type { WithMethods } from '../../src/entity-methods.js'
-import type { RelatedScope } from '../../src/services/query/load-relation.service.js'
+import type {
+  RelatedScope,
+  RelationshipEdgeRead,
+} from '../../src/services/query/load-relation.service.js'
 import { Direction } from '../../src/query/index.js'
 import { NodeEntity, OneToMany, OneToOne, Property } from '../../src/decorators/index.js'
 
@@ -87,5 +90,47 @@ describe('instance.related typing (NTS-497)', () => {
   it('rejects entity-method names as keys', () => {
     // @ts-expect-error -- save() is a method, not a relationship key
     person.related('save')
+  })
+
+  it('whereRelationship filters on the edge and chains like where (NTS-499)', () => {
+    expectTypeOf(person.related('actedIn').whereRelationship({ role: 'Neo' })).toEqualTypeOf<
+      RelatedScope<ScopedMovie, ScopedMovie[]>
+    >()
+    expectTypeOf(
+      person
+        .related('actedIn')
+        .where({ year: 1999 })
+        .whereRelationship({ role: 'Neo' })
+        .orderBy('year'),
+    ).toEqualTypeOf<RelatedScope<ScopedMovie, ScopedMovie[]>>()
+  })
+
+  it('withRelationship returns { node, edge } rows for a many-key (NTS-499)', () => {
+    expectTypeOf(person.related('actedIn').withRelationship()).toEqualTypeOf<
+      RelatedScope<RelationshipEdgeRead<ScopedMovie>, RelationshipEdgeRead<ScopedMovie>[]>
+    >()
+    expectTypeOf(person.related('actedIn').withRelationship().find()).toEqualTypeOf<
+      Promise<RelationshipEdgeRead<ScopedMovie>[]>
+    >()
+    expectTypeOf(person.related('actedIn').withRelationship().first()).toEqualTypeOf<
+      Promise<RelationshipEdgeRead<ScopedMovie> | undefined>
+    >()
+  })
+
+  it('withRelationship preserves the one-key cardinality (NTS-499)', () => {
+    expectTypeOf(person.related('favorite').withRelationship().find()).toEqualTypeOf<
+      Promise<RelationshipEdgeRead<ScopedCard> | undefined>
+    >()
+  })
+
+  it('the edge shape composes with the verbs after it', () => {
+    expectTypeOf(
+      person
+        .related('actedIn')
+        .withRelationship()
+        .whereRelationship({ role: 'Neo' })
+        .where({ year: 1999 })
+        .count(),
+    ).toEqualTypeOf<Promise<number>>()
   })
 })

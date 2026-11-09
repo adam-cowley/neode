@@ -11,6 +11,8 @@ import {
   Uuid,
 } from '../../src/decorators'
 import { Direction } from '../../src/query'
+import { EventType } from '../../src/common/events'
+import type { QueryExecutedEvent } from '../../src/common/events'
 import { clearFilterParams, setFilterParams } from '../../src/index'
 
 // ---- Fixtures (per-file: decorator registry is global per module) -----------
@@ -55,6 +57,30 @@ class Person {
 }
 
 // ---------------------------------------------------------------------------
+
+/** A saved person whose actedIn edges carry one role per movie, freshly re-found */
+async function seededRoles(
+  neode: TestBackend['neode'],
+  roles: string[],
+): Promise<WithMethods<Person>> {
+  const person = new Person()
+  person.name = `person-${Math.random()}`
+
+  const savedPerson = (await neode.save(person)) as WithMethods<Person>
+
+  for (const [index, role] of roles.entries()) {
+    const movie = new Movie()
+    movie.title = `Role ${index}-${Math.random()}`
+    movie.year = 1999 + index
+    movie.tenant = 'acme'
+
+    const savedMovie = (await neode.save(movie)) as WithMethods<Movie>
+
+    await savedPerson.relateTo(savedMovie, 'actedIn', { role })
+  }
+
+  return (await neode.find(Person, savedPerson.id)) as WithMethods<Person>
+}
 
 describe('instance.related(key) — relationship query builder (NTS-497)', () => {
   let backend: TestBackend
@@ -205,5 +231,124 @@ describe('instance.related(key) — relationship query builder (NTS-497)', () =>
     const withMethods = person as WithMethods<Person>
 
     await expect(withMethods.related('actedIn').find()).rejects.toThrow('no elementId')
+  })
+})
+
+describe('relationship-aware instance reads (NTS-499)', () => {
+  let backend: TestBackend
+
+  let executed: QueryExecutedEvent[]
+
+  const onQuery = (event: QueryExecutedEvent): void => {
+    executed.push(event)
+  }
+
+  beforeAll(async () => {
+    backend = await openBackend()
+
+    setDefaultNeode(backend.neode)
+    setFilterParams('tenant', 'acme')
+  })
+
+  beforeEach(() => {
+    executed = []
+
+    setFilterParams('tenant', 'acme')
+
+    backend.neode.on(EventType.QUERY_EXECUTED, onQuery)
+  })
+
+  afterEach(async () => {
+    backend.neode.off(EventType.QUERY_EXECUTED, onQuery)
+
+    clearFilterParams()
+
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  it('whereRelationship filters on the edge properties — only the matching target returns', async () => {
+    const person = await seededRoles(backend.neode, ['Neo', 'Trinity', 'Neo'])
+
+    const movies = await person.related('actedIn').whereRelationship({ role: 'Neo' }).find()
+
+    expect(movies).toHaveLength(2)
+
+    for (const movie of movies) {
+      expect(movie).toBeInstanceOf(Movie)
+    }
+
+    await expect(
+      person.related('actedIn').whereRelationship({ role: 'Trinity' }).count(),
+    ).resolves.toBe(1)
+    await expect(
+      person.related('actedIn').whereRelationship({ role: 'Agent Smith' }).find(),
+    ).resolves.toEqual([])
+  })
+
+  it('withRelationship returns the edge alongside the node, edge properties present', async () => {
+    const person = await seededRoles(backend.neode, ['Neo', 'Trinity'])
+
+    const rows = await person.related('actedIn').orderBy('year').withRelationship().find()
+
+    expect(rows).toHaveLength(2)
+
+    const [first, second] = rows
+
+    expect(first?.node).toBeInstanceOf(Movie)
+    expect(first?.edge.type).toBe('ACTED_IN')
+    expect(first?.edge.properties).toMatchObject({ role: 'Neo' })
+
+    expect(second?.node).toBeInstanceOf(Movie)
+    expect(second?.edge.properties).toMatchObject({ role: 'Trinity' })
+
+    // first() keeps the one-key cardinality: the row or undefined
+    const row = await person
+      .related('actedIn')
+      .whereRelationship({ role: 'Neo' })
+      .withRelationship()
+      .first()
+
+    expect(row?.edge.properties.role).toBe('Neo')
+  })
+
+  it('whereRelationship composes with where() and the global filters', async () => {
+    const person = await seededRoles(backend.neode, ['Neo', 'Trinity', 'Neo'])
+
+    // Target predicate AND edge predicate
+    const both = await person
+      .related('actedIn')
+      .where({ year: 1999 })
+      .whereRelationship({ role: 'Neo' })
+      .find()
+
+    expect(both).toHaveLength(1)
+
+    // The global tenant filter still filters the traversal rows
+    setFilterParams('tenant', 'other-tenant')
+
+    await expect(
+      person.related('actedIn').whereRelationship({ role: 'Neo' }).find(),
+    ).resolves.toEqual([])
+
+    setFilterParams('tenant', 'acme')
+  })
+
+  it('emits no OPTIONAL MATCH for the relationship-aware reads (NTS-565)', async () => {
+    const person = await seededRoles(backend.neode, ['Neo'])
+
+    await person.related('actedIn').where({ year: 1999 }).whereRelationship({ role: 'Neo' }).find()
+    await person.related('actedIn').withRelationship().find()
+
+    const statements = executed.map((event) => event.cypher)
+
+    expect(statements.length).toBeGreaterThan(0)
+
+    for (const statement of statements) {
+      expect(statement).not.toContain('OPTIONAL MATCH')
+    }
   })
 })

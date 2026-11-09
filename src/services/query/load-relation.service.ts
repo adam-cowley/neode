@@ -5,6 +5,7 @@ import { type EntitySchema, EntityType } from '../../meta/entity/entity-schema.j
 import { getModel } from '../../meta/index.js'
 import type { Newable } from '../../meta/newable.js'
 import type { RelationshipPropertySchema } from '../../meta/relationship-property-schema.js'
+import type { GraphRelationship, Runner } from '../../driver/types.js'
 import { Builder } from '../../query/index.js'
 import {
   eagerNode,
@@ -17,10 +18,31 @@ import type { LoadOptions } from '../../query/load-spec.js'
 import { applyOrder, type OrderSpec } from '../../query/order-spec.js'
 import { relationProperty } from '../../projection/projection.js'
 import { hydrateNode } from '../../utilities.js'
-import { isNodeLike, isRecord } from '../type-guards.js'
+import { isGraphRelationship, isNodeLike, isRecord } from '../type-guards.js'
 import { QueryService } from './query.service.js'
 import { applyReadFilters, type ReadFilterOptions } from './filters.js'
-import type { Runner } from '../../driver/types.js'
+
+/**
+One result row of an edge-returning related() read (NTS-499): the hydrated
+related entity (`node`) alongside the traversed relationship itself
+(`edge`, the normalized GraphRelationship — type, elementId, endpoints and
+properties). The seed of the NTS-566 result-shape contract: flat, named,
+no wrapper classes.
+*/
+export interface RelationshipEdgeRead<T> {
+  node: T
+  edge: GraphRelationship
+}
+
+/**
+The find() result of an edge-returning read, mirroring the cardinality of
+the plain FindResult: `RelationshipEdgeRead<T>[]` for a many-key,
+`RelationshipEdgeRead<T> | undefined` for a one-key. Tuple-wrapped so a
+union FindResult (`T | undefined`) never distributes.
+*/
+export type EdgeFindResult<FindResult, T> = [FindResult] extends [(infer Item)[]]
+  ? RelationshipEdgeRead<Item>[]
+  : RelationshipEdgeRead<T> | undefined
 
 /**
 The related() scope surface (NTS-497): Builder-style verbs composed on
@@ -36,6 +58,20 @@ relationship property's own type).
 */
 export interface RelatedScope<T, FindResult = T[]> {
   where(...arguments_: unknown[]): RelatedScope<T, FindResult>
+  /**
+  Filter on the RELATIONSHIP's own properties (NTS-499): the same
+  argument forms as where(), with bare names resolving against the
+  edge's variable — `whereRelationship({ role: 'Neo' })`. Composes with
+  where() (target predicates) and the global filters.
+  */
+  whereRelationship(...arguments_: unknown[]): RelatedScope<T, FindResult>
+  /**
+  Return the traversed edge alongside each target (NTS-499): the
+  terminals resolve to `{ node, edge }` rows instead of bare entities —
+  `edge` carries the relationship's own properties. one-key cardinality
+  preserved (`{ node, edge } | undefined`).
+  */
+  withRelationship(): RelatedScope<RelationshipEdgeRead<T>, EdgeFindResult<FindResult, T>>
   orderBy(order: OrderSpec): RelatedScope<T, FindResult>
   limit(limit: number): RelatedScope<T, FindResult>
   skip(skip: number): RelatedScope<T, FindResult>
@@ -52,18 +88,23 @@ them to a consumed builder).
 */
 type RelatedOperation =
   | { kind: 'where'; arguments_: unknown[] }
+  | { kind: 'whereRelationship'; arguments_: unknown[] }
   | { kind: 'order'; order: OrderSpec }
   | { kind: 'skip'; skip: number }
   | { kind: 'limit'; limit: number }
+  | { kind: 'withRelationship' }
 
 /**
 The state of one traversal read: the builder with the match and the
-target filters applied, the related node's variable, and the hydrated
-target's schema and constructor
+target filters applied, the related node's variable, the traversed
+relationship's variable, whether the edge returns alongside the node,
+and the hydrated target's schema and constructor
 */
 interface RelatedReadState {
   builder: Builder
   nodeVariable: string
+  relationshipVariable: string
+  withEdge: boolean
   targetSchema: EntitySchema
   target: Newable
 }
@@ -125,7 +166,14 @@ function relatedRead(
   // NTS-162 — the target model's named filters filter the traversed rows
   applyReadFilters(builder, targetSchema, filters, nodeVariable)
 
-  return { builder, nodeVariable, targetSchema, target: targetEntity }
+  return {
+    builder,
+    nodeVariable,
+    relationshipVariable,
+    withEdge: false,
+    targetSchema,
+    target: targetEntity,
+  }
 }
 
 /**
@@ -144,7 +192,21 @@ async function runTraversal(runner: Runner, read: RelatedReadState): Promise<unk
       throw new TypeError(`The "node" column did not return a node value`)
     }
 
-    return hydrateNode<Record<string, unknown>>(read.targetSchema, read.target, node)
+    const hydrated = hydrateNode<Record<string, unknown>>(read.targetSchema, read.target, node)
+
+    // Edge-returning read (NTS-499): the row is { node, edge } — the
+    // traversed relationship in its normalized GraphRelationship shape
+    if (!read.withEdge) {
+      return hydrated
+    }
+
+    const edge: unknown = record.get('edge')
+
+    if (!isGraphRelationship(edge)) {
+      throw new TypeError(`The "edge" column did not return a relationship value`)
+    }
+
+    return { node: hydrated, edge }
   })
 }
 
@@ -315,6 +377,13 @@ function applyOperation(read: RelatedReadState, operation: RelatedOperation): vo
 
       break
     }
+    case 'whereRelationship': {
+      // NTS-499 — bare names resolve against the EDGE's variable, so the
+      // predicate lands on the traversed relationship, not the target node
+      read.builder.where(...prefixWhere(read.relationshipVariable, operation.arguments_))
+
+      break
+    }
     case 'order': {
       applyOrder(read.builder, operation.order, read.nodeVariable)
 
@@ -327,6 +396,11 @@ function applyOperation(read: RelatedReadState, operation: RelatedOperation): vo
     }
     case 'limit': {
       read.builder.limit(operation.limit)
+
+      break
+    }
+    case 'withRelationship': {
+      read.withEdge = true
 
       break
     }
@@ -343,6 +417,13 @@ relationships ride the eager map projection, as at load()). The related
 target's own global filters (NTS-162) apply inside the traversal read — a
 filtered-out target yields an empty result, never an error, and the
 parent row is never affected (plain MATCH — no OPTIONAL MATCH, NTS-565).
+
+NTS-499 extends the scope with relationship-aware reads: whereRelationship()
+filters on the EDGE's own properties (the predicate joins the traversal's
+WHERE, composed with the target predicates of where()), and
+withRelationship() returns each row as `{ node, edge }` — the hydrated
+target alongside the traversed GraphRelationship. Both ride the same flat
+MATCH: no new clause shapes, no OPTIONAL MATCH.
 
 The typed view of the scope is the RelatedScope interface, projected
 through EntityMethods.related — the class is the runtime engine, its
@@ -385,18 +466,27 @@ export class RelatedQuery {
     const read = relatedRead(this.schema, this.entity, this.relationship)
 
     for (const operation of this.operations) {
-      if (isCount && operation.kind !== 'where') {
+      // Filters apply to a count; the row-shaping verbs do not, and the
+      // edge-returning flag only changes the RETURN shape (NTS-499)
+      const isFilterOperation = operation.kind === 'where' || operation.kind === 'whereRelationship'
+
+      if (isCount && !isFilterOperation) {
         continue
       }
 
       applyOperation(read, operation)
     }
 
-    read.builder.return(
-      isCount
-        ? `count(${read.nodeVariable}) AS count`
-        : `${eagerNode(1, read.nodeVariable, read.targetSchema, { builder: read.builder })} AS node`,
-    )
+    const projection = `${eagerNode(1, read.nodeVariable, read.targetSchema, { builder: read.builder })} AS node`
+
+    if (isCount) {
+      read.builder.return(`count(${read.nodeVariable}) AS count`)
+    } else if (read.withEdge) {
+      // NTS-499 — the edge-returning read appends the traversed relationship
+      read.builder.return(`${projection}, ${read.relationshipVariable} AS edge`)
+    } else {
+      read.builder.return(projection)
+    }
 
     return read
   }
@@ -431,6 +521,31 @@ export class RelatedQuery {
 
   where(...arguments_: unknown[]): this {
     this.operations.push({ kind: 'where', arguments_ })
+
+    return this
+  }
+
+  /**
+  Filter on the relationship's own properties (NTS-499): the same
+  argument forms as where(), with bare property names resolving against
+  the traversed edge's variable. Composes with where() — target
+  predicates and edge predicates AND together inside the traversal's
+  WHERE (never OPTIONAL MATCH, NTS-565).
+  */
+  whereRelationship(...arguments_: unknown[]): this {
+    this.operations.push({ kind: 'whereRelationship', arguments_ })
+
+    return this
+  }
+
+  /**
+  Return the traversed edge alongside each target (NTS-499): find() /
+  first() resolve to `{ node, edge }` — `edge` the normalized
+  GraphRelationship (type, elementId, endpoints, properties). count()
+  is unaffected.
+  */
+  withRelationship(): this {
+    this.operations.push({ kind: 'withRelationship' })
 
     return this
   }
