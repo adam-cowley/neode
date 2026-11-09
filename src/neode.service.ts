@@ -1908,7 +1908,7 @@ export class Neode implements INeode {
   named after the file (neode parity, extended to .ts files)
   */
   withDirectory(directory: string): this {
-    const requireModule = createRequire(__filename)
+    const requireModule = createRequire(import.meta.url)
 
     const files = readdirSync(directory).filter((file) =>
       ['.js', '.ts'].includes(path.extname(file).toLowerCase()),
