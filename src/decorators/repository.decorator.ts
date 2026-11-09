@@ -1,4 +1,5 @@
 import type { Newable } from '../meta/newable.js'
+import { NeodeError } from '../errors/index.js'
 import { registerRepository, type RepositoryConstructor } from '../meta/repositories.js'
 
 /**
@@ -14,7 +15,7 @@ export function EntityRepository(
   entity: Newable | undefined,
 ): (repository: RepositoryConstructor, context: ClassDecoratorContext) => void {
   if (entity === undefined) {
-    throw new Error('@EntityRepository requires an entity class to link the repository to')
+    throw new NeodeError('@EntityRepository requires an entity class to link the repository to')
   }
 
   return function (repository: RepositoryConstructor): void {

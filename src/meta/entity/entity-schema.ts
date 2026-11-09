@@ -1,4 +1,4 @@
-import { NeodeError } from '../../errors/index.js'
+import { NeodeError, suggestionFor } from '../../errors/index.js'
 import type { Newable } from '../newable.js'
 import { PropertySchema } from '../property-schema.js'
 import { RelationshipPropertySchema } from '../relationship-property-schema.js'
@@ -155,15 +155,27 @@ export class EntitySchema {
     const relationship = this.relationships.get(key)
 
     if (relationship === undefined) {
-      // NTS-446: name the model, the known relationships, and the fix
+      // NTS-446: name the model, the known relationships, and the fix;
+      // NTS-442: suggest the closest key when one is near
       const defined = this.getRelationships().map((entry) => entry.getKey())
+      const suggestion = suggestionFor(key, defined)
+
+      let why: string
+
+      if (suggestion !== undefined) {
+        why =
+          ` — did you mean "${suggestion}"? Defined relationships: ${defined.join(', ')}. ` +
+          'Check the relationship key, or declare it on the model.'
+      } else if (defined.length > 0) {
+        why =
+          ` — defined relationships: ${defined.join(', ')}. ` +
+          'Check the relationship key, or declare it on the model.'
+      } else {
+        why = ' — the model declares no relationships; declare one first.'
+      }
 
       throw new NeodeError(
-        `Relationship "${key}" is not defined on model "${this.modelName()}"` +
-          (defined.length > 0
-            ? ` — defined relationships: ${defined.join(', ')}. ` +
-              'Check the relationship key, or declare it on the model.'
-            : ' — the model declares no relationships; declare one first.'),
+        `Relationship "${key}" is not defined on model "${this.modelName()}"${why}`,
       )
     }
 

@@ -1,5 +1,6 @@
 import { THIS_NODE } from '../constants.js'
 import type { QueryOutput } from '../driver/types.js'
+import { NeodeError, unknownPropertyError } from '../errors/index.js'
 import type { EntitySchema } from '../meta/entity/entity-schema.js'
 import { getModel } from '../meta/index.js'
 import type { Newable } from '../meta/newable.js'
@@ -112,7 +113,7 @@ export class Repository<Entity> {
     const model = getModel(entityConstructor)
 
     if (model === undefined) {
-      throw new Error(
+      throw new NeodeError(
         'Cannot create a Repository for an unregistered model — register it with @NodeEntity / defineModel first',
       )
     }
@@ -198,7 +199,7 @@ export class Repository<Entity> {
     const primaryKey = this.schema.getPrimaryKey()
 
     if (primaryKey === undefined) {
-      throw new Error(
+      throw new NeodeError(
         `Cannot resolve the primary key of ${this.getLabels().join(':')} — declare one (@Primary / @Uuid / @Property({ primary: true }))`,
       )
     }
@@ -321,7 +322,7 @@ export class Repository<Entity> {
     const firstRecord = output.records[0]
 
     if (firstRecord === undefined) {
-      throw new Error('count query returned no records')
+      throw new NeodeError('count query returned no records')
     }
 
     return Repository.toCount(firstRecord.get('count'))
@@ -375,7 +376,7 @@ export class Repository<Entity> {
     const mergeFields = getMergeFields(this.schema)
 
     if (mergeFields.length === 0) {
-      throw new Error(
+      throw new NeodeError(
         `Cannot upsert ${this.getLabels().join(':')} — the model declares no unique or indexed properties to match on. Declare one (@Unique / @Index / @Property({ unique: true })).`,
       )
     }
@@ -385,7 +386,7 @@ export class Repository<Entity> {
     if (!hasMatchKey) {
       const keys = mergeFields.map((field) => field.getKey()).join(', ')
 
-      throw new Error(
+      throw new NeodeError(
         `Cannot upsert ${this.getLabels().join(':')} — properties must include at least one merge field to match on: [${keys}]`,
       )
     }
@@ -403,7 +404,7 @@ export class Repository<Entity> {
     const soft = this.schema.getSoftDelete()
 
     if (soft === undefined) {
-      throw new Error(
+      throw new NeodeError(
         `Cannot restore ${this.getLabels().join(':')} — the model does not declare @SoftDelete`,
       )
     }
@@ -448,7 +449,7 @@ export class Repository<Entity> {
         return
       }
 
-      throw new Error(`Cannot delete: entity not found for ID ${String(target)}`)
+      throw new NeodeError(`Cannot delete: entity not found for ID ${String(target)}`)
     }
 
     if (!isRecord(entity)) {
@@ -471,8 +472,10 @@ export class Repository<Entity> {
       .find((schemaProperty) => schemaProperty.getKey() === property)
 
     if (declared === undefined) {
-      throw new Error(
-        `Cannot countBy: "${property}" is not a declared property on ${this.getLabels().join(':')}`,
+      throw unknownPropertyError(
+        this.getLabels().join(':') || 'entity',
+        property,
+        this.schema.getProperties().map((schemaProperty) => schemaProperty.getKey()),
       )
     }
 
@@ -514,7 +517,7 @@ export class Repository<Entity> {
     const firstRecord = output.records[0]
 
     if (firstRecord === undefined) {
-      throw new Error('count query returned no records')
+      throw new NeodeError('count query returned no records')
     }
 
     return Repository.toCount(firstRecord.get('count'))
@@ -540,8 +543,10 @@ export class Repository<Entity> {
       .find((schemaProperty) => schemaProperty.getKey() === property)
 
     if (declared === undefined) {
-      throw new Error(
-        `Cannot increment: "${property}" is not a declared property on ${this.getLabels().join(':')}`,
+      throw unknownPropertyError(
+        this.getLabels().join(':') || 'entity',
+        property,
+        this.schema.getProperties().map((schemaProperty) => schemaProperty.getKey()),
       )
     }
 
@@ -577,7 +582,7 @@ export class Repository<Entity> {
         return 0
       }
 
-      throw new Error(`Cannot increment: entity not found for ${String(target)}`)
+      throw new NeodeError(`Cannot increment: entity not found for ${String(target)}`)
     }
 
     return Repository.toCount(firstRecord.get('value'))
@@ -601,7 +606,7 @@ export class Repository<Entity> {
       .map((schemaProperty) => schemaProperty.getKey())
 
     if (declared.length === 0) {
-      throw new Error(
+      throw new NeodeError(
         `Cannot search ${this.getLabels().join(':')}: no property is declared fulltext: true — declare one, or use neode.search(entity, indexName, query) with installFulltextIndexes()`,
       )
     }
@@ -613,7 +618,7 @@ export class Repository<Entity> {
     const fields = selected === undefined ? declared : declared.filter((key) => selected.has(key))
 
     if (selected !== undefined && (fields.length === 0 || fields.length !== selected.size)) {
-      throw new Error(
+      throw new NeodeError(
         `Cannot search ${this.getLabels().join(':')}: fields must name properties declared fulltext: true — declared fulltext properties are [${declared.join(', ')}]`,
       )
     }
@@ -621,7 +626,7 @@ export class Repository<Entity> {
     const label = this.getLabels()[0]
 
     if (label === undefined) {
-      throw new Error(`Cannot search ${this.getLabels().join(':')}: the model has no labels`)
+      throw new NeodeError(`Cannot search ${this.getLabels().join(':')}: the model has no labels`)
     }
 
     const indexName = fulltextIndexName({ label, properties: fields })

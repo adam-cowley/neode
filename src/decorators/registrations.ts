@@ -1,4 +1,5 @@
 import type { Newable } from '../meta/newable.js'
+import { NeodeError } from '../errors/index.js'
 import { isRecord } from '../services/type-guards.js'
 
 /**
@@ -24,7 +25,7 @@ export function addRegistration(
   registration: FieldRegistration,
 ): void {
   if (metadata === undefined) {
-    throw new Error(
+    throw new NeodeError(
       'Decorator metadata is unavailable — TC39 decorators require Symbol.metadata in the TS lib',
     )
   }

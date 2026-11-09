@@ -505,7 +505,7 @@ function hydrateProjectionProperty(
       }
 
       if (!isRecord(farRecord)) {
-        throw new Error(
+        throw new NeodeError(
           `Cannot hydrate ${String(property.getType())} property "${property.getKey()}": missing node in eager data`,
         )
       }
@@ -513,7 +513,7 @@ function hydrateProjectionProperty(
       const targetEntity = property.getEntity()
 
       if (targetEntity === undefined) {
-        throw new Error(
+        throw new NeodeError(
           `Cannot hydrate ${String(property.getType())} property "${property.getKey()}": no target entity`,
         )
       }
@@ -578,7 +578,7 @@ function hydrateLegacyRelationshipProperty(
       const eagerEntity = property.getEntity()
 
       if (eagerEntity === undefined) {
-        throw new Error(
+        throw new NeodeError(
           `Cannot hydrate ${String(property.getType())} property "${property.getKey()}": no target entity`,
         )
       }
@@ -601,7 +601,7 @@ function hydrateLegacyRelationshipProperty(
       }
 
       if (!innerNode) {
-        throw new Error(
+        throw new NeodeError(
           `Cannot hydrate ${String(property.getType())} property "${property.getKey()}": missing node in eager data`,
         )
       }
@@ -660,7 +660,7 @@ export function hydrateRelationship<T>(
   // of the relationship projected under the parent relationship's key
   if (isEagerProjectionMap(relationshipObject)) {
     if (relationship === undefined) {
-      throw new Error(
+      throw new NeodeError(
         `Cannot hydrate the relationship entity "${targetEntity.name}" from an eager projection: the parent relationship schema is missing`,
       )
     }
@@ -697,7 +697,7 @@ export function hydrateRelationship<T>(
   const end = relationshipObject.end
 
   if (graphRelationship === undefined || start === undefined || end === undefined) {
-    throw new Error(
+    throw new NeodeError(
       `Cannot hydrate the relationship entity "${targetEntity.name}": the eager relationship is missing its rel/start/end columns`,
     )
   }
@@ -804,13 +804,13 @@ export function matchCriteriaForEntity(
   }
 
   if (primaryKey === undefined) {
-    throw new Error('Cannot match an entity with no primary key and no elementId')
+    throw new NeodeError('Cannot match an entity with no primary key and no elementId')
   }
 
   const value: unknown = Reflect.get(entity, primaryKey.getKey())
 
   if (value === undefined) {
-    throw new Error(
+    throw new NeodeError(
       `Cannot match an entity without a primary key value for "${primaryKey.getKey()}". Did you save it first?`,
     )
   }

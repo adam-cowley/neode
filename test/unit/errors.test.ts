@@ -1,13 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { Driver, Session as DriverSession, Transaction as DriverTransaction } from 'neo4j-driver'
+import {
+  Driver,
+  Session as DriverSession,
+  Transaction as DriverTransaction,
+  default as neo4j,
+} from 'neo4j-driver'
 
 import {
   classifyError,
   ConstraintViolationError,
+  suggestionFor,
   isTransientError,
   NeodeError,
   redactParameters,
   TransientError,
+  unknownPropertyError,
   withQueryContext,
 } from '../../src/errors'
 import {
@@ -45,7 +52,10 @@ describe('classifyError', () => {
 
       expect(typed).toBeInstanceOf(ConstraintViolationError)
       expect(typed).toBeInstanceOf(NeodeError)
-      expect(typed.message).toBe(raw.message)
+      // NTS-442: the driver's message is preserved verbatim, the fix is
+      // appended after it
+      expect(typed.message).toContain(raw.message)
+      expect(typed.message).toContain('fix: merge() on the unique Movie.title')
       expect(typed.label).toBe('Movie')
       expect(typed.property).toBe('title')
     })
@@ -495,5 +505,108 @@ describe('validation reports every failing property with rule and reason (NTS-44
     expect(caught?.message).toContain('"age"')
     expect(caught?.message).toContain('Validation failed on')
     expect(caught?.details.length).toBeGreaterThanOrEqual(3)
+  })
+})
+
+// ---- NTS-442: the house rule — every error suggests its fix ----------------
+
+describe('the error house rule (NTS-442)', () => {
+  it('suggestionFor picks the closest candidate within edit distance 2', () => {
+    expect(suggestionFor('emial', ['email', 'name', 'createdAt'])).toBe('email')
+    expect(suggestionFor('titel', ['title', 'released'])).toBe('title')
+    expect(suggestionFor('EMAIL', ['email', 'name'])).toBe('email')
+    // nothing close → no guess
+    expect(suggestionFor('bogus', ['email', 'name', 'createdAt'])).toBeUndefined()
+  })
+
+  it('unknownPropertyError names what, where, why and the fix', () => {
+    const error = unknownPropertyError('User', 'emial', ['email', 'name', 'createdAt'])
+
+    expect(error).toBeInstanceOf(NeodeError)
+    expect(error.message).toContain('Unknown property "emial" on model "User"')
+    expect(error.message).toContain('did you mean "email"?')
+    expect(error.message).toContain('Defined properties: email, name, createdAt')
+    expect(error.message).toContain('Fix the spelling')
+  })
+
+  it('unknownPropertyError lists the properties when nothing is close', () => {
+    const error = unknownPropertyError('User', 'bogus', ['email', 'name'])
+
+    expect(error.message).not.toContain('did you mean')
+    expect(error.message).toContain('Defined properties: email, name')
+    expect(error.message).toContain('declare it on the model')
+  })
+
+  it('an unknown relationship key suggests the closest declared key', () => {
+    const Doc = defineModel('Errors442RelDoc', { name: 'string' })
+    const schema = getModel(Doc)!
+
+    expect(() => schema.getRelationship('sequel')).toThrow(
+      /Relationship "sequel" is not defined on model/,
+    )
+    // no relationships declared → no suggestion, model named
+    expect(() => schema.getRelationship('sequel')).toThrow(/the model declares no relationships/)
+
+    // a near-miss key suggests the declared relationship
+    const WithRel = defineModel('Errors442RelWith', {
+      name: 'string',
+      SEQUEL_TO: {
+        type: 'relationships',
+        relationship: 'SEQUEL_TO',
+        direction: 'out',
+        target: 'Errors442RelDoc',
+      },
+    })
+
+    expect(() => getModel(WithRel)!.getRelationship('sequel_to')).toThrow(
+      /did you mean "SEQUEL_TO"\? Defined relationships: SEQUEL_TO/,
+    )
+  })
+
+  it('a connect failure carries the connection-config fix (connection refused)', async () => {
+    // Real driver against a closed local port: refused instantly, no network
+    const driver = neo4j.driver('bolt://localhost:1', neo4j.auth.basic('neo4j', 'test'), {
+      connectionTimeout: 2000,
+    })
+    const provider = new Neo4jConnectionProvider(driver)
+
+    try {
+      const caught = await provider.run('RETURN 1').then(
+        () => null,
+        (error) => error,
+      )
+
+      expect(caught).toBeInstanceOf(TransientError)
+      expect((caught as Error).message).toContain('Cannot connect to the database')
+      expect((caught as Error).message).toContain('Failed to connect to server')
+      expect((caught as Error).message).toContain('Check that the database is running')
+    } finally {
+      await driver.close()
+    }
+  })
+
+  it('a connection failure through the facade of a dead port suggests the config fix', () => {
+    // classifyError path used by beginTransaction and the Relate backend
+    const typed = classifyError(
+      driverError("Failed to connect to server at 'bolt://localhost:9999'.", {
+        code: 'ServiceUnavailable',
+        retryable: true,
+      }),
+    ) as TransientError
+
+    expect(typed).toBeInstanceOf(TransientError)
+    expect(typed.isRetryable).toBe(true)
+    expect(typed.message).toContain('bolt://localhost:9999')
+    expect(typed.message).toContain('credentials and database name are correct')
+  })
+
+  it('transient mid-session errors keep their raw message (no config blame)', () => {
+    const typed = classifyError(
+      driverError('Connection failed mid-request', {
+        code: 'Neo.TransientError.Network.CommunicationError',
+      }),
+    ) as TransientError
+
+    expect(typed.message).toBe('Connection failed mid-request')
   })
 })

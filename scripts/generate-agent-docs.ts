@@ -85,7 +85,7 @@ const AREAS: AreaDef[] = [
   {
     name: 'Errors',
     blurb:
-      'Typed error taxonomy and driver-error classification. House rule: every error message names the fix — reload the entity on OptimisticLockError, add the named key to the `with` load spec on RelationNotLoadedError.',
+      'Typed error taxonomy and driver-error classification. House rule (NTS-442): every error names what failed, where, why, and suggests the fix — `<what failed> in <where> — <why>. <suggested fix>`, with did-you-mean suggestions for near-miss keys. Driver failures carry the failing statement with REDACTED parameters (keys and shapes, never values); ValidationError lists every failing property, not just the first.',
     test: (rel) => rel.startsWith('errors/') || /(^|\/)errors?\./.test(rel),
   },
 ]

@@ -189,7 +189,7 @@ function relatedProjection(
     const target = property.getEntity()
 
     if (target === undefined) {
-      throw new Error(
+      throw new NeodeError(
         `Projection property "${key}" has no field subset and no target — add 'fields' or 'target()'`,
       )
     }

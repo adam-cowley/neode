@@ -14,7 +14,7 @@ Package version: **1.0.0-next.1** (from package.json).
 - [Querying](#querying) — Query builder, repositories, raw Cypher, transactions, hydration, drivers and read-model projections.
 - [Schema management](#schema-management) — Indexes, constraints, full-text and vector indexes, schema inspection and drift workflow.
 - [Testing & ops](#testing-ops) — wipe()/testId() test utilities, factory seeding, connectivity checks and Cypher-script helpers.
-- [Errors](#errors) — Typed error taxonomy and driver-error classification. House rule: every error message names the fix — reload the entity on OptimisticLockError, add the named key to the `with` load spec on RelationNotLoadedError.
+- [Errors](#errors) — Typed error taxonomy and driver-error classification. House rule (NTS-442): every error names what failed, where, why, and suggests the fix — `<what failed> in <where> — <why>. <suggested fix>`, with did-you-mean suggestions for near-miss keys. Driver failures carry the failing statement with REDACTED parameters (keys and shapes, never values); ValidationError lists every failing property, not just the first.
 - [Core](#core) — Collection, serialisation and other shared exports.
 - [Schema reference](#schema-reference) — every field of PropertyDefinition / RelationshipDefinition / SchemaDefinition
 - [Agent ontology API](#agent-ontology-api) — ontology() / ontologyMarkdown() for Text2Cypher and MCP
@@ -1343,7 +1343,7 @@ _source: testing/wipe.ts_
 
 ## Errors
 
-Typed error taxonomy and driver-error classification. House rule: every error message names the fix — reload the entity on OptimisticLockError, add the named key to the `with` load spec on RelationNotLoadedError.
+Typed error taxonomy and driver-error classification. House rule (NTS-442): every error names what failed, where, why, and suggests the fix — `<what failed> in <where> — <why>. <suggested fix>`, with did-you-mean suggestions for near-miss keys. Driver failures carry the failing statement with REDACTED parameters (keys and shapes, never values); ValidationError lists every failing property, not just the first.
 
 ### `CardinalityViolationError` (class)
 
@@ -1371,7 +1371,7 @@ _source: errors/classify.ts_
 
 ### `NeodeError` (class)
 
-Base class of the typed error taxonomy (NTS-129). Typed errors are produced by `classifyError`, which wraps the raw driver/engine error — the original is preserved as `cause`.
+Base class of the typed error taxonomy (NTS-129). Typed errors are produced by `classifyError`, which wraps the raw driver/engine error — the original is preserved as `cause`. House rule (NTS-442): every error names what failed, where, why, and suggests the fix — `<what failed> in <where> — <why>. <suggested fix>`. Driver failures carry the failing statement with REDACTED parameters (`redactParameters` — keys and shapes, never values).
 
 _source: errors/neode-error.ts_
 

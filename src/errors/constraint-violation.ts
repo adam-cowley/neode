@@ -16,7 +16,15 @@ export class ConstraintViolationError extends NeodeError {
     property: string | undefined,
     options?: ErrorOptions,
   ) {
-    super(message, options)
+    // NTS-442: name the fix when the violated property is known — the
+    // driver's own message names only the duplicate node. Values are never
+    // echoed (the driver message already carries them; we add none).
+    super(
+      label === undefined || property === undefined
+        ? message
+        : `${message} — fix: merge() on the unique ${label}.${property} to update the existing node, or change the value.`,
+      options,
+    )
 
     this.label = label
     this.property = property
