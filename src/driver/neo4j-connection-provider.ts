@@ -24,7 +24,7 @@ import type {
   QueryRecord,
   TransactionHandle,
 } from './types.js'
-import { classifyError, withQueryContext } from '../errors/index.js'
+import { classifyError, NeodeError, withQueryContext } from '../errors/index.js'
 import { isRecord } from '../services/type-guards.js'
 
 /**
@@ -34,6 +34,20 @@ function normalizeProperties(properties: Record<string, unknown>): Record<string
   return Object.fromEntries(
     Object.entries(properties).map(([key, item]) => [key, normalizeDriverValue(item)]),
   )
+}
+
+/**
+Integer to number, refusing a silent precision loss (NTS-582): a value
+outside the safe-integer range throws instead of rounding.
+*/
+function safeToNumber(value: DriverInteger): number {
+  if (!DriverInteger.inSafeRange(value)) {
+    throw new NeodeError(
+      `The integer ${value.toString()} is outside JavaScript's safe integer range and cannot be represented as a number without losing precision. Return it as a string in the query (toString(n)) or split it, instead of reading it as a number.`,
+    )
+  }
+
+  return value.toNumber()
 }
 
 /**
@@ -61,7 +75,7 @@ function normalizeInternalIntegers(value: unknown): unknown {
       continue
     }
 
-    clone[key] = item.toNumber()
+    clone[key] = safeToNumber(item)
     hasIntegerFields = true
   }
 
@@ -80,7 +94,7 @@ export function normalizeDriverValue(value: unknown): unknown {
   // Integers are natively represented in driver 5+, but the type can still
   // appear when lossless integers are enabled — convert defensively.
   if (DriverInteger.isInteger(value)) {
-    return value.toNumber()
+    return safeToNumber(value)
   }
 
   if (isDriverNode(value)) {

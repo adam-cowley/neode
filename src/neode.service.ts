@@ -306,6 +306,25 @@ export class Neode implements INeode {
     )
   }
 
+  /**
+  Run a write's side effect (lifecycle event, after* observer) once its
+  data is committed (NTS-582): immediately for a facade call that already
+  committed its own transaction, deferred to the outer commit when the call
+  joined an ambient transaction (dropped if that rolls back or retries).
+  */
+  private async afterCommit(
+    ambient: ReturnType<typeof ambientTransaction>,
+    effect: () => void | Promise<void>,
+  ): Promise<void> {
+    if (ambient) {
+      ambient.effects.defer(effect)
+
+      return
+    }
+
+    await effect()
+  }
+
   getConnection(): ConnectionProvider {
     return this.connection
   }
@@ -629,6 +648,10 @@ export class Neode implements INeode {
     const ambient = ambientTransaction()
 
     if (ambient) {
+      ambient.assertCompatible('inReadTransaction()', {
+        database,
+      })
+
       return ambient.join(this.eventEmitter, work)
     }
 
@@ -667,6 +690,11 @@ export class Neode implements INeode {
     const ambient = ambientTransaction()
 
     if (ambient) {
+      ambient.assertCompatible('inWriteTransaction()', {
+        database,
+        routing: 'WRITE',
+      })
+
       return ambient.join(this.eventEmitter, work)
     }
 
@@ -701,12 +729,25 @@ export class Neode implements INeode {
   - Close semantics follow the managed scopes (NTS-561): the transaction
     commits when the callback resolves and rolls back when it throws; an
     explicit `tx.commit()` / `tx.rollback()` inside the callback works.
-  - A failure classified as transient (TransientError —
+  - DEFAULT RETRIES: a failure classified as transient (TransientError —
     `Neo.TransientError.*` codes or a driver `retryable` verdict) retries
     the WHOLE callback in a fresh transaction, `retries` times (default
-    2). The callback must be idempotent: work that reached the database
-    rolls back with the failed attempt, but non-database side effects run
-    again on retry.
+    2, with jittered backoff; pass `retries: 0` to disable — unlike
+    inWriteTransaction, which never retries). The callback must be
+    idempotent: work that reached the database rolls back with the failed
+    attempt, but non-database side effects run again on retry.
+    Terminated / LockClientStopped transactions are never retried.
+  - A failure while COMMITTING is not retried (the server may have
+    committed before the connection dropped, so a re-run could apply the
+    work twice) unless `retryCommit: true`.
+  - Lifecycle events (NODE_CREATED, …) and afterSave / afterDelete
+    observers fire only after the commit; they are dropped on rollback and
+    on a retried attempt.
+  - A nested call that passes a conflicting `routing` / `database` /
+    `retries` / `retryCommit` throws — the nested call joins the outer
+    transaction, so those options can only be set on the outermost unit.
+  - Work that runs after the callback finished (un-awaited promises) throws
+    "transaction already finished".
   - `routing` ('WRITE' default | 'READ') and `database` choose the
     transaction's session — per transaction, not per call.
 
@@ -737,18 +778,24 @@ export class Neode implements INeode {
     // Already inside an ambient transaction: join it — no begin, no close,
     // and no retry of its own (the outermost unit's retry re-runs the
     // whole callback, so an inner retry would double-apply the work)
-    return ambient
-      ? ambient.join(this.eventEmitter, work)
-      : runAmbientTransaction(
-          async () =>
-            this.connection.beginTransaction(
-              options.routing ?? 'WRITE',
-              options.database ?? this.database,
-            ),
-          this.eventEmitter,
-          work,
-          options,
-        )
+    if (ambient) {
+      ambient.assertCompatible('transaction()', options)
+
+      return ambient.join(this.eventEmitter, work)
+    }
+
+    const database = options.database ?? this.database
+
+    return runAmbientTransaction(
+      async () =>
+        this.connection.beginTransaction(
+          options.routing ?? 'WRITE',
+          options.database ?? this.database,
+        ),
+      this.eventEmitter,
+      work,
+      database === undefined ? options : { ...options, database },
+    )
   }
 
   /**
@@ -1041,11 +1088,13 @@ export class Neode implements INeode {
 
     // Emit the lifecycle event the save actually was: a merge either created
     // the node or matched and updated an existing one
-    this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
+    await this.afterCommit(ambientTransaction(), async () => {
+      this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
 
-    await runObservers(entityConstructor, 'afterSave', saved, {
-      isNew: created,
-      database,
+      await runObservers(entityConstructor, 'afterSave', saved, {
+        isNew: created,
+        database,
+      })
     })
 
     return saved
@@ -1096,10 +1145,12 @@ export class Neode implements INeode {
 
       await tx.commit()
 
-      // Emit event
-      this.eventEmitter.emit(EventType.NODE_CREATED, hydrated)
+      // Emit event (after the outer commit when joined to an ambient transaction)
+      await this.afterCommit(ambientTransaction(), async () => {
+        this.eventEmitter.emit(EventType.NODE_CREATED, hydrated)
 
-      await runObservers(constructor, 'afterSave', hydrated, { isNew: true, database })
+        await runObservers(constructor, 'afterSave', hydrated, { isNew: true, database })
+      })
 
       return hydrated
     } catch (error) {
@@ -1280,10 +1331,12 @@ export class Neode implements INeode {
       await tx.commit()
 
       if (result) {
-        this.eventEmitter.emit(
-          shouldForceCreate ? EventType.RELATIONSHIP_CREATED : EventType.RELATIONSHIP_MERGED,
-          result,
-        )
+        await this.afterCommit(ambientTransaction(), () => {
+          this.eventEmitter.emit(
+            shouldForceCreate ? EventType.RELATIONSHIP_CREATED : EventType.RELATIONSHIP_MERGED,
+            result,
+          )
+        })
       }
 
       return result
@@ -2037,15 +2090,17 @@ export class Neode implements INeode {
       return await rollbackAfterFailure(tx, error)
     }
 
-    await runObservers(constructorOf(entity), 'afterDelete', entity, {
-      isNew: false,
-      database,
-    })
+    await this.afterCommit(ambientTransaction(), async () => {
+      await runObservers(constructorOf(entity), 'afterDelete', entity, {
+        isNew: false,
+        database,
+      })
 
-    if (!isSoft && (cascadeOptions?.soft === undefined || cascadeOptions.soft === '')) {
-      // Emit event
-      this.eventEmitter.emit(EventType.NODE_DELETED, entity)
-    }
+      if (!isSoft && (cascadeOptions?.soft === undefined || cascadeOptions.soft === '')) {
+        // Emit event
+        this.eventEmitter.emit(EventType.NODE_DELETED, entity)
+      }
+    })
   }
 
   /**
