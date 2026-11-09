@@ -128,10 +128,13 @@ describe('named global filters (NTS-162)', () => {
     expect(withoutSoft.map((comment) => comment.commentID)).toEqual(['c1'])
 
     // includeDeleted (the NTS-510 spelling) opts back in alongside tenant
-    const including = await comments.findAll({}, {
-      includeDeleted: true,
-      withoutFilters: ['tenant'],
-    })
+    const including = await comments.findAll(
+      {},
+      {
+        includeDeleted: true,
+        withoutFilters: ['tenant'],
+      },
+    )
     expect(including).toHaveLength(2)
   })
 
@@ -147,17 +150,25 @@ describe('named global filters (NTS-162)', () => {
     expect(page.total).toBe(1)
     expect(page.items.map((comment) => comment.commentID)).toEqual(['c1'])
 
-    const unfiltered = await backend.neode.paginate(FilterComment, {}, {
-      page: 1,
-      limit: 10,
-      withoutFilters: ['tenant'],
-    })
+    const unfiltered = await backend.neode.paginate(
+      FilterComment,
+      {},
+      {
+        page: 1,
+        limit: 10,
+        withoutFilters: ['tenant'],
+      },
+    )
     expect(unfiltered.total).toBe(2)
 
-    const cursor = await backend.neode.paginate(FilterComment, {}, {
-      limit: 10,
-      orderBy: 'commentID',
-    })
+    const cursor = await backend.neode.paginate(
+      FilterComment,
+      {},
+      {
+        limit: 10,
+        orderBy: 'commentID',
+      },
+    )
     expect(cursor.items.map((comment) => comment.commentID)).toEqual(['c1'])
   })
 
@@ -203,7 +214,10 @@ describe('named global filters (NTS-162)', () => {
     const deleted = await comments.deleteAll({ tenant: 'beta' })
     expect(deleted).toBe(1)
 
-    const left = await backend.neode.readCypher('MATCH (c:FilterComment) RETURN count(c) AS count', {})
+    const left = await backend.neode.readCypher(
+      'MATCH (c:FilterComment) RETURN count(c) AS count',
+      {},
+    )
     expect(Number(left.records[0]?.get('count'))).toBe(1)
   })
 })

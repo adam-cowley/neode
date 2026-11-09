@@ -1,4 +1,11 @@
-import { NodeEntity, Property, Primary, SoftDelete, Filter, OneToMany } from '../../../src/decorators'
+import {
+  NodeEntity,
+  Property,
+  Primary,
+  SoftDelete,
+  Filter,
+  OneToMany,
+} from '../../../src/decorators'
 import { Direction } from '../../../src/query'
 import { Builder } from '../../../src/query'
 import { getModel, mergeModel } from '../../../src/meta'
@@ -207,7 +214,9 @@ describe('named global filters (NTS-162)', () => {
 
       const builder = new Builder().match(THIS_NODE, noteSchema.getLabels())
 
-      builder.return(`${eagerNode(1, THIS_NODE, noteSchema, { builder, filters: {} })} AS ${THIS_NODE}`)
+      builder.return(
+        `${eagerNode(1, THIS_NODE, noteSchema, { builder, filters: {} })} AS ${THIS_NODE}`,
+      )
 
       const { query, params } = builder.build()
 
@@ -254,10 +263,15 @@ describe('named global filters (NTS-162)', () => {
     it('projectionNode keeps the filters out of the decorated keys (the subquery owns them)', () => {
       setFilterParams('tenant', 'acme')
 
-      const projection = projectionNode(THIS_NODE, noteSchema, { articles: () => {} }, {
-        builder: new Builder(),
-        filters: {},
-      })
+      const projection = projectionNode(
+        THIS_NODE,
+        noteSchema,
+        { articles: () => {} },
+        {
+          builder: new Builder(),
+          filters: {},
+        },
+      )
 
       expect(normalise(projection)).toContain('articles: this_articles_loaded')
     })
