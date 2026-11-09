@@ -651,7 +651,10 @@ class Order {
   // Cypher-side: evaluated by the database inside the write statement,
   // `this` = the written node with the sources' new values applied
   @Property({ type: 'number' })
-  @Derived({ from: ['orderDate', 'shippedDate'], cypher: 'duration.between(this.orderDate, this.shippedDate).days' })
+  @Derived({
+    from: ['orderDate', 'shippedDate'],
+    cypher: 'duration.between(this.orderDate, this.shippedDate).days',
+  })
   daysToShip?: number
 }
 ```

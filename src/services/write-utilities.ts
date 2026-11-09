@@ -497,9 +497,10 @@ export function deriveProperties(
     }
 
     // An explicitly provided derived value wins over recomputation
-    const isExplicit = dirtyKeys === undefined
-      ? Object.hasOwn(values, key) && values[key] !== undefined
-      : dirtyKeys.has(key)
+    const isExplicit =
+      dirtyKeys === undefined
+        ? Object.hasOwn(values, key) && values[key] !== undefined
+        : dirtyKeys.has(key)
 
     if (isExplicit) {
       continue

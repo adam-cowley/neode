@@ -88,9 +88,7 @@ export class UpdateService extends QueryService {
     )
 
     const storedUnder = Object.fromEntries(
-      Object.entries(modelPropertyValues(entity, schema)).filter(
-        ([key]) => !derivedKeys.has(key),
-      ),
+      Object.entries(modelPropertyValues(entity, schema)).filter(([key]) => !derivedKeys.has(key)),
     )
 
     const derivedInput = { ...storedUnder, ...provided }

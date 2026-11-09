@@ -12,7 +12,12 @@ import { getModelByName } from '../../src/meta/map-schema'
 import type { Runner } from '../../src/driver/types'
 
 function schemaWithDerived(
-  derived: { key: string; from: string[]; compute?: (entity: Record<string, unknown>) => unknown; cypher?: string }[],
+  derived: {
+    key: string
+    from: string[]
+    compute?: (entity: Record<string, unknown>) => unknown
+    cypher?: string
+  }[],
   propertyKeys: string[] = ['a', 'b'],
   primaryKeys: string[] = ['id'],
 ): EntitySchema {
@@ -91,7 +96,11 @@ describe('@Derived registration (NTS-569)', () => {
 describe('deriveProperties (NTS-569)', () => {
   it('computes the value onto the payload when a source is written', () => {
     const schema = schemaWithDerived([
-      { key: 'sum', from: ['a', 'b'], compute: (entity) => (entity['a'] as number) + (entity['b'] as number) },
+      {
+        key: 'sum',
+        from: ['a', 'b'],
+        compute: (entity) => (entity['a'] as number) + (entity['b'] as number),
+      },
     ])
 
     const values = { a: 1, b: 2 }
@@ -103,9 +112,7 @@ describe('deriveProperties (NTS-569)', () => {
   })
 
   it('skips when no source is in the payload', () => {
-    const schema = schemaWithDerived([
-      { key: 'sum', from: ['a', 'b'], compute: () => 99 },
-    ])
+    const schema = schemaWithDerived([{ key: 'sum', from: ['a', 'b'], compute: () => 99 }])
 
     const values = { unrelated: 1 }
 
@@ -116,9 +123,7 @@ describe('deriveProperties (NTS-569)', () => {
   })
 
   it('skips when a source is absent or null — a partial source set leaves the stored value alone', () => {
-    const schema = schemaWithDerived([
-      { key: 'sum', from: ['a', 'b'], compute: () => 99 },
-    ])
+    const schema = schemaWithDerived([{ key: 'sum', from: ['a', 'b'], compute: () => 99 }])
 
     const absent = { a: 1 }
     const nulled = { a: 1, b: null }
@@ -128,9 +133,7 @@ describe('deriveProperties (NTS-569)', () => {
   })
 
   it('an explicitly provided derived value wins over recomputation', () => {
-    const schema = schemaWithDerived([
-      { key: 'sum', from: ['a', 'b'], compute: () => 99 },
-    ])
+    const schema = schemaWithDerived([{ key: 'sum', from: ['a', 'b'], compute: () => 99 }])
 
     const values = { a: 1, b: 2, sum: 50 }
 
@@ -142,7 +145,11 @@ describe('deriveProperties (NTS-569)', () => {
 
   it('a tracked save recomputes only from a dirty source; a dirty derived key wins', () => {
     const schema = schemaWithDerived([
-      { key: 'sum', from: ['a', 'b'], compute: (entity) => (entity['a'] as number) + (entity['b'] as number) },
+      {
+        key: 'sum',
+        from: ['a', 'b'],
+        compute: (entity) => (entity['a'] as number) + (entity['b'] as number),
+      },
     ])
 
     // b is dirty, a is clean but present on the entity record: recompute
@@ -157,15 +164,17 @@ describe('deriveProperties (NTS-569)', () => {
     expect(explicit.recomputed).toEqual([])
 
     // no dirty source: no recompute
-    const clean = deriveProperties(schema, { a: 1, b: 5 }, new Set(['a' === 'a' ? 'unrelated' : 'a']))
+    const clean = deriveProperties(
+      schema,
+      { a: 1, b: 5 },
+      new Set(['a' === 'a' ? 'unrelated' : 'a']),
+    )
 
     expect(clean.recomputed).toEqual([])
   })
 
   it('cypher-side derivation returns the expression instead of computing', () => {
-    const schema = schemaWithDerived([
-      { key: 'double', from: ['a'], cypher: 'this.a * 2' },
-    ])
+    const schema = schemaWithDerived([{ key: 'double', from: ['a'], cypher: 'this.a * 2' }])
 
     const result = deriveProperties(schema, { a: 21 })
 
@@ -188,7 +197,9 @@ describe('deriveProperties (NTS-569)', () => {
   it('rejects a source that is not a declared property', () => {
     const schema = schemaWithDerived([{ key: 'bad', from: ['typo'], compute: () => 1 }])
 
-    expect(() => deriveProperties(schema, { a: 1 })).toThrow(/every source must be a property declared/)
+    expect(() => deriveProperties(schema, { a: 1 })).toThrow(
+      /every source must be a property declared/,
+    )
   })
 })
 
@@ -198,7 +209,11 @@ describe('derived property statement shapes (NTS-569)', () => {
     const service = new MergeService(runnerSpy)
 
     const schema = schemaWithDerived([
-      { key: 'sum', from: ['a', 'b'], compute: (entity) => (entity['a'] as number) + (entity['b'] as number) },
+      {
+        key: 'sum',
+        from: ['a', 'b'],
+        compute: (entity) => (entity['a'] as number) + (entity['b'] as number),
+      },
     ])
 
     const entity = { id: 1, a: 1, b: 7, sum: 1 }
@@ -225,9 +240,7 @@ describe('derived property statement shapes (NTS-569)', () => {
     const runnerSpy = runner()
     const service = new MergeService(runnerSpy)
 
-    const schema = schemaWithDerived([
-      { key: 'double', from: ['b'], cypher: 'this.b * 2' },
-    ])
+    const schema = schemaWithDerived([{ key: 'double', from: ['b'], cypher: 'this.b * 2' }])
 
     await service.save({ id: 1, a: 1, b: 7 }, schema, new Set(['b']))
 
@@ -246,10 +259,17 @@ describe('derived property statement shapes (NTS-569)', () => {
     const runnerSpy = runner()
     const service = new UpdateService(runnerSpy)
 
-    const schema = schemaWithDerived([
-      { key: 'sum', from: ['a', 'b'], compute: (entity) => (entity['a'] as number) + (entity['b'] as number) },
-      { key: 'double', from: ['b'], cypher: 'this.b * 2' },
-    ], ['a', 'b'])
+    const schema = schemaWithDerived(
+      [
+        {
+          key: 'sum',
+          from: ['a', 'b'],
+          compute: (entity) => (entity['a'] as number) + (entity['b'] as number),
+        },
+        { key: 'double', from: ['b'], cypher: 'this.b * 2' },
+      ],
+      ['a', 'b'],
+    )
 
     const entity = { id: 1, a: 1, b: 7 }
 
@@ -273,14 +293,27 @@ describe('derived property statement shapes (NTS-569)', () => {
   })
 
   it('bulk: the derived SET clause renders after `SET this += row`, coalesced with the row value', () => {
-    const createQuery = buildCreateQuery(['Thing'], [], ['this.doubleA = coalesce(row.doubleA, this.a * 2)'])
+    const createQuery = buildCreateQuery(
+      ['Thing'],
+      [],
+      ['this.doubleA = coalesce(row.doubleA, this.a * 2)'],
+    )
 
-    expect(createQuery).toContain('SET this += row\nSET this.doubleA = coalesce(row.doubleA, this.a * 2)')
+    expect(createQuery).toContain(
+      'SET this += row\nSET this.doubleA = coalesce(row.doubleA, this.a * 2)',
+    )
 
-    const mergeQuery = buildMergeQuery(['Thing'], ['id'], [], [], [], [
-      'this.doubleA = coalesce(row.doubleA, this.a * 2)',
-    ])
+    const mergeQuery = buildMergeQuery(
+      ['Thing'],
+      ['id'],
+      [],
+      [],
+      [],
+      ['this.doubleA = coalesce(row.doubleA, this.a * 2)'],
+    )
 
-    expect(mergeQuery).toContain('SET this += row\nSET this.doubleA = coalesce(row.doubleA, this.a * 2)')
+    expect(mergeQuery).toContain(
+      'SET this += row\nSET this.doubleA = coalesce(row.doubleA, this.a * 2)',
+    )
   })
 })

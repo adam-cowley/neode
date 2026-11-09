@@ -225,7 +225,11 @@ RETURN this
 row's explicit value first (`coalesce`), so an explicitly provided
 timestamp wins over the database clock.
 */
-export function buildCreateQuery(labels: string[], stamps: string[] = [], derivedSets: string[] = []): string {
+export function buildCreateQuery(
+  labels: string[],
+  stamps: string[] = [],
+  derivedSets: string[] = [],
+): string {
   return [
     'UNWIND $rows AS row',
     `CREATE (${THIS_NODE}${labelPattern(labels)})`,

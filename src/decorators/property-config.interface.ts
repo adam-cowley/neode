@@ -1,5 +1,9 @@
 import type { DefaultValue } from '../meta/property-schema.js'
-import type { TransformConfig, VectorConfig, DerivedConfig } from '../meta/schema-definition.interface.js'
+import type {
+  TransformConfig,
+  VectorConfig,
+  DerivedConfig,
+} from '../meta/schema-definition.interface.js'
 
 export interface PropertyConfig {
   /**
