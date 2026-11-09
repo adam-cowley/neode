@@ -197,7 +197,8 @@ describe('bulk helpers', () => {
     it('builds the bulk MERGE statement on the given match keys', () => {
       const query = buildMergeQuery(['BulkAccount'], ['id', 'name'])
 
-      expect(query).toContain('UNWIND $rows AS row')
+      expect(query).toContain('UNWIND $rows AS item')
+      expect(query).toContain('WITH item.row AS row, item.create AS created')
       expect(query).toContain('MERGE (this:BulkAccount { id: row.id, name: row.name })')
       expect(query).toContain('SET this += row')
       expect(query).toContain('RETURN this')

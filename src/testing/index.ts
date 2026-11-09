@@ -4,7 +4,7 @@ against a Neode-managed database.
 */
 
 export { testId } from './test-id.js'
-export type { WipeTarget } from './wipe.js'
+export type { WipeFailure, WipeOptions, WipeReport, WipeTarget } from './wipe.js'
 export { wipe } from './wipe.js'
 export { seededRandom } from './random.js'
 export { Seeder, runSeeders } from './seeder.js'

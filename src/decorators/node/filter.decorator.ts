@@ -11,8 +11,11 @@ place in the query services.
 
 - Disable per query with `withoutFilters: ['name']` on the read options;
   each filter is independent.
-- Parameterise with `setFilterParams(name, value)`; the `where` fragment
-  references the value as `$name`.
+- Parameterise with `withFilterParams({ name: value }, async () => ...)`
+  (request-scoped, async-safe; NTS-575); the `where` fragment references the
+  value as `$name`. `setFilterParams(name, value)` sets a process-wide default
+  that the scope overrides — it is unsafe under concurrent requests. A filter
+  whose `$name` has no value fails closed with a NeodeError.
 - `where` is a Cypher predicate over the filtered node; `node` names that
   node (the read root, or the related node inside a filtered relation's
   pattern comprehension). Label-state filters (labels-as-state, NTS-128)
@@ -35,7 +38,9 @@ class Post {
   comments!: Comment[]
 }
 
-setFilterParams('tenant', 'acme')
+await withFilterParams({ tenant: 'acme' }, async () => {
+  await Post.all()
+})
 ```
 */
 export function Filter(

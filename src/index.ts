@@ -87,6 +87,7 @@ export type {
 } from './driver/types.js'
 export { Neo4jConnectionProvider } from './driver/neo4j-connection-provider.js'
 export { RelateConnectionProvider, requireRelateClient } from './driver/relate.js'
+export type { RelateConnectionOptions } from './driver/relate.js'
 
 // Raw-cypher helpers + instrumented provider (NTS-122/124/132/133)
 export { jsonSafe, jsonSafeRecord } from './driver/json-safe.js'
@@ -133,6 +134,7 @@ export {
   parseGraphTypeSpecification,
 } from './services/schema/graph-type.service.js'
 export type {
+  GraphTypeCreateOptions,
   GraphTypeConstraintDefinition,
   GraphTypeConstraintKind,
   GraphTypeDefinition,
@@ -163,6 +165,7 @@ export { PaginateService } from './services/query/paginate.service.js'
 // Named global filters (NTS-162)
 export {
   setFilterParams,
+  withFilterParams,
   clearFilterParams,
   readFilterFragment,
   WITHOUT_ALL_FILTERS,
@@ -214,7 +217,7 @@ export type {
   RunCypherScriptOptions,
 } from './ops/index.js'
 export { wipe, testId, seededRandom, Seeder, runSeeders } from './testing/index.js'
-export type { WipeTarget } from './testing/index.js'
+export type { WipeFailure, WipeOptions, WipeReport, WipeTarget } from './testing/index.js'
 
 // Query builder additions (NTS-143/144/128)
 export { WhereNull, LabelPredicate } from './query/index.js'
@@ -253,4 +256,5 @@ export type { TransformConfig } from './meta/schema-definition.interface.js'
 
 export * from './decorators/index.js'
 
+export { Neode } from './neode.service.js'
 export { Neode as default } from './neode.service.js'

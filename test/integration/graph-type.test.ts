@@ -110,7 +110,7 @@ describe('graph types (NTS-548)', () => {
 
     expect(installed).toHaveLength(1)
     expect(installed[0]?.success).toBe(true)
-    expect(installed[0]?.statement.startsWith('ALTER CURRENT GRAPH TYPE SET {')).toBe(true)
+    expect(installed[0]?.statement.startsWith('ALTER CURRENT GRAPH TYPE ADD {')).toBe(true)
 
     const shown = await shownGraphType()
 
@@ -278,7 +278,8 @@ describe('graph types (NTS-548)', () => {
 
     await backend.clearGraph()
 
-    await neode.installGraphType()
+    // Earlier tests leave element types behind: replace so the drift is measured from a clean graph type
+    await neode.installGraphType({ replace: true, canDropUndeclared: true })
 
     // Freshly installed from the same derivation: no graph type drift
     const clean = await schemaDrift(backend.connection)
@@ -305,7 +306,7 @@ describe('graph types (NTS-548)', () => {
     // wipe() resets the graph type to empty (and every constraint with it)
     const { wipe } = await import('../../src/testing/wipe.js')
 
-    await wipe(neode)
+    await wipe(neode, { confirm: true })
 
     const after = await schemaDrift(backend.connection)
 
@@ -313,6 +314,58 @@ describe('graph types (NTS-548)', () => {
     expect(after.graphType?.installed).toBeUndefined()
     expect(after.graphType?.missing.map((entry) => entry.name)).toContain('GtPerson')
 
+    await backend.clearGraph()
+  })
+
+  it('does not drop foreign graph type objects unless replace is requested (NTS-578)', async () => {
+    if (!supportsGraphTypes) {
+      return
+    }
+
+    const neode = new Neode(backend.connection, true)
+
+    await backend.clearGraph()
+    await neode.dropGraphType().catch(() => undefined)
+
+    // Another application's element type + constraint on the shared database
+    await backend.connection.run(
+      'ALTER CURRENT GRAPH TYPE ADD {(:`Nts578Foreign` => {`id` :: STRING NOT NULL})}',
+    )
+    await backend.connection.run(
+      'ALTER CURRENT GRAPH TYPE ADD {CONSTRAINT nts578_foreign_id_unique FOR (n:`Nts578Foreign`) REQUIRE (n.`id`) IS UNIQUE}',
+    )
+
+    const installed = await neode.installGraphType()
+
+    expect(installed.every((result) => result.success)).toBe(true)
+
+    const shown = await shownGraphType()
+
+    expect(shown).toContain('Nts578Foreign')
+    expect(shown).toContain('nts578_foreign_id_unique')
+    expect(shown).toContain('GtPerson')
+
+    // Idempotent: nothing left to add, nothing rewritten
+    const again = await neode.installGraphType()
+
+    expect(again.every((result) => result.success)).toBe(true)
+    expect(await shownGraphType()).toContain('Nts578Foreign')
+
+    // replace: true is refused while it would drop the foreign objects...
+    const refused = await neode.installGraphType({ replace: true })
+
+    expect(refused[0]?.success).toBe(false)
+    expect(refused[0]?.error?.message).toContain('Nts578Foreign')
+    expect(await shownGraphType()).toContain('Nts578Foreign')
+
+    // ...and replaces the whole graph type only when explicitly allowed
+    const replaced = await neode.installGraphType({ replace: true, canDropUndeclared: true })
+
+    expect(replaced[0]?.success).toBe(true)
+    expect(replaced[0]?.statement.startsWith('ALTER CURRENT GRAPH TYPE SET {')).toBe(true)
+    expect(await shownGraphType()).not.toContain('Nts578Foreign')
+
+    await neode.dropGraphType()
     await backend.clearGraph()
   })
 })

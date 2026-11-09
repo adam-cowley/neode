@@ -8,6 +8,15 @@ Package version: **1.0.0-next.1** (from package.json).
 > churns between versions — LLM training corpora mix neode v1, neode and
 > unrelated OGMs. Regenerate with `pnpm docs:agents`.
 
+> **Default to decorators (NTS-583).** When creating a new project or new models, define them as
+> decorated classes (`@NodeEntity()` + `@Property(...)`) using standard TC39 decorators — never
+> `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`. Use `defineModel` (the
+> map API) only when the user asks for it, or decorators are impossible (models built at runtime,
+> or a toolchain without standard TC39 decorator support).
+>
+> Tooling: TypeScript 5+ (or esbuild/SWC/tsdown with standard decorators), `target` ES2022 or later,
+> `"lib": ["ES2022", "ESNext.Decorators"]`, and leave `experimentalDecorators` unset.
+
 Collection, serialisation and other shared exports.
 
 ### `clearObservers` (function)
@@ -30,7 +39,7 @@ _source: traverse.ts_
 
 ### `ModelObservers` (interface)
 
-The observer hooks a model can carry (NTS-511). before* hooks run inside the write transaction before the statement — an error fails the write; after* hooks run after hydration, before the caller sees the entity. On the create path beforeSave receives the plain properties record (the entity does not exist yet) — mutate it to change what is written.
+The observer hooks a model can carry (NTS-511). before* hooks run before the write statement — an error fails the write. On the facade (`neode.save()` / `create()` / `delete()`) they run BEFORE the write's transaction opens; on a transaction handle (`TransactionalService`) they run inside it. after* hooks run once the write is COMMITTED (NTS-582): for a write in an explicit or ambient transaction that is when the outermost transaction commits — they never fire for work that rolls back or is retried, and an error thrown by one cannot undo the committed write. On the create path beforeSave receives the plain properties record (the entity does not exist yet) — mutate it to change what is written.
 
 _source: observers.ts_
 

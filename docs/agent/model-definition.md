@@ -8,6 +8,15 @@ Package version: **1.0.0-next.1** (from package.json).
 > churns between versions — LLM training corpora mix neode v1, neode and
 > unrelated OGMs. Regenerate with `pnpm docs:agents`.
 
+> **Default to decorators (NTS-583).** When creating a new project or new models, define them as
+> decorated classes (`@NodeEntity()` + `@Property(...)`) using standard TC39 decorators — never
+> `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`. Use `defineModel` (the
+> map API) only when the user asks for it, or decorators are impossible (models built at runtime,
+> or a toolchain without standard TC39 decorator support).
+>
+> Tooling: TypeScript 5+ (or esbuild/SWC/tsdown with standard decorators), `target` ES2022 or later,
+> `"lib": ["ES2022", "ESNext.Decorators"]`, and leave `experimentalDecorators` unset.
+
 Decorators and the map-based defineModel API for declaring nodes, properties and relationships.
 
 ### `applyEntityMethods` (function)
@@ -116,7 +125,7 @@ _source: meta/map-schema.ts_
 
 ### `Filter` (decorator)
 
-Named global filter (NTS-162): declare a named read filter on the model and it applies to every standard read — find / get / all / paginate / search / knn / eager loads / projections / repository reads — composed in one central place in the query services. - Disable per query with `withoutFilters: ['name']` on the read options; each filter is independent. - Parameterise with `setFilterParams(name, value)`; the `where` fragment references the value as `$name`. - `where` is a Cypher predicate over the filtered node; `node` names that node (the read root, or the related node inside a filtered relation's pattern comprehension). Label-state filters (labels-as-state, NTS-128) are just label predicates: `where: 'NOT node:Archived'`. - Over relations, the target model's filters render inside the relation's pattern comprehension — a filtered-out target simply doesn't match, so the edge reads as absent and the parent row survives. Never OPTIONAL MATCH. Example — soft delete + tenancy as independent named filters: ```ts
+Named global filter (NTS-162): declare a named read filter on the model and it applies to every standard read — find / get / all / paginate / search / knn / eager loads / projections / repository reads — composed in one central place in the query services. - Disable per query with `withoutFilters: ['name']` on the read options; each filter is independent. - Parameterise with `withFilterParams({ name: value }, async () => ...)` (request-scoped, async-safe; NTS-575); the `where` fragment references the value as `$name`. `setFilterParams(name, value)` sets a process-wide default that the scope overrides — it is unsafe under concurrent requests. A filter whose `$name` has no value fails closed with a NeodeError. - `where` is a Cypher predicate over the filtered node; `node` names that node (the read root, or the related node inside a filtered relation's pattern comprehension). Label-state filters (labels-as-state, NTS-128) are just label predicates: `where: 'NOT node:Archived'`. - Over relations, the target model's filters render inside the relation's pattern comprehension — a filtered-out target simply doesn't match, so the edge reads as absent and the parent row survives. Never OPTIONAL MATCH. Example — soft delete + tenancy as independent named filters: ```ts
 
 _source: decorators/node/filter.decorator.ts_
 

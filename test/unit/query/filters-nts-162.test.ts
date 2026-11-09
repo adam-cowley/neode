@@ -17,6 +17,7 @@ import {
   readFilterFragment,
   setFilterParams,
   clearFilterParams,
+  withFilterParams,
   WITHOUT_ALL_FILTERS,
   SOFT_DELETE_FILTER,
 } from '../../../src/services/query/filters'
@@ -111,6 +112,8 @@ describe('named global filters (NTS-162)', () => {
     })
 
     it('disabling softDelete by name drops the label check', () => {
+      setFilterParams('tenant', 'acme')
+
       const builder = new Builder().match(THIS_NODE, articleSchema.getLabels())
 
       applyReadFilters(builder, articleSchema, { withoutFilters: [SOFT_DELETE_FILTER] })
@@ -123,6 +126,8 @@ describe('named global filters (NTS-162)', () => {
     })
 
     it('includeDeleted is the soft-delete opt back in (NTS-510 spelling)', () => {
+      setFilterParams('tenant', 'acme')
+
       const viaFlag = readFilterClauses(articleSchema, THIS_NODE, { includeDeleted: true })
       const viaName = readFilterClauses(articleSchema, THIS_NODE, {
         withoutFilters: [SOFT_DELETE_FILTER],
@@ -132,6 +137,8 @@ describe('named global filters (NTS-162)', () => {
     })
 
     it('two where filters compose with AND on the same alias', () => {
+      setFilterParams('tenant', 'acme')
+
       const builder = new Builder().match(THIS_NODE, noteSchema.getLabels())
 
       applyReadFilters(builder, noteSchema)
@@ -142,11 +149,13 @@ describe('named global filters (NTS-162)', () => {
       expect(normalised).toContain('this.tenant = $tenant')
     })
 
-    it('a filter param that was never set still renders the predicate (loud at execution)', () => {
-      const { clauses, parameters } = readFilterClauses(articleSchema, THIS_NODE)
-
-      expect(clauses).toContain('(this.tenant = $tenant)')
-      expect(parameters['tenant']).toBeUndefined()
+    it('a filter param that was never set fails closed with a fix-suggesting error (NTS-575)', () => {
+      expect(() => readFilterClauses(articleSchema, THIS_NODE)).toThrow(NeodeError)
+      expect(() => readFilterClauses(articleSchema, THIS_NODE)).toThrow(/withFilterParams/)
+      // Opting the filter out is the other fix, and works
+      expect(() =>
+        readFilterClauses(articleSchema, THIS_NODE, { withoutFilters: ['tenant'] }),
+      ).not.toThrow()
     })
 
     it('the reserved wildcard disables every named filter (the write-path bypass)', () => {
@@ -274,6 +283,66 @@ describe('named global filters (NTS-162)', () => {
       )
 
       expect(normalise(projection)).toContain('articles: this_articles_loaded')
+    })
+  })
+
+  describe('request-scoped params (NTS-575)', () => {
+    const tenantOf = (): unknown => readFilterClauses(articleSchema, THIS_NODE).parameters['tenant']
+    const tick = async (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+
+    it('two interleaved async requests each see only their own tenant', async () => {
+      const seen: Record<string, unknown[]> = { acme: [], globex: [] }
+
+      const request = async (tenant: string): Promise<void> =>
+        withFilterParams({ tenant }, async () => {
+          for (let index = 0; index < 3; index++) {
+            seen[tenant]?.push(tenantOf())
+            await tick()
+          }
+        })
+
+      await Promise.all([request('acme'), request('globex')])
+
+      expect(seen['acme']).toEqual(['acme', 'acme', 'acme'])
+      expect(seen['globex']).toEqual(['globex', 'globex', 'globex'])
+    })
+
+    it('the scope wins over the process-wide default, which returns after it', async () => {
+      setFilterParams('tenant', 'default')
+
+      await withFilterParams({ tenant: 'scoped' }, async () => {
+        await tick()
+        expect(tenantOf()).toBe('scoped')
+      })
+
+      expect(tenantOf()).toBe('default')
+    })
+
+    it('a global set by another request cannot leak into a scope', async () => {
+      await withFilterParams({ tenant: 'acme' }, async () => {
+        setFilterParams('tenant', 'intruder')
+        await tick()
+        expect(tenantOf()).toBe('acme')
+      })
+    })
+
+    it('nested scopes override by name; undefined hides the default so the filter fails closed', async () => {
+      setFilterParams('tenant', 'default')
+
+      await withFilterParams({ tenant: 'outer' }, async () => {
+        await withFilterParams({ tenant: 'inner' }, async () => {
+          expect(tenantOf()).toBe('inner')
+        })
+        expect(tenantOf()).toBe('outer')
+
+        await withFilterParams({ tenant: undefined }, async () => {
+          expect(() => tenantOf()).toThrow(NeodeError)
+        })
+      })
+    })
+
+    it('rejects names that cannot be Cypher parameters', async () => {
+      await expect(withFilterParams({ 'bad name': 1 }, async () => {})).rejects.toThrow(NeodeError)
     })
   })
 })

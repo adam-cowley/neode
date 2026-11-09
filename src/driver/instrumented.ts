@@ -23,12 +23,18 @@ function instrumentRun(
     try {
       return await run(statement, parameters)
     } finally {
-      onQuery({
-        cypher: statement,
-        params: parameters ?? {},
-        duration: performance.now() - start,
-        database,
-      })
+      // NTS-576: a throwing listener must not turn a successful statement
+      // into a rejection (or replace the statement's own error)
+      try {
+        onQuery({
+          cypher: statement,
+          params: parameters ?? {},
+          duration: performance.now() - start,
+          database,
+        })
+      } catch {
+        // Observer failures are the observer's problem
+      }
     }
   }
 }

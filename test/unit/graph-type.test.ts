@@ -723,14 +723,48 @@ describe('GraphTypeService', () => {
     expect(connection.run).not.toHaveBeenCalled()
   })
 
-  it('runs one SET statement on Enterprise Edition', async () => {
+  it('runs one ADD statement on Enterprise Edition by default (NTS-578)', async () => {
     const connection = stubConnection()
     const results = await new GraphTypeService(connection, true).create()
 
-    expect(connection.run).toHaveBeenCalledTimes(1)
     expect(results[0]?.success).toBe(true)
     expect(results[0]?.type).toBe('GRAPH_TYPE')
+    expect(results[0]?.statement.startsWith('ALTER CURRENT GRAPH TYPE ADD {')).toBe(true)
+
+    const statements = vi.mocked(connection.run).mock.calls.map((call) => call[0])
+
+    expect(statements.some((statement) => statement.includes('GRAPH TYPE SET'))).toBe(false)
+  })
+
+  it('runs one SET statement with replace: true', async () => {
+    const connection = stubConnection()
+    const results = await new GraphTypeService(connection, true).create({ replace: true })
+
+    expect(results[0]?.success).toBe(true)
     expect(results[0]?.statement.startsWith('ALTER CURRENT GRAPH TYPE SET {')).toBe(true)
+  })
+
+  it('refuses replace when it would drop undeclared objects, unless canDropUndeclared', async () => {
+    const run = vi.fn(async (statement: string) =>
+      statement.startsWith('SHOW CURRENT GRAPH TYPE')
+        ? { records: [{ get: () => '{(:`ForeignApp` => {`id` :: STRING NOT NULL})}' }] }
+        : { records: [] },
+    )
+    const connection = { run } as unknown as ConnectionProvider
+
+    const refused = await new GraphTypeService(connection, true).create({ replace: true })
+
+    expect(refused[0]?.success).toBe(false)
+    expect(refused[0]?.error?.message).toContain('ForeignApp')
+    expect(refused[0]?.error?.message).toContain('canDropUndeclared: true')
+    expect(run.mock.calls.some((call) => call[0].includes('GRAPH TYPE SET'))).toBe(false)
+
+    const allowed = await new GraphTypeService(connection, true).create({
+      replace: true,
+      canDropUndeclared: true,
+    })
+
+    expect(allowed[0]?.success).toBe(true)
   })
 
   it('runs one DROP statement', async () => {

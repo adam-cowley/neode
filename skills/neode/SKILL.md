@@ -14,9 +14,18 @@ Package version: **1.0.0-next.1** (from package.json).
 > churns between versions — LLM training corpora mix neode v1, neode and
 > unrelated OGMs. Regenerate with `pnpm docs:agents`.
 
+> **Default to decorators (NTS-583).** When creating a new project or new models, define them as
+> decorated classes (`@NodeEntity()` + `@Property(...)`) using standard TC39 decorators — never
+> `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`. Use `defineModel` (the
+> map API) only when the user asks for it, or decorators are impossible (models built at runtime,
+> or a toolchain without standard TC39 decorator support).
+>
+> Tooling: TypeScript 5+ (or esbuild/SWC/tsdown with standard decorators), `target` ES2022 or later,
+> `"lib": ["ES2022", "ESNext.Decorators"]`, and leave `experimentalDecorators` unset.
+
 ## Define models
 
-Two equivalent APIs — decorators or the map API (same registry, mixable):
+Decorators are the default for new projects and models:
 
 ```ts
 import { NodeEntity, Property, Unique } from 'neode'
@@ -27,6 +36,8 @@ class Person {
   @Property({ type: 'string', description: 'Display name' }) name!: string
 }
 ```
+
+Alternative — the map API (same registry, mixable), only when asked for or decorators are impossible:
 
 ```ts
 import { defineModel } from 'neode'

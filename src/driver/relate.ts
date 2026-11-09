@@ -518,11 +518,25 @@ class RelateTransactionHandle implements TransactionHandle {
   private open = true
 
   private readonly connection: RelateConnection
-  private readonly release: () => void = noop
+  private readonly releaseSlot: () => void
+  private released = false
 
   constructor(connection: RelateConnection, release?: () => void) {
     this.connection = connection
-    this.release = release ?? noop
+    this.releaseSlot = release ?? noop
+  }
+
+  /**
+  Free the queue slot — idempotent, so commit/rollback/failure paths can
+  all call it without double-resolving.
+  */
+  private release(): void {
+    if (this.released) {
+      return
+    }
+
+    this.released = true
+    this.releaseSlot()
   }
 
   async run(statement: string, parameters?: QueryParameters): Promise<QueryOutput> {
@@ -556,9 +570,11 @@ class RelateTransactionHandle implements TransactionHandle {
       this.connection.commit()
     } catch (error) {
       throw classifyError(error)
+    } finally {
+      // NTS-576: a failed commit must still free the queue slot, or every
+      // later statement waits behind it forever
+      this.release()
     }
-
-    this.release()
   }
 
   // eslint-disable-next-line @typescript-eslint/require-await -- the embedded engine rolls back synchronously; nothing to await
@@ -573,10 +589,30 @@ class RelateTransactionHandle implements TransactionHandle {
       this.connection.rollback()
     } catch (error) {
       throw classifyError(error)
+    } finally {
+      // NTS-576: a failed rollback must still free the queue slot, or every
+      // later statement waits behind it forever
+      this.release()
     }
-
-    this.release()
   }
+}
+
+/**
+Default time an autocommit statement or beginTransaction() waits for the
+embedded engine's single transaction slot before failing (NTS-576).
+*/
+export const DEFAULT_QUEUE_TIMEOUT_MS = 30_000
+
+/**
+Options for the embedded Relate provider.
+*/
+export interface RelateConnectionOptions {
+  /**
+  Milliseconds a statement / beginTransaction() waits for the engine's
+  single transaction slot before failing with a descriptive error
+  (default 30000). `0` or `Infinity` waits forever.
+  */
+  queueTimeoutMs?: number
 }
 
 /**
@@ -586,6 +622,7 @@ construction time; the client shapes are structural so it stays that way.
 */
 export class RelateConnectionProvider implements ConnectionProvider {
   private readonly connection: RelateConnection
+  private readonly queueTimeoutMs: number
 
   /**
   The embedded engine supports ONE transaction at a time per connection.
@@ -595,10 +632,77 @@ export class RelateConnectionProvider implements ConnectionProvider {
   */
   private queue: Promise<void> = Promise.resolve()
 
-  constructor(database: RelateDatabase, namespace = 'neo4j') {
+  constructor(
+    database: RelateDatabase,
+    namespace = 'neo4j',
+    options: RelateConnectionOptions = {},
+  ) {
     requireRelateClient() // the native library is loaded at require-time
 
     this.connection = database.connect(namespace)
+    this.queueTimeoutMs = options.queueTimeoutMs ?? DEFAULT_QUEUE_TIMEOUT_MS
+  }
+
+  /**
+  Take the next turn on the queue: resolves with an idempotent `release`
+  once every earlier holder has released. Waiting is bounded by
+  `queueTimeoutMs` (NTS-576) — the usual cause of a stuck wait is a call
+  made inside an open transaction that does not join it.
+  */
+  private async acquire(): Promise<() => void> {
+    const previous = this.queue
+
+    let resolve!: () => void
+    this.queue = new Promise<void>((done) => (resolve = done))
+
+    let isReleased = false
+
+    const release = (): void => {
+      if (isReleased) {
+        return
+      }
+
+      isReleased = true
+      resolve()
+    }
+
+    const timeout = this.queueTimeoutMs
+
+    if (timeout <= 0 || !Number.isFinite(timeout)) {
+      await previous
+
+      return release
+    }
+
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const timedOut = new Promise<'timeout'>((done) => {
+      timer = setTimeout(() => {
+        done('timeout')
+      }, timeout)
+    })
+
+    try {
+      const outcome = await Promise.race([previous, timedOut])
+
+      if (outcome === 'timeout') {
+        // Keep the queue order intact: this waiter's slot frees only once
+        // the holder it was waiting on has released
+        void previous.then(release)
+
+        throw new NeodeError(
+          `Timed out after ${String(timeout)}ms waiting for the embedded Relate engine's transaction slot — ` +
+            'another transaction on this connection is still open. The usual cause is a call made inside ' +
+            'neode.transaction() (or an open transaction handle) that does not join it, e.g. a schema method ' +
+            'or a call on a different Neode instance: run it outside the transaction, or use the transaction ' +
+            'handle / ambient join. Raise `queueTimeoutMs` if the holder is legitimately long-running.',
+        )
+      }
+    } finally {
+      clearTimeout(timer)
+    }
+
+    return release
   }
 
   /**
@@ -611,14 +715,8 @@ export class RelateConnectionProvider implements ConnectionProvider {
     // An autocommit statement is an implicit one-statement transaction:
     // it waits its turn on the same queue as beginTransaction() instead
     // of failing while a transaction holds the slot (NTS-545). The
-    // transaction handles' own runs do not come through here, so no
-    // deadlock is possible.
-    const previous = this.queue
-
-    let release!: () => void
-    this.queue = new Promise<void>((resolve) => (release = resolve))
-
-    await previous
+    // transaction handles' own runs do not come through here.
+    const release = await this.acquire()
 
     try {
       const result = await classified(
@@ -637,18 +735,18 @@ export class RelateConnectionProvider implements ConnectionProvider {
   }
 
   async beginTransaction(): Promise<TransactionHandle> {
-    const previous = this.queue
+    const release = await this.acquire()
 
-    let release!: () => void
-    this.queue = new Promise<void>((resolve) => (release = resolve))
-
-    await previous
-
-    this.connection.begin()
-
-    return new RelateTransactionHandle(this.connection, () => {
+    try {
+      this.connection.begin()
+    } catch (error) {
+      // NTS-576: a failed begin must not keep the slot
       release()
-    })
+
+      throw classifyError(error)
+    }
+
+    return new RelateTransactionHandle(this.connection, release)
   }
 
   // eslint-disable-next-line @typescript-eslint/require-await -- the embedded engine has no editions and no async call behind this

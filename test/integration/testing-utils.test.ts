@@ -29,6 +29,9 @@ describe('wipe', () => {
   }
 
   it('detach-deletes every node and relationship', async () => {
+    // Shared servers keep other suites' leftovers
+    await backend.clearGraph()
+
     await backend.connection.run(
       'CREATE (:WipePerson {name: "a"})-[:KNOWS]->(:WipePerson {name: "b"})',
     )
@@ -36,7 +39,7 @@ describe('wipe', () => {
 
     expect(await countNodes()).toBe(3)
 
-    await wipe(backend.connection)
+    await wipe(backend.connection, { confirm: true })
 
     expect(await countNodes()).toBe(0)
   })
@@ -44,7 +47,7 @@ describe('wipe', () => {
   it('accepts a Neode facade as well as a raw runner', async () => {
     await backend.connection.run('CREATE (:WipePerson {name: "a"})')
 
-    await wipe(backend.neode)
+    await wipe(backend.neode, { confirm: true })
 
     expect(await countNodes()).toBe(0)
   })
@@ -62,7 +65,7 @@ describe('wipe', () => {
       'CREATE INDEX wipe_person_email_index IF NOT EXISTS FOR (n:WipePerson) ON (n.email)',
     )
 
-    await wipe(backend.connection)
+    await wipe(backend.connection, { confirm: true })
 
     const constraints = await backend.connection.run('SHOW CONSTRAINTS', {}, 'READ')
     const indexes = await backend.connection.run('SHOW INDEXES', {}, 'READ')
@@ -75,9 +78,32 @@ describe('wipe', () => {
   })
 
   it('leaves an already-empty database untouched (idempotent)', async () => {
-    await wipe(backend.connection)
-    await wipe(backend.connection)
+    await wipe(backend.connection, { confirm: true })
+    await wipe(backend.connection, { confirm: true })
 
+    expect(await countNodes()).toBe(0)
+  })
+
+  it('refuses to run without an explicit opt-in (NTS-578)', async () => {
+    await backend.connection.run('CREATE (:WipePerson {name: "keep"})')
+
+    await expect(wipe(backend.connection)).rejects.toThrow(/confirm: true/)
+    expect(await countNodes()).toBe(1)
+
+    await wipe(backend.connection, { confirm: true })
+  })
+
+  it('deletes in batches and reports what it did (NTS-578)', async () => {
+    await backend.connection.run('UNWIND range(1, 25) AS i CREATE (:WipePerson {i: i})')
+
+    const report = await wipe(backend.connection, { confirm: true, batchSize: 10 })
+
+    expect(report.nodesDeleted).toBe(25)
+    // Real servers (Neo4j 5.23+) take the batched path; embedded engines may fall back
+    if (backend.name !== 'relate') {
+      expect(report.deleteStrategy).toBe('in-transactions')
+    }
+    expect(report.failed.filter((failure) => failure.kind === 'constraint')).toEqual([])
     expect(await countNodes()).toBe(0)
   })
 })

@@ -15,6 +15,16 @@ const CONSTRAINT_VIOLATION_CODES = new Set([
 const TRANSIENT_CODE_PREFIX = 'Neo.TransientError.'
 
 /**
+Transient-prefixed codes that retrying cannot fix: the transaction was
+killed by an operator or timed out server-side (NTS-582). The official
+driver's retry predicate excludes the same two.
+*/
+const NON_RETRYABLE_TRANSIENT_CODES = new Set([
+  'Neo.TransientError.Transaction.Terminated',
+  'Neo.TransientError.Transaction.LockClientStopped',
+])
+
+/**
 The driver's connect-failure message shapes ("Failed to connect to
 server at …", ECONNREFUSED). These get the connection-config fix
 appended — transient mid-session errors keep their raw message (the
@@ -95,4 +105,14 @@ Type guard for classified transient errors.
 */
 export function isTransientError(error: unknown): error is TransientError {
   return error instanceof TransientError
+}
+
+/**
+Whether a managed retry may re-run the unit after this error (NTS-582): a
+TransientError, except a transaction terminated by an operator / the
+server timeout (`Transaction.Terminated`, `Transaction.LockClientStopped`) —
+re-running would just be killed again, or defeat the kill.
+*/
+export function isRetryableError(error: unknown): error is TransientError {
+  return isTransientError(error) && !NON_RETRYABLE_TRANSIENT_CODES.has(error.code ?? '')
 }
