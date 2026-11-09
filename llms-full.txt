@@ -75,6 +75,12 @@ Register a model from a map-based schema definition (neode parity), returning th
 
 _source: meta/map-schema.ts_
 
+### `Derived` (decorator)
+
+Stored derived property (NTS-569): computed on the write path from the `from` source properties and stored like a hand-set value — the write-time counterpart of `@Computed` (read-time, never stored). TypeScript-side (`compute`) runs against the entity's property record; Cypher-side (`cypher`) is evaluated by the database inside the write statement with `this` bound to the written node after the sources are set. Exactly one of the two is required. A write touching any source recomputes the value unless the derived property itself is explicitly provided. Example: ```ts
+
+_source: decorators/node/derived.decorator.ts_
+
 ### `Duration` (decorator)
 
 Register a duration property.
@@ -1454,6 +1460,7 @@ so new fields (e.g. upcoming schema options) appear here automatically.
 | `exists` | `boolean` (optional) |  |
 | `typed` | `boolean` (optional) | Opt in to a property-type constraint generated from the declared type (NTS-141): `REQUIRE n.prop IS :: STRING`. |
 | `vector` | `VectorConfig` (optional) | Declare a vector index over the property (NTS-447): created by `installSchema()` with the deterministic `vectorIndexName()` naming and dropped by `dropSchema()`. |
+| `derived` | `DerivedConfig` (optional) | Stored derived property (NTS-569): computed on the write path from the `from` source properties and stored like a hand-set value. See DerivedConfig — exactly one of `compute` / `cypher`. |
 | `transform` | `TransformConfig` (optional) | Property value transforms (NTS-449): `in` converts the user value into its stored form before validation on every write path (create / update / merge / bulk writes), `out` converts the stored form back at hydration on read. See TransformConfig. |
 | `coalesce` | `string | string[]` (optional) | Read-side fallbacks applied at hydration when the stored/projected value is null or absent (NTS-139, the Zod `.catch()` analogue): a literal, or sibling property names whose first non-null value wins. |
 | `fake` | `() => unknown` (optional) | Per-property fake data generator (NTS-444): user-supplied, no faker dependency. Invoked by factory seeding (and the create path) when neither an explicit value nor `default` applies — precedence on create is explicit value > `default` > `fake`, and generated values are validated like any other write. |

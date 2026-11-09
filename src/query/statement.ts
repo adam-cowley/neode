@@ -153,7 +153,28 @@ export class Statement {
     }
 
     if (this.valuesToSet.length > 0) {
-      output.push(`SET ${this.valuesToSet.map((value) => value.toString()).join(', ')}`)
+      // Raw (expression) and parameterised items render as separate SET
+      // clauses, run-length grouped so same-form items stay together: the
+      // embedded Relate engine drops the trailing items of a SET clause
+      // that mixes the two forms (NTS-569). Multiple plain SET clauses are
+      // valid Cypher and apply in order — ON CREATE/ON MATCH SET keep their
+      // single-clause shape (two of those are invalid Cypher, NTS-491).
+      const runs: { isRaw: boolean; items: SetClause[] }[] = []
+
+      for (const item of this.valuesToSet) {
+        const isRaw = typeof item === 'string' || item.isRaw
+        const last = runs.at(-1)
+
+        if (last?.isRaw === isRaw) {
+          last.items.push(item)
+        } else {
+          runs.push({ isRaw, items: [item] })
+        }
+      }
+
+      for (const { items } of runs) {
+        output.push(`SET ${items.map((value) => value.toString()).join(', ')}`)
+      }
     }
 
     if (this.callValues.length > 0) {

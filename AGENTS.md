@@ -61,6 +61,7 @@ Decorator reference:
 - `Date` (decorator) — Register a date property.
 - `DateTime` (decorator) — Register a datetime property.
 - `Default` (decorator) — Set a default value (literal or factory function) for the property. Merges onto the existing property, so it can be stacked with a type decorator.
+- `Derived` (decorator) — Stored derived property (NTS-569): computed on the write path from the `from` source properties and stored like a hand-set value — the write-time counterpart of `@Computed` (read-time, never stored). TypeScript-side (`compute`) runs against the entity's property record; Cypher-side (`cypher`) is evaluated by the database inside the write statement with `this` bound to the written node after the sources are set. Exactly one of the two is required. A write touching any source recomputes the value unless the derived property itself is explicitly provided. Example: ```ts
 - `Duration` (decorator) — Register a duration property.
 - `EndNode` (decorator) — On a relationship entity: the property holding the node at the relationship's end.
 - `EntityRepository` (decorator) — Register a custom Repository subclass for an entity (TypeORM parity):

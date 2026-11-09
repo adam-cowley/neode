@@ -9,6 +9,7 @@ import {
   versionBump,
   applyEmbeddings,
   applyInTransforms,
+  deriveProperties,
   modelPropertyValues,
   timestampProperty,
   versionProperty,
@@ -224,11 +225,19 @@ RETURN this
 row's explicit value first (`coalesce`), so an explicitly provided
 timestamp wins over the database clock.
 */
-export function buildCreateQuery(labels: string[], stamps: string[] = []): string {
+export function buildCreateQuery(
+  labels: string[],
+  stamps: string[] = [],
+  derivedSets: string[] = [],
+): string {
   return [
     'UNWIND $rows AS row',
     `CREATE (${THIS_NODE}${labelPattern(labels)})`,
     [`SET ${THIS_NODE} += row`, ...stamps].filter((part) => part.length > 0).join(', '),
+    // Derived sets are their own clause: the embedded Relate engine drops
+    // the trailing items of a SET clause that mixes the `+=` map form with
+    // property assignments (NTS-569)
+    ...(derivedSets.length > 0 ? [`SET ${derivedSets.join(', ')}`] : []),
     `RETURN ${THIS_NODE}`,
   ].join('\n')
 }
@@ -252,6 +261,7 @@ export function buildMergeQuery(
   onCreateStamps: string[] = [],
   stamps: string[] = [],
   onMatchStamps: string[] = [],
+  derivedSets: string[] = [],
 ): string {
   if (matchKeys.length === 0) {
     throw new NeodeError('mergeMany requires at least one match property')
@@ -265,6 +275,10 @@ export function buildMergeQuery(
     ...(onCreateStamps.length > 0 ? [`ON CREATE SET ${onCreateStamps.join(', ')}`] : []),
     ...(onMatchStamps.length > 0 ? [`ON MATCH SET ${onMatchStamps.join(', ')}`] : []),
     [`SET ${THIS_NODE} += row`, ...stamps].filter((part) => part.length > 0).join(', '),
+    // Derived sets are their own clause: the embedded Relate engine drops
+    // the trailing items of a SET clause that mixes the `+=` map form with
+    // property assignments (NTS-569)
+    ...(derivedSets.length > 0 ? [`SET ${derivedSets.join(', ')}`] : []),
     `RETURN ${THIS_NODE}`,
   ]
 
@@ -323,17 +337,38 @@ copied, so the caller's records are left untouched.
 async function prepareRows(
   rows: Record<string, unknown>[],
   schema: EntitySchema,
-): Promise<Record<string, unknown>[]> {
-  return Promise.all(
+): Promise<{ rows: Record<string, unknown>[]; derivedSets: string[] }> {
+  const derivedKeys = new Map<string, string>()
+
+  const prepared = await Promise.all(
     rows.map(async (row) => {
-      const prepared = { ...row }
+      const copy = { ...row }
 
-      await applyEmbeddings(schema, prepared)
-      await applyInTransforms(schema, prepared)
+      await applyEmbeddings(schema, copy)
 
-      return prepared
+      // Stored derived properties (NTS-569): compute-side values land on
+      // the row and flow through the reduce like hand-set values. A
+      // cypher-side set from any row becomes a statement-level SET item —
+      // the expression reads each row's node values, so it is correct per
+      // row; rows that kept an explicit value are protected by the
+      // coalesce on the row below.
+      const { cypherSets } = deriveProperties(schema, copy)
+
+      for (const { key, cypher } of cypherSets) {
+        derivedKeys.set(key, cypher)
+      }
+
+      await applyInTransforms(schema, copy)
+
+      return copy
     }),
   )
+
+  const derivedSets = [...derivedKeys].map(
+    ([key, cypher]) => `${THIS_NODE}.${key} = coalesce(row.${key}, ${cypher})`,
+  )
+
+  return { rows: prepared, derivedSets }
 }
 
 /**
@@ -406,7 +441,7 @@ export class BulkService extends QueryService {
   ): Promise<BulkChunk<T>[]> {
     // Embedding sugar + `in` transforms (NTS-449): user value -> stored
     // form, per row, before the shared validate-and-reduce pass
-    const prepared = await prepareRows(rows, schema)
+    const { rows: prepared, derivedSets } = await prepareRows(rows, schema)
 
     const rowMaps = prepared.map((row) => processCreateRow(row, schema))
 
@@ -420,6 +455,7 @@ export class BulkService extends QueryService {
         ...rowStamps(schema, 'createdAt'),
         ...rowStamps(schema, 'updatedAt'),
         ...rowVersionStamp(schema),
+        ...derivedSets,
       ]),
       options,
     )
@@ -439,7 +475,7 @@ export class BulkService extends QueryService {
   ): Promise<BulkChunk<T>[]> {
     // Embedding sugar + `in` transforms (NTS-449): user value -> stored
     // form, per row, before the match/set split
-    const prepared = await prepareRows(rows, schema)
+    const { rows: prepared, derivedSets } = await prepareRows(rows, schema)
 
     const parts = prepared.map((row) => processMergeRow(row, schema))
 
@@ -468,6 +504,7 @@ export class BulkService extends QueryService {
       [...rowStamps(schema, 'createdAt'), ...rowVersionStamp(schema)],
       rowStamps(schema, 'updatedAt'),
       rowVersionBump(schema),
+      derivedSets,
     )
 
     // The MERGE pattern reads the match values off the row map

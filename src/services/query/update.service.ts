@@ -1,4 +1,5 @@
 import { Builder, type EntityMatchCriteria } from '../../query/index.js'
+import { quote } from '../../query/quote.js'
 import { INTERNAL_ID, THIS_NODE } from '../../constants.js'
 import { matchCriteriaForEntity } from '../../utilities.js'
 import type { GraphNode, QueryOutput } from '../../driver/types.js'
@@ -12,6 +13,8 @@ import {
   versionBump,
   applyEmbeddings,
   applyInTransforms,
+  deriveProperties,
+  modelPropertyValues,
   timestampProperty,
   versionProperty,
 } from '../write-utilities.js'
@@ -65,6 +68,35 @@ export class UpdateService extends QueryService {
 
     await applyEmbeddings(schema, provided)
     await applyInTransforms(schema, provided)
+
+    // Stored derived properties (NTS-569): the patch alone rarely carries
+    // every source, so compute runs over the entity's stored values under
+    // the transformed patch — a stored-domain record. The compute output is
+    // already stored-form (no second transform), and cypher-side sets are
+    // appended after the SET clause below. The stored side never
+    // contributes the derived key itself: the instance's stale value must
+    // not count as an explicit win — only a patch on the key does.
+    const writtenKeys = new Set(
+      Object.keys(properties).filter((key) => properties[key] !== undefined),
+    )
+
+    const derivedKeys = new Set(
+      schema
+        .getProperties()
+        .filter((property) => property.getDerived() !== undefined)
+        .map((property) => property.getKey()),
+    )
+
+    const storedUnder = Object.fromEntries(
+      Object.entries(modelPropertyValues(entity, schema)).filter(([key]) => !derivedKeys.has(key)),
+    )
+
+    const derivedInput = { ...storedUnder, ...provided }
+    const derived = deriveProperties(schema, derivedInput, writtenKeys)
+
+    for (const key of derived.recomputed) {
+      provided[key] = derivedInput[key]
+    }
 
     // Properties an update must never overwrite
     const guarded = new Set(
@@ -180,6 +212,12 @@ export class UpdateService extends QueryService {
 
     for (const property of vectorProperties) {
       builder.setVectorProperty(THIS_NODE, property.getKey(), set[property.getKey()])
+    }
+
+    // Cypher-side derived properties (NTS-569): evaluated by the database
+    // after the patch is applied, so the expressions read the new values
+    for (const { key, cypher } of derived.cypherSets) {
+      builder.setExpr(`${THIS_NODE}.${quote(key)}`, cypher)
     }
 
     // Server-side updatedAt stamp on every write (NTS-165) — an explicit

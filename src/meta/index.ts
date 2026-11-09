@@ -52,6 +52,7 @@ const METAMODEL_KEYS = new Set([
   'description',
   'fake',
   'vector',
+  'derived',
   'transform',
 ])
 
@@ -255,6 +256,11 @@ export function mergeProperty(
   // Vector index declaration (NTS-447)
   if (config.vector !== undefined) {
     property.setVector(config.vector)
+  }
+
+  // Stored derived property (NTS-569)
+  if (config.derived !== undefined) {
+    property.setDerived(config.derived)
   }
 
   // Property value transforms (NTS-449)
