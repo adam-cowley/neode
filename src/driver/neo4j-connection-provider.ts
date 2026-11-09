@@ -169,6 +169,19 @@ class DriverQueryRecord implements QueryRecord {
   }
 }
 
+/**
+Close a session without masking the caller's outcome (NTS-576): a failing
+close never replaces a successful result or the original error — the
+driver already releases the connection on its own failure paths.
+*/
+async function closeQuietly(session: DriverSession): Promise<void> {
+  try {
+    await session.close()
+  } catch {
+    // Intentionally swallowed — see above
+  }
+}
+
 export class Neo4jTransactionHandle implements TransactionHandle {
   private readonly session: DriverSession
   private readonly tx: DriverTransaction
@@ -191,13 +204,20 @@ export class Neo4jTransactionHandle implements TransactionHandle {
   }
 
   async commit(): Promise<void> {
-    await this.tx.commit()
-    await this.session.close()
+    try {
+      await this.tx.commit()
+    } finally {
+      // NTS-576: the session closes even when the commit fails
+      await closeQuietly(this.session)
+    }
   }
 
   async rollback(): Promise<void> {
-    await this.tx.rollback()
-    await this.session.close()
+    try {
+      await this.tx.rollback()
+    } finally {
+      await closeQuietly(this.session)
+    }
   }
 }
 
@@ -255,7 +275,7 @@ export class Neo4jConnectionProvider implements ConnectionProvider {
           },
         }
       } finally {
-        await session.close()
+        await closeQuietly(session)
       }
     } catch (error) {
       // NTS-446: statement + redacted params on unclassified failures
@@ -269,9 +289,15 @@ export class Neo4jConnectionProvider implements ConnectionProvider {
   ): Promise<TransactionHandle> {
     try {
       const session = await this.session(mode, database)
-      const tx = session.beginTransaction()
 
-      return new Neo4jTransactionHandle(session, tx)
+      try {
+        return new Neo4jTransactionHandle(session, session.beginTransaction())
+      } catch (error) {
+        // NTS-576: a failed begin must not leak its session
+        await closeQuietly(session)
+
+        throw error
+      }
     } catch (error) {
       throw classifyError(error)
     }
