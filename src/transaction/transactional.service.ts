@@ -151,7 +151,14 @@ export class TransactionalService implements INeode {
       )
     }
 
-    await this.handle.commit()
+    try {
+      await this.handle.commit()
+    } catch (error) {
+      // A failed commit is ambiguous at best — never release its events
+      this.effects.discard()
+
+      throw error
+    }
 
     this.state = 'committed'
 
@@ -170,10 +177,12 @@ export class TransactionalService implements INeode {
       return
     }
 
+    // Whatever the rollback's outcome, the buffered work never committed
+    this.effects.discard()
+
     await this.handle.rollback()
 
     this.state = 'rolled-back'
-    this.effects.discard()
   }
 
   /**

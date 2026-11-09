@@ -241,6 +241,27 @@ describe('events and observers fire after commit (NTS-582)', () => {
   })
 })
 
+describe('failed close discards buffered events (NTS-582)', () => {
+  it('a failed commit() on a handle never releases the events', async () => {
+    const provider = new MockProvider()
+    const neode = new Neode(provider)
+    const entity = Object.assign(new TxPerson(), { name: 'Ada' })
+    const events = vi.fn()
+
+    neode.on(EventType.NODE_DELETED, events)
+
+    provider.commitFailures = [new Error('commit failed')]
+
+    const tx = await neode.openWriteTransaction()
+
+    await tx.delete(entity)
+
+    await expect(tx.commit()).rejects.toThrow('commit failed')
+
+    expect(events).not.toHaveBeenCalled()
+  })
+})
+
 describe('nested option conflicts (NTS-582)', () => {
   it('a nested transaction() with a conflicting option throws', async () => {
     const neode = new Neode(new MockProvider())

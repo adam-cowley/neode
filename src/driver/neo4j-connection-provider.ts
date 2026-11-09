@@ -5,6 +5,7 @@
   type Relationship as DriverRelationship,
   type Session as DriverSession,
   session as DriverSessionMode,
+  type QueryResult,
   type Transaction as DriverTransaction,
   Integer as DriverInteger,
   isDate,
@@ -196,6 +197,18 @@ async function closeQuietly(session: DriverSession): Promise<void> {
   }
 }
 
+function summaryOf(result: QueryResult): NonNullable<QueryOutput['summary']> {
+  return {
+    counters: Object.fromEntries(
+      Object.entries(result.summary.counters.updates()).filter(([, value]) => value > 0),
+    ),
+    // Populated by EXPLAIN / PROFILE statements (query options
+    // are not used; the keywords prefix the statement itself)
+    plan: result.summary.plan,
+    profile: result.summary.profile,
+  }
+}
+
 export class Neo4jTransactionHandle implements TransactionHandle {
   private readonly session: DriverSession
   private readonly tx: DriverTransaction
@@ -209,7 +222,13 @@ export class Neo4jTransactionHandle implements TransactionHandle {
     try {
       const result = await this.tx.run(statement, parameters)
 
-      return { records: result.records.map((record) => new DriverQueryRecord(record)) }
+      // The summary rides along so write counters (created vs matched) are
+      // visible inside a transaction too — save()'s create/update verdict
+      // reads them (NTS-582)
+      return {
+        records: result.records.map((record) => new DriverQueryRecord(record)),
+        summary: summaryOf(result),
+      }
     } catch (error) {
       // NTS-446: unclassified failures carry the failing statement and
       // redacted params; typed errors pass through with their own message
@@ -278,15 +297,7 @@ export class Neo4jConnectionProvider implements ConnectionProvider {
 
         return {
           records: result.records.map((record) => new DriverQueryRecord(record)),
-          summary: {
-            counters: Object.fromEntries(
-              Object.entries(result.summary.counters.updates()).filter(([, value]) => value > 0),
-            ),
-            // Populated by EXPLAIN / PROFILE statements (query options
-            // are not used; the keywords prefix the statement itself)
-            plan: result.summary.plan,
-            profile: result.summary.profile,
-          },
+          summary: summaryOf(result),
         }
       } finally {
         await closeQuietly(session)
