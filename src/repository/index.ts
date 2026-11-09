@@ -302,10 +302,16 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     // runtime renders nested spec objects identically (NTS-154), and the
     // runtime validation is the checked edge for keys the compile-time
     // tiers cannot exclude.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the narrowed overload above carries the precise spec type; INeode keeps the legacy ReadOptions shape (docs/decisions/0002-typing-eager-loads.md)
-    const readOptions = options as ReadOptions<Entity>
 
-    return this.neode.find(this.entity, id, readOptions)
+    // the repository's pinned database applies unless the caller overrode
+    // it (NTS-607)
+    const readOptions =
+      options.database === undefined && this.database !== undefined
+        ? { ...options, database: this.database }
+        : options
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the narrowed overload above carries the precise spec type; INeode keeps the legacy ReadOptions shape (docs/decisions/0002-typing-eager-loads.md)
+    return this.neode.find(this.entity, id, readOptions as ReadOptions<Entity>)
   }
   /**
   The first entity matching the given properties (declared properties

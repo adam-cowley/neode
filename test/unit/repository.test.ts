@@ -127,6 +127,29 @@ describe('Repository', () => {
       expect(mocks.find.mock.calls[0][1]).toBe('abc-123')
       expect(found?.title).toBe('Alien')
     })
+
+    it('keeps the repository database when options are passed (NTS-607)', async () => {
+      const { neode, mocks } = stubNeode()
+      mocks.find.mockResolvedValue(Movie.build({ title: 'Alien' }))
+
+      const repo = new Repository<Movie>(neode, Movie, 'analytics')
+      await repo.find('abc-123', { withoutFilters: ['tenant'] })
+
+      expect(mocks.find.mock.calls[0][2]).toEqual({
+        database: 'analytics',
+        withoutFilters: ['tenant'],
+      })
+    })
+
+    it('an explicit options.database wins over the repository database', async () => {
+      const { neode, mocks } = stubNeode()
+      mocks.find.mockResolvedValue(Movie.build({ title: 'Alien' }))
+
+      const repo = new Repository<Movie>(neode, Movie, 'analytics')
+      await repo.find('abc-123', { database: 'other' })
+
+      expect(mocks.find.mock.calls[0][2]).toEqual({ database: 'other' })
+    })
   })
 
   describe('findBy', () => {
