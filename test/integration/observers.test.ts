@@ -317,7 +317,7 @@ describe('Observers fire on every write path (NTS-596)', () => {
       },
     })
 
-    await expect(backend.neode.deleteAll(Observed, {})).rejects.toThrow('protected')
+    await expect(backend.neode.deleteAll(Observed, { sku: 'd-2' })).rejects.toThrow('protected')
 
     const output = await backend.neode.readCypher('MATCH (o:Observed) RETURN count(o) AS count', {})
 
