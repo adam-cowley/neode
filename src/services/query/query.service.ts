@@ -5,6 +5,7 @@ import { THIS_NODE } from '../../constants.js'
 import { eagerNode } from '../../query/eager-utilities.js'
 import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { shapeNodeRows } from './shape.js'
+import { requireLimit } from './limits.js'
 import type { ReadFilterOptions } from './filters.js'
 
 export class QueryService {
@@ -64,8 +65,8 @@ export class QueryService {
     if (skip !== undefined && skip !== 0) {
       builder.skip(skip)
     }
-    if (limit !== undefined && limit !== 0) {
-      builder.limit(limit)
+    if (limit !== undefined) {
+      builder.limit(requireLimit(limit))
     }
 
     // Build Cypher

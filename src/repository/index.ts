@@ -11,6 +11,7 @@ import type { LoadedEntity, QueryLoadSpec, ReadOptions, WithSpec } from '../quer
 import { quote } from '../query/quote.js'
 import { applyOrder, type OrderSpec } from '../query/order-spec.js'
 import { getMergeFields } from '../services/query/merge.service.js'
+import { requireLimit } from '../services/query/limits.js'
 import { assertDeleteAllScope } from '../services/query/delete.service.js'
 import type { DeleteOptions } from '../services/query/delete.service.js'
 import type { ScoredEntity } from '../services/query/search.service.js'
@@ -409,8 +410,8 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       builder.skip(options.skip)
     }
 
-    if (options.limit !== undefined && options.limit !== 0) {
-      builder.limit(options.limit)
+    if (options.limit !== undefined) {
+      builder.limit(requireLimit(options.limit))
     }
 
     const output = await this.read(builder)
