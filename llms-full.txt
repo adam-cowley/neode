@@ -835,6 +835,18 @@ ConnectionProvider over the embedded Relate engine (@relate/relate) — in-proce
 
 _source: driver/relate.ts_
 
+### `RelatedQuery` (class)
+
+The scope instance.related(key) returns (NTS-497): the queryable generalisation of load() — Builder-style verbs (where / orderBy / limit / skip) composed ON TOP of the relationship traversal, with the terminal find() / first() / count() running it and hydrating the related entities through the regular hydration path (projection-aware: nested eager relationships ride the eager map projection, as at load()). The related target's own global filters (NTS-162) apply inside the traversal read — a filtered-out target yields an empty result, never an error, and the parent row is never affected (plain MATCH — no OPTIONAL MATCH, NTS-565). The typed view of the scope is the RelatedScope interface, projected through EntityMethods.related — the class is the runtime engine, its terminals answering `unknown` exactly as MethodImpl.load does. Each terminal runs its own READ scope: verbs are recorded at chain time and replayed onto a fresh traversal per terminal. count() counts the matching related nodes — the row-shaping verbs (order / skip / limit) do not affect it, as with a total alongside a paged read.
+
+_source: services/query/load-relation.service.ts_
+
+### `RelatedScope` (interface)
+
+The related() scope surface (NTS-497): Builder-style verbs composed on top of one declared relationship traversal, with the terminals running the composed statement. Property names are bare ("year") — the scope prefixes them with the related node's variable, exactly as RelationQuery does at load-spec replay (NTS-560). Every verb returns the scope for chaining. `T` is the related entity type; `FindResult` is what find() resolves to — `T[]` for a many-key, `T | undefined` for a one-key (the declared relationship property's own type).
+
+_source: services/query/load-relation.service.ts_
+
 ### `RelationQuery` (interface)
 
 The sub-builder a load spec callback receives (NTS-560): the comprehension / subquery-legal operations only — where, orderBy, limit, skip. No return(), no writes, no statement segments. Property names are bare ("orderDate") — the loader prefixes them with the related node's variable. Every method returns the view for chaining.

@@ -160,6 +160,7 @@ export type { FilterDefinition } from './meta/entity/entity-schema.js'
 export { vectorIndexName } from './services/schema/vector.service.js'
 export { fulltextIndexName } from './services/schema/fulltext.service.js'
 export type { OrderSpec } from './query/order-spec.js'
+export type { RelatedQuery, RelatedScope } from './services/query/load-relation.service.js'
 export type {
   LoadSpec,
   ReadOptions,

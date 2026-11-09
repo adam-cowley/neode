@@ -61,7 +61,11 @@ import { FindService } from './services/query/find.service.js'
 import { FindByIdService } from './services/query/find-by-id.service.js'
 import { GetService, type OrderSpec } from './services/query/get.service.js'
 import { type KnnMode, knn } from './services/query/knn.service.js'
-import { type LoadOptions, LoadRelationService } from './services/query/load-relation.service.js'
+import {
+  type LoadOptions,
+  LoadRelationService,
+  RelatedQuery,
+} from './services/query/load-relation.service.js'
 import { getMergeFields, MergeService } from './services/query/merge.service.js'
 import { rollbackAfterFailure } from './transaction/rollback.js'
 import {
@@ -1288,6 +1292,39 @@ export class Neode implements INeode {
     } catch (error) {
       return await rollbackAfterFailure(tx, error)
     }
+  }
+
+  /**
+  The related() scope (NTS-497): the queryable generalisation of
+  loadRelation() — Builder-style verbs (where / orderBy / limit / skip)
+  composed on top of one declared relationship traversal off a hydrated
+  entity, with terminal find() / first() / count() running it and
+  hydrating the related entities. Each terminal runs its own READ
+  transaction; the target model's global filters apply inside the
+  traversal read.
+  */
+  relatedQuery(constructor: Newable, entity: object, relationshipKey: string): RelatedQuery {
+    const schema = this.getSchema(constructor)
+    const relationship = this.requireRelationship(schema, relationshipKey)
+
+    return new RelatedQuery(
+      async (work) => {
+        const tx = await this.beginWorkTransaction('READ')
+
+        try {
+          const result = await work(tx)
+
+          await tx.commit()
+
+          return result
+        } catch (error) {
+          return await rollbackAfterFailure(tx, error)
+        }
+      },
+      schema,
+      entity,
+      relationship,
+    )
   }
 
   /**

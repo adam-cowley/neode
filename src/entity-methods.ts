@@ -26,7 +26,11 @@ import type { EntitySchema } from './meta/entity/entity-schema.js'
 import type { Newable } from './meta/newable.js'
 import type { Neode } from './neode.service.js'
 import { toJson } from './serialise.js'
-import type { LoadOptions } from './services/query/load-relation.service.js'
+import type {
+  LoadOptions,
+  RelatedQuery,
+  RelatedScope,
+} from './services/query/load-relation.service.js'
 import type { DeleteOptions } from './services/query/delete.service.js'
 import type { DetachResult } from './services/query/detach.service.js'
 import { constructorOf as constructorOfInstance } from './services/type-guards.js'
@@ -200,6 +204,24 @@ export interface EntityMethods {
   ): Promise<this[K]>
 
   /**
+  Query FROM this entity along a declared relationship key (NTS-497) —
+  the queryable generalisation of load(): Builder-style verbs (where /
+  orderBy / limit / skip) composed on top of the relationship traversal,
+  with the terminal find() / first() / count() running the composed
+  statement and hydrating the related entities through the regular
+  hydration path. The related target's own global filters (NTS-162)
+  apply inside the traversal read — a filtered-out target yields an
+  empty result, never an error.
+
+  The scope's target type narrows from the relationship declaration: a
+  many-key scopes to the declared entity array's item, a one-key to the
+  declared entity.
+  */
+  related<K extends Exclude<keyof this, keyof EntityMethods> & string>(
+    key: K,
+  ): RelatedScope<this[K] extends (infer Item)[] ? Item : NonNullable<this[K]>, this[K]>
+
+  /**
   Whether the instance has unsaved changes — any (or, with `key`, the
   given property key) since its last persisted snapshot (Eloquent-style
   dirty tracking, NTS-157). Instances that have never been hydrated or
@@ -260,6 +282,7 @@ interface MethodImpl {
     relationshipKey: string,
   ): Promise<DetachResult<object, object>>
   load(this: object, key: string, options?: LoadOptions): Promise<unknown>
+  related(this: object, key: string): RelatedQuery
 }
 
 const methods: MethodImpl = {
@@ -348,6 +371,10 @@ const methods: MethodImpl = {
 
   async load(this, key, options) {
     return requireNeode().loadRelation(requireConstructor(this), this, key, options)
+  },
+
+  related(this, key) {
+    return requireNeode().relatedQuery(requireConstructor(this), this, key)
   },
 
   isDirty(this, key) {
