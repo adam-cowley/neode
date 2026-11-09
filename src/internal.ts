@@ -61,17 +61,17 @@ export type { FilterDefinition } from './meta/entity/entity-schema.js'
 // Index-name helpers
 export { fulltextIndexName } from './services/schema/fulltext.service.js'
 
-// Load-spec / related-read type machinery (NTS-154/497/499/558/560)
+// Load-spec / related-read type machinery (NTS-154/497/499/558/560) —
+// RelationshipEdgeRead / LoadedEntity / ManyAndCount are re-exported from
+// the root since NTS-602 (the docs teach them as read result shapes)
 export type {
   EdgeFindResult,
   RelatedQuery,
   RelatedScope,
-  RelationshipEdgeRead,
 } from './services/query/load-relation.service.js'
 export type {
   DeclaredRelationships,
   LoadOptions,
-  LoadedEntity,
   LoadSpec,
   QueryLoadLevel,
   QueryLoadSpec,
@@ -80,7 +80,6 @@ export type {
   WithSpec,
 } from './query/load-spec.js'
 export type {
-  ManyAndCount,
   FindManyAndCountOptions,
   StreamOptions,
 } from './services/query/paginate.service.js'

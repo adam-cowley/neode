@@ -18,6 +18,7 @@ import type {
   CursorPage,
   CursorPaginateOptions,
   CypherOptions,
+  DeleteOptions,
   EntityMethods,
   EntityOntology,
   ExpressionDefinition,
@@ -30,6 +31,8 @@ import type {
   InspectOptions,
   KnnMode,
   LabelPresentDefinition,
+  LoadedEntity,
+  ManyAndCount,
   OffsetPaginateOptions,
   Ontology,
   OrderSpec,
@@ -38,6 +41,7 @@ import type {
   ProjectionDirection,
   PropertyDefinition,
   PropertyOntology,
+  PropertySchema,
   PropertyTypeName,
   QueryExecutedEvent,
   QueryOutput,
@@ -51,6 +55,7 @@ import type {
   RelationshipCountConfig,
   RelationshipCountDefinition,
   RelationshipDefinition,
+  RelationshipEdgeRead,
   RelationshipExistsConfig,
   RelationshipExistsDefinition,
   RelationshipOntology,
@@ -65,6 +70,7 @@ import type {
   SchemaDriftGroup,
   SchemaInspection,
   SchemaObject,
+  SchemaResult,
   ScoredEntity,
   SyncEdgesOptions,
   SyncEdgesResult,
@@ -237,6 +243,7 @@ describe('public export surface (NTS-600)', () => {
         CursorPage<unknown>,
         CursorPaginateOptions,
         CypherOptions,
+        DeleteOptions,
         EntityMethods,
         EntityOntology,
         ExpressionDefinition,
@@ -249,6 +256,8 @@ describe('public export surface (NTS-600)', () => {
         InspectOptions,
         KnnMode,
         LabelPresentDefinition,
+        LoadedEntity<unknown, never>,
+        ManyAndCount<unknown>,
         OffsetPaginateOptions,
         Ontology,
         OrderSpec,
@@ -257,6 +266,7 @@ describe('public export surface (NTS-600)', () => {
         ProjectionDirection,
         PropertyDefinition,
         PropertyOntology,
+        PropertySchema,
         PropertyTypeName,
         QueryExecutedEvent,
         QueryOutput,
@@ -270,6 +280,7 @@ describe('public export surface (NTS-600)', () => {
         RelationshipCountConfig,
         RelationshipCountDefinition,
         RelationshipDefinition,
+        RelationshipEdgeRead<unknown>,
         RelationshipExistsConfig,
         RelationshipExistsDefinition,
         RelationshipOntology,
@@ -284,6 +295,7 @@ describe('public export surface (NTS-600)', () => {
         SchemaDriftGroup,
         SchemaInspection,
         SchemaObject,
+        SchemaResult,
         ScoredEntity<unknown>,
         SyncEdgesOptions,
         SyncEdgesResult,
@@ -308,5 +320,25 @@ describe('public export surface (NTS-600)', () => {
     expectTypeOf(requireRelateClient).toBeFunction()
     expectTypeOf(vectorIndexName).parameter(0).toEqualTypeOf<VectorIndexDefinition>()
     expectTypeOf(vectorIndexName).returns.toEqualTypeOf<string>()
+  })
+
+  it('exposes the NTS-602 doc-taught result types with their shapes', () => {
+    // related(k).withRelationship().find() / .first() rows
+    // (docs/decisions/0003-result-shapes.md, NTS-499/566)
+    expectTypeOf<RelationshipEdgeRead<{ id: string }>>().toEqualTypeOf<{
+      node: { id: string }
+      edge: GraphRelationship
+    }>()
+    // findManyAndCount's `{ items, total }` (docs/decisions/0003-result-shapes.md)
+    expectTypeOf<ManyAndCount<{ id: string }>>().toEqualTypeOf<{
+      items: { id: string }[]
+      total: number
+    }>()
+    // the with-spec-narrowed read return: no spec = the entity itself
+    expectTypeOf<LoadedEntity<{ id: string }, never>>().toEqualTypeOf<{ id: string }>()
+    // installSchema()/dropSchema()/applySchemaDrift's result row
+    expectTypeOf<SchemaResult['statement']>().toEqualTypeOf<string>()
+    expectTypeOf<SchemaResult['success']>().toEqualTypeOf<boolean>()
+    expectTypeOf<DeleteOptions['mode']>().toEqualTypeOf<'delete' | 'detach' | undefined>()
   })
 })

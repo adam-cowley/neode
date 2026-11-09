@@ -101,6 +101,10 @@ Options for the unified raw query entry, `Neode#cypher`.
 
 _source: driver/types.ts_
 
+### `DeleteOptions` (interface)
+
+_source: services/query/delete.service.ts_
+
 ### `Direction` (const)
 
 Direction of a relationship pattern. BOTH renders an undirected match pattern (`-[r:TYPE]-`), matching relationships of the type in either direction. Undirected is match-only: Neo4j cannot create a relationship without a direction, so the write paths (relate / create / save) reject BOTH with a descriptive error — set OUTGOING or INCOMING to write (NTS-483). Accepts the legacy case-insensitive 'IN' / 'OUT' / 'BOTH' spellings anywhere a direction is taken.
@@ -182,6 +186,16 @@ _source: services/query/knn.service.ts_
 ### `LabelPredicate` (class)
 
 _source: query/label-predicate.ts_
+
+### `LoadedEntity` (type)
+
+_source: query/load-spec.ts_
+
+### `ManyAndCount` (interface)
+
+Non-paginated `{ items, total }` read (Prisma's findManyAndCount)
+
+_source: services/query/paginate.service.ts_
 
 ### `MAX_CASCADE_DEPTH` (const)
 
@@ -284,6 +298,12 @@ _source: query/expressions.ts_
 ConnectionProvider over the embedded Relate engine (@relate/relate) — in-process, no Bolt server. The engine is a soft dependency, loaded at construction time; the client shapes are structural so it stays that way.
 
 _source: driver/relate.ts_
+
+### `RelationshipEdgeRead` (interface)
+
+One result row of an edge-returning related() read (NTS-499): the hydrated related entity (`node`) alongside the traversed relationship itself (`edge`, the normalized GraphRelationship — type, elementId, endpoints and properties). The seed of the NTS-566 result-shape contract: flat, named, no wrapper classes.
+
+_source: services/query/shape.ts_
 
 ### `Repository` (class)
 
