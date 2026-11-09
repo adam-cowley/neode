@@ -19,12 +19,6 @@ Package version: **1.0.0-next.1** (from package.json).
 
 Collection, serialisation and other shared exports.
 
-### `clearObservers` (function)
-
-Test seam: drop every registered observer — the process-global registry AND every instance's (NTS-596).
-
-_source: observers.ts_
-
 ### `fromEnv` (function)
 
 Load a .env file (dotenv does not clobber variables already set in process.env), map the NEO4J_* variables to a connection config and construct the neo4j driver. `driverConfig` — anything neo4j.driver accepts, e.g. `disableLosslessIntegers: true` — is forwarded verbatim, merged over the env-derived values.
@@ -37,23 +31,17 @@ One hop of a traversal (NTS-512): a relationship type, a direction, an optional 
 
 _source: traverse.ts_
 
-### `ModelObservers` (interface)
+### `MAX_TRAVERSE_DEPTH` (const)
 
-The observer hooks a model can carry (NTS-511). before* hooks run before the write statement — an error fails the write. On the facade (`neode.save()` / `create()` / `delete()`) they run BEFORE the write's transaction opens; on a transaction handle (`TransactionalService`) they run inside it. after* hooks run once the write is COMMITTED (NTS-582): for a write in an explicit or ambient transaction that is when the outermost transaction commits — they never fire for work that rolls back or is retried, and an error thrown by one cannot undo the committed write. An error an after* hook throws SURFACES AFTER THE COMMIT: it rejects the point that flushes the buffered effects (the `transaction()` callback, the managed scope, or the explicit `commit()` — or the facade call that committed its own transaction), so the data stays committed while the caller learns the hook failed (NTS-589). On the create path beforeSave receives the plain properties record (the entity does not exist yet) — mutate it to change what is written.
+Maximum depth of an open-ended variable-length hop (`*1..`) — the read-side counterpart of the write path's MAX_CREATE_DEPTH (services/write-utilities): an uncapped traversal is a whole-graph walk
 
-_source: observers.ts_
+_source: traverse.ts_
 
-### `observe` (function)
+### `setDeprecationWarnings` (function)
 
-Register observers for a model process-wide (NTS-511). Returns the off function. Every Neode instance fires process-wide observers; register per-instance with `neode.observe()` instead to scope them to one instance. Unknown models throw.
+Enable or disable the deprecation warnings (NTS-599). On by default — pass `false` to silence them (e.g. in test output or CLIs that define deprecated-decorator models); pass `true` to turn them back on. An API whose warning was suppressed while silenced still warns once after re-enabling — silence never consumes the warn-once slot.
 
-_source: observers.ts_
-
-### `ObserverContext` (interface)
-
-Hook context: whether this write creates the node (reliable on afterSave; beforeSave on the save path sees false, on the create path true), and the database the write targets.
-
-_source: observers.ts_
+_source: deprecate.ts_
 
 ### `setStrictRelationAccess` (function)
 
@@ -75,15 +63,9 @@ _source: traverse.ts_
 
 ### `TraverseBuilder` (class)
 
-The traversal builder (NTS-512): typed multi-hop reads — chain hops, run, get hydrated entities per hop position. Row semantics: one row per matched path (variable-degree hops fan out). Aggregate reads (NTS-547): declare `groupBy()` / `countDistinct()` and read the result with `runAggregates()` — group aliases come back hydrated, counts as numbers. `orderBy()` / `limit()` shape either mode. Every aliased node whose model is known (the origin and each hop with a target model) carries that model's named read filters (NTS-162, NTS-574): soft-deleted and filtered-out nodes drop out of the paths and the counts. `withoutFilters()` opts named filters out for the traversal; hops without a target model have no model to filter by and stay unfiltered. `ts const rows = await neode.traverse(Product) .hop('SUPPLIED_BY', 'out', Supplier) .hop('COVERS', 'in', Territory, { degrees: '1..2' }) .run() rows[0].nodes // [Product, Supplier, Territory] hydrated // co-purchase style: ranked, capped, excluding the origin's own edges const ranked = await neode.traverse(Order) .where({ orderID }) .hop('CONTAINS', 'out', Product) .hop('CONTAINS', 'in', Order) .hop('CONTAINS', 'out', Product) .exclude('t0', 'CONTAINS', 't3') .groupBy('t3') .countDistinct('t2', 'times') .orderBy('times', 'DESC') .limit(5) .runAggregates() `
+The traversal builder (NTS-512): typed multi-hop reads — chain hops, run, get hydrated entities per hop position. Row semantics: one row per matched path (variable-degree hops fan out). Aggregate reads (NTS-547): declare `groupBy()` / `countDistinct()` and read the result with `runAggregates()` — group aliases come back hydrated, counts as numbers. `orderBy()` / `limit()` shape either mode. Every aliased node whose model is known (the origin and each hop with a target model) carries that model's named read filters (NTS-162, NTS-574): soft-deleted and filtered-out nodes drop out of the paths and the counts. The mid-path nodes of a variable-length hop carry the hop target's read filters too (NTS-593); hops without a target model have no model to filter by and stay unfiltered. `withoutFilters()` opts named filters out for the traversal, as on every other read. Variable-length hops (NTS-593): the result is a distinct-node set — the per-path duplicates collapse (`RETURN DISTINCT`) and counts count distinct nodes. An open-ended range (`*1..`) is capped at MAX_TRAVERSE_DEPTH; `maxDepth()` overrides the cap per traversal. `ts const rows = await neode.traverse(Product) .hop('SUPPLIED_BY', 'out', Supplier) .hop('COVERS', 'in', Territory, { degrees: '1..2' }) .run() rows[0].nodes // [Product, Supplier, Territory] hydrated // co-purchase style: ranked, capped, excluding the origin's own edges const ranked = await neode.traverse(Order) .where({ orderID }) .hop('CONTAINS', 'out', Product) .hop('CONTAINS', 'in', Order) .hop('CONTAINS', 'out', Product) .exclude('t0', 'CONTAINS', 't3') .groupBy('t3') .countDistinct('t2', 'times') .orderBy('times', 'DESC') .limit(5) .runAggregates() `
 
 _source: traverse.ts_
-
-### `validate` (function)
-
-Validate an object against an entity schema. Runs the Zod schema for every registered property (type base + rules), collecting all issues — like Joi's abortEarly: false — and throwing a ValidationError when anything fails. Unknown keys are always allowed (allowUnknown): only registered properties are validated. undefined is skipped unless the property is required; null behaves the same (a required property fails with `"<key>" is required`, an optional property passes).
-
-_source: validation/index.ts_
 
 ### `ValidationDetail` (interface)
 

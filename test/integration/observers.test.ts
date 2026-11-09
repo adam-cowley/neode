@@ -5,11 +5,10 @@ import {
   SoftDelete,
   defineModel,
   extendModel,
-  observe,
-  clearObservers,
   EventType,
   Neode,
 } from '../../src/index'
+import { observe, clearObservers } from '../../src/internal'
 import { openBackend, TestBackend } from './support/backend'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --

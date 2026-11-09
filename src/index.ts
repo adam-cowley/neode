@@ -1,3 +1,8 @@
+// The curated public surface (NTS-600): only the documented API is
+// re-exported here — the Neode facade, decorators, Repository, Builder,
+// map-API config helpers, the typed error taxonomy and the functions the
+// guides teach. Everything else lives in src/internal.ts and is not part
+// of the published type surface.
 export { EventType } from './common/events.js'
 export { fromEnv } from './from-env.js'
 export {
@@ -16,28 +21,21 @@ export { TransactionError } from './transaction/errors.js'
 export type { BatchStatementError } from './transaction/errors.js'
 export { Repository } from './repository/index.js'
 export { TransactionalService } from './transaction/transactional.service.js'
-export type { TransactionOptions } from './transaction/ambient.js'
 export { registerRepository, getRepository, resolveRepository } from './meta/repositories.js'
-export { getModel, getModels } from './meta/index.js'
-export { validate } from './validation/index.js'
-export { mergeRelationshipProperty } from './meta/index.js'
-export type { RelationshipCardinality } from './meta/index.js'
-export type { SyncEdgesOptions, SyncEdgesResult } from './services/query/sync.service.js'
-export { SyncService } from './services/query/sync.service.js'
 export type { RepositoryConstructor } from './meta/repositories.js'
+export { mergeRelationshipProperty } from './meta/index.js'
+export type { SyncEdgesOptions, SyncEdgesResult } from './services/query/sync.service.js'
 export { Collection } from './collection.js'
 export { toJson, valueToJson } from './serialise.js'
-export type { ToJsonOptions, RelationshipSerialisationOptions } from './serialise.js'
 
 // Active-record instance methods on hydrated entities (P7.2)
 export { applyEntityMethods, setDefaultNeode } from './entity-methods.js'
-export type { EntityMethods, InstanceLoadLevel, WithMethods } from './entity-methods.js'
+export type { EntityMethods, WithMethods } from './entity-methods.js'
 
 // Strict relation access (NTS-155)
 export { setStrictRelationAccess } from './strict-relation-access.js'
 // Deprecation warnings opt-out (NTS-599)
 export { setDeprecationWarnings } from './deprecate.js'
-export { observe, clearObservers, type ModelObservers, type ObserverContext } from './observers.js'
 export { TraverseBuilder, MAX_TRAVERSE_DEPTH, type Hop, type TraversalRow } from './traverse.js'
 
 // Delete-path cascade depth cap (NTS-595) — the write-side counterpart of
@@ -57,7 +55,6 @@ export type {
   RelationshipDefinition,
   SchemaDefinition,
   SchemaDefinitionEntry,
-  ValidationRules,
 } from './meta/schema-definition.interface.js'
 
 // Query builder
@@ -85,15 +82,13 @@ export type {
   QueryParams,
   QuerySummary,
   CypherOptions,
-  HydrateQueryOptions,
   ConnectionOptions,
   GraphNode,
   GraphRelationship,
   AccessMode,
 } from './driver/types.js'
 export { Neo4jConnectionProvider } from './driver/neo4j-connection-provider.js'
-export { RelateConnectionProvider, requireRelateClient } from './driver/relate.js'
-export type { RelateConnectionOptions } from './driver/relate.js'
+export { RelateConnectionProvider } from './driver/relate.js'
 
 // Raw-cypher helpers + instrumented provider (NTS-122/124/132/133)
 export { jsonSafe, jsonSafeRecord } from './driver/json-safe.js'
@@ -127,27 +122,6 @@ export { FulltextIndexService } from './services/schema/fulltext.service.js'
 export type { FulltextIndexDefinition } from './services/schema/fulltext.service.js'
 export { VectorIndexService } from './services/schema/vector.service.js'
 export type { VectorIndexDefinition } from './services/schema/vector.service.js'
-export {
-  GraphTypeService,
-  currentGraphType,
-  deriveGraphType,
-  deriveGraphTypeElementsOnly,
-  graphTypeAddStatement,
-  graphTypeAlterStatement,
-  graphTypeConstraintName,
-  graphTypeSetStatement,
-  graphTypeDropStatement,
-  parseGraphTypeSpecification,
-} from './services/schema/graph-type.service.js'
-export type {
-  GraphTypeCreateOptions,
-  GraphTypeConstraintDefinition,
-  GraphTypeConstraintKind,
-  GraphTypeDefinition,
-  GraphTypeNodeDefinition,
-  GraphTypeRelationshipDefinition,
-  GraphTypePropertyDefinition,
-} from './services/schema/graph-type.service.js'
 export { inspectSchema } from './services/schema/inspect.service.js'
 export type {
   SchemaInspection,
@@ -155,58 +129,27 @@ export type {
   SchemaObject,
   InspectOptions,
 } from './services/schema/inspect.service.js'
-export { generateModels } from './services/schema/generate.service.js'
-export type {
-  GenerateModelsOptions,
-  GenerateModelsResult,
-  GeneratedModel,
-  GeneratedRelationship,
-} from './services/schema/generate.service.js'
 
 // Bulk writes + pagination (NTS-125/126)
 export { BulkService } from './services/query/bulk.service.js'
 export type { BulkChunk, BulkOptions } from './services/query/bulk.service.js'
 export { PaginateService } from './services/query/paginate.service.js'
 
-// Named global filters (NTS-162)
+// Named global filters (NTS-162) — the parameterisation entry points the
+// documented filter usage requires
 export {
   setFilterParams,
   withFilterParams,
   clearFilterParams,
-  readFilterFragment,
   WITHOUT_ALL_FILTERS,
 } from './services/query/filters.js'
-export type { ReadFilterOptions } from './services/query/filters.js'
-export type { FilterDefinition } from './meta/entity/entity-schema.js'
-export { vectorIndexName } from './services/schema/vector.service.js'
-export { fulltextIndexName } from './services/schema/fulltext.service.js'
 export type { OrderSpec } from './query/order-spec.js'
-export type {
-  EdgeFindResult,
-  RelatedQuery,
-  RelatedScope,
-  RelationshipEdgeRead,
-} from './services/query/load-relation.service.js'
-export type {
-  DeclaredRelationships,
-  LoadOptions,
-  LoadedEntity,
-  LoadSpec,
-  QueryLoadLevel,
-  QueryLoadSpec,
-  ReadOptions,
-  RelationQuery,
-  WithSpec,
-} from './query/load-spec.js'
 export type {
   Page,
   CursorPage,
   PaginateOptions,
   OffsetPaginateOptions,
   CursorPaginateOptions,
-  ManyAndCount,
-  FindManyAndCountOptions,
-  StreamOptions,
 } from './services/query/paginate.service.js'
 
 // Ops helpers + consumer test utilities (NTS-130/134/146)
@@ -223,7 +166,7 @@ export type {
   RunCypherScriptOptions,
 } from './ops/index.js'
 export { wipe, testId, seededRandom, Seeder, runSeeders } from './testing/index.js'
-export type { WipeFailure, WipeOptions, WipeReport, WipeTarget } from './testing/index.js'
+export type { WipeReport, WipeTarget } from './testing/index.js'
 
 // Query builder additions (NTS-143/144/128)
 export { WhereNull, LabelPredicate } from './query/index.js'
