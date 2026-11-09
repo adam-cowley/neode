@@ -39,10 +39,17 @@ describe('NTS-616: cypher() overload return types', () => {
     expectTypeOf(api.cypher('RETURN 1')).toEqualTypeOf<Promise<QueryOutput>>()
   })
 
-  it('records is QueryRecord[] on the default overload', async () => {
-    const rows = await neode.cypher('RETURN 1')
-    const records: QueryRecord[] = rows.records
-    void records
+  it('records is QueryRecord[] on the default overload', () => {
+    // type-only: the helper is never called (expectTypeOf awaits live
+    // promises, and the stub returns undefined) — the assertion
+    // type-checks overload resolution → QueryOutput → records end to end
+    async function unwrap(): Promise<QueryRecord[]> {
+      const rows = await neode.cypher('RETURN 1')
+
+      return rows.records
+    }
+
+    expectTypeOf<ReturnType<typeof unwrap>>().toEqualTypeOf<Promise<QueryRecord[]>>()
   })
 
   it('the hydrate overloads still resolve to Promise<T[]>', () => {
