@@ -807,7 +807,8 @@ export class Neode implements INeode {
     const options = typeof databaseOrOptions === 'object' ? databaseOrOptions : undefined
     const database = typeof databaseOrOptions === 'string' ? databaseOrOptions : options?.database
     const withSpec = options?.with
-    const filters = options?.withoutFilters === undefined ? undefined : { withoutFilters: options.withoutFilters }
+    const filters =
+      options?.withoutFilters === undefined ? undefined : { withoutFilters: options.withoutFilters }
 
     const tx = await this.beginWorkTransaction('READ', database)
 

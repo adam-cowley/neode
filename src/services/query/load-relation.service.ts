@@ -107,9 +107,7 @@ export class LoadRelationService extends QueryService {
       builder.limit(options.limit)
     }
 
-    builder.return(
-      `${eagerNode(1, nodeVariable, targetSchema, { builder, filters })} AS node`,
-    )
+    builder.return(`${eagerNode(1, nodeVariable, targetSchema, { builder, filters })} AS node`)
 
     const { query, params } = builder.build()
 

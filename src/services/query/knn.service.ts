@@ -120,7 +120,11 @@ export async function knn<T>(
   // the node to the same NODE_ALIAS; the procedure form takes the WHERE
   // after the YIELD, the SEARCH-clause form after SCORE AS.
   const filterStatements = (statement: string): string => {
-    const { fragment, parameters: filterParameters } = readFilterFragment(schema, NODE_ALIAS, filters)
+    const { fragment, parameters: filterParameters } = readFilterFragment(
+      schema,
+      NODE_ALIAS,
+      filters,
+    )
 
     if (fragment === undefined) {
       return statement

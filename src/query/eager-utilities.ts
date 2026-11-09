@@ -80,7 +80,14 @@ export function eagerPattern(
 
   const fields =
     targetSchema?.getType() === EntityType.RelationshipEntity
-      ? eagerRelationship(depth + 1, relationshipVariable, name, nodeVariable, targetSchema, context)
+      ? eagerRelationship(
+          depth + 1,
+          relationshipVariable,
+          name,
+          nodeVariable,
+          targetSchema,
+          context,
+        )
       : eagerNode(depth + 1, nodeVariable, targetSchema, context)
 
   const pattern = `${name}: [ ${builder.pattern().trim()} | ${fields} ]`

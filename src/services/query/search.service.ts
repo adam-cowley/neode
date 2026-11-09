@@ -91,7 +91,11 @@ export async function search<T>(
   const schema = model instanceof EntitySchema ? model : getModel(constructor)
 
   if (schema instanceof EntitySchema) {
-    const { fragment, parameters: filterParameters } = readFilterFragment(schema, NODE_ALIAS, filters)
+    const { fragment, parameters: filterParameters } = readFilterFragment(
+      schema,
+      NODE_ALIAS,
+      filters,
+    )
 
     if (fragment !== undefined) {
       // Replacer function: the fragment carries `$params` and must not

@@ -299,7 +299,14 @@ export class PaginateService extends QueryService {
     applyFilter(data, schema, filter)
     applyOrder(data, options.order)
 
-    const items = await this.return<T>(constructor, schema, data, (page - 1) * limit, limit, filters)
+    const items = await this.return<T>(
+      constructor,
+      schema,
+      data,
+      (page - 1) * limit,
+      limit,
+      filters,
+    )
 
     // Count query — a second autocommit read
     const count = new Builder()
@@ -540,7 +547,14 @@ export class PaginateService extends QueryService {
       applyOrder(data, options.order)
     }
 
-    const items = await this.return<T>(constructor, schema, data, options.skip, options.limit, options)
+    const items = await this.return<T>(
+      constructor,
+      schema,
+      data,
+      options.skip,
+      options.limit,
+      options,
+    )
 
     const count = new Builder()
 

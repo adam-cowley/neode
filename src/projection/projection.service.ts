@@ -312,7 +312,15 @@ export class ProjectionService {
 
     applyReadFilters(builder, schema, filters)
 
-    const results = await this.run<T>(constructor, schema, builder, 1, undefined, undefined, filters)
+    const results = await this.run<T>(
+      constructor,
+      schema,
+      builder,
+      1,
+      undefined,
+      undefined,
+      filters,
+    )
 
     return results[0]
   }

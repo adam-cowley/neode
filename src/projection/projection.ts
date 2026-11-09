@@ -1,4 +1,9 @@
-import { EAGER_ID, EAGER_LABELS, eagerPattern, type EagerFilterContext } from '../query/eager-utilities.js'
+import {
+  EAGER_ID,
+  EAGER_LABELS,
+  eagerPattern,
+  type EagerFilterContext,
+} from '../query/eager-utilities.js'
 import { type Builder, Direction } from '../query/index.js'
 import { EntityType, EntitySchema } from '../meta/entity/entity-schema.js'
 import { NeodeError } from '../errors/index.js'
@@ -10,7 +15,11 @@ import { PropertyType, isProjectedProperty } from '../meta/property-schema.js'
 import { RelationshipPropertySchema } from '../meta/relationship-property-schema.js'
 import { getModel } from '../meta/index.js'
 import { isRecord } from '../services/type-guards.js'
-import { applyReadFilters, readFilterFragment, type ReadFilterOptions } from '../services/query/filters.js'
+import {
+  applyReadFilters,
+  readFilterFragment,
+  type ReadFilterOptions,
+} from '../services/query/filters.js'
 
 /**
 Read-model projection composition (NTS-135/136/137/138).

@@ -17,7 +17,11 @@ import { isGraphNode, isRecord } from '../services/type-guards.js'
 import { hydrateNode } from '../utilities.js'
 import { hasProjectedProperties } from '../projection/index.js'
 import { projectionNode } from '../projection/projection.js'
-import { applyReadFilters, WITHOUT_ALL_FILTERS, type ReadFilterOptions } from '../services/query/filters.js'
+import {
+  applyReadFilters,
+  WITHOUT_ALL_FILTERS,
+  type ReadFilterOptions,
+} from '../services/query/filters.js'
 
 /**
 Ordering, paging and row-limit options shared by findAll() and where()
