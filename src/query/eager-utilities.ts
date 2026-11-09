@@ -5,7 +5,11 @@ import { EntityType } from '../meta/entity/entity-schema.js'
 import type { RelationshipPropertySchema } from '../meta/relationship-property-schema.js'
 import { NeodeError } from '../errors/index.js'
 import { applyOrder, orderTerms, type OrderSpec } from './order-spec.js'
-import { applyReadFilters, type ReadFilterOptions } from '../services/query/filters.js'
+import {
+  applyReadFilters,
+  readFilterClauses,
+  type ReadFilterOptions,
+} from '../services/query/filters.js'
 import { isRecord } from '../services/type-guards.js'
 
 /**
@@ -22,6 +26,38 @@ export const EAGER_ID = '__EAGER_ID__'
 export const EAGER_LABELS = '__EAGER_LABELS__'
 export const EAGER_TYPE = '__EAGER_TYPE__'
 export const MAX_EAGER_DEPTH = 3
+
+/**
+Bind a pattern-comprehension builder's rendered parameters onto the
+executing builder — the comprehension is part of the outer statement, so
+its filter parameters (NTS-162) ride the executing builder's bindings. A
+rendered parameter with no executing builder to bind on can only die at
+the database with an opaque "Expected parameter(s)" — fail fast here
+instead, naming the fix.
+*/
+function bindEagerParameters(builder: Builder, context?: EagerFilterContext): void {
+  const { params } = builder.build()
+
+  const executing = context?.builder
+
+  if (executing === undefined) {
+    const first = Object.keys(params)[0]
+
+    if (first !== undefined) {
+      throw new NeodeError(
+        `The eager relation's filter $${first} has no executing builder to bind on — ` +
+          'pass the executing builder in the EagerFilterContext (every library read path does), ' +
+          'or disable the filter with withoutFilters.',
+      )
+    }
+
+    return
+  }
+
+  for (const [parameter, value] of Object.entries(params)) {
+    executing.param(parameter, value)
+  }
+}
 
 /**
 The variable an eager pattern binds the related node to — exported because
@@ -72,13 +108,7 @@ export function eagerPattern(
   if (targetSchema !== undefined) {
     applyReadFilters(builder, targetSchema, context?.filters, nodeVariable)
 
-    if (context?.builder !== undefined) {
-      const { params } = builder.build()
-
-      for (const [parameter, value] of Object.entries(params)) {
-        context.builder.param(parameter, value)
-      }
-    }
+    bindEagerParameters(builder, context)
   }
 
   const fields =
@@ -269,11 +299,7 @@ export function specLevelPattern(
   const filters: ReadFilterOptions | undefined =
     withoutFilters.length > 0 ? { withoutFilters } : context?.filters
 
-  const childContext: EagerFilterContext | undefined =
-    context === undefined ? undefined : { builder: context.builder, filters }
-
   const labels = targetSchema?.getLabels() ?? false
-  const fields = eagerNode(depth + 1, nodeVariable, targetSchema, childContext, level)
 
   const isTrimmed =
     level.order !== undefined || level.skip !== undefined || level.limit !== undefined
@@ -292,14 +318,16 @@ export function specLevelPattern(
     if (targetSchema !== undefined) {
       applyReadFilters(builder, targetSchema, filters, nodeVariable)
 
-      if (context?.builder !== undefined) {
-        const { params } = builder.build()
-
-        for (const [parameter, value] of Object.entries(params)) {
-          context.builder.param(parameter, value)
-        }
-      }
+      bindEagerParameters(builder, context)
     }
+
+    const fields = eagerNode(
+      depth + 1,
+      nodeVariable,
+      targetSchema,
+      context === undefined ? undefined : { builder: context.builder, filters },
+      level,
+    )
 
     const pattern = `${key}: [ ${builder.pattern().trim()} | ${fields} ]`
 
@@ -308,9 +336,36 @@ export function specLevelPattern(
 
   // The trim cannot ride a comprehension — the COLLECT subquery imports
   // the parent node and shapes its rows before collecting (compileSub
-  // namespaces the filter parameters)
+  // namespaces the filter parameters). compileSub merges the sub's own
+  // parameters onto the executing builder — with none, the rendered
+  // filter parameters could never bind: fail fast instead.
+  if (targetSchema !== undefined && context?.builder === undefined) {
+    const { parameters } = readFilterClauses(targetSchema, nodeVariable, filters ?? {})
+
+    const first = Object.keys(parameters)[0]
+
+    if (first !== undefined) {
+      throw new NeodeError(
+        `The load spec's filter $${first} has no executing builder to bind on — ` +
+          'pass the executing builder in the EagerFilterContext (every library read path does), ' +
+          'or disable the filter with withoutFilters.',
+      )
+    }
+  }
+
   const collected = (context?.builder ?? new Builder()).collectExpr(
     (sub) => {
+      // Nested levels render INSIDE the subquery: their filter parameters
+      // must bind onto sub (compileSub fail-fasts on the sub's own
+      // parameters), never onto the outer statement's builder
+      const fields = eagerNode(
+        depth + 1,
+        nodeVariable,
+        targetSchema,
+        context === undefined ? undefined : { builder: sub, filters },
+        level,
+      )
+
       sub
         .match(alias)
         .relationship(relationship.getType(), relationship.getDirection(), relationshipVariable)
@@ -336,7 +391,9 @@ export function specLevelPattern(
     [alias],
   )
 
-  return `${key}: ${collected}`
+  // One-key: the COLLECT list must hydrate as the declared single value —
+  // the same [0] the comprehension path appends
+  return relationship.getMany() ? `${key}: ${collected}` : `${key}: ${collected}[0]`
 }
 
 /**
