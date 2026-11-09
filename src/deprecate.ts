@@ -6,8 +6,25 @@ every model definition.
 */
 const warned = new Set<string>()
 
+// Module-level like setStrictRelationAccess — deprecation warnings fire at
+// class-definition time, outside any Neode instance, so the switch is
+// process-wide by nature. shortcut: last-writer-wins across the process;
+// there is no per-instance notion of "defining a model".
+const holder = { silenced: false }
+
+/**
+Enable or disable the deprecation warnings (NTS-599). On by default —
+pass `false` to silence them (e.g. in test output or CLIs that define
+deprecated-decorator models); pass `true` to turn them back on. An API
+whose warning was suppressed while silenced still warns once after
+re-enabling — silence never consumes the warn-once slot.
+*/
+export function setDeprecationWarnings(isEnabled: boolean): void {
+  holder.silenced = !isEnabled
+}
+
 export function warnDeprecated(api: string, replacement: string): void {
-  if (warned.has(api)) {
+  if (holder.silenced || warned.has(api)) {
     return
   }
   warned.add(api)

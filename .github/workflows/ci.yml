@@ -25,6 +25,9 @@ jobs:
 
       - run: pnpm lint
 
+      # Unused exports / dependencies fail the build (NTS-599)
+      - run: pnpm knip
+
   # Typecheck, tests with coverage, build and package checks over the
   # supported Node line
   check:

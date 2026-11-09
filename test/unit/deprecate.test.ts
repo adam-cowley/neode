@@ -45,3 +45,40 @@ describe('@String deprecation warning', () => {
     }
   })
 })
+
+describe('setDeprecationWarnings (NTS-599)', () => {
+  it('silences deprecation warnings with no console output', async () => {
+    // Fresh module graph: the warn-once set is module state
+    vi.resetModules()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { setDeprecationWarnings, warnDeprecated } = await import('../../src/deprecate')
+
+      setDeprecationWarnings(false)
+      warnDeprecated('@String', "@Property({ type: 'string' })")
+
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('does not consume the warn-once slot while silenced: re-enabling warns once', async () => {
+    vi.resetModules()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { setDeprecationWarnings, warnDeprecated } = await import('../../src/deprecate')
+
+      setDeprecationWarnings(false)
+      warnDeprecated('@String', "@Property({ type: 'string' })")
+
+      setDeprecationWarnings(true)
+      warnDeprecated('@String', "@Property({ type: 'string' })")
+      warnDeprecated('@String', "@Property({ type: 'string' })")
+
+      expect(warn).toHaveBeenCalledTimes(1)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})
