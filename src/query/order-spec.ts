@@ -1,5 +1,6 @@
 import { THIS_NODE } from '../constants.js'
 import type { Builder } from './builder.js'
+import { assertDirection, propertyReference } from './quote.js'
 
 /**
 Ordering spec, matching neode's all() forms:
@@ -24,7 +25,7 @@ order forms stay identical everywhere.
 */
 export function orderTerms(order: OrderSpec, alias: string): string[] {
   if (typeof order === 'string') {
-    return [`${alias}.${order}`]
+    return [propertyReference(alias, order)]
   }
 
   if (Array.isArray(order)) {
@@ -35,12 +36,12 @@ export function orderTerms(order: OrderSpec, alias: string): string[] {
     const direction = order.order
 
     return [
-      `${alias}.${order.field}${direction === undefined || direction === '' ? '' : ` ${direction}`}`,
+      `${propertyReference(alias, order.field)}${direction === undefined || direction === '' ? '' : ` ${assertDirection(direction)}`}`,
     ]
   }
 
   return Object.entries(order as Record<string, string>).map(([key, direction]) => {
-    return `${alias}.${key}${direction === '' ? '' : ` ${direction}`}`
+    return `${propertyReference(alias, key)}${direction === '' ? '' : ` ${assertDirection(direction)}`}`
   })
 }
 

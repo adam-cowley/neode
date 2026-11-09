@@ -10,7 +10,7 @@ import {
 import { type Builder, Direction } from '../query/index.js'
 import { EntityType, EntitySchema } from '../meta/entity/entity-schema.js'
 import { NeodeError } from '../errors/index.js'
-import { quote } from '../query/quote.js'
+import { propertyReference, quote } from '../query/quote.js'
 import type { LoadSpec, RelationQuery } from '../query/load-spec.js'
 import type { Newable } from '../meta/newable.js'
 import type { PropertySchema } from '../meta/property-schema.js'
@@ -343,11 +343,13 @@ interface RecordedRelationOperation {
 
 /**
 Bare property names on the relation's sub-builder resolve against the
-related node's variable; anything else (dotted, raw fragments) passes
-through untouched
+related node's variable; a dotted `alias.property` reference passes
+through, and anything else is quoted as a property key (never raw Cypher)
 */
 export function relationProperty(nodeVariable: string, property: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(property) ? `${nodeVariable}.${property}` : property
+  return /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/.test(property)
+    ? property
+    : propertyReference(nodeVariable, property)
 }
 
 /**

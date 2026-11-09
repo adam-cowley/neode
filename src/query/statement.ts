@@ -1,6 +1,7 @@
 import type { Match } from './match.js'
 import type { Order } from './order.js'
 import { Property } from './property.js'
+import { assertCount } from './quote.js'
 import type { Relationship } from './relationship.js'
 
 export type SetClause = Property | string
@@ -39,11 +40,11 @@ export class Statement {
   }
 
   limit(limit: number): void {
-    this.limitValue = limit
+    this.limitValue = assertCount(limit, 'limit')
   }
 
   skip(skip: number): void {
-    this.skipValue = skip
+    this.skipValue = assertCount(skip, 'skip')
   }
 
   order(order: Order): void {

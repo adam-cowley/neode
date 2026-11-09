@@ -269,7 +269,7 @@ export class MergeService extends QueryService {
         continue
       }
 
-      builder.set(`${THIS_NODE}.${key}`, value)
+      builder.set(`${THIS_NODE}.${quote(key)}`, value)
     }
 
     // Cypher-side derived properties (NTS-569): evaluated after the SET

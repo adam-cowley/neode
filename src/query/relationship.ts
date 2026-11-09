@@ -1,5 +1,6 @@
 import { Direction, toDirection } from './direction.js'
 import type { Property } from './property.js'
+import { assertDegrees, quote } from './quote.js'
 
 export class Relationship {
   private readonly direction: Direction
@@ -27,13 +28,10 @@ export class Relationship {
     const directionOut = this.direction === Direction.OUTGOING ? '>' : ''
     const alias = this.alias ?? ''
 
-    let type: string = Array.isArray(this.type) ? this.type.join('`|`') : (this.type ?? '')
+    const types = Array.isArray(this.type) ? this.type : [this.type ?? '']
+    const type = types.join('') === '' ? '' : `:${types.map(quote).join('|')}`
 
-    if (type !== '') {
-      type = `:\`${type}\``
-    }
-
-    const traversals = this.traversals === undefined ? '' : `*${String(this.traversals)}`
+    const traversals = this.traversals === undefined ? '' : `*${assertDegrees(this.traversals)}`
 
     let properties = ''
 

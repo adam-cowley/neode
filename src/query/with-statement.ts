@@ -1,3 +1,4 @@
+import { assertCount } from './quote.js'
 import type { Order } from './order.js'
 
 export class WithStatement {
@@ -26,11 +27,11 @@ export class WithStatement {
   }
 
   limit(limit: number): void {
-    this.limitValue = limit
+    this.limitValue = assertCount(limit, 'limit')
   }
 
   skip(skip: number): void {
-    this.skipValue = skip
+    this.skipValue = assertCount(skip, 'skip')
   }
 
   toString(): string {
