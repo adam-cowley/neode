@@ -12,6 +12,7 @@ import {
 import { PropertyType } from '../../../src/meta/property-schema'
 import { Direction } from '../../../src/query'
 import { Neode } from '../../../src/neode.service'
+import { NeodeError } from '../../../src/errors'
 
 // The registry is global per module graph: use unique names per test
 describe('map-schema', () => {
@@ -26,6 +27,45 @@ describe('map-schema', () => {
 
       expect(schema.getProperty('name').getType()).toEqual(PropertyType.STRING)
       expect(schema.getProperty('age').getType()).toEqual(PropertyType.NUMBER)
+    })
+
+    it('declares named filters — the map-API form of @Filter (NTS-568)', () => {
+      const Post = defineModel('FilterMapPost', {
+        labels: ['FilterMapPost'],
+        id: { type: 'string', primary: true },
+        tenant: 'string',
+        filters: [
+          { name: 'tenant', where: 'node.tenant = $tenant' },
+          { name: 'notArchived', where: 'NOT node:Archived', default: false },
+        ],
+      })
+
+      const schema = getModel(Post)
+
+      // `filters` registers filters — it never becomes a property
+      expect(schema.hasProperty('filters')).toBe(false)
+      expect(schema.getFilters()).toEqual([
+        { name: 'tenant', where: 'node.tenant = $tenant' },
+        { name: 'notArchived', where: 'NOT node:Archived', default: false },
+      ])
+    })
+
+    it('rejects duplicate filter names on a map model — they are the withoutFilters keys', () => {
+      expect(() =>
+        defineModel('FilterMapDuplicate', {
+          id: { type: 'string', primary: true },
+          filters: [{ name: 'dup_filter' }, { name: 'dup_filter' }],
+        }),
+      ).toThrow(NeodeError)
+    })
+
+    it('rejects filter names that cannot be Cypher parameters', () => {
+      expect(() =>
+        defineModel('FilterMapInvalidName', {
+          id: { type: 'string', primary: true },
+          filters: [{ name: 'bad name' }],
+        }),
+      ).toThrow(NeodeError)
     })
 
     it('accepts full form property definitions with options', () => {
@@ -241,6 +281,21 @@ describe('map-schema', () => {
       expect(() => extendModel('ExtSourceMissing', 'ExtClone')).toThrow(
         'Couldn\'t find a definition for "ExtSourceMissing"',
       )
+    })
+
+    it('carries the filters over to the clone (NTS-568)', () => {
+      defineModel('FilterMapExtBase', {
+        id: { type: 'string', primary: true },
+        filters: [{ name: 'tenant', where: 'node.tenant = $tenant' }],
+      })
+
+      const Extended = extendModel('FilterMapExtBase', 'FilterMapExtClone')
+
+      expect(
+        getModel(Extended)
+          .getFilters()
+          .map((filter) => filter.name),
+      ).toEqual(['tenant'])
     })
   })
 

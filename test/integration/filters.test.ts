@@ -7,6 +7,7 @@ import {
   OneToMany,
   RelationshipCount,
   Repository,
+  defineModel,
 } from '../../src/index'
 import { clearFilterParams, setFilterParams } from '../../src/index'
 import { openBackend, TestBackend } from './support/backend'
@@ -225,5 +226,158 @@ describe('named global filters (NTS-162)', () => {
       {},
     )
     expect(Number(left.records[0]?.get('count'))).toBe(1)
+  })
+})
+
+// ---- NTS-568: withoutFilters in the transactional mirrors ------------------
+
+describe('withoutFilters in the transactional mirrors (NTS-568)', () => {
+  let backend: TestBackend
+  let comments: Repository<FilterComment>
+
+  beforeAll(async () => {
+    backend = await openBackend()
+    comments = backend.neode.getRepository(FilterComment)
+  })
+
+  beforeEach(async () => {
+    await backend.clearGraph()
+    clearFilterParams()
+
+    setFilterParams('tenant', 'acme')
+
+    await comments.save(FilterComment.create('c1', 'acme'))
+    await comments.save(FilterComment.create('c2', 'beta'))
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  it('tx.find honours withoutFilters; the default keeps the filters on', async () => {
+    const tx = await backend.neode.openReadTransaction()
+
+    expect(await tx.find(FilterComment, 'c2')).toBeUndefined()
+
+    const unfiltered = await tx.find(FilterComment, 'c2', { withoutFilters: ['tenant'] })
+
+    expect(unfiltered?.commentID).toBe('c2')
+
+    await tx.commit()
+  })
+
+  it('tx.get honours withoutFilters (the database-or-options slot)', async () => {
+    const tx = await backend.neode.openReadTransaction()
+
+    const filtered = await tx.get(FilterComment, {})
+    expect(filtered.map((comment) => comment.commentID)).toEqual(['c1'])
+
+    const both = await tx.get(FilterComment, {}, undefined, undefined, {
+      withoutFilters: ['tenant'],
+    })
+    expect(both.map((comment) => comment.commentID).sort()).toEqual(['c1', 'c2'])
+
+    await tx.commit()
+  })
+
+  it('tx.all honours withoutFilters (the options slot)', async () => {
+    const tx = await backend.neode.openReadTransaction()
+
+    const filtered = await tx.all(FilterComment)
+    expect(filtered.map((comment) => comment.commentID)).toEqual(['c1'])
+
+    const both = await tx.all(FilterComment, {}, undefined, undefined, undefined, undefined, {
+      withoutFilters: ['tenant'],
+    })
+    expect(both.map((comment) => comment.commentID).sort()).toEqual(['c1', 'c2'])
+
+    await tx.commit()
+  })
+
+  it('per-name independence holds in tx scope: tenant off leaves softDelete on', async () => {
+    await comments.delete('c2') // soft-deletes the beta comment (label swap)
+
+    const tx = await backend.neode.openReadTransaction()
+
+    // tenant disabled — the soft-deleted row still reads as absent
+    // (labels-as-state: the swapped label removed it from the base match,
+    // the same "cannot resurrect" behaviour as the facade reads)
+    const tenantOff = await tx.get(FilterComment, {}, undefined, undefined, {
+      withoutFilters: ['tenant'],
+    })
+    expect(tenantOff.map((comment) => comment.commentID)).toEqual(['c1'])
+
+    await tx.commit()
+  })
+})
+
+// ---- NTS-568: map-API (defineModel) filter parity ---------------------------
+
+interface MapFilterCommentInstance {
+  id?: string
+  tenant?: string
+}
+
+const MapFilterComment = defineModel('MapFilterComment', {
+  labels: ['MapFilterComment'],
+  id: { type: 'string', primary: true },
+  tenant: 'string',
+  filters: [{ name: 'tenant', where: 'node.tenant = $tenant' }],
+})
+
+describe('map-API filter parity (NTS-568)', () => {
+  let backend: TestBackend
+
+  beforeAll(async () => {
+    backend = await openBackend()
+  })
+
+  beforeEach(async () => {
+    await backend.clearGraph()
+    clearFilterParams()
+
+    setFilterParams('tenant', 'acme')
+
+    await backend.neode.create(MapFilterComment, { id: 'm1', tenant: 'acme' })
+    await backend.neode.create(MapFilterComment, { id: 'm2', tenant: 'beta' })
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  it('map-declared filters compose on the facade reads', async () => {
+    const got = (await backend.neode.get(MapFilterComment, {})) as MapFilterCommentInstance[]
+    expect(got.map((comment) => comment.id)).toEqual(['m1'])
+
+    expect(await backend.neode.find(MapFilterComment, 'm2')).toBeUndefined()
+
+    const all = (await backend.neode.all(MapFilterComment)) as MapFilterCommentInstance[]
+    expect(all.map((comment) => comment.id)).toEqual(['m1'])
+
+    const without = (await backend.neode.get(MapFilterComment, {}, undefined, undefined, {
+      withoutFilters: ['tenant'],
+    })) as MapFilterCommentInstance[]
+    expect(without.map((comment) => comment.id).sort()).toEqual(['m1', 'm2'])
+  })
+
+  it('map-declared filters compose in tx scope through the same composition', async () => {
+    const tx = await backend.neode.openReadTransaction()
+
+    const filtered = (await tx.all(MapFilterComment)) as MapFilterCommentInstance[]
+    expect(filtered.map((comment) => comment.id)).toEqual(['m1'])
+
+    const without = (await tx.all(
+      MapFilterComment,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { withoutFilters: ['tenant'] },
+    )) as MapFilterCommentInstance[]
+    expect(without.map((comment) => comment.id).sort()).toEqual(['m1', 'm2'])
+
+    await tx.commit()
   })
 })

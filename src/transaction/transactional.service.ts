@@ -179,12 +179,18 @@ export class TransactionalService implements INeode {
 
     const schema = this.getSchema(constructor)
 
-    const withSpec = typeof databaseOrOptions === 'object' ? databaseOrOptions.with : undefined
+    const options = typeof databaseOrOptions === 'object' ? databaseOrOptions : undefined
+    const withSpec = options?.with
+
+    // NTS-568: withoutFilters plumbs through with the facade's semantics —
+    // each name disables only its own filter (per-name independence)
+    const filters =
+      options?.withoutFilters === undefined ? undefined : { withoutFilters: options.withoutFilters }
 
     // A load spec reads through the projection path (facade parity)
     return withSpec === undefined
-      ? new FindService(this.handle).find<T>(constructor, schema, value)
-      : new ProjectionService(this.handle).find<T>(constructor, schema, value, withSpec)
+      ? new FindService(this.handle).find<T>(constructor, schema, value, filters)
+      : new ProjectionService(this.handle).find<T>(constructor, schema, value, withSpec, filters)
   }
 
   async findById<T>(
@@ -206,15 +212,22 @@ export class TransactionalService implements INeode {
     parameters: Record<string, unknown>,
     limit?: number,
     skip?: number,
-    database?: string,
+    databaseOrOptions?: string | { withoutFilters?: string[] | undefined },
   ): Promise<T[]> {
-    this.ignoreDatabaseOverride(database)
+    this.ignoreDatabaseOverride(
+      typeof databaseOrOptions === 'string' ? databaseOrOptions : undefined,
+    )
 
     const schema = this.getSchema(constructor)
 
+    const filters =
+      typeof databaseOrOptions === 'object' && databaseOrOptions.withoutFilters !== undefined
+        ? { withoutFilters: databaseOrOptions.withoutFilters }
+        : undefined
+
     const service = new GetService(this.handle)
 
-    return service.get<T>(constructor, schema, parameters, limit, skip)
+    return service.get<T>(constructor, schema, parameters, limit, skip, undefined, filters)
   }
 
   async getFirst<T>(
@@ -482,7 +495,7 @@ export class TransactionalService implements INeode {
     limit?: number,
     skip?: number,
     database?: string,
-    options?: { with?: WithSpec<T> },
+    options?: { with?: WithSpec<T>; withoutFilters?: string[] | undefined },
   ): Promise<T[]> {
     this.ignoreDatabaseOverride(database)
 
@@ -490,9 +503,21 @@ export class TransactionalService implements INeode {
 
     const withSpec = options?.with
 
+    // NTS-568: withoutFilters plumbs through with the facade's semantics
+    const filters =
+      options?.withoutFilters === undefined ? undefined : { withoutFilters: options.withoutFilters }
+
     // A load spec reads through the projection path (facade parity)
     return withSpec === undefined
-      ? new GetService(this.handle).get<T>(constructor, schema, parameters, limit, skip, order)
+      ? new GetService(this.handle).get<T>(
+          constructor,
+          schema,
+          parameters,
+          limit,
+          skip,
+          order,
+          filters,
+        )
       : new ProjectionService(this.handle).get<T>(
           constructor,
           schema,
@@ -501,6 +526,7 @@ export class TransactionalService implements INeode {
           skip,
           order,
           withSpec,
+          filters,
         )
   }
 
@@ -509,8 +535,9 @@ export class TransactionalService implements INeode {
     indexName: string,
     query: string,
     limit?: number,
+    filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]> {
-    return search<T>(this.handle, constructor, indexName, query, limit)
+    return search<T>(this.handle, constructor, indexName, query, limit, filters)
   }
 
   /**
