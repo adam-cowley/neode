@@ -135,6 +135,10 @@ Register a float property.
 
 _source: decorators/node/float.decorator.ts_
 
+### `getModel` (function)
+
+_source: meta/index.ts_
+
 ### `getModelByName` (function)
 
 Get a previously defined model constructor by name

@@ -4,8 +4,7 @@
 export * from './index.js'
 
 // Registry / validation internals
-export { getModel, getModels } from './meta/index.js'
-export { validate } from './validation/index.js'
+export { getModels } from './meta/index.js'
 export type { RelationshipCardinality } from './meta/index.js'
 export { SyncService } from './services/query/sync.service.js'
 
@@ -14,7 +13,6 @@ export { observe, clearObservers, type ModelObservers, type ObserverContext } fr
 
 // Driver / serialisation option plumbing
 export type { TransactionOptions } from './transaction/ambient.js'
-export { requireRelateClient } from './driver/relate.js'
 export type { RelateConnectionOptions } from './driver/relate.js'
 export type { ToJsonOptions, RelationshipSerialisationOptions } from './serialise.js'
 export type { InstanceLoadLevel } from './entity-methods.js'
@@ -61,7 +59,6 @@ export type { ReadFilterOptions } from './services/query/filters.js'
 export type { FilterDefinition } from './meta/entity/entity-schema.js'
 
 // Index-name helpers
-export { vectorIndexName } from './services/schema/vector.service.js'
 export { fulltextIndexName } from './services/schema/fulltext.service.js'
 
 // Load-spec / related-read type machinery (NTS-154/497/499/558/560)

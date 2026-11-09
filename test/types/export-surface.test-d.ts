@@ -79,6 +79,7 @@ import type {
   WipeTarget,
   WithMethods,
 } from '../../src/index.js'
+import { getModel, requireRelateClient, validate, vectorIndexName } from '../../src/index.js'
 
 type Root = typeof import('../../src/index.js')
 
@@ -175,6 +176,7 @@ describe('public export surface (NTS-600)', () => {
       | 'extendModel'
       | 'formatSchemaDrift'
       | 'fromEnv'
+      | 'getModel'
       | 'getModelByName'
       | 'getModelsByName'
       | 'getRepository'
@@ -193,6 +195,7 @@ describe('public export surface (NTS-600)', () => {
       | 'ontologyMarkdown'
       | 'projectionNode'
       | 'registerRepository'
+      | 'requireRelateClient'
       | 'resolveRepository'
       | 'runCypherScript'
       | 'runSeeders'
@@ -209,7 +212,9 @@ describe('public export surface (NTS-600)', () => {
       | 'toDirection'
       | 'toFulltextQuery'
       | 'toJson'
+      | 'validate'
       | 'valueToJson'
+      | 'vectorIndexName'
       | 'verifyConnectivity'
       | 'waitUntilReachable'
       | 'wipe'
@@ -294,5 +299,14 @@ describe('public export surface (NTS-600)', () => {
         WithMethods<unknown>,
       ]
     >().toExtend<unknown[]>()
+  })
+
+  it('exposes the NTS-601 consumer-facing helpers with their signatures', () => {
+    expectTypeOf(validate).toBeFunction()
+    expectTypeOf(getModel).toBeFunction()
+    expectTypeOf(vectorIndexName).toBeFunction()
+    expectTypeOf(requireRelateClient).toBeFunction()
+    expectTypeOf(vectorIndexName).parameter(0).toEqualTypeOf<VectorIndexDefinition>()
+    expectTypeOf(vectorIndexName).returns.toEqualTypeOf<string>()
   })
 })

@@ -154,6 +154,7 @@ await neode.installSchema()
 - `SchemaInspection` (interface) — The full inspectSchema result: constraint and index diffs against the declared models.
 - `SchemaObject` (interface) — One constraint or index as inspected from the database (SHOW CONSTRAINTS / SHOW INDEXES).
 - `VectorIndexDefinition` (interface) — A vector index to keep installed on the database
+- `vectorIndexName` (function)
 - `VectorIndexService` (class) — Installs/drops the given vector index definitions, following the same result-reporting pattern as SchemaService
 
 ## Query
@@ -210,6 +211,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `RawExpression` (class) — A raw Cypher expression used as an inline pattern property value (NTS-460): rendered verbatim into the pattern — `{ prop: <expression> }` — instead of being bound as a parameter. Variable references (`row.answers`), server-side calls (`datetime()`) and parameter references (`$name`, bound via `Builder#param`) are all legal; the expression must never interpolate data.
 - `RelateConnectionProvider` (class) — ConnectionProvider over the embedded Relate engine (@relate/relate) — in-process, no Bolt server. The engine is a soft dependency, loaded at construction time; the client shapes are structural so it stays that way.
 - `Repository` (class) — Active-record style data-access repository for one registered model — constructor-generic over the model CONSTRUCTOR (NTS-563): the `with` load spec of find / findAll is map-checked against the model's `neodeRelationships` phantom static and the returns narrow, the same with() contract as the facade paths (NTS-154) — the TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
+- `requireRelateClient` (function) — Resolve the Relate client module and native library. The client is not yet published to npm, so it is loaded from disk: 1. `RELATE_CLIENT_PATH` env var, or 2. the sibling `relate` repository checkout (`../relate/clients/javascript`) The native library location is passed through via `RELATE_LIB` (see the Relate client's loader) — detected automatically here when a sibling repository checkout exists.
 - `Runner` (interface) — Anything able to run statements in its scope (autocommit or transaction).
 - `ScoredEntity` (interface) — A hydrated entity with the relevance score of the index that matched it (full-text search, kNN)
 - `search` (function) — Full-text search over a full-text index (`CALL db.index.fulltext.queryNodes`), returning hydrated entities with their relevance score, best match first. The query string is bound as a parameter, so Lucene syntax characters in it are still parsed as such — pass user text through `toFulltextQuery` first. NTS-162 — the model's named read filters apply (a `WHERE` after the YIELD); `filters.withoutFilters` disables names for this call.

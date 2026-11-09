@@ -107,6 +107,10 @@ A vector index to keep installed on the database
 
 _source: services/schema/vector.service.ts_
 
+### `vectorIndexName` (function)
+
+_source: services/schema/vector.service.ts_
+
 ### `VectorIndexService` (class)
 
 Installs/drops the given vector index definitions, following the same result-reporting pattern as SchemaService

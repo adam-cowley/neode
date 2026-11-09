@@ -17,6 +17,9 @@ export {
 } from './errors/index.js'
 export { ValidationError } from './validation/validation-error.js'
 export type { ValidationDetail } from './validation/validation-error.js'
+// NTS-601 — plain-payload validation against a model schema, the
+// plain-object companion to the documented write path
+export { validate } from './validation/index.js'
 export { TransactionError } from './transaction/errors.js'
 export type { BatchStatementError } from './transaction/errors.js'
 export { Repository } from './repository/index.js'
@@ -49,6 +52,8 @@ export {
   getModelByName,
   getModelsByName,
 } from './meta/map-schema.js'
+// NTS-601 — class-based model lookup, companion to the name-based getModelByName
+export { getModel } from './meta/index.js'
 export type {
   PropertyTypeName,
   PropertyDefinition,
@@ -89,6 +94,8 @@ export type {
 } from './driver/types.js'
 export { Neo4jConnectionProvider } from './driver/neo4j-connection-provider.js'
 export { RelateConnectionProvider } from './driver/relate.js'
+// NTS-601 — embedded Relate client bootstrap used by demo servers
+export { requireRelateClient } from './driver/relate.js'
 
 // Raw-cypher helpers + instrumented provider (NTS-122/124/132/133)
 export { jsonSafe, jsonSafeRecord } from './driver/json-safe.js'
@@ -122,6 +129,9 @@ export { FulltextIndexService } from './services/schema/fulltext.service.js'
 export type { FulltextIndexDefinition } from './services/schema/fulltext.service.js'
 export { VectorIndexService } from './services/schema/vector.service.js'
 export type { VectorIndexDefinition } from './services/schema/vector.service.js'
+// NTS-601 — the deterministic vector index naming installSchema() uses and
+// the docs already teach
+export { vectorIndexName } from './services/schema/vector.service.js'
 export { inspectSchema } from './services/schema/inspect.service.js'
 export type {
   SchemaInspection,
