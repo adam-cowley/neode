@@ -3,7 +3,11 @@ import { rollbackAfterFailure } from '../../transaction/rollback.js'
 import { THIS_NODE } from '../../constants.js'
 import { hydrate } from '../../hydrate.js'
 import type { EntitySchema } from '../../meta/entity/entity-schema.js'
-import { PropertyType, isProjectedProperty } from '../../meta/property-schema.js'
+import {
+  PropertyType,
+  isProjectedProperty,
+  type PropertySchema,
+} from '../../meta/property-schema.js'
 import { convertPropertyValue, getValueOrDefault } from '../../utilities.js'
 import {
   versionBump,
@@ -156,15 +160,35 @@ export function processCreateRow(
 }
 
 /**
+Properties a matched row must never overwrite (NTS-580): the same set
+update() guards — primary key, protected, readonly, @CreatedAt and the
+library-managed @Version. Their values apply on create only.
+*/
+function isMatchGuarded(property: PropertySchema): boolean {
+  return (
+    property.isPrimaryKey() ||
+    property.isProtected() ||
+    property.isReadonly() ||
+    property.isCreatedAt() ||
+    property.isVersion()
+  )
+}
+
+/**
 Validate a row and split it into the merge match (the merge fields —
 unique, indexed or primary key properties — the row explicitly sets,
-never default-resolved) and the remaining set values
-(the merge-field semantics of mergeOn)
+never default-resolved), the set values applied on every write, and the
+`create` values (guarded properties, NTS-580) applied to created nodes
+only. A supplied @Version is dropped: the library owns the counter.
 */
 export function processMergeRow(
   row: Record<string, unknown>,
   schema: EntitySchema,
-): { match: Record<string, unknown>; set: Record<string, unknown> } {
+): {
+  match: Record<string, unknown>
+  set: Record<string, unknown>
+  create: Record<string, unknown>
+} {
   const mergeFields = getMergeFields(schema)
   const mergeKeys = new Set(mergeFields.map((property) => property.getKey()))
 
@@ -190,6 +214,7 @@ export function processMergeRow(
   }
 
   const set: Record<string, unknown> = {}
+  const create: Record<string, unknown> = {}
 
   for (const property of schema.getProperties()) {
     if (
@@ -204,14 +229,22 @@ export function processMergeRow(
 
     const value = getValueOrDefault(row, property, schema)
 
-    if (value !== undefined) {
-      set[property.getKey()] = convertPropertyValue(value, property)
+    if (value === undefined || property.isVersion()) {
+      continue
+    }
+
+    const converted = convertPropertyValue(value, property)
+
+    if (isMatchGuarded(property)) {
+      create[property.getKey()] = converted
+    } else {
+      set[property.getKey()] = converted
     }
   }
 
-  validate({ ...match, ...set }, schema)
+  validate({ ...match, ...set, ...create }, schema)
 
-  return { match, set }
+  return { match, set, create }
 }
 
 /**
@@ -243,9 +276,10 @@ export function buildCreateQuery(
 }
 
 /**
-UNWIND $rows AS row
+UNWIND $rows AS item
+WITH item.row AS row, item.create AS created
 MERGE (this:Label { key: row.key, ... })
-ON CREATE SET this.createdAt = coalesce(row.createdAt, datetime())
+ON CREATE SET this.createdAt = coalesce(created.createdAt, datetime())
 SET this += row
 SET this.updatedAt = coalesce(row.updatedAt, datetime())
 RETURN this
@@ -253,7 +287,10 @@ RETURN this
 `onCreateStamps` render in the ON CREATE SET clause, `stamps` in a plain
 SET that applies to created and matched rows alike (NTS-165), and
 `onMatchStamps` in an ON MATCH SET clause (NTS-158 — the version bump only
-applies to matched rows).
+applies to matched rows). Each input row is `{ row, create }` (NTS-580):
+`row` is the match + set map (`+=`), `create` holds the guarded values
+(createdAt, readonly, protected) that only a created node takes — so a
+matched node's version / createdAt / readonly values cannot be overridden.
 */
 export function buildMergeQuery(
   labels: string[],
@@ -270,7 +307,8 @@ export function buildMergeQuery(
   const pattern = matchKeys.map((key) => `${key}: row.${key}`).join(', ')
 
   const output = [
-    'UNWIND $rows AS row',
+    'UNWIND $rows AS item',
+    'WITH item.row AS row, item.create AS created',
     `MERGE (${THIS_NODE}${labelPattern(labels)} { ${pattern} })`,
     ...(onCreateStamps.length > 0 ? [`ON CREATE SET ${onCreateStamps.join(', ')}`] : []),
     ...(onMatchStamps.length > 0 ? [`ON MATCH SET ${onMatchStamps.join(', ')}`] : []),
@@ -289,7 +327,7 @@ export function buildMergeQuery(
 The server-side timestamp SET items for the bulk row alias (NTS-165): the
 row's explicit value wins, otherwise the database clock stamps it
 */
-function rowStamps(schema: EntitySchema, kind: 'createdAt' | 'updatedAt'): string[] {
+function rowStamps(schema: EntitySchema, kind: 'createdAt' | 'updatedAt', alias = 'row'): string[] {
   const property = timestampProperty(schema, kind)
 
   if (property === undefined) {
@@ -298,7 +336,7 @@ function rowStamps(schema: EntitySchema, kind: 'createdAt' | 'updatedAt'): strin
 
   const key = property.getKey()
 
-  return [`${THIS_NODE}.${key} = coalesce(row.${key}, datetime())`]
+  return [`${THIS_NODE}.${key} = coalesce(${alias}.${key}, datetime())`]
 }
 
 /**
@@ -306,12 +344,36 @@ The version SET item for the bulk row alias (NTS-158): the row's explicit
 value wins, otherwise a created row starts at 0. Matched rows bump via the
 ON MATCH clause (rowVersionBump).
 */
-function rowVersionStamp(schema: EntitySchema): string[] {
+function rowVersionStamp(schema: EntitySchema, isExplicit = true): string[] {
   const property = versionProperty(schema)
 
-  return property === undefined
-    ? []
-    : [`${THIS_NODE}.${property.getKey()} = coalesce(row.${property.getKey()}, 0)`]
+  if (property === undefined) {
+    return []
+  }
+
+  // mergeMany drops a supplied version (NTS-580): a created row is always 0
+  return [
+    `${THIS_NODE}.${property.getKey()} = ${isExplicit ? `coalesce(row.${property.getKey()}, 0)` : '0'}`,
+  ]
+}
+
+/**
+ON CREATE SET items for the guarded properties other than the timestamp and
+version stamps (NTS-580): read off the row's `create` map, so a matched
+node never takes them
+*/
+function createOnlySets(schema: EntitySchema): string[] {
+  return schema
+    .getProperties()
+    .filter(
+      (property) =>
+        isMatchGuarded(property) &&
+        !property.isCreatedAt() &&
+        !property.isVersion() &&
+        !NON_WRITABLE_TYPES.has(property.getType()) &&
+        !isProjectedProperty(property),
+    )
+    .map((property) => `${THIS_NODE}.${property.getKey()} = created.${property.getKey()}`)
 }
 
 /**
@@ -501,14 +563,21 @@ export class BulkService extends QueryService {
     const query = buildMergeQuery(
       schema.getLabels(),
       matchKeys,
-      [...rowStamps(schema, 'createdAt'), ...rowVersionStamp(schema)],
+      [
+        ...rowStamps(schema, 'createdAt', 'created'),
+        ...rowVersionStamp(schema, false),
+        ...createOnlySets(schema),
+      ],
       rowStamps(schema, 'updatedAt'),
       rowVersionBump(schema),
       derivedSets,
     )
 
     // The MERGE pattern reads the match values off the row map
-    const rowMaps = parts.map((part) => ({ ...part.set, ...part.match }))
+    const rowMaps = parts.map((part) => ({
+      row: { ...part.set, ...part.match },
+      create: part.create,
+    }))
 
     return this.writeChunks<T>(constructor, rowMaps, query, options)
   }

@@ -15,6 +15,12 @@ import type { DeleteOptions } from '../services/query/delete.service.js'
 import type { ScoredEntity } from '../services/query/search.service.js'
 import { fulltextIndexName } from '../services/schema/fulltext.service.js'
 import { isRecord } from '../services/type-guards.js'
+import {
+  SERVER_TIMESTAMP,
+  timestampProperty,
+  versionBump,
+  versionProperty,
+} from '../services/write-utilities.js'
 import { shapeNodeRows } from '../services/query/shape.js'
 import { hasProjectedProperties } from '../projection/index.js'
 import { projectionNode } from '../projection/projection.js'
@@ -105,6 +111,30 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   /**
   Neo4j driver returns count() as an Integer instance, Relate as a number
   */
+  private static patchProtection(property: PropertySchema): string | undefined {
+    if (property.isPrimaryKey()) {
+      return 'the primary key'
+    }
+
+    if (property.isVersion()) {
+      return 'the @Version counter, which the library manages'
+    }
+
+    if (property.isCreatedAt()) {
+      return '@CreatedAt, which is stamped once on create'
+    }
+
+    if (property.isReadonly()) {
+      return 'readonly'
+    }
+
+    if (property.isProtected()) {
+      return 'protected'
+    }
+
+    return undefined
+  }
+
   private static toCount(value: unknown): number {
     return hasToNumber(value) ? value.toNumber() : Number(value)
   }
@@ -442,6 +472,29 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   with the base signature (NTS-454/458/459).
   */
   async patch(entity: Entity & object, properties: Partial<Entity>): Promise<Entity> {
+    // Protected properties cannot be patched (NTS-580): a changed primary
+    // key would make save() MERGE a duplicate node, and @Version /
+    // @CreatedAt / readonly / protected values are library-managed or
+    // immutable after create
+    for (const schemaProperty of this.schema.getProperties()) {
+      const key = schemaProperty.getKey()
+
+      if (
+        !Object.hasOwn(properties, key) ||
+        (properties as Record<string, unknown>)[key] === undefined
+      ) {
+        continue
+      }
+
+      const reason = Repository.patchProtection(schemaProperty)
+
+      if (reason !== undefined) {
+        throw new NeodeError(
+          `Cannot patch ${this.getLabels().join(':')}.${key} — it is ${reason}. Remove "${key}" from the patch; to change a primary key, create a new node and delete the old one.`,
+        )
+      }
+    }
+
     Object.assign(entity, properties)
 
     return this.save(entity)
@@ -655,6 +708,22 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
 
     const builder = new Builder().match(THIS_NODE, this.schema.getLabels(), { [primaryKey]: id })
     builder.setExpr(`${THIS_NODE}.${key}`, `coalesce(${THIS_NODE}.${key}, 0) + $by`, { by })
+
+    // A write like any other (NTS-580): stamp @UpdatedAt and bump @Version
+    // (unless the counter is the version itself)
+    const updatedAt = timestampProperty(this.schema, 'updatedAt')
+    const version = versionProperty(this.schema)
+
+    if (updatedAt !== undefined && updatedAt.getKey() !== declared.getKey()) {
+      builder.setExpr(`${THIS_NODE}.${quote(updatedAt.getKey())}`, SERVER_TIMESTAMP)
+    }
+
+    if (version !== undefined && version.getKey() !== declared.getKey()) {
+      const versionKey = quote(version.getKey())
+
+      builder.setExpr(`${THIS_NODE}.${versionKey}`, versionBump(THIS_NODE, versionKey))
+    }
+
     builder.return(`${THIS_NODE}.${key} AS value`)
 
     const { query, params } = builder.build()
