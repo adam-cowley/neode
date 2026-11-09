@@ -129,7 +129,7 @@ _source: meta/map-schema.ts_
 
 ### `Filter` (decorator)
 
-Named global filter (NTS-162): declare a named read filter on the model and it applies to every standard read — find / get / all / paginate / search / knn / eager loads / projections / repository reads — composed in one central place in the query services. - Disable per query with `withoutFilters: ['name']` on the read options; each filter is independent. - Parameterise with `setFilterParams(name, value)`; the `where` fragment references the value as `$name`. - `where` is a Cypher predicate over the filtered node; `node` names that node (the read root, or the related node inside a filtered relation's pattern comprehension). Label-state filters (labels-as-state, NTS-128) are just label predicates: `where: 'NOT node:Archived'`. - Over relations, the target model's filters render inside the relation's pattern comprehension — a filtered-out target simply doesn't match, so the edge reads as absent and the parent row survives. Never OPTIONAL MATCH. Example — soft delete + tenancy as independent named filters: ```ts
+Named global filter (NTS-162): declare a named read filter on the model and it applies to every standard read — find / get / all / paginate / search / knn / eager loads / projections / repository reads — composed in one central place in the query services. - Disable per query with `withoutFilters: ['name']` on the read options; each filter is independent. - Parameterise with `withFilterParams({ name: value }, async () => ...)` (request-scoped, async-safe; NTS-575); the `where` fragment references the value as `$name`. `setFilterParams(name, value)` sets a process-wide default that the scope overrides — it is unsafe under concurrent requests. A filter whose `$name` has no value fails closed with a NeodeError. - `where` is a Cypher predicate over the filtered node; `node` names that node (the read root, or the related node inside a filtered relation's pattern comprehension). Label-state filters (labels-as-state, NTS-128) are just label predicates: `where: 'NOT node:Archived'`. - Over relations, the target model's filters render inside the relation's pattern comprehension — a filtered-out target simply doesn't match, so the edge reads as absent and the parent row survives. Never OPTIONAL MATCH. Example — soft delete + tenancy as independent named filters: ```ts
 
 _source: decorators/node/filter.decorator.ts_
 
@@ -953,7 +953,7 @@ _source: services/query/search.service.ts_
 
 ### `setFilterParams` (function)
 
-Set the parameter a named filter's `where` references as `$name` (`setFilterParams('tenant', 'acme')` for `where: 'node.tenantId = $tenant'`). Values are bound as query parameters — they never render into the query text.
+Set the process-wide DEFAULT for the parameter a named filter's `where` references as `$name` (`setFilterParams('tenant', 'acme')` for `where: 'node.tenantId = $tenant'`). Values are bound as query parameters — they never render into the query text. UNSAFE UNDER CONCURRENCY: the value is global to the process, so `setFilterParams('tenant', t); await x; query` lets a concurrent request overwrite it between the set and the read — a cross-tenant leak. Use it only for genuinely process-wide values (single-tenant apps, scripts, tests); for per-request values use `withFilterParams`, whose scope wins over this default.
 
 _source: services/query/filters.ts_
 
@@ -1038,6 +1038,12 @@ _source: serialise.ts_
 An `IS NULL` / `IS NOT NULL` predicate on a property, rendered by toString() — the value of `Builder.whereNull` / `whereNotNull`.
 
 _source: query/where-null.ts_
+
+### `withFilterParams` (function)
+
+Run the work with request-scoped filter params (NTS-575). Every read the work performs — across awaits, and isolated from concurrent callers — sees these values, which take precedence over `setFilterParams` defaults. Scopes nest: an inner scope overrides the outer one name by name, and a value of `undefined` hides the outer/default value inside the scope. ```ts await withFilterParams({ tenant: req.tenantId }, async () => { await Article.all() }) ``` Needs a runtime with AsyncLocalStorage (Node.js), like ambient transactions.
+
+_source: services/query/filters.ts_
 
 ### `WITHOUT_ALL_FILTERS` (const)
 

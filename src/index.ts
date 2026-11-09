@@ -163,6 +163,7 @@ export { PaginateService } from './services/query/paginate.service.js'
 // Named global filters (NTS-162)
 export {
   setFilterParams,
+  withFilterParams,
   clearFilterParams,
   readFilterFragment,
   WITHOUT_ALL_FILTERS,

@@ -1,8 +1,10 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import type { Builder } from '../../query/index.js'
 import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { assertFilterName } from '../../meta/entity/entity-schema.js'
 import { THIS_NODE } from '../../constants.js'
 import { quote } from '../../query/quote.js'
+import { NeodeError } from '../../errors/index.js'
 
 /**
 The reserved name of the built-in @SoftDelete read filter (NTS-162):
@@ -35,8 +37,9 @@ export interface ReadFilterOptions {
 }
 
 /**
-Filter params are process-global, like the model registry: setFilterParams
-binds a named value every parameterised filter reads at composition time.
+Filter params live in two layers (NTS-575). The ALS scope opened by
+`withFilterParams` is request-local and takes precedence; the process-wide
+map written by `setFilterParams` is the fallback default.
 
 shortcut: on the hand-written statements (keyset pagination) the param
 names `cursor`, `cursorId` and `filter_<property>` are reserved — a filter
@@ -44,10 +47,63 @@ sharing one would overwrite the statement's own bindings.
 */
 const filterParameters = new Map<string, unknown>()
 
+const scopedFilterParameters = new AsyncLocalStorage<ReadonlyMap<string, unknown>>()
+
 /**
-Set the parameter a named filter's `where` references as `$name`
-(`setFilterParams('tenant', 'acme')` for `where: 'node.tenantId = $tenant'`).
-Values are bound as query parameters — they never render into the query text.
+Run the work with request-scoped filter params (NTS-575). Every read the
+work performs — across awaits, and isolated from concurrent callers — sees
+these values, which take precedence over `setFilterParams` defaults.
+Scopes nest: an inner scope overrides the outer one name by name, and a
+value of `undefined` hides the outer/default value inside the scope.
+
+```ts
+await withFilterParams({ tenant: req.tenantId }, async () => {
+  await Article.all()
+})
+```
+
+Needs a runtime with AsyncLocalStorage (Node.js), like ambient transactions.
+*/
+// eslint-disable-next-line unicorn/name-replacements -- withFilterParams pairs with setFilterParams (NTS-162 API name)
+export async function withFilterParams<T>(
+  values: Record<string, unknown>,
+  work: () => Promise<T> | T,
+): Promise<T> {
+  const merged = new Map(scopedFilterParameters.getStore())
+
+  for (const [name, value] of Object.entries(values)) {
+    assertFilterName(name)
+    merged.set(name, value)
+  }
+
+  return scopedFilterParameters.run(merged, async () => work())
+}
+
+/**
+The value a filter param resolves to right now: the ALS scope first (an
+explicit `undefined` there means "unset"), then the process-wide default.
+*/
+function resolveFilterValue(name: string): unknown {
+  const scoped = scopedFilterParameters.getStore()
+
+  return scoped?.has(name) === true ? scoped.get(name) : filterParameters.get(name)
+}
+
+function isParameterReferenced(where: string | undefined, name: string): boolean {
+  return where !== undefined && new RegExp(String.raw`\$${name}(?!\w)`).test(where)
+}
+
+/**
+Set the process-wide DEFAULT for the parameter a named filter's `where`
+references as `$name` (`setFilterParams('tenant', 'acme')` for
+`where: 'node.tenantId = $tenant'`). Values are bound as query parameters —
+they never render into the query text.
+
+UNSAFE UNDER CONCURRENCY: the value is global to the process, so
+`setFilterParams('tenant', t); await x; query` lets a concurrent request
+overwrite it between the set and the read — a cross-tenant leak. Use it only
+for genuinely process-wide values (single-tenant apps, scripts, tests); for
+per-request values use `withFilterParams`, whose scope wins over this default.
 */
 // eslint-disable-next-line unicorn/name-replacements -- setFilterParams is the NTS-162 API name (Linear issue), matching the TypeORM-style surface
 export function setFilterParams(name: string, value: unknown): void {
@@ -116,8 +172,17 @@ export function readFilterClauses(
       clauses.push(`(${filter.where.replaceAll(/\bnode\b/g, () => alias)})`)
     }
 
-    if (filterParameters.has(filter.name)) {
-      parameters[filter.name] = filterParameters.get(filter.name)
+    const value = resolveFilterValue(filter.name)
+
+    if (value !== undefined) {
+      parameters[filter.name] = value
+    } else if (isParameterReferenced(filter.where, filter.name)) {
+      // Fail closed (NTS-575): a tenant filter with no tenant must never
+      // run — without the check the statement fails later with an opaque
+      // driver error
+      throw new NeodeError(
+        `The filter '${filter.name}' references $${filter.name} but no value is set. Wrap the call in withFilterParams({ ${filter.name}: <value> }, async () => ...) (or call setFilterParams('${filter.name}', <value>) for a process-wide default), or disable the filter for this query with withoutFilters: ['${filter.name}'].`,
+      )
     }
   }
 

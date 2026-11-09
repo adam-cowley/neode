@@ -116,6 +116,9 @@ export async function knn<T>(
 
   const parameters = { index: indexName, k, vector }
 
+  // NTS-575 — k is a CEILING, not a guarantee: the filters below apply
+  // after the index's top-k, so filtered-out neighbours (soft-deleted,
+  // other tenant) shrink the result below k.
   // NTS-162 — named read filters over the scored rows. Both forms bind
   // the node to the same NODE_ALIAS; the procedure form takes the WHERE
   // after the YIELD, the SEARCH-clause form after SCORE AS.
