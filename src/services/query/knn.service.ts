@@ -1,12 +1,12 @@
 import type { Runner } from '../../driver/types.js'
 import { quote } from '../../query/quote.js'
-import { hydrate } from '../../hydrate.js'
 import { getModel } from '../../meta/index.js'
 import { EntitySchema } from '../../meta/entity/entity-schema.js'
-import { type ScoredEntity, type ModelInput, resolveModel } from './search.service.js'
+import { type ModelInput, resolveModel } from './search.service.js'
 import { isConstructorOf } from '../type-guards.js'
 import { isTransientError, NeodeError } from '../../errors/index.js'
 import { readFilterFragment, type ReadFilterOptions } from './filters.js'
+import { type ScoredEntity, shapeScoredRows } from './shape.js'
 
 /**
 Which query form to use for the kNN search
@@ -145,20 +145,7 @@ export async function knn<T>(
   const runForm = async (statement: string): Promise<ScoredEntity<T>[]> => {
     const output = await runner.run(filterStatements(statement), parameters)
 
-    const nodeRows = output.records.filter((row) => hasNode(row))
-
-    // hydrate() keeps only records carrying a node under the alias, in order
-    const entities = hydrate<T>(constructor, output, NODE_ALIAS)
-
-    return entities.map((entity, index) => {
-      const row = nodeRows[index]
-
-      if (row === undefined) {
-        throw new NeodeError('kNN result rows and hydrated entities are misaligned')
-      }
-
-      return { entity, score: scoreOf(row) }
-    })
+    return shapeScoredRows<T>(output.records, constructor, NODE_ALIAS)
   }
 
   if (mode === 'procedure') {
@@ -220,32 +207,6 @@ async function runWithIndexHint<T>(
 /**
 The message of a thrown value (thrown non-Errors have none)
 */
-
-/**
-The message of a thrown value (thrown non-Errors have none)
-*/
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-/**
-True while the row carries a node value under the alias
-*/
-function hasNode(row: { has(key: string): boolean; get(key: string): unknown }): boolean {
-  if (!row.has(NODE_ALIAS)) {
-    return false
-  }
-
-  const node: unknown = row.get(NODE_ALIAS)
-
-  return node !== null && node !== undefined
-}
-
-/**
-The similarity score of a row (a float from the backend)
-*/
-function scoreOf(row: { get(key: string): unknown }): number {
-  const score: unknown = row.get('score')
-
-  return typeof score === 'number' ? score : Number(score)
 }

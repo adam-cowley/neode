@@ -649,7 +649,7 @@ _source: query/direction.ts_
 
 ### `EdgeFindResult` (type)
 
-The find() result of an edge-returning read, mirroring the cardinality of the plain FindResult: `RelationshipEdgeRead<T>[]` for a many-key, `RelationshipEdgeRead<T> | undefined` for a one-key. Tuple-wrapped so a union FindResult (`T | undefined`) never distributes.
+The find() result of an edge-returning read, mirroring the cardinality of the plain FindResult: `RelationshipEdgeRead<T>[]` for a many-key, `RelationshipEdgeRead<T> | undefined` for a one-key. Tuple-wrapped so a union FindResult (`T | undefined`) never distributes. The row shape itself (RelationshipEdgeRead) lives in the one result-shaping module (NTS-566).
 
 _source: services/query/load-relation.service.ts_
 
@@ -913,7 +913,7 @@ _source: query/load-spec.ts_
 
 One result row of an edge-returning related() read (NTS-499): the hydrated related entity (`node`) alongside the traversed relationship itself (`edge`, the normalized GraphRelationship — type, elementId, endpoints and properties). The seed of the NTS-566 result-shape contract: flat, named, no wrapper classes.
 
-_source: services/query/load-relation.service.ts_
+_source: services/query/shape.ts_
 
 ### `Repository` (class)
 
@@ -935,9 +935,9 @@ _source: driver/types.ts_
 
 ### `ScoredEntity` (interface)
 
-A hydrated entity with the relevance score of the index that matched it
+A hydrated entity with the relevance score of the index that matched it (full-text search, kNN)
 
-_source: services/query/search.service.ts_
+_source: services/query/shape.ts_
 
 ### `search` (function)
 

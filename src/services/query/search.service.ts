@@ -1,25 +1,19 @@
 import type { Runner } from '../../driver/types.js'
-import { hydrate } from '../../hydrate.js'
 import { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { getModel } from '../../meta/index.js'
 import type { Newable } from '../../meta/newable.js'
 import { isConstructorOf } from '../type-guards.js'
 import { isTransientError, NeodeError } from '../../errors/index.js'
 import { readFilterFragment, type ReadFilterOptions } from './filters.js'
+import { type ScoredEntity, shapeScoredRows } from './shape.js'
+
+export type { ScoredEntity } from './shape.js'
 
 /**
 The message of a thrown value (thrown non-Errors have none)
 */
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
-
-/**
-A hydrated entity with the relevance score of the index that matched it
-*/
-export interface ScoredEntity<T> {
-  entity: T
-  score: number
-}
 
 /**
 A registered model class or its EntitySchema
@@ -127,40 +121,5 @@ export async function search<T>(
     }
   })()
 
-  const nodeRows = output.records.filter((row) => hasNode(row))
-
-  // hydrate() keeps only records carrying a node under the alias, in order
-  const entities = hydrate<T>(constructor, output, NODE_ALIAS)
-
-  return entities.map((entity, index) => {
-    const row = nodeRows[index]
-
-    if (row === undefined) {
-      throw new NeodeError('search result rows and hydrated entities are misaligned')
-    }
-
-    return { entity, score: scoreOf(row) }
-  })
-}
-
-/**
-True while the row carries a node value under the alias
-*/
-function hasNode(row: { has(key: string): boolean; get(key: string): unknown }): boolean {
-  if (!row.has(NODE_ALIAS)) {
-    return false
-  }
-
-  const node: unknown = row.get(NODE_ALIAS)
-
-  return node !== null && node !== undefined
-}
-
-/**
-The relevance score of a row (a float from the backend)
-*/
-function scoreOf(row: { get(key: string): unknown }): number {
-  const score: unknown = row.get('score')
-
-  return typeof score === 'number' ? score : Number(score)
+  return shapeScoredRows<T>(output.records, constructor, NODE_ALIAS)
 }

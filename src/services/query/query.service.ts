@@ -1,11 +1,10 @@
 import type { Newable } from '../../meta/newable.js'
 import type { Builder } from '../../query/index.js'
-import type { QueryOutput, Runner } from '../../driver/types.js'
-import { hydrateNode } from '../../utilities.js'
+import type { Runner } from '../../driver/types.js'
 import { THIS_NODE } from '../../constants.js'
 import { eagerNode } from '../../query/eager-utilities.js'
 import type { EntitySchema } from '../../meta/entity/entity-schema.js'
-import { isNodeLike } from '../type-guards.js'
+import { shapeNodeRows } from './shape.js'
 import type { ReadFilterOptions } from './filters.js'
 
 export class QueryService {
@@ -13,20 +12,6 @@ export class QueryService {
 
   constructor(runner: Runner) {
     this.runner = runner
-  }
-
-  private getAndHydrate<T>(result: QueryOutput, constructor: Newable, schema: EntitySchema): T[] {
-    return result.records.map((row) => {
-      // With eager relationships the root column is a projection
-      // map carrying its own eager values, without them a plain node
-      const node = row.get(THIS_NODE)
-
-      if (!isNodeLike(node)) {
-        throw new TypeError(`The "${THIS_NODE}" column did not return a node value`)
-      }
-
-      return hydrateNode<T>(schema, constructor, node)
-    })
   }
 
   async returnFirst<T>(
@@ -76,7 +61,9 @@ export class QueryService {
 
     const result = await this.runner.run(query, params)
 
-    // Hydrate
-    return result.records.length === 0 ? [] : this.getAndHydrate(result, constructor, schema)
+    // Shape through the one result-shaping layer (NTS-566) — the root
+    // column is a projection map carrying eager values when the schema
+    // declares eager relationships, a plain node otherwise
+    return shapeNodeRows<T>(result.records, schema, constructor, THIS_NODE)
   }
 }

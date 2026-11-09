@@ -533,6 +533,7 @@ export function renderAgentsMd(docs: ExtractedDocs, version: string): string {
     '- Never hand-edit snapshots; regenerate them and review the diff.',
     '- Integration tests must clean up after themselves.',
     '- No `OPTIONAL MATCH` in library-emitted relation reads (NTS-565): pattern comprehensions for unordered nested relations, `COLLECT { MATCH … RETURN … ORDER BY … }` when the nested read filters / sorts / pages. `Builder.optionalMatch()` stays for raw-Cypher callers and delete-path binding.',
+    '- Result shape (NTS-566): every model read routes its rows through the one shaping module, `src/services/query/shape.ts` (`shapeNodeRows` / `shapeProjectionRows` / `shapeEdgeRows` / `shapeScoredRows`) — no bespoke per-service row shaping. A read path\'s result shape is documented in docs/decisions/0003-result-shapes.md and asserted in test/integration/result-shape.test.ts; the nesting of a result IS the nesting of the query\'s declaration.',
     '- Run `pnpm lint && pnpm typecheck && pnpm test` before every commit.',
     '- Add a changeset for any user-visible change.',
     '',
