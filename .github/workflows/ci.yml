@@ -167,8 +167,11 @@ jobs:
         # layout (ENOENT .changeset/pre/changes.md after a Version PR merges)
         uses: changesets/action@v2.1.2
         with:
-          version: pnpm changeset version
-          publish: pnpm release
+          # v2.1.2 renamed its inputs: version -> version-script, publish -> publish-script
+          version-script: pnpm changeset version
+          # npm publishing intentionally disabled (user policy: nothing on npm yet) —
+          # re-add `publish-script: pnpm release` to go live
+          create-github-releases: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
