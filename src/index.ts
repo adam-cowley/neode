@@ -26,6 +26,9 @@ export { Repository } from './repository/index.js'
 export { TransactionalService } from './transaction/transactional.service.js'
 export { registerRepository, getRepository, resolveRepository } from './meta/repositories.js'
 export type { RepositoryConstructor } from './meta/repositories.js'
+// NTS-602 — the return type of Repository#getPrimaryKey, named in the API
+// reference's repository surface
+export type { PropertySchema } from './meta/property-schema.js'
 export { mergeRelationshipProperty } from './meta/index.js'
 export type { SyncEdgesOptions, SyncEdgesResult } from './services/query/sync.service.js'
 export { Collection } from './collection.js'
@@ -44,6 +47,9 @@ export { TraverseBuilder, MAX_TRAVERSE_DEPTH, type Hop, type TraversalRow } from
 // Delete-path cascade depth cap (NTS-595) — the write-side counterpart of
 // MAX_TRAVERSE_DEPTH (NTS-593)
 export { MAX_CASCADE_DEPTH } from './services/query/delete.service.js'
+// NTS-602 — delete()'s options type, named in the facade signature in the
+// API reference
+export type { DeleteOptions } from './services/query/delete.service.js'
 
 // Map-based schema definitions
 export {
@@ -119,6 +125,12 @@ export type {
   ComputedDefinition,
 } from './meta/schema-definition.interface.js'
 
+// NTS-602 — the result shapes of the documented related reads (NTS-566/499),
+// taught in docs/decisions/0003-result-shapes.md: the `related(k)
+// .withRelationship()` edge rows and the with-spec-narrowed read returns
+export type { RelationshipEdgeRead } from './services/query/load-relation.service.js'
+export type { LoadedEntity } from './query/load-spec.js'
+
 // Full-text + vector search (NTS-123/127)
 export { search } from './services/query/search.service.js'
 export type { ScoredEntity } from './services/query/search.service.js'
@@ -139,6 +151,10 @@ export type {
   SchemaObject,
   InspectOptions,
 } from './services/schema/inspect.service.js'
+// NTS-602 — the documented result row of installSchema() / dropSchema(),
+// the index services and applySchemaDrift (its shape is spelled out in the
+// API reference)
+export type { SchemaResult } from './services/schema/schema-objects.js'
 
 // Bulk writes + pagination (NTS-125/126)
 export { BulkService } from './services/query/bulk.service.js'
@@ -160,6 +176,9 @@ export type {
   PaginateOptions,
   OffsetPaginateOptions,
   CursorPaginateOptions,
+  // NTS-602 — findManyAndCount's documented result shape
+  // (docs/decisions/0003-result-shapes.md)
+  ManyAndCount,
 } from './services/query/paginate.service.js'
 
 // Ops helpers + consumer test utilities (NTS-130/134/146)

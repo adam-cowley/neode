@@ -307,6 +307,10 @@ One property of an entity, as exposed to LLM agents (NTS-445)
 
 _source: meta/ontology.ts_
 
+### `PropertySchema` (class)
+
+_source: meta/property-schema.ts_
+
 ### `PropertyTypeName` (type)
 
 neode-compatible property type names for map-based schema definitions. Unknown names fall back to `any` (neode treats them as Joi hints; the OGM has no validation pass so they carry no behaviour).

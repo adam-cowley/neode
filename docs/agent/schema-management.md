@@ -101,6 +101,10 @@ One constraint or index as inspected from the database (SHOW CONSTRAINTS / SHOW 
 
 _source: services/schema/inspect.service.ts_
 
+### `SchemaResult` (interface)
+
+_source: services/schema/schema-objects.ts_
+
 ### `VectorIndexDefinition` (interface)
 
 A vector index to keep installed on the database
