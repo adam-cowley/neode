@@ -178,6 +178,13 @@ export class RelateService extends QueryService {
     // the same target is idempotent (those edges are excluded), a
     // forceCreate duplicate counts too. Restricted cardinalities only —
     // `many` never pays for the read.
+    //
+    // Known race (NTS-579): this is check-then-write across two
+    // statements, so two concurrent relate() calls can each see zero
+    // edges and both create one, exceeding a `one` / `zeroOrOne`
+    // cardinality. Cardinality is an application-level guard, not a
+    // database constraint; serialise writers when it must hold under
+    // concurrency.
     if (relationship.getCardinality() !== 'many') {
       const guard = new Builder()
 

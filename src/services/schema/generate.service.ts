@@ -79,6 +79,11 @@ export interface GeneratedRelationship {
   */
   target: string
   /**
+  The TypeScript class name of the target model in the decorated output
+  (the collision-free identifier assigned to `target`, never the raw label)
+  */
+  targetClassName: string
+  /**
   True when the sampled out-degree exceeds one — renders as @RelatedMany /
   `type: 'relatedMany'`, otherwise @RelatedOne / `type: 'relatedOne'`
   */
@@ -128,6 +133,13 @@ export interface GenerateModelsResult {
   Every model rendered as defineModel() map-schema calls (one module)
   */
   mapSchema: string
+  /**
+  Conflicts the walk could not resolve (properties of conflicting or
+  untypeable values, relationship keys that collide, keys that cannot be
+  declared): the offending property or relationship is left out of the
+  generated models and reported here instead of aborting the whole run
+  */
+  warnings: string[]
 }
 
 /**
@@ -140,7 +152,101 @@ Distinct (type, target) relationships kept per label, highest count first
 */
 const RELATIONSHIP_LIMIT = 20
 
+/**
+Labels sampled per query round at once (the label walk is bounded so a
+database with many labels does not open an unbounded number of statements)
+*/
+const LABEL_CONCURRENCY = 4
+
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/
+
+/**
+Property keys no generated declaration can carry: `__proto__` in an object
+literal sets the prototype, and a class field named `constructor` is a
+syntax error
+*/
+const UNDECLARABLE_KEYS = new Set(['__proto__', 'constructor'])
+
+/**
+Identifiers a generated class name must not take: the names the decorated
+module imports, reserved words, and globals the output (or its consumers)
+rely on
+*/
+const RESERVED_CLASS_NAMES = new Set([
+  'NodeEntity',
+  'Property',
+  'RelatedOne',
+  'RelatedMany',
+  'Object',
+  'Array',
+  'Function',
+  'Symbol',
+  'Promise',
+  'Map',
+  'Set',
+  'Date',
+  'Error',
+  'String',
+  'Number',
+  'Boolean',
+  'BigInt',
+  'undefined',
+  'NaN',
+  'Infinity',
+  'arguments',
+  'eval',
+  'await',
+  'yield',
+  'let',
+  'static',
+  'implements',
+  'interface',
+  'package',
+  'private',
+  'protected',
+  'public',
+  'as',
+  'any',
+  'async',
+  'of',
+  'type',
+  'null',
+  'true',
+  'false',
+  'break',
+  'case',
+  'catch',
+  'class',
+  'const',
+  'continue',
+  'debugger',
+  'default',
+  'delete',
+  'do',
+  'else',
+  'enum',
+  'export',
+  'extends',
+  'finally',
+  'for',
+  'function',
+  'if',
+  'import',
+  'in',
+  'instanceof',
+  'new',
+  'return',
+  'super',
+  'switch',
+  'this',
+  'throw',
+  'try',
+  'typeof',
+  'var',
+  'void',
+  'while',
+  'with',
+])
 
 /**
 Deterministic string ordering for generated output (the drift service
@@ -336,10 +442,56 @@ export function inferProperty(
 Label → valid TypeScript identifier (invalid characters dropped, leading
 digit prefixed)
 */
-function classNameFor(label: string): string {
+function sanitizeClassName(label: string): string {
   const name = label.replaceAll(/[^A-Za-z0-9_$]/g, '')
 
   return name === '' || /^\d/.test(name) ? `_${name}` : name
+}
+
+/**
+Label → unique class name, for every label of one run. Labels that already
+are valid, non-reserved identifiers keep their own name; the rest are
+sanitised and, when the result is reserved or taken (`A-B` vs `AB`, a label
+named `Property` or `class`), suffixed `_2`, `_3`, … Assignment walks the
+labels in sorted order, so the mapping is deterministic whatever order the
+database lists them in.
+*/
+export function assignClassNames(labels: Iterable<string>): Map<string, string> {
+  const sorted = [...new Set(labels)]
+
+  sorted.sort(compareStrings)
+
+  const names = new Map<string, string>()
+  const taken = new Set<string>()
+
+  for (const label of sorted) {
+    if (!IDENTIFIER.test(label) || RESERVED_CLASS_NAMES.has(label)) {
+      continue
+    }
+
+    names.set(label, label)
+    taken.add(label)
+  }
+
+  for (const label of sorted) {
+    if (names.has(label)) {
+      continue
+    }
+
+    const base = sanitizeClassName(label)
+    let name = base
+    let suffix = 2
+
+    while (taken.has(name) || RESERVED_CLASS_NAMES.has(name)) {
+      name = `${base}_${String(suffix)}`
+      suffix += 1
+    }
+
+    names.set(label, name)
+    taken.add(name)
+  }
+
+  return names
 }
 
 /**
@@ -439,23 +591,61 @@ export function buildModel(
   walks: RelationshipWalkRow[],
   primaryKey: string | undefined,
   generatedLabels: ReadonlySet<string>,
+  warnings?: string[],
+  classNames: ReadonlyMap<string, string> = assignClassNames([label, ...generatedLabels]),
 ): GeneratedModel | undefined {
   if (samples.length === 0) {
     return undefined
+  }
+
+  // Without a `warnings` sink a conflict throws (the strict behaviour);
+  // with one, it is recorded and the offending member is left out
+  const conflict = (message: string): void => {
+    if (warnings === undefined) {
+      throw new NeodeError(message)
+    }
+
+    warnings.push(message)
   }
 
   const properties: Record<string, PropertyDefinition> = {}
   const keys = new Set<string>(samples.flatMap((sample) => Object.keys(sample)))
 
   for (const key of keys) {
-    const definition = inferProperty(
-      label,
-      key,
-      samples.map((sample) => sample[key]),
-    )
+    if (UNDECLARABLE_KEYS.has(key)) {
+      conflict(
+        `Skipped property "${key}" of :${label}: the key cannot be declared on a generated ` +
+          'model. Map it by hand if you need it.',
+      )
+
+      continue
+    }
+
+    let definition: PropertyDefinition | undefined
+
+    try {
+      definition = inferProperty(
+        label,
+        key,
+        samples.map((sample) => sample[key]),
+      )
+    } catch (error) {
+      if (warnings === undefined || !(error instanceof NeodeError)) {
+        throw error
+      }
+
+      warnings.push(error.message)
+
+      continue
+    }
 
     if (definition !== undefined) {
-      properties[key] = definition
+      Object.defineProperty(properties, key, {
+        value: definition,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      })
     }
   }
 
@@ -477,11 +667,22 @@ export function buildModel(
     // A property of the same name would be overwritten by the
     // relationship declaration — surface the conflict instead
     if (Object.hasOwn(properties, key)) {
-      throw new NeodeError(
+      conflict(
         `Cannot generate a model for :${label}: the relationship "${walk.type}" maps to ` +
           `the property key "${key}", taken by a property of the same name. Rename one ` +
           'in the generated model.',
       )
+
+      continue
+    }
+
+    if (UNDECLARABLE_KEYS.has(key)) {
+      conflict(
+        `Skipped relationship "${walk.type}" of :${label}: its property key "${key}" cannot ` +
+          'be declared on a generated model.',
+      )
+
+      continue
     }
 
     const existing = claimed.get(key)
@@ -491,11 +692,13 @@ export function buildModel(
         continue
       }
 
-      throw new NeodeError(
+      conflict(
         `Cannot generate a model for :${label}: the relationships "${existing}" and ` +
           `"${walk.type}" both map to the property key "${key}". Rename one in the ` +
           'generated model.',
       )
+
+      continue
     }
 
     claimed.set(key, walk.type)
@@ -505,6 +708,7 @@ export function buildModel(
       relationship: walk.type,
       direction: 'out',
       target,
+      targetClassName: classNames.get(target) ?? sanitizeClassName(target),
       many: walk.sources > 0 && walk.count > walk.sources,
     })
   }
@@ -544,7 +748,7 @@ export function buildModel(
 
   return {
     label,
-    className: classNameFor(label),
+    className: classNames.get(label) ?? sanitizeClassName(label),
     primaryKey,
     properties,
     relationships,
@@ -552,19 +756,45 @@ export function buildModel(
   }
 }
 
+const STRING_ESCAPES = new Map([
+  ['\\', String.raw`\\`],
+  ["'", String.raw`\'`],
+  ['\n', String.raw`\n`],
+  ['\r', String.raw`\r`],
+])
+
 /**
-Quoted member name for the generated code: bare when a valid identifier,
-single-quoted (with escaping) otherwise
+Single-quoted TypeScript string literal — the docs' spelling. Escapes the
+backslash, the quote, line terminators (including U+2028 / U+2029) and every
+other control character, so no label, type or key can leave the literal.
 */
-function memberName(key: string): string {
-  return IDENTIFIER.test(key) ? key : `'${key.replaceAll("'", "\\'")}'`
+function tsString(value: string): string {
+  let escaped = ''
+
+  for (const char of value) {
+    const named = STRING_ESCAPES.get(char)
+
+    if (named !== undefined) {
+      escaped += named
+
+      continue
+    }
+
+    const code = char.codePointAt(0) ?? 0
+    const isControl = code < 32 || code === 127 || code === 8232 || code === 8233
+
+    escaped += isControl ? String.raw`\u${code.toString(16).padStart(4, '0')}` : char
+  }
+
+  return `'${escaped}'`
 }
 
 /**
-Single-quoted TypeScript string literal — the docs' spelling
+Member name for the generated code: bare when a valid identifier, an
+escaped string literal otherwise
 */
-function tsString(value: string): string {
-  return `'${value.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`
+function memberName(key: string): string {
+  return IDENTIFIER.test(key) ? key : tsString(key)
 }
 
 /**
@@ -607,7 +837,7 @@ export function renderDecoratedModels(models: GeneratedModel[]): string {
 
   const decorated = models.map((model) => {
     const classLines = [
-      model.className === model.label
+      model.className === model.label && IDENTIFIER.test(model.label)
         ? '@NodeEntity()'
         : `@NodeEntity({ labels: [${tsString(model.label)}] })`,
       `export class ${model.className} {`,
@@ -629,11 +859,13 @@ export function renderDecoratedModels(models: GeneratedModel[]): string {
     }
 
     for (const relationship of model.relationships) {
-      const tsType = relationship.many ? `${relationship.target}[]` : relationship.target
+      const tsType = relationship.many
+        ? `${relationship.targetClassName}[]`
+        : relationship.targetClassName
       const decorator = relationship.many ? 'RelatedMany' : 'RelatedOne'
 
       classLines.push(
-        `  @${decorator}({ type: ${tsString(relationship.relationship)}, direction: 'out', target: () => ${relationship.target} }) ${memberName(relationship.key)}?: ${tsType}`,
+        `  @${decorator}({ type: ${tsString(relationship.relationship)}, direction: 'out', target: () => ${relationship.targetClassName} }) ${memberName(relationship.key)}?: ${tsType}`,
       )
     }
 
@@ -698,12 +930,12 @@ export function renderMapModels(models: GeneratedModel[]): string {
         parts.push('primary: true')
       }
 
-      entries.push(`  ${memberName(key)}: { ${parts.join(', ')} }`)
+      entries.push(`  ${memberName(key)}: { ${parts.join(', ')} },`)
     }
 
     for (const relationship of model.relationships) {
       entries.push(
-        `  ${memberName(relationship.key)}: { type: '${relationship.many ? 'relatedMany' : 'relatedOne'}', relationship: ${tsString(relationship.relationship)}, direction: 'out', target: ${tsString(relationship.target)} }`,
+        `  ${memberName(relationship.key)}: { type: '${relationship.many ? 'relatedMany' : 'relatedOne'}', relationship: ${tsString(relationship.relationship)}, direction: 'out', target: ${tsString(relationship.target)} },`,
       )
     }
 
@@ -722,7 +954,8 @@ export async function generateModels(
   connection: ConnectionProvider,
   options: GenerateModelsOptions = {},
 ): Promise<GenerateModelsResult> {
-  const sampleSize = Math.max(1, Math.floor(options.sampleSize ?? DEFAULT_SAMPLE_SIZE))
+  const requested = Math.floor(options.sampleSize ?? DEFAULT_SAMPLE_SIZE)
+  const sampleSize = Number.isFinite(requested) ? Math.max(1, requested) : DEFAULT_SAMPLE_SIZE
 
   const [labelRows, constraintRows] = await Promise.all([
     connection.run('CALL db.labels()', {}, 'READ'),
@@ -738,13 +971,24 @@ export async function generateModels(
   const constraints = constraintRows.records.map((row) => schemaObjectRow(row))
   const generatedLabels = new Set(labels)
 
-  const models: GeneratedModel[] = []
+  const classNames = assignClassNames(labels)
+  const warnings: string[] = []
 
-  for (const label of labels) {
+  const built = await mapWithConcurrency(labels, LABEL_CONCURRENCY, async (label) => {
+    // Sample first, then walk only the sampled nodes: the relationship walk
+    // never scans the whole label, and only property maps (not whole nodes)
+    // come back
+    // Inlined: a JS number parameter reaches Neo4j as a float, which LIMIT rejects
+    // (sampleSize is a validated positive integer)
+    const limit = String(sampleSize)
     const [sample, walk] = await Promise.all([
-      connection.run(`MATCH (n:${quote(label)}) RETURN n LIMIT ${String(sampleSize)}`, {}, 'READ'),
       connection.run(
-        `MATCH (n:${quote(label)})-[r]->(m) ` +
+        `MATCH (n:${quote(label)}) WITH n LIMIT ${limit} RETURN properties(n) AS properties`,
+        {},
+        'READ',
+      ),
+      connection.run(
+        `MATCH (n:${quote(label)}) WITH n LIMIT ${limit} MATCH (n)-[r]->(m) ` +
           'RETURN type(r) AS type, labels(m) AS labels, count(*) AS rels, count(DISTINCT n) AS sources ' +
           `ORDER BY rels DESC LIMIT ${String(RELATIONSHIP_LIMIT)}`,
         {},
@@ -753,8 +997,8 @@ export async function generateModels(
     ])
 
     const samples = sample.records
-      .map((row) => nodeProperties(row.get('n')))
-      .filter((properties): properties is Record<string, unknown> => properties !== undefined)
+      .map((row) => row.get('properties'))
+      .filter((properties): properties is Record<string, unknown> => isRecord(properties))
 
     const walks: RelationshipWalkRow[] = walk.records.map((row) => ({
       type: rowString(row, 'type'),
@@ -764,14 +1008,26 @@ export async function generateModels(
       sources: rowNumber(row, 'sources'),
     }))
 
+    const labelWarnings: string[] = []
     const model = buildModel(
       label,
       samples,
       walks,
       primaryKeyFor(label, constraints),
       generatedLabels,
+      labelWarnings,
+      classNames,
     )
 
+    return { model, labelWarnings }
+  })
+
+  // Collected in label order, so the output is deterministic whatever the
+  // order the concurrent walks finished in
+  const models: GeneratedModel[] = []
+
+  for (const { model, labelWarnings } of built) {
+    warnings.push(...labelWarnings)
     models.push(...(model === undefined ? [] : [model]))
   }
 
@@ -779,12 +1035,40 @@ export async function generateModels(
     models,
     typescript: renderDecoratedModels(models),
     mapSchema: renderMapModels(models),
+    warnings,
   }
 }
 
-function nodeProperties(value: unknown): Record<string, unknown> | undefined {
-  // The normalized GraphNode shape ({ elementId, labels, properties })
-  return isRecord(value) && isRecord(value['properties']) ? value['properties'] : undefined
+/**
+Map over the items with at most `limit` callbacks in flight, keeping the
+results in input order
+*/
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  callback: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = []
+  let next = 0
+
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next
+      const item = items[index]
+
+      next += 1
+
+      if (item === undefined) {
+        continue
+      }
+
+      results[index] = await callback(item)
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+
+  return results
 }
 
 function rowString(row: QueryRecord, key: string): string {

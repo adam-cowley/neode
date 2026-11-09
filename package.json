@@ -34,7 +34,8 @@
   "scripts": {
     "build": "tsdown",
     "prepublishOnly": "npm run build && npm run test:unit",
-    "watch": "tsc --watch",
+    "prepare": "husky || true && tsdown",
+    "watch": "tsdown --watch",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
@@ -105,6 +106,5 @@
   },
   "peerDependencies": {
     "neo4j-driver": "^6.0.0"
-  },
-  "prepare": "husky && tsdown"
+  }
 }

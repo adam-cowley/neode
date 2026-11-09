@@ -424,16 +424,20 @@ export class RelatedQuery {
 
   private readonly relationship: RelationshipPropertySchema
 
+  private readonly filters: ReadFilterOptions | undefined
+
   constructor(
     run: <Result>(work: (runner: Runner) => Promise<Result>) => Promise<Result>,
     schema: EntitySchema,
     entity: object,
     relationship: RelationshipPropertySchema,
+    filters?: ReadFilterOptions,
   ) {
     this.run = run
     this.schema = schema
     this.entity = entity
     this.relationship = relationship
+    this.filters = filters
   }
 
   /**
@@ -442,7 +446,7 @@ export class RelatedQuery {
   count for count() — the row-shaping verbs do not affect a count.
   */
   private statement(isCount: boolean): RelatedReadState {
-    const read = relatedRead(this.schema, this.entity, this.relationship)
+    const read = relatedRead(this.schema, this.entity, this.relationship, this.filters)
 
     for (const operation of this.operations) {
       // Filters apply to a count; the row-shaping verbs do not, and the
@@ -456,7 +460,7 @@ export class RelatedQuery {
       applyOperation(read, operation)
     }
 
-    const projection = `${eagerNode(1, read.nodeVariable, read.targetSchema, { builder: read.builder })} AS node`
+    const projection = `${eagerNode(1, read.nodeVariable, read.targetSchema, { builder: read.builder, filters: this.filters })} AS node`
 
     if (isCount) {
       read.builder.return(`count(${read.nodeVariable}) AS count`)

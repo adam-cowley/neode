@@ -15,7 +15,8 @@ node:async_hooks compatibility also qualifies). On runtimes without it
 import type { EventEmitter } from 'node:events'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { AccessMode, TransactionHandle } from '../driver/types.js'
-import { classifyError, isTransientError, NeodeError } from '../errors/index.js'
+import { classifyError, isRetryableError, NeodeError } from '../errors/index.js'
+import { EffectBuffer } from './effects.js'
 import { rollbackAfterFailure } from './rollback.js'
 import { TransactionalService } from './transactional.service.js'
 
@@ -41,9 +42,35 @@ export interface TransactionOptions {
   /**
   Retries after the first attempt when the failure classifies as
   transient (TransientError — `Neo.TransientError.*` codes or a driver
-  `retryable` verdict). Default 2.
+  `retryable` verdict; a transaction terminated by an operator or the
+  server timeout, `Transaction.Terminated` / `Transaction.LockClientStopped`,
+  is never retried). Default 2 — NOTE: unlike `inWriteTransaction` (which
+  never retries), `transaction()` re-runs the callback by default, so the
+  callback must be idempotent; pass `retries: 0` to opt out.
+
+  Failures raised while committing are NOT retried by default: a dropped
+  connection during commit is ambiguous (the server may have committed),
+  and re-running would apply non-idempotent work twice. Set `retryCommit`
+  to opt in.
   */
   retries?: number
+
+  /**
+  Also retry a transient failure raised by the commit itself. Off by default
+  (see `retries`): only enable it when the callback is safe to apply twice.
+  */
+  retryCommit?: boolean
+}
+
+/**
+The routing / database / retry settings a scope opened with — what a joined
+call is checked against.
+*/
+export interface AmbientSettings {
+  routing: AccessMode
+  database: string | undefined
+  retries: number
+  retryCommit: boolean
 }
 
 /**
@@ -65,15 +92,38 @@ export class AmbientTransactionScope {
   */
   rollbackOnly = false
 
-  constructor(handle: TransactionHandle) {
+  /**
+  Set once the attempt finished (committed, rolled back or failed): the
+  scope can no longer run statements — a call that escaped the callback
+  (detached async work) must fail loudly instead of hitting a closed transaction.
+  */
+  closed = false
+
+  /**
+  The events / observers the attempt's writes queued — flushed after the
+  commit, discarded on rollback or retry (NTS-582).
+  */
+  readonly effects = new EffectBuffer()
+
+  /**
+  What this scope opened with; joined calls may not conflict with it.
+  */
+  readonly settings: AmbientSettings
+
+  constructor(handle: TransactionHandle, settings: AmbientSettings) {
     this.handle = handle
+    this.settings = settings
 
     // The handle every joined call runs on: statements execute in the
     // ambient transaction, while the close endpoints defer to the
     // outermost unit — a per-method commit()/rollback() (every facade
     // method closes its own scope) must never close the shared transaction
     this.joinHandle = {
-      run: async (statement, parameters) => this.handle.run(statement, parameters),
+      run: async (statement, parameters) => {
+        this.assertOpen()
+
+        return this.handle.run(statement, parameters)
+      },
       commit: async () => {
         // Nothing to do — deferred by design: the outermost unit commits
         // the shared transaction
@@ -82,6 +132,66 @@ export class AmbientTransactionScope {
       rollback: async () => {
         this.rollbackOnly = true
       },
+    }
+  }
+
+  /**
+  Throw when the scope already finished — see `closed`.
+  */
+  assertOpen(): void {
+    if (this.closed) {
+      throw new NeodeError(
+        'The ambient transaction already finished (detached async work?). A call ran after the transaction() callback resolved — await every promise started inside the callback (no fire-and-forget work), or run that work in its own transaction.',
+      )
+    }
+  }
+
+  /**
+  Throw when a joined call passes an option that conflicts with the outer
+  transaction. A joined call runs in the outer transaction, so its own
+  routing / database / retries could only be silently dropped.
+  */
+  assertCompatible(
+    call: string,
+    options: {
+      routing?: AccessMode | undefined
+      database?: string | undefined
+      retries?: number | undefined
+      retryCommit?: boolean | undefined
+    },
+  ): void {
+    const { settings } = this
+
+    const conflicts: string[] = []
+
+    if (options.routing !== undefined && options.routing !== settings.routing) {
+      conflicts.push(
+        `routing '${options.routing}' (the outer transaction is '${settings.routing}')`,
+      )
+    }
+
+    if (options.database !== undefined && options.database !== settings.database) {
+      conflicts.push(
+        `database '${options.database}' (the outer transaction uses ${settings.database === undefined ? 'the default database' : `'${settings.database}'`})`,
+      )
+    }
+
+    if (options.retries !== undefined && options.retries !== settings.retries) {
+      conflicts.push(
+        `retries ${String(options.retries)} (the outer transaction retries ${String(settings.retries)})`,
+      )
+    }
+
+    if (options.retryCommit !== undefined && options.retryCommit !== settings.retryCommit) {
+      conflicts.push(
+        `retryCommit ${String(options.retryCommit)} (the outer transaction: ${String(settings.retryCommit)})`,
+      )
+    }
+
+    if (conflicts.length > 0) {
+      throw new NeodeError(
+        `${call} joins the surrounding transaction, so it cannot change its options: ${conflicts.join('; ')}. Remove the option from the nested call, set it on the outermost transaction() instead, or run the work outside the callback to use a separate transaction.`,
+      )
     }
   }
 
@@ -102,8 +212,12 @@ export class AmbientTransactionScope {
     eventEmitter: EventEmitter,
     work: (tx: TransactionalService) => Promise<T>,
   ): Promise<T> {
+    this.assertOpen()
+
     try {
-      return await work(new TransactionalService(this.joinHandle, eventEmitter))
+      return await work(
+        new TransactionalService(this.joinHandle, eventEmitter, this.effects, false),
+      )
     } catch (error) {
       this.rollbackOnly = true
 
@@ -132,7 +246,9 @@ async function runWithAmbientTransaction<T>(
 }
 
 /**
-Backoff between transient retries: linear, one delay per failed attempt.
+Backoff between transient retries: linear, one delay per failed attempt,
+with up to 50% jitter so concurrent units that deadlocked together do not
+retry in lockstep (NTS-582).
 */
 const TRANSIENT_RETRY_DELAY_MS = 100
 
@@ -141,11 +257,16 @@ Retries after the first attempt, by default.
 */
 const DEFAULT_RETRIES = 2
 
+function retryDelay(attempt: number): number {
+  return TRANSIENT_RETRY_DELAY_MS * attempt * (1 + Math.random() * 0.5)
+}
+
 /**
 Run an ambient transaction unit: open a transaction, bind it as the
 ambient scope for the work, commit on success / roll back on failure
 (NTS-561 close semantics), and retry the whole unit in a fresh
-transaction when the failure classifies as transient.
+transaction when the failure classifies as transient. Events and after*
+observers queued by the work run only after a successful commit.
 */
 export async function runAmbientTransaction<T>(
   begin: () => Promise<TransactionHandle>,
@@ -153,25 +274,44 @@ export async function runAmbientTransaction<T>(
   work: (tx: TransactionalService) => Promise<T>,
   options: TransactionOptions = {},
 ): Promise<T> {
-  const maxAttempts = 1 + Math.max(0, options.retries ?? DEFAULT_RETRIES)
+  const retries = Math.max(0, options.retries ?? DEFAULT_RETRIES)
+  const maxAttempts = 1 + retries
 
   for (let attempt = 1; ; attempt++) {
     // Begin failures are not retried: session acquisition is local — the
     // real transient windows (statement execution, commit) are below
     const handle = await begin()
-    const scope = new AmbientTransactionScope(handle)
-    const tx = new TransactionalService(handle, eventEmitter)
+
+    const scope = new AmbientTransactionScope(handle, {
+      routing: options.routing ?? 'WRITE',
+      database: options.database,
+      retries,
+      retryCommit: options.retryCommit ?? false,
+    })
+
+    const tx = new TransactionalService(handle, eventEmitter, scope.effects, false)
 
     let result: T
 
     try {
       result = await runWithAmbientTransaction(scope, async () => work(tx))
     } catch (error) {
+      scope.closed = true
+
       // The work closed the transaction explicitly and threw afterwards —
-      // the terminal operation stands, rethrow untouched (NTS-561)
+      // the terminal operation stands, rethrow untouched (NTS-561). A
+      // commit that stood releases its queued events.
       if (tx.isSettled()) {
+        if (tx.isCommitted()) {
+          await scope.effects.flush()
+        } else {
+          scope.effects.discard()
+        }
+
         throw error
       }
+
+      scope.effects.discard()
 
       // rollbackAfterFailure rolls the attempt back and rethrows the
       // original error (a failing rollback is warned and chained, never
@@ -190,8 +330,8 @@ export async function runAmbientTransaction<T>(
       // do not
       const classified = classifyError(original)
 
-      if (isTransientError(classified) && attempt < maxAttempts) {
-        await new Promise((resolve) => setTimeout(resolve, TRANSIENT_RETRY_DELAY_MS * attempt))
+      if (isRetryableError(classified) && attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelay(attempt)))
 
         continue
       }
@@ -199,11 +339,15 @@ export async function runAmbientTransaction<T>(
       throw classified
     }
 
+    scope.closed = true
+
     if (!tx.isSettled()) {
       // The work resolved, but a joined call failed (or rolled back) and
       // its error was handled inside the callback — the transaction must
       // not commit
       if (scope.rollbackOnly) {
+        scope.effects.discard()
+
         return await rollbackAfterFailure(
           handle,
           new NeodeError(
@@ -215,19 +359,29 @@ export async function runAmbientTransaction<T>(
       try {
         await tx.commit()
       } catch (error) {
-        // The commit can fail transiently too (network drop at commit) —
-        // retry the unit in a fresh transaction; the idempotency contract
-        // covers the work already re-running
+        scope.effects.discard()
+
+        // A failure while committing is ambiguous — the server may have
+        // committed before the connection dropped, and re-running would
+        // apply non-idempotent work twice. Only retried on explicit opt-in
         const classified = classifyError(error)
 
-        if (isTransientError(classified) && attempt < maxAttempts) {
-          await new Promise((resolve) => setTimeout(resolve, TRANSIENT_RETRY_DELAY_MS * attempt))
+        if (options.retryCommit === true && isRetryableError(classified) && attempt < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelay(attempt)))
 
           continue
         }
 
         throw classified
       }
+    }
+
+    // Committed (by us or explicitly by the work): release the queued
+    // events and after* observers. A rolled-back unit drops them.
+    if (tx.isCommitted()) {
+      await scope.effects.flush()
+    } else {
+      scope.effects.discard()
     }
 
     return result

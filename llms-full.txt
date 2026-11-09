@@ -8,6 +8,15 @@ Package version: **1.0.0-next.1** (from package.json).
 > neode v1, neode and other OGMs. Trust this file and the source it was
 > generated from, not what you remember.
 
+> **Default to decorators (NTS-583).** When creating a new project or new models, define them as
+> decorated classes (`@NodeEntity()` + `@Property(...)`) using standard TC39 decorators — never
+> `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`. Use `defineModel` (the
+> map API) only when the user asks for it, or decorators are impossible (models built at runtime,
+> or a toolchain without standard TC39 decorator support).
+>
+> Tooling: TypeScript 5+ (or esbuild/SWC/tsdown with standard decorators), `target` ES2022 or later,
+> `"lib": ["ES2022", "ESNext.Decorators"]`, and leave `experimentalDecorators` unset.
+
 ## Contents
 
 - [Model definition](#model-definition) — Decorators and the map-based defineModel API for declaring nodes, properties and relationships.
@@ -129,7 +138,7 @@ _source: meta/map-schema.ts_
 
 ### `Filter` (decorator)
 
-Named global filter (NTS-162): declare a named read filter on the model and it applies to every standard read — find / get / all / paginate / search / knn / eager loads / projections / repository reads — composed in one central place in the query services. - Disable per query with `withoutFilters: ['name']` on the read options; each filter is independent. - Parameterise with `setFilterParams(name, value)`; the `where` fragment references the value as `$name`. - `where` is a Cypher predicate over the filtered node; `node` names that node (the read root, or the related node inside a filtered relation's pattern comprehension). Label-state filters (labels-as-state, NTS-128) are just label predicates: `where: 'NOT node:Archived'`. - Over relations, the target model's filters render inside the relation's pattern comprehension — a filtered-out target simply doesn't match, so the edge reads as absent and the parent row survives. Never OPTIONAL MATCH. Example — soft delete + tenancy as independent named filters: ```ts
+Named global filter (NTS-162): declare a named read filter on the model and it applies to every standard read — find / get / all / paginate / search / knn / eager loads / projections / repository reads — composed in one central place in the query services. - Disable per query with `withoutFilters: ['name']` on the read options; each filter is independent. - Parameterise with `withFilterParams({ name: value }, async () => ...)` (request-scoped, async-safe; NTS-575); the `where` fragment references the value as `$name`. `setFilterParams(name, value)` sets a process-wide default that the scope overrides — it is unsafe under concurrent requests. A filter whose `$name` has no value fails closed with a NeodeError. - `where` is a Cypher predicate over the filtered node; `node` names that node (the read root, or the related node inside a filtered relation's pattern comprehension). Label-state filters (labels-as-state, NTS-128) are just label predicates: `where: 'NOT node:Archived'`. - Over relations, the target model's filters render inside the relation's pattern comprehension — a filtered-out target simply doesn't match, so the edge reads as absent and the parent row survives. Never OPTIONAL MATCH. Example — soft delete + tenancy as independent named filters: ```ts
 
 _source: decorators/node/filter.decorator.ts_
 
@@ -953,7 +962,7 @@ _source: services/query/search.service.ts_
 
 ### `setFilterParams` (function)
 
-Set the parameter a named filter's `where` references as `$name` (`setFilterParams('tenant', 'acme')` for `where: 'node.tenantId = $tenant'`). Values are bound as query parameters — they never render into the query text.
+Set the process-wide DEFAULT for the parameter a named filter's `where` references as `$name` (`setFilterParams('tenant', 'acme')` for `where: 'node.tenantId = $tenant'`). Values are bound as query parameters — they never render into the query text. UNSAFE UNDER CONCURRENCY: the value is global to the process, so `setFilterParams('tenant', t); await x; query` lets a concurrent request overwrite it between the set and the read — a cross-tenant leak. Use it only for genuinely process-wide values (single-tenant apps, scripts, tests); for per-request values use `withFilterParams`, whose scope wins over this default.
 
 _source: services/query/filters.ts_
 
@@ -1039,6 +1048,12 @@ An `IS NULL` / `IS NOT NULL` predicate on a property, rendered by toString() —
 
 _source: query/where-null.ts_
 
+### `withFilterParams` (function)
+
+Run the work with request-scoped filter params (NTS-575). Every read the work performs — across awaits, and isolated from concurrent callers — sees these values, which take precedence over `setFilterParams` defaults. Scopes nest: an inner scope overrides the outer one name by name, and a value of `undefined` hides the outer/default value inside the scope. ```ts await withFilterParams({ tenant: req.tenantId }, async () => { await Article.all() }) ``` Needs a runtime with AsyncLocalStorage (Node.js), like ambient transactions.
+
+_source: services/query/filters.ts_
+
 ### `WITHOUT_ALL_FILTERS` (const)
 
 The reserved withoutFilters entry that disables EVERY named filter for the query — the write paths' internal re-hydration (save / create / merge use FindByIdService to re-read the row they just wrote) must find rows the current filter view hides. Filters are a read policy; writes never read through them.
@@ -1063,7 +1078,7 @@ _source: services/schema/drift.service.ts_
 
 ### `applySchemaDrift` (function)
 
-Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450).
+Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive: on a shared database "stale" objects may belong to other applications — review the drift first). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450).
 
 _source: services/schema/drift.service.ts_
 
@@ -1167,6 +1182,12 @@ Deterministic name for a graph type constraint item (the same `<label>_<props>_<
 
 _source: services/schema/graph-type.service.ts_
 
+### `GraphTypeCreateOptions` (interface)
+
+Options for installing the model-derived graph type (NTS-578)
+
+_source: services/schema/graph-type.service.ts_
+
 ### `GraphTypeDefinition` (interface)
 
 A complete graph type: the shape derived from the registered models
@@ -1199,7 +1220,7 @@ _source: services/schema/graph-type.service.ts_
 
 ### `GraphTypeService` (class)
 
-Applies the model-derived graph type with one SET/DROP statement, following the same result-reporting pattern as the other schema services
+Applies the model-derived graph type with one ADD/SET/DROP statement, following the same result-reporting pattern as the other schema services
 
 _source: services/schema/graph-type.service.ts_
 
@@ -1247,7 +1268,7 @@ _source: services/schema/drift.service.ts_
 
 One drifted schema object: what it is, where it lives, and the exact statement(s) that would resolve the drift (NTS-450)
 
-_source: services/schema/drift.service.ts_
+_source: services/schema/graph-type.service.ts_
 
 ### `SchemaDriftGroup` (interface)
 
@@ -1373,7 +1394,25 @@ _source: ops/verify-connectivity.ts_
 
 ### `wipe` (function)
 
-Wipe the database clean for a test run: DETACH DELETE every node, reset the graph type to empty (NTS-550 — graph-type-derived constraints only go with the type; Enterprise servers only, best-effort), then drop every constraint and index the database currently has. Standalone on purpose — SchemaService derives DROP statements from the registered models, while wipe() discovers them from the database itself (small duplication of its statement shapes, accepted). Index drops are best-effort: built-in indexes (e.g. the token lookup store on real servers) cannot be dropped and are ignored. Constraint drops are best-effort too: on servers that had a graph type installed, SHOW CONSTRAINTS lists graph-type-derived constraints whose DROP CONSTRAINT may fail even after the reset.
+Wipe the database clean for a test run: DETACH DELETE every node (batched, `CALL { } IN TRANSACTIONS` where supported), reset the graph type to empty (NTS-550 — graph-type-derived constraints only go with the type; Enterprise servers only), then drop every constraint and index the database currently has. DESTRUCTIVE (NTS-578): this destroys whatever database the runner points at, so it refuses to run without `{ confirm: true }` (or `NEODE_ALLOW_WIPE=true`), refuses a non-local `uri` (or `NEO4J_URI`) unless `allowRemote: true`, and verifies the connected database name when `database` is given. Never point it at a shared database. Standalone on purpose — SchemaService derives DROP statements from the registered models, while wipe() discovers them from the database itself (small duplication of its statement shapes, accepted). Only "unsupported syntax" errors are tolerated (graph types on Community / pre-2026.02 servers); everything else — authentication, permissions, connectivity — is thrown. Constraint and index drops that fail are listed in the returned report's `failed` instead of being swallowed; built-in lookup indexes are skipped.
+
+_source: testing/wipe.ts_
+
+### `WipeFailure` (interface)
+
+One schema object wipe() tried to drop and could not
+
+_source: testing/wipe.ts_
+
+### `WipeOptions` (interface)
+
+Guard options for wipe() (NTS-578). wipe() is destructive on whatever database the runner points at, so it refuses to run without an explicit opt-in.
+
+_source: testing/wipe.ts_
+
+### `WipeReport` (interface)
+
+What wipe() did. Returned instead of `void` (NTS-578): awaiting wipe() and ignoring the result keeps working.
 
 _source: testing/wipe.ts_
 
@@ -1459,7 +1498,7 @@ _source: traverse.ts_
 
 ### `ModelObservers` (interface)
 
-The observer hooks a model can carry (NTS-511). before* hooks run inside the write transaction before the statement — an error fails the write; after* hooks run after hydration, before the caller sees the entity. On the create path beforeSave receives the plain properties record (the entity does not exist yet) — mutate it to change what is written.
+The observer hooks a model can carry (NTS-511). before* hooks run before the write statement — an error fails the write. On the facade (`neode.save()` / `create()` / `delete()`) they run BEFORE the write's transaction opens; on a transaction handle (`TransactionalService`) they run inside it. after* hooks run once the write is COMMITTED (NTS-582): for a write in an explicit or ambient transaction that is when the outermost transaction commits — they never fire for work that rolls back or is retried, and an error thrown by one cannot undo the committed write. On the create path beforeSave receives the plain properties record (the entity does not exist yet) — mutate it to change what is written.
 
 _source: observers.ts_
 

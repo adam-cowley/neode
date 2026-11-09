@@ -114,6 +114,7 @@ import type {
 } from './services/schema/generate.service.js'
 import {
   GraphTypeService,
+  type GraphTypeCreateOptions,
   type GraphTypeConstraintDefinition,
   type GraphTypeDefinition,
 } from './services/schema/graph-type.service.js'
@@ -304,6 +305,25 @@ export class Neode implements INeode {
     return (
       ambient?.runner ?? (await this.connection.beginTransaction(mode, database ?? this.database))
     )
+  }
+
+  /**
+  Run a write's side effect (lifecycle event, after* observer) once its
+  data is committed (NTS-582): immediately for a facade call that already
+  committed its own transaction, deferred to the outer commit when the call
+  joined an ambient transaction (dropped if that rolls back or retries).
+  */
+  private async afterCommit(
+    ambient: ReturnType<typeof ambientTransaction>,
+    effect: () => void | Promise<void>,
+  ): Promise<void> {
+    if (ambient) {
+      ambient.effects.defer(effect)
+
+      return
+    }
+
+    await effect()
   }
 
   getConnection(): ConnectionProvider {
@@ -537,12 +557,19 @@ export class Neode implements INeode {
     parameters: QueryParameters = {},
     options: { database?: string } = {},
   ): Promise<unknown> {
-    const output = await this.connection.run(
-      `EXPLAIN ${query}`,
-      parameters,
-      'READ',
-      options.database ?? this.database,
-    )
+    // NTS-576: inside an ambient transaction the statement joins it
+    // (a separate connection.run would queue behind the slot the
+    // enclosing transaction holds)
+    const ambient = ambientTransaction()
+
+    const output = ambient
+      ? await ambient.runner.run(`EXPLAIN ${query}`, parameters)
+      : await this.connection.run(
+          `EXPLAIN ${query}`,
+          parameters,
+          'READ',
+          options.database ?? this.database,
+        )
 
     return output.summary?.plan
   }
@@ -557,12 +584,19 @@ export class Neode implements INeode {
     parameters: QueryParameters = {},
     options: { database?: string } = {},
   ): Promise<unknown> {
-    const output = await this.connection.run(
-      `PROFILE ${query}`,
-      parameters,
-      'WRITE',
-      options.database ?? this.database,
-    )
+    // NTS-576: inside an ambient transaction the statement joins it
+    // (a separate connection.run would queue behind the slot the
+    // enclosing transaction holds)
+    const ambient = ambientTransaction()
+
+    const output = ambient
+      ? await ambient.runner.run(`PROFILE ${query}`, parameters)
+      : await this.connection.run(
+          `PROFILE ${query}`,
+          parameters,
+          'WRITE',
+          options.database ?? this.database,
+        )
 
     return output.summary?.profile
   }
@@ -615,6 +649,10 @@ export class Neode implements INeode {
     const ambient = ambientTransaction()
 
     if (ambient) {
+      ambient.assertCompatible('inReadTransaction()', {
+        database,
+      })
+
       return ambient.join(this.eventEmitter, work)
     }
 
@@ -653,6 +691,11 @@ export class Neode implements INeode {
     const ambient = ambientTransaction()
 
     if (ambient) {
+      ambient.assertCompatible('inWriteTransaction()', {
+        database,
+        routing: 'WRITE',
+      })
+
       return ambient.join(this.eventEmitter, work)
     }
 
@@ -687,12 +730,25 @@ export class Neode implements INeode {
   - Close semantics follow the managed scopes (NTS-561): the transaction
     commits when the callback resolves and rolls back when it throws; an
     explicit `tx.commit()` / `tx.rollback()` inside the callback works.
-  - A failure classified as transient (TransientError —
+  - DEFAULT RETRIES: a failure classified as transient (TransientError —
     `Neo.TransientError.*` codes or a driver `retryable` verdict) retries
     the WHOLE callback in a fresh transaction, `retries` times (default
-    2). The callback must be idempotent: work that reached the database
-    rolls back with the failed attempt, but non-database side effects run
-    again on retry.
+    2, with jittered backoff; pass `retries: 0` to disable — unlike
+    inWriteTransaction, which never retries). The callback must be
+    idempotent: work that reached the database rolls back with the failed
+    attempt, but non-database side effects run again on retry.
+    Terminated / LockClientStopped transactions are never retried.
+  - A failure while COMMITTING is not retried (the server may have
+    committed before the connection dropped, so a re-run could apply the
+    work twice) unless `retryCommit: true`.
+  - Lifecycle events (NODE_CREATED, …) and afterSave / afterDelete
+    observers fire only after the commit; they are dropped on rollback and
+    on a retried attempt.
+  - A nested call that passes a conflicting `routing` / `database` /
+    `retries` / `retryCommit` throws — the nested call joins the outer
+    transaction, so those options can only be set on the outermost unit.
+  - Work that runs after the callback finished (un-awaited promises) throws
+    "transaction already finished".
   - `routing` ('WRITE' default | 'READ') and `database` choose the
     transaction's session — per transaction, not per call.
 
@@ -706,10 +762,13 @@ export class Neode implements INeode {
   Joining the ambient transaction: every model read/write
   (find/get/all/save/create/merge/update/relate/detach/delete), batch(),
   and the raw Cypher paths (cypher/readCypher/writeCypher and the
-  read()/write() sugar). NOT joining (they manage their own sessions, v1):
+  read()/write() sugar), plus (NTS-576)
   search(), knn(), pagination (paginate/chunk/lazy), bulk
-  (createMany/mergeMany), explain()/profile() and the schema-management
-  methods.
+  (createMany/mergeMany) and explain()/profile(). NOT joining: the
+  schema-management methods (installSchema, dropSchema, inspect/drift,
+  graph type, full-text/vector index DDL) — they run on the connection
+  directly and, on the embedded Relate engine, queue behind the
+  transaction's slot: run them outside `transaction()`.
   */
   async transaction<T>(
     work: (tx: TransactionalService) => Promise<T>,
@@ -720,18 +779,24 @@ export class Neode implements INeode {
     // Already inside an ambient transaction: join it — no begin, no close,
     // and no retry of its own (the outermost unit's retry re-runs the
     // whole callback, so an inner retry would double-apply the work)
-    return ambient
-      ? ambient.join(this.eventEmitter, work)
-      : runAmbientTransaction(
-          async () =>
-            this.connection.beginTransaction(
-              options.routing ?? 'WRITE',
-              options.database ?? this.database,
-            ),
-          this.eventEmitter,
-          work,
-          options,
-        )
+    if (ambient) {
+      ambient.assertCompatible('transaction()', options)
+
+      return ambient.join(this.eventEmitter, work)
+    }
+
+    const database = options.database ?? this.database
+
+    return runAmbientTransaction(
+      async () =>
+        this.connection.beginTransaction(
+          options.routing ?? 'WRITE',
+          options.database ?? this.database,
+        ),
+      this.eventEmitter,
+      work,
+      database === undefined ? options : { ...options, database },
+    )
   }
 
   /**
@@ -785,7 +850,10 @@ export class Neode implements INeode {
   }
 
   /**
-  Run statements to drop the schema
+  Run statements to drop the schema. DESTRUCTIVE: drops every constraint and
+  index the registered models declare on the connected database (by
+  deterministic name, so objects other applications created under other
+  names are untouched) — never run it against a database you do not own.
   */
   async dropSchema(): Promise<SchemaResult[]> {
     const service = new SchemaService(this.connection, this.enterprise)
@@ -1024,11 +1092,13 @@ export class Neode implements INeode {
 
     // Emit the lifecycle event the save actually was: a merge either created
     // the node or matched and updated an existing one
-    this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
+    await this.afterCommit(ambientTransaction(), async () => {
+      this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
 
-    await runObservers(entityConstructor, 'afterSave', saved, {
-      isNew: created,
-      database,
+      await runObservers(entityConstructor, 'afterSave', saved, {
+        isNew: created,
+        database,
+      })
     })
 
     return saved
@@ -1079,10 +1149,12 @@ export class Neode implements INeode {
 
       await tx.commit()
 
-      // Emit event
-      this.eventEmitter.emit(EventType.NODE_CREATED, hydrated)
+      // Emit event (after the outer commit when joined to an ambient transaction)
+      await this.afterCommit(ambientTransaction(), async () => {
+        this.eventEmitter.emit(EventType.NODE_CREATED, hydrated)
 
-      await runObservers(constructor, 'afterSave', hydrated, { isNew: true, database })
+        await runObservers(constructor, 'afterSave', hydrated, { isNew: true, database })
+      })
 
       return hydrated
     } catch (error) {
@@ -1263,10 +1335,12 @@ export class Neode implements INeode {
       await tx.commit()
 
       if (result) {
-        this.eventEmitter.emit(
-          shouldForceCreate ? EventType.RELATIONSHIP_CREATED : EventType.RELATIONSHIP_MERGED,
-          result,
-        )
+        await this.afterCommit(ambientTransaction(), () => {
+          this.eventEmitter.emit(
+            shouldForceCreate ? EventType.RELATIONSHIP_CREATED : EventType.RELATIONSHIP_MERGED,
+            result,
+          )
+        })
       }
 
       return result
@@ -1397,7 +1471,12 @@ export class Neode implements INeode {
   transaction; the target model's global filters apply inside the
   traversal read.
   */
-  relatedQuery(constructor: Newable, entity: object, relationshipKey: string): RelatedQuery {
+  relatedQuery(
+    constructor: Newable,
+    entity: object,
+    relationshipKey: string,
+    options?: { withoutFilters?: string[] | undefined },
+  ): RelatedQuery {
     const schema = this.getSchema(constructor)
     const relationship = this.requireRelationship(schema, relationshipKey)
 
@@ -1418,6 +1497,9 @@ export class Neode implements INeode {
       schema,
       entity,
       relationship,
+      options?.withoutFilters === undefined
+        ? undefined
+        : { withoutFilters: options.withoutFilters },
     )
   }
 
@@ -1438,7 +1520,7 @@ export class Neode implements INeode {
     limit?: number,
     filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]> {
-    return search<T>(this.connection, constructor, indexName, query, limit, filters)
+    return search<T>(this.getRunner(), constructor, indexName, query, limit, filters)
   }
 
   /**
@@ -1453,7 +1535,7 @@ export class Neode implements INeode {
     mode?: KnnMode,
     filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]> {
-    return knn<T>(this.connection, constructor, indexName, vector, k, mode, filters)
+    return knn<T>(this.getRunner(), constructor, indexName, vector, k, mode, filters)
   }
 
   /**
@@ -1517,7 +1599,8 @@ export class Neode implements INeode {
   /**
   Apply the missing objects of a schema drift idempotently; stale
   objects are only dropped with `dropStale: true` (dropping is
-  destructive). Reports each statement like installSchema (NTS-450)
+  destructive: they are installed on the connected database, which on a
+  shared one may belong to other applications). Reports each statement like installSchema (NTS-450)
   */
   async applySchemaDiff(
     diff: SchemaDrift,
@@ -1557,23 +1640,29 @@ export class Neode implements INeode {
   /**
   Derive the graph type from the registered models and set it as the
   database's enforced schema (NTS-548). Enterprise Edition + Neo4j 2026.02+
-  only; `ALTER CURRENT GRAPH TYPE SET` replaces any existing graph type and
-  constraints, so this is deliberately standalone from installSchema().
+  only; deliberately standalone from installSchema().
+
+  Non-destructive by default (NTS-578): only the missing element types and
+  constraint items are `ADD`ed; foreign graph type objects (other apps on a
+  shared database) are left alone, and definitions that differ are reported
+  as failed results rather than rewritten. `replace: true` opts into
+  `ALTER CURRENT GRAPH TYPE SET`, replacing the server's whole graph type —
+  refused when it would drop objects no registered model declares, unless
+  `canDropUndeclared: true`.
 
   `options.constraints` appends named `CONSTRAINT ... FOR ... REQUIRE`
   items (NTS-549) — the only way to constrain labels/types that are not
   identifying ones, e.g. `{ labelOrType: 'Animal', properties: ['id'],
   kind: 'UNIQUE' }`
   */
-  async installGraphType(
-    options: { constraints?: GraphTypeConstraintDefinition[] } = {},
-  ): Promise<SchemaResult[]> {
+  async installGraphType(options: GraphTypeCreateOptions = {}): Promise<SchemaResult[]> {
     return new GraphTypeService(this.connection, this.enterprise).create(options)
   }
 
   /**
   Drop the graph type elements derived from the registered models (NTS-548),
-  including the named constraint items (NTS-549) — dropping an element type
+  including the named constraint items (NTS-549). DESTRUCTIVE: it drops
+  those element types from the connected database's graph type — dropping an element type
   removes its dependent constraints but leaves its uniqueness/key ones,
   which only go by name
   */
@@ -1614,7 +1703,7 @@ export class Neode implements INeode {
     options: BulkOptions = {},
     database?: string,
   ): Promise<BulkChunk<T>[]> {
-    return new BulkService(this.connection).createMany<T>(
+    return new BulkService(this.getRunner()).createMany<T>(
       constructor,
       this.getSchema(constructor),
       rows,
@@ -1633,7 +1722,7 @@ export class Neode implements INeode {
     options: BulkOptions = {},
     database?: string,
   ): Promise<BulkChunk<T>[]> {
-    return new BulkService(this.connection).mergeMany<T>(
+    return new BulkService(this.getRunner()).mergeMany<T>(
       constructor,
       this.getSchema(constructor),
       rows,
@@ -1662,7 +1751,7 @@ export class Neode implements INeode {
     filter: Record<string, unknown> = {},
     options?: OffsetPaginateOptions | CursorPaginateOptions,
   ): Promise<Page<T> | CursorPage<T>> {
-    return new PaginateService(this.connection).paginate<T>(
+    return new PaginateService(this.getRunner()).paginate<T>(
       constructor,
       this.getSchema(constructor),
       filter,
@@ -1680,7 +1769,7 @@ export class Neode implements INeode {
     filter: Record<string, unknown> = {},
     options: FindManyAndCountOptions = {},
   ): Promise<ManyAndCount<T>> {
-    return new PaginateService(this.connection).findManyAndCount<T>(
+    return new PaginateService(this.getRunner()).findManyAndCount<T>(
       constructor,
       this.getSchema(constructor),
       filter,
@@ -1701,7 +1790,7 @@ export class Neode implements INeode {
     callback: (items: T[]) => unknown,
     options: { orderBy?: string; withoutFilters?: string[] | undefined } = {},
   ): Promise<number> {
-    return new PaginateService(this.connection).chunk<T>(
+    return new PaginateService(this.getRunner()).chunk<T>(
       constructor,
       this.getSchema(constructor),
       filter,
@@ -1722,7 +1811,7 @@ export class Neode implements INeode {
     filter: Record<string, unknown> = {},
     options: StreamOptions = {},
   ): AsyncGenerator<T> {
-    yield* new PaginateService(this.connection).lazy<T>(
+    yield* new PaginateService(this.getRunner()).lazy<T>(
       constructor,
       this.getSchema(constructor),
       filter,
@@ -1823,7 +1912,8 @@ export class Neode implements INeode {
   /**
   Nodes of the given constructor within `distance` of the given point,
   ordered by distance when `order` is 'distance'
-  (neode's FindWithinDistance)
+  (neode's FindWithinDistance). The model's named read filters apply;
+  `filters.withoutFilters` opts names out (NTS-574).
   */
   async withinDistance<T>(
     constructor: new (...arguments_: never[]) => T,
@@ -1835,6 +1925,7 @@ export class Neode implements INeode {
     limit?: number,
     skip?: number,
     database?: string,
+    filters?: { withoutFilters?: string[] | undefined },
   ): Promise<T[]> {
     const schema = this.getSchema(constructor)
 
@@ -1851,6 +1942,7 @@ export class Neode implements INeode {
         order,
         limit,
         skip,
+        filters,
       )
 
       await tx.commit()
@@ -1908,7 +2000,7 @@ export class Neode implements INeode {
   named after the file (neode parity, extended to .ts files)
   */
   withDirectory(directory: string): this {
-    const requireModule = createRequire(__filename)
+    const requireModule = createRequire(import.meta.url)
 
     const files = readdirSync(directory).filter((file) =>
       ['.js', '.ts'].includes(path.extname(file).toLowerCase()),
@@ -1958,12 +2050,16 @@ export class Neode implements INeode {
   Typed multi-hop traversal (NTS-512): chain hops, run, read hydrated
   rows — one row per matched path, origin entity first.
   */
-  traverse(model: Newable): TraverseBuilder {
+  traverse(model: Newable, options?: { withoutFilters?: string[] | undefined }): TraverseBuilder {
     if (!(getModel(model) instanceof EntitySchema)) {
       throw new NeodeError('traverse() requires a registered model — register it first')
     }
 
-    return new TraverseBuilder(this.getRunner(), () => model)
+    const builder = new TraverseBuilder(this.getRunner(), () => model)
+
+    return options?.withoutFilters === undefined
+      ? builder
+      : builder.withoutFilters(...options.withoutFilters)
   }
 
   /**
@@ -2005,15 +2101,17 @@ export class Neode implements INeode {
       return await rollbackAfterFailure(tx, error)
     }
 
-    await runObservers(constructorOf(entity), 'afterDelete', entity, {
-      isNew: false,
-      database,
-    })
+    await this.afterCommit(ambientTransaction(), async () => {
+      await runObservers(constructorOf(entity), 'afterDelete', entity, {
+        isNew: false,
+        database,
+      })
 
-    if (!isSoft && (cascadeOptions?.soft === undefined || cascadeOptions.soft === '')) {
-      // Emit event
-      this.eventEmitter.emit(EventType.NODE_DELETED, entity)
-    }
+      if (!isSoft && (cascadeOptions?.soft === undefined || cascadeOptions.soft === '')) {
+        // Emit event
+        this.eventEmitter.emit(EventType.NODE_DELETED, entity)
+      }
+    })
   }
 
   /**

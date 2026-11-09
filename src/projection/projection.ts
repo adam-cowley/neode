@@ -131,18 +131,70 @@ function relationshipPattern(alias: string, property: PropertySchema): string {
 }
 
 /**
+Read filters of a path pattern's intermediate nodes (NTS-574): each
+waypoint with a target model carries that model's named filters, so a
+soft-deleted waypoint breaks the path.
+*/
+function waypointFilters(
+  alias: string,
+  property: PropertySchema,
+  context?: EagerFilterContext,
+): string[] {
+  const fragments: string[] = []
+
+  const waypoints = (property.getPath() ?? []).slice(0, -1)
+
+  for (const [index, hop] of waypoints.entries()) {
+    const hopTarget = hop.target?.()
+    const hopSchema = hopTarget === undefined ? undefined : getModel(hopTarget)
+
+    if (!(hopSchema instanceof EntitySchema)) {
+      continue
+    }
+
+    const { fragment, parameters } = readFilterFragment(
+      hopSchema,
+      `${alias}_h${String(index + 1)}`,
+      context?.filters,
+    )
+
+    if (fragment === undefined) {
+      continue
+    }
+
+    fragments.push(fragment)
+
+    if (context?.builder !== undefined) {
+      for (const [name, value] of Object.entries(parameters)) {
+        context.builder.param(name, value)
+      }
+    }
+  }
+
+  return fragments
+}
+
+/**
 WHERE fragment inside COUNT { } / EXISTS { } subqueries: the property's own
 `where` (node convention) plus the target model's named read filters
 (NTS-162) — a filtered-out target is not counted / does not exist.
 */
-function relatedFilter(property: PropertySchema, context?: EagerFilterContext): string {
+function relatedFilter(
+  alias: string,
+  property: PropertySchema,
+  context?: EagerFilterContext,
+): string {
   const parts: string[] = []
 
   const where = property.getWhere()
 
   if (where !== undefined && where.length > 0) {
-    parts.push(where)
+    // Parenthesised: a top-level OR in the property's where must not
+    // escape the AND-join with the read filters (NTS-574)
+    parts.push(`(${where})`)
   }
+
+  parts.push(...waypointFilters(alias, property, context))
 
   const target = property.getEntity()
   const targetSchema = target === undefined ? undefined : getModel(target)
@@ -210,7 +262,7 @@ function relatedProjection(
   // NTS-547/162 — WHERE inside the comprehension filters elements per path
   // (`node` = the target node, `this` = the annotated node): the property's
   // own where plus the target model's named read filters
-  const comprehension = `[ ${relationshipPattern(alias, property)}${relatedFilter(property, context)} | ${pattern} ]`
+  const comprehension = `[ ${relationshipPattern(alias, property)}${relatedFilter(alias, property, context)} | ${pattern} ]`
 
   // First related node only for the singular form
   return isMany ? `${key}: ${comprehension}` : `${key}: ${comprehension}[0]`
@@ -232,11 +284,11 @@ function projectedProperty(
   }
 
   if (type === PropertyType.RELATIONSHIP_COUNT) {
-    return `${key}: COUNT { ${relationshipPattern(alias, property)}${relatedFilter(property, context)} }`
+    return `${key}: COUNT { ${relationshipPattern(alias, property)}${relatedFilter(alias, property, context)} }`
   }
 
   if (type === PropertyType.RELATIONSHIP_EXISTS) {
-    return `${key}: EXISTS { ${relationshipPattern(alias, property)}${relatedFilter(property, context)} }`
+    return `${key}: EXISTS { ${relationshipPattern(alias, property)}${relatedFilter(alias, property, context)} }`
   }
 
   if (type === PropertyType.LABEL_PRESENT) {

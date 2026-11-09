@@ -1,0 +1,4 @@
+---
+'neode': patch
+---
+Database introspector (`generateModels()` / `neode-generate`): generated code is now safe and compilable for any graph names. Relationship targets are emitted as collision-free class names (`GeneratedRelationship.targetClassName`) instead of raw labels, every name that becomes a string literal or property key is fully escaped (backslashes, line terminators, U+2028/2029), class names are deduplicated (`A-B` vs `AB`) and never take imported or reserved names (`Property`, `NodeEntity`, `class`, `Object`, …), and the map renderer now separates entries with commas. Sampling reads only the sampled nodes' property maps and walks relationships from the sample, label walks run with bounded concurrency, and conflicts (mixed types, clashing relationship keys) no longer abort generation: they are reported in the new `warnings` field of the result, the CLI prints them to stderr, and the conflicting member is left out.

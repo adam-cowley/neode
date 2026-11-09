@@ -4,8 +4,18 @@
 
 Package version: **1.0.0-next.1** (from package.json).
 
+> **Default to decorators (NTS-583).** When creating a new project or new models, define them as
+> decorated classes (`@NodeEntity()` + `@Property(...)`) using standard TC39 decorators — never
+> `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`. Use `defineModel` (the
+> map API) only when the user asks for it, or decorators are impossible (models built at runtime,
+> or a toolchain without standard TC39 decorator support).
+>
+> Tooling: TypeScript 5+ (or esbuild/SWC/tsdown with standard decorators), `target` ES2022 or later,
+> `"lib": ["ES2022", "ESNext.Decorators"]`, and leave `experimentalDecorators` unset.
+
 ## Rules (enforced — read before changing this repo)
 
+- New models are decorated classes by default; `defineModel` only when asked for or decorators are impossible (see the rule above).
 - Standard TC39 decorators only; never add `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`.
 - No `any`. No `@ts-ignore` (use `@ts-expect-error` with a reason).
 - Never add an `eslint-disable` without a specific rule name and a `-- reason`. Never disable a rule file-wide.
@@ -29,7 +39,7 @@ pnpm add neode
 
 ## Define models
 
-Two equivalent APIs. Decorators:
+Decorators are the default — use them for every new model:
 
 ```ts
 import { NodeEntity, Property, Unique } from 'neode'
@@ -41,7 +51,7 @@ class Person {
 }
 ```
 
-Map API (no decorators, same registry):
+Alternative: the Map API (no decorators, same registry). Only when the user asks for it or decorators are impossible:
 
 ```ts
 import { defineModel } from 'neode'
@@ -67,7 +77,7 @@ Decorator reference:
 - `EndNode` (decorator) — On a relationship entity: the property holding the node at the relationship's end.
 - `EntityRepository` (decorator) — Register a custom Repository subclass for an entity (TypeORM parity):
 - `Expression` (decorator) — NTS-138 — raw Cypher expression projected into the read query: the escape hatch for graph context the projection builder cannot express yet. The expression references the root node as `this`. shortcut: the embedded Relate engine rejects pattern expressions (patterns inside function calls, e.g. `size((this)-[:R]->())`) inside RETURN projections — prefer
-- `Filter` (decorator) — Named global filter (NTS-162): declare a named read filter on the model and it applies to every standard read — find / get / all / paginate / search / knn / eager loads / projections / repository reads — composed in one central place in the query services. - Disable per query with `withoutFilters: ['name']` on the read options; each filter is independent. - Parameterise with `setFilterParams(name, value)`; the `where` fragment references the value as `$name`. - `where` is a Cypher predicate over the filtered node; `node` names that node (the read root, or the related node inside a filtered relation's pattern comprehension). Label-state filters (labels-as-state, NTS-128) are just label predicates: `where: 'NOT node:Archived'`. - Over relations, the target model's filters render inside the relation's pattern comprehension — a filtered-out target simply doesn't match, so the edge reads as absent and the parent row survives. Never OPTIONAL MATCH. Example — soft delete + tenancy as independent named filters: ```ts
+- `Filter` (decorator) — Named global filter (NTS-162): declare a named read filter on the model and it applies to every standard read — find / get / all / paginate / search / knn / eager loads / projections / repository reads — composed in one central place in the query services. - Disable per query with `withoutFilters: ['name']` on the read options; each filter is independent. - Parameterise with `withFilterParams({ name: value }, async () => ...)` (request-scoped, async-safe; NTS-575); the `where` fragment references the value as `$name`. `setFilterParams(name, value)` sets a process-wide default that the scope overrides — it is unsafe under concurrent requests. A filter whose `$name` has no value fails closed with a NeodeError. - `where` is a Cypher predicate over the filtered node; `node` names that node (the read root, or the related node inside a filtered relation's pattern comprehension). Label-state filters (labels-as-state, NTS-128) are just label predicates: `where: 'NOT node:Archived'`. - Over relations, the target model's filters render inside the relation's pattern comprehension — a filtered-out target simply doesn't match, so the edge reads as absent and the parent row survives. Never OPTIONAL MATCH. Example — soft delete + tenancy as independent named filters: ```ts
 - `Float` (decorator) — Register a float property.
 - `Hidden` (decorator) — Hide the property from the returned model. Merges onto the existing property, so it can be stacked with a type decorator.
 - `Index` (decorator) — Mark the property as indexed. Merges onto the existing property, so it can be stacked with a type decorator.
@@ -103,7 +113,7 @@ Decorator reference:
 - `Vector` (decorator) — Declare a vector index over the property (NTS-447): `installSchema()` creates the index with the deterministic `vectorIndexName()` naming, `dropSchema()` drops it, and `knn()` searches it. Merges onto the existing property, so it can be stacked with a type decorator.
 - `Version` (decorator) — Optimistic locking (NTS-158): mark the property as the model's version — stamped 0 on create, incremented by 1 on every write addressed to the node, and checked with `WHERE n.version = $expected` when the instance carries the version it was hydrated with. A mismatch (the node changed underneath you) throws `OptimisticLockError` — reload the entity and retry. Version is per node only: writes reached through another node's save (nested relationship targets) never bump it. Stack it with a type decorator (e.g. `@Number()`) for a declared type. Merges onto the existing property, so it can be stacked.
 
-Map-API reference:
+Map-API reference (alternative — not the default):
 
 - `defineModel` (function) — Register a model from a map-based schema definition (neode parity), returning the generated virtual class for the model.
 - `extendModel` (function) — neode's extend(): register `as` as a clone of the model `name` with `as` added as an extra label and `schema` merged over the original definition.
@@ -130,7 +140,7 @@ await neode.installSchema()
 ### Schema management API
 
 - `ApplySchemaDiffOptions` (interface) — Options for applySchemaDrift.
-- `applySchemaDrift` (function) — Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450).
+- `applySchemaDrift` (function) — Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive: on a shared database "stale" objects may belong to other applications — review the drift first). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450).
 - `currentGraphType` (function) — The installed graph type's canonical specification string, or undefined when no graph type is installed (`'{}'` in server output). Backend errors (the command needs Cypher 25 / Neo4j 2026.02+ Enterprise) propagate to the caller — drift probing catches them and omits the family.
 - `deriveGraphType` (function) — Derive the graph type from the registered models (the same walk the ontology emits): node models become node element types (first label identifies, the rest are implied), their relationship declarations become relationship element types. Uniqueness is hoisted into named constraint items (NTS-549). Duplicate identifying labels/types: first model wins — anything the server rejects surfaces in the SchemaResult error. `options.constraints` appends user-declared constraint items — the only way to constrain labels/types that are not identifying ones (NTS-549).
 - `deriveGraphTypeElementsOnly` (function) — Derives a graph type and strips its constraint items + any uniqueness flags — the key/uniqueness shape ALTER leaves unchanged (NTS-551)
@@ -148,12 +158,13 @@ await neode.installSchema()
 - `GraphTypeConstraintDefinition` (interface) — NTS-549 — one named constraint item of a graph type
 - `GraphTypeConstraintKind` (type) — What the constraint enforces: uniqueness, key (existence + uniqueness), property existence, or property type
 - `graphTypeConstraintName` (const) — Deterministic name for a graph type constraint item (the same `<label>_<props>_<kind>` shape as the standalone constraint names)
+- `GraphTypeCreateOptions` (interface) — Options for installing the model-derived graph type (NTS-578)
 - `GraphTypeDefinition` (interface) — A complete graph type: the shape derived from the registered models
 - `graphTypeDropStatement` (function) — `ALTER CURRENT GRAPH TYPE DROP { ... }` — drops the element types by identifying label/relationship type plus every named constraint item. Dropping an element type removes its dependent constraints (label existence, property type/existence) but LEAVES its uniqueness/key constraints — those survive as constraints on non-identifying labels and must go by name.
 - `GraphTypeNodeDefinition` (interface) — Node element type: `(:Label => :Implied1&:Implied2 { ... })`
 - `GraphTypePropertyDefinition` (interface) — One property of a node/relationship element type: rendered `name :: TYPE`, plus `NOT NULL` when `nullable` is false and `IS UNIQUE` when `unique`
 - `GraphTypeRelationshipDefinition` (interface) — Relationship element type: `(:Source)-[:TYPE => { ... }]->(:Target)`. Both ends optional (BOTH-direction relationships render bare ends)
-- `GraphTypeService` (class) — Applies the model-derived graph type with one SET/DROP statement, following the same result-reporting pattern as the other schema services
+- `GraphTypeService` (class) — Applies the model-derived graph type with one ADD/SET/DROP statement, following the same result-reporting pattern as the other schema services
 - `graphTypeSetStatement` (function) — `ALTER CURRENT GRAPH TYPE SET { ... }` — replaces the database's existing graph type and constraints
 - `InspectOptions` (interface) — Which objects count as "declared" for the inspection: pass the full-text/vector index definitions and the enterprise flag your installSchema call used, so the diff is not polluted by false "extra" entries.
 - `inspectSchema` (function) — Read the installed schema (SHOW CONSTRAINTS / SHOW INDEXES) and diff it against the declared schema
@@ -244,7 +255,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `Runner` (interface) — Anything able to run statements in its scope (autocommit or transaction).
 - `ScoredEntity` (interface) — A hydrated entity with the relevance score of the index that matched it (full-text search, kNN)
 - `search` (function) — Full-text search over a full-text index (`CALL db.index.fulltext.queryNodes`), returning hydrated entities with their relevance score, best match first. The query string is bound as a parameter, so Lucene syntax characters in it are still parsed as such — pass user text through `toFulltextQuery` first. NTS-162 — the model's named read filters apply (a `WHERE` after the YIELD); `filters.withoutFilters` disables names for this call.
-- `setFilterParams` (function) — Set the parameter a named filter's `where` references as `$name` (`setFilterParams('tenant', 'acme')` for `where: 'node.tenantId = $tenant'`). Values are bound as query parameters — they never render into the query text.
+- `setFilterParams` (function) — Set the process-wide DEFAULT for the parameter a named filter's `where` references as `$name` (`setFilterParams('tenant', 'acme')` for `where: 'node.tenantId = $tenant'`). Values are bound as query parameters — they never render into the query text. UNSAFE UNDER CONCURRENCY: the value is global to the process, so `setFilterParams('tenant', t); await x; query` lets a concurrent request overwrite it between the set and the read — a cross-tenant leak. Use it only for genuinely process-wide values (single-tenant apps, scripts, tests); for per-request values use `withFilterParams`, whose scope wins over this default.
 - `StreamOptions` (interface) — lazy() options — the keyset walk behind cursor pagination
 - `SyncEdgesOptions` (interface) — Options for syncEdges (NTS-161): `properties` is applied to the edges NEWLY related by the sync — common edges are left untouched.
 - `SyncEdgesResult` (interface) — What a sync did: how many edges were related and how many detached (zero and zero for a no-op sync — nothing is written)
@@ -259,6 +270,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `TransactionOptions` (interface) — Options for `Neode#transaction` — routing and database are per transaction (the transaction's session decides them once at open time).
 - `valueToJson` (function) — Convert a single property value into its JSON friendly shape.
 - `WhereNull` (class) — An `IS NULL` / `IS NOT NULL` predicate on a property, rendered by toString() — the value of `Builder.whereNull` / `whereNotNull`.
+- `withFilterParams` (function) — Run the work with request-scoped filter params (NTS-575). Every read the work performs — across awaits, and isolated from concurrent callers — sees these values, which take precedence over `setFilterParams` defaults. Scopes nest: an inner scope overrides the outer one name by name, and a value of `undefined` hides the outer/default value inside the scope. `ts await withFilterParams({ tenant: req.tenantId }, async () => { await Article.all() }) ` Needs a runtime with AsyncLocalStorage (Node.js), like ambient transactions.
 - `WITHOUT_ALL_FILTERS` (const) — The reserved withoutFilters entry that disables EVERY named filter for the query — the write paths' internal re-hydration (save / create / merge use FindByIdService to re-read the row they just wrote) must find rows the current filter view hides. Filters are a read policy; writes never read through them.
 - `WithSpec` (type) — The `with` load spec on find / findAll / all (NTS-560): relationship key -> request. Keys must name relationships declared on the model — unknown keys are rejected at compile time when the model type is known and throw a NeodeError at runtime.
 
@@ -284,7 +296,7 @@ const textHits = await search(runner, 'Person', 'person_plot', toFulltextQuery(q
 ```ts
 import { wipe, testId } from 'neode'
 
-await wipe(neode) // drop every constraint + data before a test run
+await wipe(neode, { confirm: true }) // DESTRUCTIVE: drop every constraint + all data (local test DBs only)
 const name = testId('person') // unique per-run ids, safe for parallel suites
 ```
 
@@ -304,7 +316,10 @@ const name = testId('person') // unique per-run ids, safe for parallel suites
 - `verifyConnectivity` (function) — Check that a database is reachable right now, using a throwaway driver constructed from the config (closed again afterwards). Note the check runs with whatever connectionTimeout the config carries — the driver's default applies otherwise.
 - `waitUntilReachable` (function) — Retry verifyConnectivity with exponential-ish backoff until the database is reachable or the timeout elapses (then: ConnectivityTimeoutError).
 - `WaitUntilReachableOptions` (interface) — Backoff and probe options for waitUntilReachable — every field optional.
-- `wipe` (function) — Wipe the database clean for a test run: DETACH DELETE every node, reset the graph type to empty (NTS-550 — graph-type-derived constraints only go with the type; Enterprise servers only, best-effort), then drop every constraint and index the database currently has. Standalone on purpose — SchemaService derives DROP statements from the registered models, while wipe() discovers them from the database itself (small duplication of its statement shapes, accepted). Index drops are best-effort: built-in indexes (e.g. the token lookup store on real servers) cannot be dropped and are ignored. Constraint drops are best-effort too: on servers that had a graph type installed, SHOW CONSTRAINTS lists graph-type-derived constraints whose DROP CONSTRAINT may fail even after the reset.
+- `wipe` (function) — Wipe the database clean for a test run: DETACH DELETE every node (batched, `CALL { } IN TRANSACTIONS` where supported), reset the graph type to empty (NTS-550 — graph-type-derived constraints only go with the type; Enterprise servers only), then drop every constraint and index the database currently has. DESTRUCTIVE (NTS-578): this destroys whatever database the runner points at, so it refuses to run without `{ confirm: true }` (or `NEODE_ALLOW_WIPE=true`), refuses a non-local `uri` (or `NEO4J_URI`) unless `allowRemote: true`, and verifies the connected database name when `database` is given. Never point it at a shared database. Standalone on purpose — SchemaService derives DROP statements from the registered models, while wipe() discovers them from the database itself (small duplication of its statement shapes, accepted). Only "unsupported syntax" errors are tolerated (graph types on Community / pre-2026.02 servers); everything else — authentication, permissions, connectivity — is thrown. Constraint and index drops that fail are listed in the returned report's `failed` instead of being swallowed; built-in lookup indexes are skipped.
+- `WipeFailure` (interface) — One schema object wipe() tried to drop and could not
+- `WipeOptions` (interface) — Guard options for wipe() (NTS-578). wipe() is destructive on whatever database the runner points at, so it refuses to run without an explicit opt-in.
+- `WipeReport` (interface) — What wipe() did. Returned instead of `void` (NTS-578): awaiting wipe() and ignoring the result keeps working.
 - `WipeTarget` (type) — A Runner, or any facade exposing one (e.g. Neode — matched structurally to avoid importing the service here).
 
 ## Errors

@@ -39,6 +39,7 @@ import { UpdateService } from '../services/query/update.service.js'
 import { WithinDistanceService } from '../services/query/within-distance.service.js'
 import { search, type ScoredEntity } from '../services/query/search.service.js'
 import { runObservers } from '../observers.js'
+import { EffectBuffer } from './effects.js'
 import { isConstructorOf, isRecord } from '../services/type-guards.js'
 import { hydrate, hydrateWhenRequested, splitHydrateArguments } from '../hydrate.js'
 
@@ -59,9 +60,22 @@ export class TransactionalService implements INeode {
   // 'open' until a terminal operation (commit/rollback) succeeded — the managed scopes read it to avoid a double close
   private state: 'open' | 'committed' | 'rolled-back' = 'open'
 
-  constructor(handle: TransactionHandle, eventEmitter: EventEmitter) {
+  // NTS-582: lifecycle events and after* observers queue here and run only once the transaction committed
+  private readonly effects: EffectBuffer
+
+  // False when an enclosing unit owns the buffer and flushes it after ITS commit (ambient scopes)
+  private readonly shouldFlushOnCommit: boolean
+
+  constructor(
+    handle: TransactionHandle,
+    eventEmitter: EventEmitter,
+    effects: EffectBuffer = new EffectBuffer(),
+    shouldFlushOnCommit = true,
+  ) {
     this.handle = handle
     this.eventEmitter = eventEmitter
+    this.effects = effects
+    this.shouldFlushOnCommit = shouldFlushOnCommit
   }
 
   /**
@@ -137,9 +151,21 @@ export class TransactionalService implements INeode {
       )
     }
 
-    await this.handle.commit()
+    try {
+      await this.handle.commit()
+    } catch (error) {
+      // A failed commit is ambiguous at best — never release its events
+      this.effects.discard()
+
+      throw error
+    }
 
     this.state = 'committed'
+
+    // Committed: the events and after* observers the writes queued fire now
+    if (this.shouldFlushOnCommit) {
+      await this.effects.flush()
+    }
   }
 
   /**
@@ -150,6 +176,9 @@ export class TransactionalService implements INeode {
     if (this.state !== 'open') {
       return
     }
+
+    // Whatever the rollback's outcome, the buffered work never committed
+    this.effects.discard()
 
     await this.handle.rollback()
 
@@ -162,6 +191,13 @@ export class TransactionalService implements INeode {
   */
   isSettled(): boolean {
     return this.state !== 'open'
+  }
+
+  /**
+  True once the transaction committed (as opposed to rolled back or still open)
+  */
+  isCommitted(): boolean {
+    return this.state === 'committed'
   }
 
   /**
@@ -313,11 +349,15 @@ export class TransactionalService implements INeode {
     }
 
     // Emit the event the merge actually was: a create or an update
-    this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
+    // NTS-582: event + afterSave fire after the transaction commits, never
+    // for work that rolls back or is retried
+    this.effects.defer(async () => {
+      this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
 
-    await runObservers(entity.constructor, 'afterSave', saved, {
-      isNew: created,
-      database: undefined,
+      await runObservers(entity.constructor, 'afterSave', saved, {
+        isNew: created,
+        database: undefined,
+      })
     })
 
     return saved
@@ -413,12 +453,14 @@ export class TransactionalService implements INeode {
 
     await service.delete(schema, entity, typeof options === 'string' ? undefined : options)
 
-    // Emit event
-    this.eventEmitter.emit(EventType.NODE_DELETED, entity)
+    // NTS-582: event + afterDelete fire after the transaction commits
+    this.effects.defer(async () => {
+      this.eventEmitter.emit(EventType.NODE_DELETED, entity)
 
-    await runObservers(entity.constructor, 'afterDelete', entity, {
-      isNew: false,
-      database: undefined,
+      await runObservers(entity.constructor, 'afterDelete', entity, {
+        isNew: false,
+        database: undefined,
+      })
     })
   }
 
@@ -484,10 +526,13 @@ export class TransactionalService implements INeode {
     )
 
     if (result !== undefined) {
-      this.eventEmitter.emit(
-        isForceCreate ? EventType.RELATIONSHIP_CREATED : EventType.RELATIONSHIP_MERGED,
-        result,
-      )
+      // NTS-582: fires after the transaction commits
+      this.effects.defer(() => {
+        this.eventEmitter.emit(
+          isForceCreate ? EventType.RELATIONSHIP_CREATED : EventType.RELATIONSHIP_MERGED,
+          result,
+        )
+      })
     }
 
     return result
@@ -624,6 +669,7 @@ export class TransactionalService implements INeode {
     limit?: number,
     skip?: number,
     database?: string,
+    filters?: { withoutFilters?: string[] | undefined },
   ): Promise<T[]> {
     this.ignoreDatabaseOverride(database)
 
@@ -639,6 +685,7 @@ export class TransactionalService implements INeode {
       order,
       limit,
       skip,
+      filters,
     )
   }
 

@@ -3,9 +3,14 @@ import { getModels } from './meta/index.js'
 import { NeodeError } from './errors/index.js'
 
 /**
-The observer hooks a model can carry (NTS-511). before* hooks run inside
-the write transaction before the statement — an error fails the write;
-after* hooks run after hydration, before the caller sees the entity.
+The observer hooks a model can carry (NTS-511). before* hooks run before
+the write statement — an error fails the write. On the facade
+(`neode.save()` / `create()` / `delete()`) they run BEFORE the write's
+transaction opens; on a transaction handle (`TransactionalService`) they
+run inside it. after* hooks run once the write is COMMITTED (NTS-582): for
+a write in an explicit or ambient transaction that is when the outermost
+transaction commits — they never fire for work that rolls back or is
+retried, and an error thrown by one cannot undo the committed write.
 
 On the create path beforeSave receives the plain properties record (the
 entity does not exist yet) — mutate it to change what is written.

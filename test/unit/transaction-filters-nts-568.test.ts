@@ -1,7 +1,8 @@
 import { EventEmitter } from 'node:events'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Filter, NodeEntity, Primary, Property, SoftDelete } from '../../src/decorators'
 import type { QueryOutput, TransactionHandle } from '../../src/driver/types.js'
+import { clearFilterParams, setFilterParams } from '../../src/services/query/filters'
 import { TransactionalService } from '../../src/transaction/transactional.service'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
@@ -38,6 +39,15 @@ function recordingHandle(): { handle: TransactionHandle; statements: string[] } 
 // NTS-568 — the tx mirrors compose the model's named filters by default and
 // honour withoutFilters with per-name independence, matching the facade reads
 describe('withoutFilters in the transactional mirrors (NTS-568)', () => {
+  // The tenant filter fails closed without a value (NTS-575)
+  beforeEach(() => {
+    setFilterParams('tenant', 'acme')
+  })
+
+  afterEach(() => {
+    clearFilterParams()
+  })
+
   it('tx.find composes both filters by default; withoutFilters drops only the named one', async () => {
     const { handle, statements } = recordingHandle()
     const tx = new TransactionalService(handle, new EventEmitter())
