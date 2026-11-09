@@ -1107,6 +1107,36 @@ Installs/drops the given full-text index definitions, following the same result-
 
 _source: services/schema/fulltext.service.ts_
 
+### `GeneratedModel` (interface)
+
+One generated model: the label it maps, the inferred primary key and the map-schema definition ready for defineModel().
+
+_source: services/schema/generate.service.ts_
+
+### `GeneratedRelationship` (interface)
+
+One generated relationship declaration: always direction 'out' — the walk captures every relationship once, from its source label.
+
+_source: services/schema/generate.service.ts_
+
+### `generateModels` (function)
+
+Generate model definitions from the graph: labels, sampled property types, relationships and unique-constraint primary keys (NTS-164). Labels without nodes produce no model (nothing to infer from).
+
+_source: services/schema/generate.service.ts_
+
+### `GenerateModelsOptions` (interface)
+
+Options for generateModels.
+
+_source: services/schema/generate.service.ts_
+
+### `GenerateModelsResult` (interface)
+
+The generateModels result: the models plus both rendered styles.
+
+_source: services/schema/generate.service.ts_
+
 ### `graphTypeAddStatement` (function)
 
 `ALTER CURRENT GRAPH TYPE ADD { ... }` — NTS-551: add new element types and constraint items to the existing graph type. Only additions are valid: an ADD cannot modify an existing element type, and independent constraints cannot be added to labels/types that already serve as identifying ones — server-side rejections surface in the SchemaResult error.

@@ -138,6 +138,11 @@ await neode.installSchema()
 - `FulltextIndexDefinition` (interface) — A full-text index to keep installed on the database
 - `fulltextIndexName` (function)
 - `FulltextIndexService` (class) — Installs/drops the given full-text index definitions, following the same result-reporting pattern as SchemaService
+- `GeneratedModel` (interface) — One generated model: the label it maps, the inferred primary key and the map-schema definition ready for defineModel().
+- `GeneratedRelationship` (interface) — One generated relationship declaration: always direction 'out' — the walk captures every relationship once, from its source label.
+- `generateModels` (function) — Generate model definitions from the graph: labels, sampled property types, relationships and unique-constraint primary keys (NTS-164). Labels without nodes produce no model (nothing to infer from).
+- `GenerateModelsOptions` (interface) — Options for generateModels.
+- `GenerateModelsResult` (interface) — The generateModels result: the models plus both rendered styles.
 - `graphTypeAddStatement` (function) — `ALTER CURRENT GRAPH TYPE ADD { ... }` — NTS-551: add new element types and constraint items to the existing graph type. Only additions are valid: an ADD cannot modify an existing element type, and independent constraints cannot be added to labels/types that already serve as identifying ones — server-side rejections surface in the SchemaResult error.
 - `graphTypeAlterStatement` (function) — `ALTER CURRENT GRAPH TYPE ALTER { ... }` — NTS-551: replace the definition of existing element types (it redefines them to exactly what is given — partially defining an element type does not leave the omitted parts unchanged). Key/uniqueness constraints cannot be included: they cannot be altered server-side and remain unchanged instead, so definitions carrying them are rejected rather than silently redefined without them.
 - `GraphTypeConstraintDefinition` (interface) — NTS-549 — one named constraint item of a graph type

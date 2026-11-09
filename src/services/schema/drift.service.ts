@@ -279,7 +279,8 @@ function dropStatement(object: SchemaObject): string {
 /**
 SHOW INDEXES reports range indexes as RANGE and SHOW CONSTRAINTS reports
 existence constraints as EXISTENCE — compare installed objects against
-the declared spellings through one normal form
+the declared spellings through one normal form. The embedded Relate
+engine spells them NODE_PROPERTY_UNIQUENESS / NODE_PROPERTY_EXISTENCE.
 */
 const normaliseType = (type: string): string => {
   const upper = type.toUpperCase()
@@ -288,8 +289,12 @@ const normaliseType = (type: string): string => {
     return ConstraintType.INDEX
   }
 
-  if (upper === 'EXISTENCE') {
+  if (upper === 'EXISTENCE' || upper === 'NODE_PROPERTY_EXISTENCE') {
     return ConstraintType.EXISTS
+  }
+
+  if (upper === 'NODE_PROPERTY_UNIQUENESS') {
+    return ConstraintType.UNIQUE
   }
 
   return upper
