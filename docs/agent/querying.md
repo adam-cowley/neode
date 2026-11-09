@@ -55,7 +55,7 @@ _source: services/query/bulk.service.ts_
 
 ### `BulkService` (class)
 
-Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths
+Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths. Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the earlier chunks committed — bulk writes are not atomic across chunks. Row preparation bounds its embedding-provider calls at MAX_PREPARE_CONCURRENCY in flight.
 
 _source: services/query/bulk.service.ts_
 
@@ -204,8 +204,6 @@ Which query form to use for the kNN search
 _source: services/query/knn.service.ts_
 
 ### `LabelPredicate` (class)
-
-A label predicate: `alias:Label` (several labels require all of them), shared by `whereLabel` (`WHERE n:Completed`) and `orderByLabel` (`ORDER BY n:Completed DESC`).
 
 _source: query/label-predicate.ts_
 
@@ -465,7 +463,7 @@ _source: query/direction.ts_
 
 ### `toJson` (function)
 
-Convert an entity into a JSON friendly object: plain properties (hidden and structural properties skipped), `_id` (elementId when the model carries an internal id property) and `_labels` (the schema's labels). Eagerly loaded relationships are serialised recursively. `options.relationships` (NTS-564) controls relationship serialisation — `include` / `exclude` name declared relationships, `depth` bounds the levels. Without options the serialisation is exactly as before: every loaded relationship, unlimited depth.
+Convert an entity into a JSON friendly object: plain properties (hidden, protected and structural properties skipped), `_id` (elementId when the model carries an internal id property) and `_labels` (the schema's labels). Eagerly loaded relationships are serialised recursively. `options.relationships` (NTS-564) controls relationship serialisation — `include` / `exclude` name declared relationships, `depth` bounds the levels. Without options the serialisation is exactly as before: every loaded relationship, unlimited depth. `seen` (NTS-597) tracks the entities on the current serialisation path — a graph that re-reaches one of its own ancestors (a cycle) throws a NeodeError instead of overflowing the stack. Shared (non-cyclic) sub-graphs serialise in full.
 
 _source: serialise.ts_
 

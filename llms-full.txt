@@ -598,7 +598,7 @@ _source: services/query/bulk.service.ts_
 
 ### `BulkService` (class)
 
-Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths
+Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths. Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the earlier chunks committed — bulk writes are not atomic across chunks. Row preparation bounds its embedding-provider calls at MAX_PREPARE_CONCURRENCY in flight.
 
 _source: services/query/bulk.service.ts_
 
@@ -747,8 +747,6 @@ Which query form to use for the kNN search
 _source: services/query/knn.service.ts_
 
 ### `LabelPredicate` (class)
-
-A label predicate: `alias:Label` (several labels require all of them), shared by `whereLabel` (`WHERE n:Completed`) and `orderByLabel` (`ORDER BY n:Completed DESC`).
 
 _source: query/label-predicate.ts_
 
@@ -1008,7 +1006,7 @@ _source: query/direction.ts_
 
 ### `toJson` (function)
 
-Convert an entity into a JSON friendly object: plain properties (hidden and structural properties skipped), `_id` (elementId when the model carries an internal id property) and `_labels` (the schema's labels). Eagerly loaded relationships are serialised recursively. `options.relationships` (NTS-564) controls relationship serialisation — `include` / `exclude` name declared relationships, `depth` bounds the levels. Without options the serialisation is exactly as before: every loaded relationship, unlimited depth.
+Convert an entity into a JSON friendly object: plain properties (hidden, protected and structural properties skipped), `_id` (elementId when the model carries an internal id property) and `_labels` (the schema's labels). Eagerly loaded relationships are serialised recursively. `options.relationships` (NTS-564) controls relationship serialisation — `include` / `exclude` name declared relationships, `depth` bounds the levels. Without options the serialisation is exactly as before: every loaded relationship, unlimited depth. `seen` (NTS-597) tracks the entities on the current serialisation path — a graph that re-reaches one of its own ancestors (a cycle) throws a NeodeError instead of overflowing the stack. Shared (non-cyclic) sub-graphs serialise in full.
 
 _source: serialise.ts_
 
@@ -1504,7 +1502,7 @@ _source: traverse.ts_
 
 ### `ModelObservers` (interface)
 
-The observer hooks a model can carry (NTS-511). before* hooks run before the write statement — an error fails the write. On the facade (`neode.save()` / `create()` / `delete()`) they run BEFORE the write's transaction opens; on a transaction handle (`TransactionalService`) they run inside it. after* hooks run once the write is COMMITTED (NTS-582): for a write in an explicit or ambient transaction that is when the outermost transaction commits — they never fire for work that rolls back or is retried, and an error thrown by one cannot undo the committed write. On the create path beforeSave receives the plain properties record (the entity does not exist yet) — mutate it to change what is written.
+The observer hooks a model can carry (NTS-511). before* hooks run before the write statement — an error fails the write. On the facade (`neode.save()` / `create()` / `delete()`) they run BEFORE the write's transaction opens; on a transaction handle (`TransactionalService`) they run inside it. after* hooks run once the write is COMMITTED (NTS-582): for a write in an explicit or ambient transaction that is when the outermost transaction commits — they never fire for work that rolls back or is retried, and an error thrown by one cannot undo the committed write. An error an after* hook throws SURFACES AFTER THE COMMIT: it rejects the point that flushes the buffered effects (the `transaction()` callback, the managed scope, or the explicit `commit()` — or the facade call that committed its own transaction), so the data stays committed while the caller learns the hook failed (NTS-589). On the create path beforeSave receives the plain properties record (the entity does not exist yet) — mutate it to change what is written.
 
 _source: observers.ts_
 

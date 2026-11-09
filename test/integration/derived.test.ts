@@ -1,7 +1,8 @@
 import { describe, expect, it, beforeAll, afterAll, afterEach } from 'vitest'
 import { openBackend, TestBackend } from './support/backend'
 import { setDefaultNeode } from '../../src/entity-methods'
-import { Derived, NodeEntity, Number, Primary, Property } from '../../src/decorators'
+import { Derived, NodeEntity, Number, OneToOne, Primary, Property } from '../../src/decorators'
+import { Direction } from '../../src/query'
 
 // ---- Fixtures (per-file: decorator registry is global per module) -----------
 
@@ -32,6 +33,55 @@ class DerivedOrder {
   @Property({ type: 'number' })
   @Derived({ from: ['a'], cypher: 'this.a * 2' })
   doubleA?: number
+}
+
+/** NTS-597: nested-create pipeline fixture */
+@NodeEntity()
+class Nested597Child {
+  @Primary()
+  @Property({ type: 'string', unique: true })
+  key!: string
+
+  @Property({ type: 'number' })
+  a?: number
+
+  @Property({ type: 'number' })
+  b?: number
+
+  @Property({ type: 'number' })
+  @Derived({
+    from: ['a', 'b'],
+    compute: (entity) =>
+      typeof entity['a'] === 'number' && typeof entity['b'] === 'number'
+        ? (entity['a'] as number) + (entity['b'] as number)
+        : undefined,
+  })
+  sum?: number
+}
+
+@NodeEntity()
+class Nested597Parent {
+  @OneToOne({ type: 'CHILD_OF', target: () => Nested597Child, direction: Direction.OUTGOING })
+  child?: Nested597Child
+}
+
+/** NTS-597: increment-recompute fixture */
+@NodeEntity()
+class Counter597 {
+  @Primary()
+  @Property({ type: 'number', unique: true })
+  id!: number
+
+  @Property({ type: 'number' })
+  hits?: number
+
+  @Property({ type: 'number' })
+  @Derived({ from: ['hits'], cypher: 'this.hits * 2' })
+  doubleHits?: number
+
+  @Property({ type: 'number' })
+  @Derived({ from: ['hits'], compute: (entity) => (entity['hits'] as number) + 1 })
+  hitsPlus?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -135,5 +185,32 @@ describe('stored derived properties (NTS-569)', () => {
     expect(sixth?.doubleA).toBe(4)
     expect(seventh?.sum).toBe(10)
     expect(seventh?.doubleA).toBe(8)
+  })
+
+  // NTS-597: nested targets take the full create pipeline
+  it('create() derives the nested relationship target too', async () => {
+    await backend.neode.create(Nested597Parent, {
+      child: { key: 'n597-nested', a: 10, b: 5 },
+    })
+
+    const child = await backend.neode.find(Nested597Child, 'n597-nested')
+
+    expect(child?.sum).toBe(15)
+  })
+
+  // NTS-597: increment recomputes a derived property over the counter
+  it('increment() recomputes derived properties whose source is the counter', async () => {
+    const repository = backend.neode.getRepository(Counter597)
+
+    const created = await backend.neode.create(Counter597, { id: 1, hits: 0 })
+
+    expect(await repository.increment(created, 'hits', 5)).toBe(5)
+
+    const found = await backend.neode.find(Counter597, 1)
+
+    // cypher-side: evaluated in the increment statement itself
+    expect(found?.doubleHits).toBe(10)
+    // compute-side: recomputed from the post-write node
+    expect(found?.hitsPlus).toBe(6)
   })
 })

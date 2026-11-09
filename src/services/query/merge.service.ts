@@ -24,6 +24,7 @@ import {
   setRelationshipEntityProperties,
   timestampProperty,
   versionProperty,
+  MAX_SAVE_DEPTH,
 } from '../write-utilities.js'
 import { quote } from '../../query/quote.js'
 import { validate } from '../../validation/index.js'
@@ -51,6 +52,13 @@ export interface MergeSaveOptions {
   at version 0.
   */
   nested?: boolean
+
+  /**
+  NTS-597: nesting level of this save within the relationship walk —
+  nested saves pass depth + 1, and a graph nested deeper than
+  MAX_SAVE_DEPTH (a cycle) throws instead of overflowing the stack
+  */
+  depth?: number
 }
 
 /**
@@ -337,6 +345,19 @@ export class MergeService extends QueryService {
       throw new TypeError('save requires a model object')
     }
 
+    // Depth cap (NTS-597): a cyclic nested graph would recurse through the
+    // relationship walk below until the stack overflows — the create path
+    // caps at MAX_CREATE_DEPTH, the merge path throws instead (silently
+    // dropping nested writes would lose data)
+    const depth = options.depth ?? 0
+
+    if (depth >= MAX_SAVE_DEPTH) {
+      throw new NeodeError(
+        `save() nested more than ${String(MAX_SAVE_DEPTH)} relationship levels deep — the object graph is ` +
+          'probably cyclic. Break the cycle, or save the objects in smaller pieces.',
+      )
+    }
+
     // Resolve embedding sugar (NTS-449): a vector property declared with
     // `from` + `provider` computes its vector from the source property
     // being written, unless the vector itself is explicitly provided.
@@ -545,7 +566,10 @@ export class MergeService extends QueryService {
 
               const otherSchema = getModel(otherEntity)
 
-              const saved = await this.save(otherModel, otherSchema, undefined, { nested: true })
+              const saved = await this.save(otherModel, otherSchema, undefined, {
+                nested: true,
+                depth: depth + 1,
+              })
 
               await this.relateNodes(thisId, saved.elementId, relationship, targetSchema, element)
             }),
@@ -560,7 +584,10 @@ export class MergeService extends QueryService {
 
             // Save Node — a nested relationship-target write: the target's
             // version is never guarded or bumped (NTS-158)
-            const saved = await this.save(element, targetSchema, undefined, { nested: true })
+            const saved = await this.save(element, targetSchema, undefined, {
+              nested: true,
+              depth: depth + 1,
+            })
 
             // Relate the two nodes together
             await this.relateNodes(thisId, saved.elementId, relationship, targetSchema, element)

@@ -14,7 +14,6 @@ import {
   applyEmbeddings,
   applyInTransforms,
   deriveProperties,
-  modelPropertyValues,
   timestampProperty,
   versionProperty,
 } from '../write-utilities.js'
@@ -87,17 +86,6 @@ export class UpdateService extends QueryService {
         .map((property) => property.getKey()),
     )
 
-    const storedUnder = Object.fromEntries(
-      Object.entries(modelPropertyValues(entity, schema)).filter(([key]) => !derivedKeys.has(key)),
-    )
-
-    const derivedInput = { ...storedUnder, ...provided }
-    const derived = deriveProperties(schema, derivedInput, writtenKeys)
-
-    for (const key of derived.recomputed) {
-      provided[key] = derivedInput[key]
-    }
-
     // Properties an update must never overwrite
     const guarded = new Set(
       schema
@@ -120,6 +108,69 @@ export class UpdateService extends QueryService {
 
     for (const relationship of schema.getRelationships()) {
       guarded.add(relationship.getKey())
+    }
+
+    // NTS-597: the derive input's stored domain is the DATABASE row, not
+    // the in-memory entity — a partially hydrated instance (a stub) carries
+    // stale or missing source values, and the compute would derive from
+    // them. Cypher-side derivations need no stored state (the database
+    // evaluates their expressions); compute-side ones need every source,
+    // so a trigger among the written keys forces the read. The same read
+    // feeds the required-property refill below — one round trip over the
+    // node's current state instead of a second, later one.
+    const isDeriveInputNeeded = [...derivedKeys].some((key) => {
+      if (writtenKeys.has(key)) {
+        return false
+      }
+
+      const derived = schema.getProperty(key).getDerived()
+
+      if (derived === undefined || typeof derived.compute !== 'function') {
+        return false
+      }
+
+      const sources = Array.isArray(derived.from) ? derived.from : []
+
+      return sources.some((source) => writtenKeys.has(source))
+    })
+
+    const isRefillPossible = schema.getProperties().some((property) => {
+      if (!property.isRequired()) {
+        return false
+      }
+
+      const key = property.getKey()
+
+      return provided[key] === undefined || provided[key] === null || guarded.has(key)
+    })
+
+    const node =
+      isDeriveInputNeeded || isRefillPossible
+        ? await this.readNode(schema, identityCriteria)
+        : undefined
+
+    const storedUnder: Record<string, unknown> = {}
+
+    if (node !== undefined) {
+      for (const property of schema.getProperties()) {
+        const key = property.getKey()
+
+        // The stored side never contributes the derived key itself: the
+        // stored value must not count as an explicit win — only a patch
+        // on the key does
+        const value = node.properties[key]
+
+        if (value !== undefined && !derivedKeys.has(key)) {
+          storedUnder[key] = value
+        }
+      }
+    }
+
+    const derivedInput = { ...storedUnder, ...provided }
+    const derived = deriveProperties(schema, derivedInput, writtenKeys)
+
+    for (const key of derived.recomputed) {
+      provided[key] = derivedInput[key]
     }
 
     // Provided keys only (`+=`); undefined means "not provided", null unsets.
@@ -149,15 +200,13 @@ export class UpdateService extends QueryService {
       return value === undefined || value === null
     })
 
-    if (refill.length > 0) {
-      const node = await this.readNode(schema, identityCriteria)
+    // NTS-597: the same DB-state read that fed the derive — the separate
+    // late read is gone
+    for (const property of refill) {
+      const stored = node?.properties[property.getKey()]
 
-      for (const property of refill) {
-        const stored = node?.properties[property.getKey()]
-
-        if (stored !== undefined && stored !== null) {
-          set[property.getKey()] = stored
-        }
+      if (stored !== undefined && stored !== null) {
+        set[property.getKey()] = stored
       }
     }
 

@@ -9,6 +9,7 @@ import { PropertyType, isProjectedProperty } from '../meta/property-schema.js'
 import type { RelationshipPropertySchema } from '../meta/relationship-property-schema.js'
 import { getValueOrDefault, setPropertyInBuilder } from '../utilities.js'
 import { CardinalityViolationError, NeodeError } from '../errors/index.js'
+import { validate } from '../validation/index.js'
 import { isRecord } from './type-guards.js'
 
 /**
@@ -16,6 +17,13 @@ Maximum nesting depth when creating nested relationship targets
 (neode WriteUtils parity)
 */
 export const MAX_CREATE_DEPTH = 99
+
+/**
+Maximum nesting depth when saving nested relationship targets through
+MergeService.save (NTS-597): a cyclic object graph would otherwise recurse
+until the stack overflows
+*/
+export const MAX_SAVE_DEPTH = 99
 
 /**
 Server-side timestamp expression (NTS-165): evaluated by the database, so
@@ -216,7 +224,7 @@ export async function createNodeAndRelationships(
   model: object,
   depth = 0,
 ): Promise<string> {
-  const thisId = await createNode(runner, schema, model)
+  const thisId = await createNode(runner, schema, model, depth)
 
   await createRelationships(runner, thisId, schema, model, depth)
 
@@ -611,7 +619,34 @@ neode parity (WriteUtils.splitProperties in create mode): every property
 value - defaults included - is inlined into the CREATE pattern, because
 ON CREATE SET / ON MATCH SET are merge-only clauses.
 */
-async function createNode(runner: Runner, schema: EntitySchema, model: object): Promise<string> {
+async function createNode(
+  runner: Runner,
+  schema: EntitySchema,
+  model: object,
+  depth = 0,
+): Promise<string> {
+  // NTS-597: nested targets (depth > 0) take the same write pipeline as the
+  // root model BEFORE the properties are collected — the collection below
+  // snapshots the model, so a compute-derived value landing on the model
+  // afterwards never reaches the CREATE pattern. The root model was already
+  // pipelined by MergeService.save; running it again there would re-apply
+  // `in` transforms (and re-call embedding providers) on stored-form values.
+  if (depth > 0) {
+    await applyEmbeddings(schema, model)
+
+    // compute-side values land on the model below; the cypherSets of this
+    // result are recomputed after collection (an explicit value wins)
+    deriveProperties(schema, model)
+
+    await applyInTransforms(schema, model)
+
+    // Fakes resolve per-property during collection (valueWithFake) — stamp
+    // them first so validation observes the values the write will use
+    applyFakeValues(schema, model)
+
+    validate(modelPropertyValues(model, schema), schema)
+  }
+
   const properties: Record<string, unknown> = {}
 
   const vectors: { key: string; value: unknown }[] = []
