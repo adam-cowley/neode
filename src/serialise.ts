@@ -10,7 +10,9 @@ import {
 } from 'neo4j-driver'
 import { NeodeError } from './errors/index.js'
 import { getModel } from './meta/index.js'
+import type { EntitySchema } from './meta/entity/entity-schema.js'
 import type { PropertySchema } from './meta/property-schema.js'
+import type { RelationshipPropertySchema } from './meta/relationship-property-schema.js'
 import { PropertyType } from './meta/property-schema.js'
 import { isRecord } from './services/type-guards.js'
 
@@ -242,14 +244,116 @@ function isEntity(value: unknown): value is Record<string, unknown> {
   )
 }
 
-function toOutputValue(value: unknown, property: PropertySchema): unknown {
+/**
+Relationship serialisation control for toJson() (NTS-564): which of the
+entity's declared relationships serialise, and how many levels deep.
+
+- `include` — opt-in: only these declared relationships serialise. A
+  declared key that is not loaded on the instance serialises nothing
+  (toJson never reads the database — load first via `with` / load()).
+- `exclude` — opt-out: every loaded relationship except these.
+- `depth` — how many relationship LEVELS serialise (1 = the entity's own
+  relationships, nested entities serialise their properties only);
+  omit for unlimited (the default). Values below 1 serialise no
+  relationships.
+
+Keys in include / exclude must be declared relationships — unknown keys
+throw the schema's descriptive error naming the valid relationship keys
+(the NTS-498 pattern). Both lists apply to the serialised entity's own
+relationships; `depth` is what bounds the nesting below it.
+*/
+export interface RelationshipSerialisationOptions {
+  include?: string[]
+  exclude?: string[]
+  depth?: number
+}
+
+/**
+Options for toJson() (NTS-564). Every key is optional — a call without
+options serialises exactly as before.
+*/
+export interface ToJsonOptions {
+  relationships?: RelationshipSerialisationOptions
+}
+
+/**
+The relationship keys to serialise: every declared relationship by
+default, filtered by the include / exclude lists when given. Unknown
+keys throw the schema's house error naming the valid relationships.
+*/
+function serialisableRelationships(
+  schema: EntitySchema,
+  options: RelationshipSerialisationOptions | undefined,
+): RelationshipPropertySchema[] {
+  if (options === undefined) {
+    return schema.getRelationships()
+  }
+
+  const { include, exclude, depth } = options
+
+  if (depth !== undefined && (!Number.isSafeInteger(depth) || depth < 0)) {
+    throw new NeodeError(
+      `The toJson "depth" option must be a non-negative integer — got ${JSON.stringify(depth)}. ` +
+        'Pass how many relationship levels to serialise (0 serialises none), or omit it for unlimited.',
+    )
+  }
+
+  // Unknown keys throw the schema's descriptive error naming the model's
+  // valid relationships (the NTS-498 pattern)
+  if (include !== undefined) {
+    for (const key of include) {
+      schema.getRelationship(key)
+    }
+  }
+
+  if (exclude !== undefined) {
+    for (const key of exclude) {
+      schema.getRelationship(key)
+    }
+  }
+
+  if (depth === 0) {
+    return []
+  }
+
+  let selected = schema.getRelationships()
+
+  if (include !== undefined) {
+    const wanted = new Set(include)
+
+    selected = selected.filter((relationship) => wanted.has(relationship.getKey()))
+  }
+
+  if (exclude !== undefined) {
+    const unwanted = new Set(exclude)
+
+    selected = selected.filter((relationship) => !unwanted.has(relationship.getKey()))
+  }
+
+  return selected
+}
+
+/**
+The toJson options a relationship level BELOW the given depth serialises
+with: one level less, floored at 0 (no relationships) so the depth
+contract holds however deep entity-valued properties nest.
+*/
+function childJsonOptions(depth: number | undefined): ToJsonOptions | undefined {
+  return depth === undefined ? undefined : { relationships: { depth: Math.max(depth - 1, 0) } }
+}
+
+function toOutputValue(
+  value: unknown,
+  property: PropertySchema,
+  depth: number | undefined,
+): unknown {
   // Nested entities (eagerly loaded relationships, arrays of entities)
   if (Array.isArray(value)) {
-    return value.map((item) => toOutputValue(item, property))
+    return value.map((item) => toOutputValue(item, property, depth))
   }
 
   if (isEntity(value)) {
-    return toJson(value)
+    return toJson(value, childJsonOptions(depth))
   }
 
   return valueToJson(value, property)
@@ -286,8 +390,13 @@ Convert an entity into a JSON friendly object: plain properties (hidden and
 structural properties skipped), `_id` (elementId when the model carries an
 internal id property) and `_labels` (the schema's labels). Eagerly loaded
 relationships are serialised recursively.
+
+`options.relationships` (NTS-564) controls relationship serialisation —
+`include` / `exclude` name declared relationships, `depth` bounds the
+levels. Without options the serialisation is exactly as before: every
+loaded relationship, unlimited depth.
 */
-export function toJson(entity: unknown): Record<string, unknown> {
+export function toJson(entity: unknown, options?: ToJsonOptions): Record<string, unknown> {
   const instance = isRecord(entity) ? entity : undefined
   const schema = instance === undefined ? undefined : getModel(instance.constructor)
 
@@ -302,6 +411,7 @@ export function toJson(entity: unknown): Record<string, unknown> {
 
   const properties = schema.getProperties()
   const internalId = properties.find((property) => property.getType() === PropertyType.INTERNAL_ID)
+  const depth = options?.relationships?.depth
 
   const output: Record<string, unknown> = {
     _id: internalId === undefined ? null : (instance[internalId.getKey()] ?? null),
@@ -322,11 +432,17 @@ export function toJson(entity: unknown): Record<string, unknown> {
       continue
     }
 
-    output[key] = toOutputValue(value, property)
+    output[key] = toOutputValue(value, property, depth)
   }
 
-  // Eagerly loaded relationships: single entities or arrays of entities
-  for (const relationship of schema.getRelationships()) {
+  // Eagerly loaded relationships: single entities or arrays of entities.
+  // Loaded keys materialize as own properties (the NTS-498 contract), so
+  // hasOwn is the loaded test — a filtered-out relation target (NTS-162)
+  // serialises as the loaded-and-empty shape, never throws.
+  const relationships = serialisableRelationships(schema, options?.relationships)
+  const childOptions = childJsonOptions(depth)
+
+  for (const relationship of relationships) {
     const key = relationship.getKey()
 
     if (!Object.hasOwn(instance, key)) {
@@ -339,7 +455,9 @@ export function toJson(entity: unknown): Record<string, unknown> {
       continue
     }
 
-    output[key] = Array.isArray(value) ? value.map((item) => toJson(item)) : toJson(value)
+    output[key] = Array.isArray(value)
+      ? value.map((item) => toJson(item, childOptions))
+      : toJson(value, childOptions)
   }
 
   return output

@@ -27,6 +27,7 @@ export { SyncService } from './services/query/sync.service.js'
 export type { RepositoryConstructor } from './meta/repositories.js'
 export { Collection } from './collection.js'
 export { toJson, valueToJson } from './serialise.js'
+export type { ToJsonOptions, RelationshipSerialisationOptions } from './serialise.js'
 
 // Active-record instance methods on hydrated entities (P7.2)
 export { applyEntityMethods, setDefaultNeode } from './entity-methods.js'

@@ -915,6 +915,12 @@ One result row of an edge-returning related() read (NTS-499): the hydrated relat
 
 _source: services/query/shape.ts_
 
+### `RelationshipSerialisationOptions` (interface)
+
+Relationship serialisation control for toJson() (NTS-564): which of the entity's declared relationships serialise, and how many levels deep. - `include` — opt-in: only these declared relationships serialise. A declared key that is not loaded on the instance serialises nothing (toJson never reads the database — load first via `with` / load()). - `exclude` — opt-out: every loaded relationship except these. - `depth` — how many relationship LEVELS serialise (1 = the entity's own relationships, nested entities serialise their properties only); omit for unlimited (the default). Values below 1 serialise no relationships. Keys in include / exclude must be declared relationships — unknown keys throw the schema's descriptive error naming the valid relationship keys (the NTS-498 pattern). Both lists apply to the serialised entity's own relationships; `depth` is what bounds the nesting below it.
+
+_source: serialise.ts_
+
 ### `Repository` (class)
 
 Active-record style data-access repository for one registered model — the TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
@@ -987,7 +993,13 @@ _source: query/direction.ts_
 
 ### `toJson` (function)
 
-Convert an entity into a JSON friendly object: plain properties (hidden and structural properties skipped), `_id` (elementId when the model carries an internal id property) and `_labels` (the schema's labels). Eagerly loaded relationships are serialised recursively.
+Convert an entity into a JSON friendly object: plain properties (hidden and structural properties skipped), `_id` (elementId when the model carries an internal id property) and `_labels` (the schema's labels). Eagerly loaded relationships are serialised recursively. `options.relationships` (NTS-564) controls relationship serialisation — `include` / `exclude` name declared relationships, `depth` bounds the levels. Without options the serialisation is exactly as before: every loaded relationship, unlimited depth.
+
+_source: serialise.ts_
+
+### `ToJsonOptions` (interface)
+
+Options for toJson() (NTS-564). Every key is optional — a call without options serialises exactly as before.
 
 _source: serialise.ts_
 
