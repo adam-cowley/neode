@@ -72,6 +72,12 @@ npm i neo4j-driver@^6
   rejected at hydration with a descriptive error.
 - Integer values beyond `Number.MAX_SAFE_INTEGER` are rejected instead of
   silently losing precision.
+- **Transactions (NTS-582 / NTS-589):** after* hooks run only after the
+  commit, and an error one throws surfaces after the data has committed
+  (it rejects the `transaction()` callback / `commit()` — the write stands).
+  A facade call inside `transaction()` passing a per-call `database`
+  different from the outer transaction now throws instead of being silently
+  dropped — set `database` on the outermost `transaction()`.
 - `strictPropertyInitialization` no longer disabled: entities declared in
   TypeScript need `!` on decorator-populated fields (see §1).
 

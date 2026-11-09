@@ -34,8 +34,9 @@ export interface TransactionOptions {
 
   /**
   Database the transaction opens against (multi-database backends).
-  A transaction is bound to one database at open time; per-call database
-  overrides inside the callback are ignored.
+  A transaction is bound to one database at open time: a joined call
+  passing a DIFFERENT `database` throws (NTS-589) — set `database` on the
+  outermost `transaction()` instead, or run that work outside the callback.
   */
   database?: string
 
@@ -81,14 +82,25 @@ export class AmbientTransactionScope {
   private readonly joinHandle: TransactionHandle
 
   /**
+  Set when a statement run by a joined call FAILED on the driver — a failed
+  statement can leave the shared transaction rollback-only server-side (the
+  driver refuses its commit), so a swallowed failure must not commit. Pure-JS
+  errors never reached the driver and must not poison the scope (NTS-589).
+  */
+  private statementFailed = false
+
+  /**
   The real transaction — only the outermost unit commits or rolls it back.
   */
   readonly handle: TransactionHandle
 
   /**
-  Set when a join failed (or explicitly rolled back): the transaction must
-  not commit, even when the callback swallows the error. Checked by the
-  outermost unit before its commit.
+  Set when a joined call failed with a statement that reached the driver
+  (or explicitly rolled back): the transaction must not commit, even when
+  the callback swallows the error. Checked by the outermost unit before its
+  commit. A pure-JS failure in a joined call that never reached the driver
+  (validation, unknown model, …) does NOT set this — nothing was written,
+  so a callback that handles the error may still commit (NTS-589).
   */
   rollbackOnly = false
 
@@ -122,7 +134,16 @@ export class AmbientTransactionScope {
       run: async (statement, parameters) => {
         this.assertOpen()
 
-        return this.handle.run(statement, parameters)
+        try {
+          return await this.handle.run(statement, parameters)
+        } catch (error) {
+          // The failed statement is the poison case: the driver may have
+          // marked the shared transaction rollback-only server-side, so a
+          // callback that swallows the error still must not commit (NTS-589)
+          this.statementFailed = true
+
+          throw error
+        }
       },
       commit: async () => {
         // Nothing to do — deferred by design: the outermost unit commits
@@ -204,9 +225,11 @@ export class AmbientTransactionScope {
 
   /**
   Run work joined to this scope: same transaction, close endpoints
-  deferred. A failure marks the scope rollback-only on the way out, so an
-  error that the caller handles inside the callback still prevents the
-  commit.
+  deferred. The scope is marked rollback-only on the way out — but only
+  once a statement of the joined call FAILED on the driver (the shared
+  transaction may then be rollback-only server-side). A pure-JS failure
+  before any statement (validation, unknown model, …) left the transaction
+  clean, so a callback that handles the error may still commit (NTS-589).
   */
   async join<T>(
     eventEmitter: EventEmitter,
@@ -219,7 +242,9 @@ export class AmbientTransactionScope {
         new TransactionalService(this.joinHandle, eventEmitter, this.effects, false),
       )
     } catch (error) {
-      this.rollbackOnly = true
+      if (this.statementFailed) {
+        this.rollbackOnly = true
+      }
 
       throw error
     }

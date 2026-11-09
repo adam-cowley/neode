@@ -188,7 +188,13 @@ export class Neode implements INeode {
       )
     }
 
-    return new Neode(new RelateConnectionProvider(database, namespace), isEnterprise, options)
+    return new Neode(
+      new RelateConnectionProvider(database, namespace, {
+        ...(options.queueTimeoutMs !== undefined && { queueTimeoutMs: options.queueTimeoutMs }),
+      }),
+      isEnterprise,
+      options,
+    )
   }
 
   private readonly eventEmitter: EventEmitter = new EventEmitter()

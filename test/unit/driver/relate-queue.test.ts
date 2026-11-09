@@ -1,4 +1,5 @@
 import { RelateConnectionProvider, requireRelateClient } from '../../../src/driver/relate'
+import { Neode } from '../../../src/neode.service'
 
 // NTS-576: the embedded provider's single transaction slot must be freed on
 // every failure path, and waiting for it must be bounded.
@@ -104,5 +105,20 @@ describe.skipIf(!relateAvailable())('RelateConnectionProvider queue (NTS-576)', 
     // when the timed-out waiter gave up — and everything proceeds after commit
     await tx.commit()
     await expect(provider.run('RETURN 1')).resolves.toBeDefined()
+  })
+
+  it('forRelate forwards queueTimeoutMs to the provider (NTS-589)', async () => {
+    // NTS-589: queueTimeoutMs was only reachable by constructing
+    // RelateConnectionProvider directly — forRelate now accepts it too. The
+    // 25ms timeout (vs the 30000ms default) proves the option reached it.
+    const { database } = fakeDatabase()
+    const neode = Neode.forRelate(database, 'neo4j', false, { queueTimeoutMs: 25 })
+
+    const tx = await neode.getConnection().beginTransaction()
+
+    await expect(neode.getConnection().run('RETURN 1')).rejects.toThrow('Timed out after 25ms')
+
+    await tx.commit()
+    await expect(neode.getConnection().run('RETURN 1')).resolves.toBeDefined()
   })
 })
