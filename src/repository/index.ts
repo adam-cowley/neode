@@ -13,8 +13,8 @@ import { getMergeFields } from '../services/query/merge.service.js'
 import type { DeleteOptions } from '../services/query/delete.service.js'
 import type { ScoredEntity } from '../services/query/search.service.js'
 import { fulltextIndexName } from '../services/schema/fulltext.service.js'
-import { isGraphNode, isRecord } from '../services/type-guards.js'
-import { hydrateNode } from '../utilities.js'
+import { isRecord } from '../services/type-guards.js'
+import { shapeNodeRows } from '../services/query/shape.js'
 import { hasProjectedProperties } from '../projection/index.js'
 import { projectionNode } from '../projection/projection.js'
 import {
@@ -297,15 +297,7 @@ export class Repository<Entity> {
 
     const output = await this.read(builder)
 
-    return output.records.map((row) => {
-      const node = row.get(THIS_NODE)
-
-      if (!isGraphNode(node)) {
-        throw new TypeError(`The "${THIS_NODE}" column did not return a node value`)
-      }
-
-      return hydrateNode<Entity>(this.schema, this.entity, node)
-    })
+    return shapeNodeRows<Entity>(output.records, this.schema, this.entity, THIS_NODE)
   }
 
   /**

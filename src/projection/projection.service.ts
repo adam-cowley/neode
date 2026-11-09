@@ -6,10 +6,9 @@ import { getModel } from '../meta/index.js'
 import type { PropertySchema } from '../meta/property-schema.js'
 import { PropertyType } from '../meta/property-schema.js'
 import type { OrderSpec } from '../services/query/get.service.js'
-import { isRecord } from '../services/type-guards.js'
 import { NeodeError } from '../errors/index.js'
 import { loadSpecCalls, projectionNode } from './projection.js'
-import { hydrateProjection } from './hydrate.js'
+import { shapeProjectionRows } from '../services/query/shape.js'
 import { applyReadFilters, type ReadFilterOptions } from '../services/query/filters.js'
 
 /**
@@ -309,15 +308,7 @@ export class ProjectionService {
 
     const result = await this.runner.run(query, params)
 
-    return result.records.map((row) => {
-      const projection = row.get(THIS_NODE)
-
-      if (!isRecord(projection)) {
-        throw new TypeError(`The "${THIS_NODE}" column did not return a projection map`)
-      }
-
-      return hydrateProjection<T>(schema, constructor, projection)
-    })
+    return shapeProjectionRows<T>(result.records, schema, constructor, THIS_NODE)
   }
 
   /**

@@ -5,7 +5,7 @@ import { type EntitySchema, EntityType } from '../../meta/entity/entity-schema.j
 import { getModel } from '../../meta/index.js'
 import type { Newable } from '../../meta/newable.js'
 import type { RelationshipPropertySchema } from '../../meta/relationship-property-schema.js'
-import type { GraphRelationship, Runner } from '../../driver/types.js'
+import type { Runner } from '../../driver/types.js'
 import { Builder } from '../../query/index.js'
 import {
   eagerNode,
@@ -17,32 +17,23 @@ import {
 import type { LoadOptions } from '../../query/load-spec.js'
 import { applyOrder, type OrderSpec } from '../../query/order-spec.js'
 import { relationProperty } from '../../projection/projection.js'
-import { hydrateNode } from '../../utilities.js'
-import { isGraphRelationship, isNodeLike, isRecord } from '../type-guards.js'
+import { isRecord } from '../type-guards.js'
 import { QueryService } from './query.service.js'
+import { type RelationshipEdgeRead, shapeEdgeRows, shapeNodeRows } from './shape.js'
 import { applyReadFilters, type ReadFilterOptions } from './filters.js'
-
-/**
-One result row of an edge-returning related() read (NTS-499): the hydrated
-related entity (`node`) alongside the traversed relationship itself
-(`edge`, the normalized GraphRelationship — type, elementId, endpoints and
-properties). The seed of the NTS-566 result-shape contract: flat, named,
-no wrapper classes.
-*/
-export interface RelationshipEdgeRead<T> {
-  node: T
-  edge: GraphRelationship
-}
 
 /**
 The find() result of an edge-returning read, mirroring the cardinality of
 the plain FindResult: `RelationshipEdgeRead<T>[]` for a many-key,
 `RelationshipEdgeRead<T> | undefined` for a one-key. Tuple-wrapped so a
-union FindResult (`T | undefined`) never distributes.
+union FindResult (`T | undefined`) never distributes. The row shape itself
+(RelationshipEdgeRead) lives in the one result-shaping module (NTS-566).
 */
 export type EdgeFindResult<FindResult, T> = [FindResult] extends [(infer Item)[]]
   ? RelationshipEdgeRead<Item>[]
   : RelationshipEdgeRead<T> | undefined
+
+export type { RelationshipEdgeRead } from './shape.js'
 
 /**
 The related() scope surface (NTS-497): Builder-style verbs composed on
@@ -177,37 +168,25 @@ function relatedRead(
 }
 
 /**
-Run a traversal statement and hydrate the related entities through the
-regular hydration path (shared by load() and the related() scope)
+Run a traversal statement and shape the related entities through the one
+result-shaping layer (shared by load() and the related() scope; NTS-566)
 */
 async function runTraversal(runner: Runner, read: RelatedReadState): Promise<unknown[]> {
   const { query, params } = read.builder.build()
 
   const output = await runner.run(query, params)
 
-  return output.records.map((record) => {
-    const node: unknown = record.get('node')
-
-    if (!isNodeLike(node)) {
-      throw new TypeError(`The "node" column did not return a node value`)
-    }
-
-    const hydrated = hydrateNode<Record<string, unknown>>(read.targetSchema, read.target, node)
-
-    // Edge-returning read (NTS-499): the row is { node, edge } — the
-    // traversed relationship in its normalized GraphRelationship shape
-    if (!read.withEdge) {
-      return hydrated
-    }
-
-    const edge: unknown = record.get('edge')
-
-    if (!isGraphRelationship(edge)) {
-      throw new TypeError(`The "edge" column did not return a relationship value`)
-    }
-
-    return { node: hydrated, edge }
-  })
+  // Edge-returning read (NTS-499): the row is { node, edge } — the
+  // traversed relationship in its normalized GraphRelationship shape
+  return read.withEdge
+    ? shapeEdgeRows<Record<string, unknown>>(
+        output.records,
+        read.targetSchema,
+        read.target,
+        'node',
+        'edge',
+      )
+    : shapeNodeRows<Record<string, unknown>>(output.records, read.targetSchema, read.target, 'node')
 }
 
 /**
