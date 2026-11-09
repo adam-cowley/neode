@@ -18,6 +18,7 @@ import {
   createNodeAndRelationships,
   deriveProperties,
   getOtherProperty,
+  assertCardinality,
   assertWritableDirection,
   modelPropertyValues,
   setRelationshipEntityProperties,
@@ -468,6 +469,12 @@ export class MergeService extends QueryService {
         const value = propertyValue
 
         const values: unknown[] = relationship.getMany() && Array.isArray(value) ? value : [value]
+
+        // A one-cardinality relationship cannot be saved with two targets
+        // (NTS-161). The values are the write's own edges — the explicit
+        // relate() path additionally guards against edges already in the
+        // database.
+        assertCardinality(relationship, values.length)
 
         const targetEntity = relationship.getTarget()
 

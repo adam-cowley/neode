@@ -1,4 +1,5 @@
 import type { Newable } from '../meta/newable.js'
+import type { RelationshipCardinality } from '../meta/relationship-property-schema.js'
 import type { Direction } from '../query/index.js'
 
 export interface RelationshipConfig {
@@ -21,4 +22,10 @@ export interface RelationshipConfig {
   emission (NTS-445): surfaced by `ontology()` / `ontologyMarkdown()`.
   */
   description?: string
+  /**
+  Write-time cardinality (NTS-161): `one` (the default for @OneToOne) and
+  `zeroOrOne` allow at most one edge — a second relate() throws
+  CardinalityViolationError. `many` is unrestricted.
+  */
+  cardinality?: RelationshipCardinality
 }

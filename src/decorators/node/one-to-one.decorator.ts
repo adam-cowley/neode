@@ -26,6 +26,7 @@ export function OneToOne(
         config.eager,
         config.description,
         config.cascade,
+        config.cardinality,
       )
     })
   }

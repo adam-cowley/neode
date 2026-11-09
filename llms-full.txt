@@ -251,7 +251,7 @@ _source: decorators/node/on-create-set.decorator.ts_
 
 ### `OneToMany` (decorator)
 
-Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading, an agent-facing description and per-relationship cascade.
+Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading, an agent-facing description, per-relationship cascade and a write-time cardinality (NTS-161 — 'many' by default; 'one' / 'zeroOrOne' restrict the relationship to a single edge, a second relate() throwing CardinalityViolationError).
 
 _source: decorators/node/one-to-many.decorator.ts_
 
@@ -376,6 +376,16 @@ _source: decorators/projection/related-one.decorator.ts_
 Read-model projection definitions (NTS-135/136/137/138) — the map-based API for
 
 _source: meta/schema-definition.interface.ts_
+
+### `RelationshipCardinality` (type)
+
+How many edges a relationship may hold from one node (NTS-161): `one` (exactly one — enforced as at-most-one at write time), `zeroOrOne` (at most one, none is fine) or `many` (unrestricted — the default). Read paths are untouched: cardinality is a write-time guard.
+
+_source: meta/relationship-property-schema.ts_
+
+### `RelationshipConfig` (interface)
+
+_source: decorators/relationship-config.interface.ts_
 
 ### `RelationshipCount` (decorator)
 
@@ -947,6 +957,22 @@ lazy() options — the keyset walk behind cursor pagination
 
 _source: services/query/paginate.service.ts_
 
+### `SyncEdgesOptions` (interface)
+
+Options for syncEdges (NTS-161): `properties` is applied to the edges NEWLY related by the sync — common edges are left untouched.
+
+_source: services/query/sync.service.ts_
+
+### `SyncEdgesResult` (interface)
+
+What a sync did: how many edges were related and how many detached (zero and zero for a no-op sync — nothing is written)
+
+_source: services/query/sync.service.ts_
+
+### `SyncService` (class)
+
+_source: services/query/sync.service.ts_
+
 ### `toCollection` (function)
 
 Hydrate a raw query result into a Collection (neode's Factory.hydrate return shape)
@@ -1319,6 +1345,12 @@ _source: testing/wipe.ts_
 
 Typed error taxonomy and driver-error classification. House rule: every error message names the fix — reload the entity on OptimisticLockError, add the named key to the `with` load spec on RelationNotLoadedError.
 
+### `CardinalityViolationError` (class)
+
+Raised when a write would give a relationship more edges than its declared cardinality allows (NTS-161): relating a second edge onto a `one` / `zeroOrOne` relationship — through relate(), a multi-target save, or syncEdges — names the relationship, the violated cardinality and the fix. Detach the existing edge first (or use syncEdges, which detaches for you), or change the declaration to `many`.
+
+_source: errors/cardinality-violation.ts_
+
 ### `classifyError` (function)
 
 Map a raw driver/engine error to the typed taxonomy (NTS-129): constraint violations → ConstraintViolationError, transient codes and retryable-flagged failures → TransientError. Everything else — unknown shapes and already-typed errors — passes through untouched.
@@ -1489,6 +1521,7 @@ so new fields (e.g. upcoming schema options) appear here automatically.
 | `properties` | `Record<string, PropertyTypeName | PropertyDefinition>` (optional) | shortcut: edge properties are parsed but not wired yet — needs a generated relationship entity; add when edge-property saves are needed |
 | `eager` | `boolean` (optional) |  |
 | `cascade` | `boolean` (optional) | Per-relationship cascade: deleting a node also deletes the nodes reached through this relationship, recursively (each level applies its own annotations). Unannotated relationships survive unless the delete call opts in with `{ cascade: true }`. |
+| `cardinality` | `RelationshipCardinality` (optional) | Write-time cardinality (NTS-161): 'one' / 'zeroOrOne' allow at most one edge from a node — a second relate() throws CardinalityViolationError; 'many' is unrestricted. Undefined derives from the type: 'relationship' / 'node' declare one, 'relationships' / 'nodes' declare many. |
 
 ### SchemaDefinition
 

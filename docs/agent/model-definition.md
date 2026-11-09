@@ -238,7 +238,7 @@ _source: decorators/node/on-create-set.decorator.ts_
 
 ### `OneToMany` (decorator)
 
-Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading, an agent-facing description and per-relationship cascade.
+Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading, an agent-facing description, per-relationship cascade and a write-time cardinality (NTS-161 — 'many' by default; 'one' / 'zeroOrOne' restrict the relationship to a single edge, a second relate() throwing CardinalityViolationError).
 
 _source: decorators/node/one-to-many.decorator.ts_
 
@@ -363,6 +363,16 @@ _source: decorators/projection/related-one.decorator.ts_
 Read-model projection definitions (NTS-135/136/137/138) — the map-based API for
 
 _source: meta/schema-definition.interface.ts_
+
+### `RelationshipCardinality` (type)
+
+How many edges a relationship may hold from one node (NTS-161): `one` (exactly one — enforced as at-most-one at write time), `zeroOrOne` (at most one, none is fine) or `many` (unrestricted — the default). Read paths are untouched: cardinality is a write-time guard.
+
+_source: meta/relationship-property-schema.ts_
+
+### `RelationshipConfig` (interface)
+
+_source: decorators/relationship-config.interface.ts_
 
 ### `RelationshipCount` (decorator)
 

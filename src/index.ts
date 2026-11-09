@@ -2,6 +2,7 @@ export { EventType } from './common/events.js'
 export { fromEnv } from './from-env.js'
 export {
   NeodeError,
+  CardinalityViolationError,
   ConstraintViolationError,
   RelationNotLoadedError,
   OptimisticLockError,
@@ -20,6 +21,9 @@ export { registerRepository, getRepository, resolveRepository } from './meta/rep
 export { getModel, getModels } from './meta/index.js'
 export { validate } from './validation/index.js'
 export { mergeRelationshipProperty } from './meta/index.js'
+export type { RelationshipCardinality } from './meta/index.js'
+export type { SyncEdgesOptions, SyncEdgesResult } from './services/query/sync.service.js'
+export { SyncService } from './services/query/sync.service.js'
 export type { RepositoryConstructor } from './meta/repositories.js'
 export { Collection } from './collection.js'
 export { toJson, valueToJson } from './serialise.js'

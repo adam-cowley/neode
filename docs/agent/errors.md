@@ -10,6 +10,12 @@ Package version: **1.0.0-next.1** (from package.json).
 
 Typed error taxonomy and driver-error classification. House rule: every error message names the fix — reload the entity on OptimisticLockError, add the named key to the `with` load spec on RelationNotLoadedError.
 
+### `CardinalityViolationError` (class)
+
+Raised when a write would give a relationship more edges than its declared cardinality allows (NTS-161): relating a second edge onto a `one` / `zeroOrOne` relationship — through relate(), a multi-target save, or syncEdges — names the relationship, the violated cardinality and the fix. Detach the existing edge first (or use syncEdges, which detaches for you), or change the declaration to `many`.
+
+_source: errors/cardinality-violation.ts_
+
 ### `classifyError` (function)
 
 Map a raw driver/engine error to the typed taxonomy (NTS-129): constraint violations → ConstraintViolationError, transient codes and retryable-flagged failures → TransientError. Everything else — unknown shapes and already-typed errors — passes through untouched.

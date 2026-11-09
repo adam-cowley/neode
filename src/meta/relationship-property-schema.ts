@@ -5,6 +5,14 @@ import type { Newable } from '../meta/newable.js'
 import { Direction } from '../query/direction.js'
 import type { PropertySchema } from './property-schema.js'
 
+/**
+How many edges a relationship may hold from one node (NTS-161): `one`
+(exactly one — enforced as at-most-one at write time), `zeroOrOne`
+(at most one, none is fine) or `many` (unrestricted — the default).
+Read paths are untouched: cardinality is a write-time guard.
+*/
+export type RelationshipCardinality = 'one' | 'zeroOrOne' | 'many'
+
 export class RelationshipPropertySchema {
   static fromPropertySchema(original: PropertySchema): RelationshipPropertySchema {
     const cloned = new RelationshipPropertySchema(original.getKey())
@@ -33,6 +41,12 @@ export class RelationshipPropertySchema {
   `{ cascade: false }` cascades none
   */
   private isCascade = false
+
+  /**
+  Explicitly declared cardinality (NTS-161), or undefined — derived from
+  the many flag when not declared
+  */
+  private cardinality: RelationshipCardinality | undefined
 
   /**
   Free-text explanation emitted by the agent ontology (NTS-445)
@@ -97,6 +111,19 @@ export class RelationshipPropertySchema {
 
   getMany(): boolean {
     return this.many
+  }
+
+  setCardinality(cardinality: RelationshipCardinality): void {
+    this.cardinality = cardinality
+  }
+
+  /**
+  The declared cardinality, or the one implied by the many flag — a
+  relationship declared without a cardinality keeps today's shape: many
+  for @OneToMany, one for @OneToOne (NTS-161)
+  */
+  getCardinality(): RelationshipCardinality {
+    return this.cardinality ?? (this.many ? 'many' : 'one')
   }
 
   setEager(isEager: boolean): void {

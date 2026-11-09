@@ -77,7 +77,7 @@ Decorator reference:
 - `NodeEntity` (decorator) — Register the class as a node model: replays the property/relationship registrations queued by its field decorators, and labels the node with the class name (or `config.labels`).
 - `Number` (decorator) — Register a numeric (integer or float) property.
 - `OnCreateSet` (decorator) — Mark the property as set on create. Merges onto the existing property, so it can be stacked with a type decorator.
-- `OneToMany` (decorator) — Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading, an agent-facing description and per-relationship cascade.
+- `OneToMany` (decorator) — Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading, an agent-facing description, per-relationship cascade and a write-time cardinality (NTS-161 — 'many' by default; 'one' / 'zeroOrOne' restrict the relationship to a single edge, a second relate() throwing CardinalityViolationError).
 - `OneToOne` (decorator) — Register a relationship property holding one related entity. The target entity (`config.target()`) is required — standard decorators have no design:type reflection to infer it.
 - `OnMatchSet` (decorator) — Mark the property as set on match. Merges onto the existing property, so it can be stacked with a type decorator.
 - `OtherNode` (decorator) — On a relationship entity: the property holding the node at the far end of the relationship — the end node for an outgoing relationship, the start node for an incoming one (the direction-agnostic alternative to
@@ -239,6 +239,9 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `search` (function) — Full-text search over a full-text index (`CALL db.index.fulltext.queryNodes`), returning hydrated entities with their relevance score, best match first. The query string is bound as a parameter, so Lucene syntax characters in it are still parsed as such — pass user text through `toFulltextQuery` first. NTS-162 — the model's named read filters apply (a `WHERE` after the YIELD); `filters.withoutFilters` disables names for this call.
 - `setFilterParams` (function) — Set the parameter a named filter's `where` references as `$name` (`setFilterParams('tenant', 'acme')` for `where: 'node.tenantId = $tenant'`). Values are bound as query parameters — they never render into the query text.
 - `StreamOptions` (interface) — lazy() options — the keyset walk behind cursor pagination
+- `SyncEdgesOptions` (interface) — Options for syncEdges (NTS-161): `properties` is applied to the edges NEWLY related by the sync — common edges are left untouched.
+- `SyncEdgesResult` (interface) — What a sync did: how many edges were related and how many detached (zero and zero for a no-op sync — nothing is written)
+- `SyncService` (class)
 - `toCollection` (function) — Hydrate a raw query result into a Collection (neode's Factory.hydrate return shape)
 - `toDirection` (function) — Normalise a direction given in any supported spelling to a Direction. Unknown values fall back to BOTH (the most permissive direction), matching neode's behaviour of never throwing on a bad direction.
 - `toJson` (function) — Convert an entity into a JSON friendly object: plain properties (hidden and structural properties skipped), `_id` (elementId when the model carries an internal id property) and `_labels` (the schema's labels). Eagerly loaded relationships are serialised recursively.
@@ -300,6 +303,7 @@ const name = testId('person') // unique per-run ids, safe for parallel suites
 
 ### Error taxonomy
 
+- `CardinalityViolationError` (class) — Raised when a write would give a relationship more edges than its declared cardinality allows (NTS-161): relating a second edge onto a `one` / `zeroOrOne` relationship — through relate(), a multi-target save, or syncEdges — names the relationship, the violated cardinality and the fix. Detach the existing edge first (or use syncEdges, which detaches for you), or change the declaration to `many`.
 - `classifyError` (function) — Map a raw driver/engine error to the typed taxonomy (NTS-129): constraint violations → ConstraintViolationError, transient codes and retryable-flagged failures → TransientError. Everything else — unknown shapes and already-typed errors — passes through untouched.
 - `ConstraintViolationError` (class) — A unique-constraint violation, raised on `merge()`/`create()` flows that race an existing node. `label`/`property` are parsed from the database message when it names them (Neo4j does; the embedded Relate engine only names the constraint), and stay undefined otherwise.
 - `isTransientError` (function) — Type guard for classified transient errors.
