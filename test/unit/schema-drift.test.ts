@@ -40,6 +40,9 @@ const provider = (constraints: QueryRecord[], indexes: QueryRecord[]) => {
 
       return { records: [] }
     },
+
+    // NTS-598 — the declared set follows the DETECTED edition
+    edition: async () => 'enterprise',
   } as unknown as ConnectionProvider
 
   return { connection, statements }
@@ -85,7 +88,7 @@ describe('schemaDrift (NTS-450)', () => {
 
   const database = () => [
     record({
-      name: 'driftperson_email_unique',
+      name: 'driftperson_email_unique_3cbae7a6',
       type: 'UNIQUE',
       labelsOrTypes: ['DriftPerson'],
       properties: ['email'],
@@ -102,14 +105,14 @@ describe('schemaDrift (NTS-450)', () => {
   const indexes = () => [
     // RANGE is the SHOW spelling of a declared INDEX — not drift
     record({
-      name: 'driftperson_score_index',
+      name: 'driftperson_score_index_d7e8455b',
       type: 'RANGE',
       labelsOrTypes: ['DriftPerson'],
       properties: ['score'],
     }),
     // same name as the declared fulltext index, different properties — mismatched
     record({
-      name: 'driftperson_bio_fulltext',
+      name: 'driftperson_bio_fulltext_073c7489',
       type: 'FULLTEXT',
       labelsOrTypes: ['DriftPerson'],
       properties: ['title'],
@@ -132,24 +135,24 @@ describe('schemaDrift (NTS-450)', () => {
     // model metadata (NTS-447 wiring) — two missing vector indexes
     expect(drift.indexes.missing).toHaveLength(2)
     const declaredVector = drift.indexes.missing.find(
-      (entry) => entry.name === 'driftperson_emb_vector',
+      (entry) => entry.name === 'driftperson_emb_vector_0ce7d056',
     )
     expect(declaredVector).toMatchObject({
-      name: 'driftperson_emb_vector',
+      name: 'driftperson_emb_vector_0ce7d056',
       type: 'VECTOR',
     })
     expect(declaredVector?.createStatement).toBe(
-      'CREATE VECTOR INDEX driftperson_emb_vector IF NOT EXISTS ' +
+      'CREATE VECTOR INDEX driftperson_emb_vector_0ce7d056 IF NOT EXISTS ' +
         "FOR (n:`DriftPerson`) ON (n.`emb`) OPTIONS { indexConfig: { `vector.dimensions`: 1536, `vector.similarity_function`: 'cosine' } }",
     )
 
     // clean: UNIQUE constraint and the RANGE spelling of the declared INDEX
     expect(drift.constraints.missing.map((entry) => entry.name)).toEqual([
-      'driftperson_email_property_type',
+      'driftperson_email_property_type_6e132a83',
     ])
     expect(drift.constraints.mismatched).toHaveLength(0)
     expect(
-      drift.indexes.missing.filter((entry) => entry.name === 'driftperson_score_index'),
+      drift.indexes.missing.filter((entry) => entry.name === 'driftperson_score_index_d7e8455b'),
     ).toHaveLength(0)
 
     // stale: EXISTENCE constraint and RANGE index, each with a drop statement
@@ -164,12 +167,12 @@ describe('schemaDrift (NTS-450)', () => {
 
     // mismatched: fulltext index re-purposed onto another property
     expect(drift.indexes.mismatched).toHaveLength(1)
-    expect(drift.indexes.mismatched[0]?.name).toBe('driftperson_bio_fulltext')
+    expect(drift.indexes.mismatched[0]?.name).toBe('driftperson_bio_fulltext_073c7489')
     expect(drift.indexes.mismatched[0]?.createStatement).toBe(
-      'CREATE FULLTEXT INDEX driftperson_bio_fulltext IF NOT EXISTS FOR (n:`DriftPerson`) ON EACH [n.`bio`]',
+      'CREATE FULLTEXT INDEX driftperson_bio_fulltext_073c7489 IF NOT EXISTS FOR (n:`DriftPerson`) ON EACH [n.`bio`]',
     )
     expect(drift.indexes.mismatched[0]?.dropStatement).toBe(
-      'DROP FULLTEXT INDEX driftperson_bio_fulltext IF EXISTS',
+      'DROP FULLTEXT INDEX driftperson_bio_fulltext_073c7489 IF EXISTS',
     )
   })
 
@@ -179,15 +182,18 @@ describe('schemaDrift (NTS-450)', () => {
     const drift = await schemaDrift(connection, { vector: [VECTOR_OPTION] })
 
     expect(drift.indexes.missing.map((entry) => entry.name)).toEqual(
-      expect.arrayContaining(['driftperson_bio_fulltext', 'driftperson_score_index']),
+      expect.arrayContaining([
+        'driftperson_bio_fulltext_073c7489',
+        'driftperson_score_index_d7e8455b',
+      ]),
     )
 
     const propertyType = drift.constraints.missing.find(
-      (entry) => entry.name === 'driftperson_email_property_type',
+      (entry) => entry.name === 'driftperson_email_property_type_6e132a83',
     )
 
     expect(propertyType?.createStatement).toBe(
-      'CREATE CONSTRAINT driftperson_email_property_type IF NOT EXISTS ' +
+      'CREATE CONSTRAINT driftperson_email_property_type_6e132a83 IF NOT EXISTS ' +
         'FOR (n:`DriftPerson`) REQUIRE n.`email` IS :: STRING',
     )
   })
@@ -196,7 +202,7 @@ describe('schemaDrift (NTS-450)', () => {
     const { connection } = provider(
       [
         record({
-          name: 'driftperson_email_unique',
+          name: 'driftperson_email_unique_3cbae7a6',
           type: 'UNIQUE',
           labelsOrTypes: ['DriftPerson'],
           properties: ['email'],
@@ -214,7 +220,7 @@ describe('schemaDrift (NTS-450)', () => {
         [],
         [
           record({
-            name: 'driftperson_emb_vector',
+            name: 'driftperson_emb_vector_0ce7d056',
             type: 'VECTOR',
             labelsOrTypes: ['DriftPerson'],
             properties: ['emb'],
@@ -237,12 +243,12 @@ describe('schemaDrift (NTS-450)', () => {
     const vector = drift.indexes.missing.find((entry) => entry.type === 'VECTOR')
 
     expect(vector).toMatchObject({
-      name: 'driftdoc_emb_vector',
+      name: 'driftdoc_emb_vector_3bd44025',
       labelsOrTypes: ['DriftDoc'],
       properties: ['emb'],
     })
     expect(vector?.createStatement).toBe(
-      'CREATE VECTOR INDEX driftdoc_emb_vector IF NOT EXISTS ' +
+      'CREATE VECTOR INDEX driftdoc_emb_vector_3bd44025 IF NOT EXISTS ' +
         "FOR (n:`DriftDoc`) ON (n.`emb`) OPTIONS { indexConfig: { `vector.dimensions`: 768, `vector.similarity_function`: 'cosine' } }",
     )
   })

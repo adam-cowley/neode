@@ -110,14 +110,10 @@ export interface GraphTypeConstraintDefinition {
 
 /**
 Deterministic name for a graph type constraint item (the same
-`<label>_<props>_<kind>` shape as the standalone constraint names)
+`<label>_<props>_<kind>_<hash>` shape as the standalone constraint names)
 */
 export const graphTypeConstraintName = (constraint: GraphTypeConstraintDefinition): string =>
-  schemaObjectName(
-    constraint.labelOrType,
-    constraint.properties.map((property) => property.toLowerCase()).join('_'),
-    constraint.kind.toLowerCase(),
-  )
+  schemaObjectName(constraint.labelOrType, constraint.properties, constraint.kind)
 
 const renderProperty = (property: GraphTypePropertyDefinition): string =>
   `${quote(property.name)} :: ${property.type}` +

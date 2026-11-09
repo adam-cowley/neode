@@ -40,11 +40,11 @@ void RoundtripMultiLabel
 
 // ---------------------------------------------------------------------------
 
-const ID_UNIQUE = 'roundtripperson_id_unique'
-const EMAIL_UNIQUE = 'roundtripperson_email_unique'
-const CITY_INDEX = 'roundtripperson_city_index'
-const ALPHA_UNIQUE = 'roundtripalpha_id_unique'
-const BETA_UNIQUE = 'roundtripbeta_id_unique'
+const ID_UNIQUE = 'roundtripperson_id_unique_7c4e0f05'
+const EMAIL_UNIQUE = 'roundtripperson_email_unique_32344216'
+const CITY_INDEX = 'roundtripperson_city_index_afcd5342'
+const ALPHA_UNIQUE = 'roundtripalpha_id_unique_e6875b0a'
+const BETA_UNIQUE = 'roundtripbeta_id_unique_730d5ce4'
 const UNRELATED_CONSTRAINT = 'roundtrip_unrelated_keep'
 
 async function constraintNames(backend: TestBackend): Promise<string[]> {
@@ -91,7 +91,7 @@ describe('Schema install/drop round-trip', () => {
       const constraints = await constraintNames(backend)
       expect(constraints).toContain(ID_UNIQUE)
       expect(constraints).toContain(EMAIL_UNIQUE)
-      expect(constraints).not.toContain('roundtripperson_title_exists')
+      expect(constraints).not.toContain('roundtripperson_title_exists_0995f9d3')
       expect(await indexNames(backend)).toContain(CITY_INDEX)
 
       // The unrelated constraint survived the install

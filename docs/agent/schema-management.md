@@ -127,7 +127,7 @@ _source: services/schema/graph-type.service.ts_
 
 ### `graphTypeConstraintName` (const)
 
-Deterministic name for a graph type constraint item (the same `<label>_<props>_<kind>` shape as the standalone constraint names)
+Deterministic name for a graph type constraint item (the same `<label>_<props>_<kind>_<hash>` shape as the standalone constraint names)
 
 _source: services/schema/graph-type.service.ts_
 
@@ -181,7 +181,7 @@ _source: services/schema/graph-type.service.ts_
 
 ### `InspectOptions` (interface)
 
-Which objects count as "declared" for the inspection: pass the full-text/vector index definitions and the enterprise flag your installSchema call used, so the diff is not polluted by false "extra" entries.
+Which objects count as "declared" for the inspection: pass the full-text/vector index definitions your installSchema call used, so the diff is not polluted by false "extra" entries. The edition is DETECTED from the connection (NTS-598) — EXISTS / property-type constraints are declared only on Enterprise.
 
 _source: services/schema/inspect.service.ts_
 

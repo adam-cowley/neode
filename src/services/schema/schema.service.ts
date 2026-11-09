@@ -5,9 +5,10 @@ import type { PropertySchema } from '../../meta/property-schema.js'
 import {
   ConstraintAction,
   ConstraintType,
-  compositeSchemaObjectName,
   cypherPropertyType,
+  isEnterpriseConnection,
   propertyTypeStatement,
+  schemaObjectName,
   schemaStatement,
   type SchemaResult,
 } from './schema-objects.js'
@@ -42,20 +43,22 @@ export function vectorIndexDefinitionsForLabel(
 
 export class SchemaService {
   private readonly connection: ConnectionProvider
-  private readonly enterprise: boolean
 
-  constructor(connection: ConnectionProvider, isEnterprise = false) {
+  constructor(connection: ConnectionProvider) {
     this.connection = connection
-    this.enterprise = isEnterprise
   }
 
   private async runSchemaStatements(action: ConstraintAction): Promise<SchemaResult[]> {
+    // NTS-598 — EXISTS / property-type constraints are declared from the
+    // DETECTED edition (cached per connection), not a manual flag
+    const isEnterprise = await isEnterpriseConnection(this.connection)
+
     // Sequential on purpose: Neo4j can abort concurrent schema writes
     // (schema-lock contention), so DDL statements never run in parallel
     const results: SchemaResult[] = []
 
     for (const model of getModels().values()) {
-      results.push(...(await this.runSchemaStatementsForModel(action, model)))
+      results.push(...(await this.runSchemaStatementsForModel(action, model, isEnterprise)))
     }
 
     return results
@@ -64,12 +67,13 @@ export class SchemaService {
   private async runSchemaStatementsForModel(
     action: ConstraintAction,
     model: EntitySchema,
+    isEnterprise: boolean,
   ): Promise<SchemaResult[]> {
     // Sequential: see runSchemaStatements
     const output: SchemaResult[] = []
 
     for (const label of model.getLabels()) {
-      output.push(...(await this.runSchemaStatementsForLabel(action, model, label)))
+      output.push(...(await this.runSchemaStatementsForLabel(action, model, label, isEnterprise)))
     }
 
     return output
@@ -79,6 +83,7 @@ export class SchemaService {
     action: ConstraintAction,
     model: EntitySchema,
     label: string,
+    isEnterprise: boolean,
   ): Promise<SchemaResult[]> {
     const properties = model.getProperties()
 
@@ -108,7 +113,7 @@ export class SchemaService {
     // generated only for declared types with a Cypher equivalent.
     // Enterprise-only on the server side — skipped on Community editions,
     // where every attempt would fail the whole install
-    const propertyTypes = this.enterprise
+    const propertyTypes = isEnterprise
       ? await this.runPropertyTypeStatementsForLabel(action, properties, label)
       : []
 
@@ -122,7 +127,7 @@ export class SchemaService {
     // duplicated here)
     const vectors = await this.runVectorStatementsForLabel(action, properties, label)
 
-    if (this.enterprise) {
+    if (isEnterprise) {
       const exists = await this.runExistsConstraintStatementsForLabel(action, properties, label)
 
       return [
@@ -255,7 +260,7 @@ export class SchemaService {
         continue
       }
 
-      composites.set(compositeSchemaObjectName(label, list, type), list)
+      composites.set(schemaObjectName(label, list, type), list)
     }
 
     // Sequential: see runSchemaStatements

@@ -29,7 +29,7 @@ export interface VectorIndexDefinition {
 export function vectorIndexName(definition: VectorIndexDefinition): string {
   return (
     definition.name ??
-    schemaObjectName(definition.label, definition.property, ConstraintType.VECTOR)
+    schemaObjectName(definition.label, [definition.property], ConstraintType.VECTOR)
   )
 }
 

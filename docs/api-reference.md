@@ -797,7 +797,7 @@ const results = await neode.installSchema()
 await neode.dropSchema()
 ```
 
-Property-existence constraints (`REQUIRE n.prop IS NOT NULL`) are Enterprise-only — enable enterprise mode or the statements are skipped.
+Property-existence constraints (`REQUIRE n.prop IS NOT NULL`) and property-type constraints are Enterprise-only — the edition is detected from the connection (`CALL dbms.components()`) and the statements are skipped on Community.
 
 ## Schema inspection & drift
 
@@ -806,7 +806,7 @@ Read the installed schema and diff it against the declared models — cheap, rea
 ```typescript
 import { inspectSchema, schemaDrift, formatSchemaDrift, applySchemaDrift } from 'neode'
 
-const inspection = await inspectSchema(connection, { fulltext?: […], vector?: […], enterprise? })
+const inspection = await inspectSchema(connection, { fulltext?: […], vector?: […] }) // the edition is auto-detected (NTS-598)
 // SchemaInspection: { constraints: SchemaDiff, indexes: SchemaDiff }
 // SchemaDiff: { installed, declared, missing, stale, mismatched } — SchemaObject rows
 

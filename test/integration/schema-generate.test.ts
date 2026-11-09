@@ -33,7 +33,7 @@ describe('generateModels round-trip', () => {
       `MATCH (n) WHERE n:\`Nts164Person\` OR n:\`Nts164Movie\` OR n:\`Nts164Mixed\` DETACH DELETE n`,
     )
     await backend.connection
-      .run('DROP CONSTRAINT nts164person_id_unique IF EXISTS')
+      .run('DROP CONSTRAINT nts164person_id_unique_fbcdeb32 IF EXISTS')
       .catch(() => undefined)
 
     await backend.close()
@@ -43,7 +43,7 @@ describe('generateModels round-trip', () => {
     const createdAt = backend.capabilities.temporals ? ', createdAt: datetime()' : ''
 
     await backend.connection.run(
-      'CREATE CONSTRAINT nts164person_id_unique IF NOT EXISTS ' +
+      'CREATE CONSTRAINT nts164person_id_unique_fbcdeb32 IF NOT EXISTS ' +
         'FOR (n:`Nts164Person`) REQUIRE n.id IS UNIQUE',
     )
     await backend.connection.run(

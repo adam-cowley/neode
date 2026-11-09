@@ -43,9 +43,9 @@ class SyncEvent {
 
 void SyncEvent
 
-const COMPOSITE_UNIQUE = 'syncevent_eventid_email_unique'
-const COMPOSITE_INDEX = 'syncevent_city_region_index'
-const TITLE_PROPERTY_TYPE = 'syncevent_title_property_type'
+const COMPOSITE_UNIQUE = 'syncevent_email_eventid_unique_78bcd562'
+const COMPOSITE_INDEX = 'syncevent_city_region_index_eee3020d'
+const TITLE_PROPERTY_TYPE = 'syncevent_title_property_type_ad8a8ff2'
 
 async function installedConstraints(
   backend: TestBackend,
@@ -90,11 +90,11 @@ describe('composite + property-type schema sync (NTS-140/141)', () => {
       return
     }
 
-    // The service flag governs Enterprise-only DDL (property types). The
-    // capability probe knows per backend whether that DDL is supported —
-    // Community servers reject it, the embedded engine accepts it.
-    const enterprise = backend.capabilities.propertyTypes
-    const results = await new SchemaService(backend.connection, enterprise).create()
+    // NTS-598 — Enterprise-only DDL (EXISTS / property types) is gated on
+    // the edition DETECTED from the connection, so the test expectation
+    // follows the backend's probed edition, not a flag
+    const enterprise = backend.capabilities.edition === 'enterprise'
+    const results = await new SchemaService(backend.connection).create()
 
     for (const result of results) {
       expect(result.success).toBe(true)
@@ -111,7 +111,7 @@ describe('composite + property-type schema sync (NTS-140/141)', () => {
     expect(await installedIndexes(backend)).toContain(COMPOSITE_INDEX)
 
     // ...and drop() reverses install()
-    await new SchemaService(backend.connection, enterprise).drop()
+    await new SchemaService(backend.connection).drop()
 
     const afterDrop = await installedConstraints(backend)
 
@@ -157,11 +157,14 @@ describe('composite + property-type schema sync (NTS-140/141)', () => {
   })
 
   it('installs a property-type constraint from the declared type', async () => {
-    if (!backend.capabilities.propertyTypes) {
+    // NTS-598 — only where the DETECTED edition declares it (real
+    // Enterprise); the embedded engine accepts the DDL but reports
+    // community, so the constraint is correctly skipped there
+    if (backend.capabilities.edition !== 'enterprise') {
       return
     }
 
-    const results = await new SchemaService(backend.connection, true).create()
+    const results = await new SchemaService(backend.connection).create()
 
     for (const result of results) {
       expect(result.success).toBe(true)
@@ -174,21 +177,21 @@ describe('composite + property-type schema sync (NTS-140/141)', () => {
   })
 
   it('reports no drift once installed, and drift after drop', async () => {
-    if (!backend.capabilities.propertyTypes || !backend.capabilities.constraints) {
+    if (backend.capabilities.edition !== 'enterprise' || !backend.capabilities.constraints) {
       return
     }
 
-    await new SchemaService(backend.connection, true).create()
+    await new SchemaService(backend.connection).create()
 
-    const report = await inspectSchema(backend.connection, { enterprise: true })
+    const report = await inspectSchema(backend.connection)
 
     expect(report.constraints.missing).not.toContain(COMPOSITE_UNIQUE)
     expect(report.constraints.missing).not.toContain(TITLE_PROPERTY_TYPE)
     expect(report.indexes.missing).not.toContain(COMPOSITE_INDEX)
 
-    await new SchemaService(backend.connection, true).drop()
+    await new SchemaService(backend.connection).drop()
 
-    const after = await inspectSchema(backend.connection, { enterprise: true })
+    const after = await inspectSchema(backend.connection)
 
     expect(after.constraints.missing).toContain(COMPOSITE_UNIQUE)
     expect(after.constraints.missing).toContain(TITLE_PROPERTY_TYPE)

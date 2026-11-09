@@ -27,9 +27,9 @@ void SchemaPerson
 
 // ---------------------------------------------------------------------------
 
-const UNIQUE_CONSTRAINT = 'schemaperson_id_unique'
-const EMAIL_INDEX = 'schemaperson_email_index'
-const TITLE_EXISTS = 'schemaperson_title_exists'
+const UNIQUE_CONSTRAINT = 'schemaperson_id_unique_b4e03243'
+const EMAIL_INDEX = 'schemaperson_email_index_ddbbe415'
+const TITLE_EXISTS = 'schemaperson_title_exists_f6dd81eb'
 
 async function constraintNames(backend: TestBackend): Promise<string[]> {
   const result = await backend.connection.run('SHOW CONSTRAINTS', {}, 'READ')
@@ -139,16 +139,18 @@ describe('Schema sync (constraints + indexes)', () => {
       expect(await indexNames(backend)).not.toContain(EMAIL_INDEX)
     })
 
-    it('only creates existence constraints when the enterprise flag is set', async () => {
+    it('creates existence constraints only on Enterprise editions, DETECTED not flagged (NTS-598)', async () => {
       if (!requiresConstraints()) {
         return
       }
 
-      // Enterprise flag off (the default): no EXISTS constraints, even
-      // for properties with exists: true
+      // The edition is probed from the connection (CALL dbms.components()):
+      // no EXISTS constraints on Community, even for exists: true properties
       const results = await backend.neode.installSchema()
 
-      expect(results.some((result) => result.type === ConstraintType.EXISTS)).toBe(false)
+      expect(results.some((result) => result.type === ConstraintType.EXISTS)).toBe(
+        backend.capabilities.edition === 'enterprise',
+      )
 
       if (backend.capabilities.edition !== 'enterprise') {
         return
@@ -156,9 +158,7 @@ describe('Schema sync (constraints + indexes)', () => {
 
       // Enterprise edition: existence constraints (IS NOT NULL) are
       // created and dropped through the full lifecycle
-      const enterpriseNeode = new Neode(backend.connection, true)
-
-      const enterpriseResults = await enterpriseNeode.installSchema()
+      const enterpriseResults = results
       const exists = enterpriseResults.filter((result) => result.type === ConstraintType.EXISTS)
 
       expect(exists).toHaveLength(1)
@@ -172,7 +172,7 @@ describe('Schema sync (constraints + indexes)', () => {
       })
       expect(await constraintNames(backend)).toContain(TITLE_EXISTS)
 
-      await enterpriseNeode.dropSchema()
+      await backend.neode.dropSchema()
       expect(await constraintNames(backend)).not.toContain(TITLE_EXISTS)
     })
   })

@@ -138,7 +138,7 @@ function declaredPropertyTypes(): Map<string, string> {
 
         if (cypherType !== undefined) {
           types.set(
-            schemaObjectName(label, property.getKey(), ConstraintType.PROPERTY_TYPE),
+            schemaObjectName(label, [property.getKey()], ConstraintType.PROPERTY_TYPE),
             cypherType,
           )
         }
@@ -347,26 +347,31 @@ export async function schemaDrift(
   // the installed specification against the derived definition. Backends
   // without graph type support (Community, pre-2026.02, embedded engines)
   // make the probe throw — the family is omitted from the report, keeping
-  // drift cheap and never-throwing for everyone else.
-  let graphType: GraphTypeDrift | undefined
+  // drift cheap and never-throwing for everyone else. NTS-598: only the
+  // PROBE is swallowed — a canonical text the parser cannot read is a
+  // library bug and throws loudly instead of masquerading as drift.
+  let specification: string | undefined
+  let isGraphTypeSupported = true
 
   try {
-    const specification = await currentGraphType(connection)
-
-    graphType = graphTypeDriftGroup(
-      specification === undefined
-        ? { nodes: [], relationships: [] }
-        : parseGraphTypeSpecification(specification),
-      deriveGraphType(
-        options.graphTypeConstraints === undefined
-          ? {}
-          : { constraints: options.graphTypeConstraints },
-      ),
-      specification,
-    )
+    specification = await currentGraphType(connection)
   } catch {
-    // Graph types unsupported here — no family reported
+    isGraphTypeSupported = false
   }
+
+  const graphType = isGraphTypeSupported
+    ? graphTypeDriftGroup(
+        specification === undefined
+          ? { nodes: [], relationships: [] }
+          : parseGraphTypeSpecification(specification),
+        deriveGraphType(
+          options.graphTypeConstraints === undefined
+            ? {}
+            : { constraints: options.graphTypeConstraints },
+        ),
+        specification,
+      )
+    : undefined
 
   return {
     constraints: driftGroup(inspection.constraints, vectors, types),

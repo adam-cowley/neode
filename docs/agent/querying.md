@@ -205,8 +205,6 @@ _source: services/query/knn.service.ts_
 
 ### `LabelPredicate` (class)
 
-A label predicate: `alias:Label` (several labels require all of them), shared by `whereLabel` (`WHERE n:Completed`) and `orderByLabel` (`ORDER BY n:Completed DESC`).
-
 _source: query/label-predicate.ts_
 
 ### `LoadedEntity` (type)

@@ -256,10 +256,10 @@ describe('DDL names (schema-objects, drift.service)', () => {
     expect(
       schemaStatement(ConstraintAction.CREATE, ConstraintType.UNIQUE, 'Person', ['email']),
     ).toBe(
-      'CREATE CONSTRAINT person_email_unique IF NOT EXISTS FOR (n:`Person`) REQUIRE n.`email` IS UNIQUE',
+      'CREATE CONSTRAINT person_email_unique_b37312eb IF NOT EXISTS FOR (n:`Person`) REQUIRE n.`email` IS UNIQUE',
     )
     expect(schemaStatement(ConstraintAction.DROP, ConstraintType.UNIQUE, 'Person', ['email'])).toBe(
-      'DROP CONSTRAINT person_email_unique IF EXISTS',
+      'DROP CONSTRAINT person_email_unique_b37312eb IF EXISTS',
     )
   })
 

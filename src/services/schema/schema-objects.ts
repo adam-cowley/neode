@@ -5,6 +5,7 @@ without creating cycles.
 */
 import { PropertyType } from '../../meta/property-schema.js'
 import { quote, safeKey } from '../../query/quote.js'
+import type { ConnectionProvider } from '../../driver/types.js'
 
 export const ConstraintAction = {
   CREATE: 'CREATE',
@@ -47,21 +48,61 @@ export interface SchemaResult {
   error?: Error
 }
 
-/**
-Deterministic schema object name: `<label>_<property>_<type>` (PLAN §G)
-*/
-export const schemaObjectName = (label: string, property: string, type: string): string =>
-  `${label.toLowerCase()}_${property}_${type.toLowerCase()}`
+const compareStrings = (left: string, right: string): number => {
+  if (left < right) {
+    return -1
+  }
+
+  if (left > right) {
+    return 1
+  }
+
+  return 0
+}
 
 /**
-Deterministic name for a composite object: `<label>_<props joined by _>_<type>`
+A copy sorted into the stable hash/name order
 */
-export const compositeSchemaObjectName = (
-  label: string,
-  properties: string[],
-  type: string,
-): string =>
-  schemaObjectName(label, properties.map((property) => property.toLowerCase()).join('_'), type)
+const sortedCopy = (values: string[]): string[] => {
+  const copy = [...values]
+
+  copy.sort(compareStrings)
+
+  return copy
+}
+
+/**
+NTS-598 — short deterministic hash (FNV-1a, 32-bit hex) over the schema
+identity. Case-sensitive inputs keep `User` and `user` labels distinct,
+and the JSON-encoded tuple with a sorted property list keeps
+(`a`,`b_c`) and (`a_b`,`c`) distinct — neither survives the joined
+readable part. No runtime randomness: the same (type, label, properties)
+hashes identically in every process.
+*/
+const schemaNameHash = (type: string, label: string, properties: string[]): string => {
+  const payload = JSON.stringify([type, label, sortedCopy(properties)])
+
+  let hash = 2_166_136_261 // FNV-1a 32-bit offset basis
+
+  for (let index = 0; index < payload.length; index++) {
+    hash ^= payload.codePointAt(index) ?? 0
+    hash = Math.imul(hash, 16_777_619) // FNV-1a 32-bit prime
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+/**
+Deterministic, INJECTIVE schema object name (NTS-598):
+`<label>_<props joined by _>_<type>_<hash>` — the readable part stays
+recognisable, the hash suffix disambiguates what the join cannot.
+The property list is sorted in BOTH parts: declaration order must never
+produce a different name for the same object.
+*/
+export const schemaObjectName = (label: string, properties: string[], type: string): string =>
+  `${label.toLowerCase()}_${sortedCopy(properties)
+    .map((property) => property.toLowerCase())
+    .join('_')}_${type.toLowerCase()}_${schemaNameHash(type, label, properties)}`
 
 /**
 CREATE/DROP statement for a single- or composite-property UNIQUE, EXISTS or
@@ -73,7 +114,7 @@ export function schemaStatement(
   type: ConstraintType,
   label: string,
   properties: string[],
-  name: string = schemaObjectName(label, properties[0] ?? '', type),
+  name: string = schemaObjectName(label, properties, type),
   shouldQuoteLabel = true,
 ): string {
   if (properties.length === 0) {
@@ -121,7 +162,7 @@ export function propertyTypeStatement(
   label: string,
   property: string,
   cypherType: string,
-  name: string = schemaObjectName(label, property, ConstraintType.PROPERTY_TYPE),
+  name: string = schemaObjectName(label, [property], ConstraintType.PROPERTY_TYPE),
   shouldQuoteLabel = true,
 ): string {
   const labelPattern = shouldQuoteLabel ? `n:${quote(label)}` : `n:${label}`
@@ -153,4 +194,35 @@ const CYPHER_PROPERTY_TYPES: Partial<Record<PropertyType, string>> = {
 
 export function cypherPropertyType(type: PropertyType): string | undefined {
   return CYPHER_PROPERTY_TYPES[type]
+}
+
+/**
+NTS-598 — the connection's edition, probed once per connection through the
+provider's `CALL dbms.components()`-backed `edition()` and cached: EXISTS
+and property-type constraints are Enterprise-only, so the declared set
+must come from what the server IS, not from a manual flag that drifts out
+of sync with the database. An 'unknown' edition (or a failed probe) counts
+as Community — the fail-safe default that never sends unsupported DDL.
+*/
+const editionCache = new WeakMap<ConnectionProvider, Promise<boolean>>()
+
+export const isEnterpriseConnection = async (connection: ConnectionProvider): Promise<boolean> => {
+  const cached = editionCache.get(connection)
+
+  if (cached !== undefined) {
+    return cached
+  }
+
+  const detected = (async () => {
+    try {
+      return (await connection.edition()) === 'enterprise'
+    } catch {
+      // no probe on this provider — Community behaviour (fail-safe default)
+      return false
+    }
+  })()
+
+  editionCache.set(connection, detected)
+
+  return detected
 }
