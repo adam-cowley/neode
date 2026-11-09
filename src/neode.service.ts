@@ -47,7 +47,13 @@ import { hasProjectedProperties } from './projection/index.js'
 import { ProjectionService } from './projection/projection.service.js'
 import { Builder } from './query/index.js'
 import { BoundBuilder } from './query/bound-builder.js'
-import type { ReadOptions, WithSpec } from './query/load-spec.js'
+import type {
+  LoadedEntity,
+  LoadOptions,
+  QueryLoadSpec,
+  ReadOptions,
+  WithSpec,
+} from './query/load-spec.js'
 import { quote } from './query/quote.js'
 import type { Repository } from './repository/index.js'
 import { FactoryBuilder } from './services/factory.service.js'
@@ -61,11 +67,7 @@ import { FindService } from './services/query/find.service.js'
 import { FindByIdService } from './services/query/find-by-id.service.js'
 import { GetService, type OrderSpec } from './services/query/get.service.js'
 import { type KnnMode, knn } from './services/query/knn.service.js'
-import {
-  type LoadOptions,
-  LoadRelationService,
-  RelatedQuery,
-} from './services/query/load-relation.service.js'
+import { LoadRelationService, RelatedQuery } from './services/query/load-relation.service.js'
 import { getMergeFields, MergeService } from './services/query/merge.service.js'
 import { rollbackAfterFailure } from './transaction/rollback.js'
 import {
@@ -791,6 +793,25 @@ export class Neode implements INeode {
     return resolveRepository(this, entity, database)
   }
 
+  /**
+  Map-narrowed load spec (NTS-154): `options.with` checked against the
+  model's type-level relationship map (the `neodeRelationships` phantom
+  static, falling back to the declared object/array field keys) — the
+  resolved entity's type carries every requested relationship:
+  `find(Person, id, { with: { pets: { toys: true } } })` resolves to
+  `(Person & { pets: (Pet & { toys: Toy[] })[] }) | undefined`. Nested
+  spec levels and the level's order / skip / limit trims ride the same
+  statement (the NTS-498 machinery).
+  */
+  async find<C extends Newable, const WithSpecT extends QueryLoadSpec<C>>(
+    constructor: C,
+    value: string | number,
+    options: {
+      with: WithSpecT
+      database?: string | undefined
+      withoutFilters?: string[] | undefined
+    },
+  ): Promise<LoadedEntity<InstanceType<C>, WithSpecT> | undefined>
   async find<T>(
     constructor: new (...arguments_: never[]) => T,
     value: string | number,
@@ -804,8 +825,14 @@ export class Neode implements INeode {
   async find<T>(
     constructor: new (...arguments_: never[]) => T,
     value: string | number,
-    databaseOrOptions?: string | ReadOptions<T>,
-  ): Promise<T | undefined> {
+    databaseOrOptions?:
+      | string
+      | {
+          with?: object
+          database?: string | undefined
+          withoutFilters?: string[] | undefined
+        },
+  ): Promise<unknown> {
     const schema = this.getSchema(constructor)
 
     const options = typeof databaseOrOptions === 'object' ? databaseOrOptions : undefined
@@ -1658,6 +1685,32 @@ export class Neode implements INeode {
     return runCypherScript(this.getRunner(), content, options)
   }
 
+  /**
+  Map-narrowed load spec (NTS-154): `options.with` checked against the
+  model's type-level relationship map — every entity's type carries the
+  requested relationships, `all(Person, {}, undefined, undefined,
+  undefined, undefined, { with: { pets: true } })` resolves to
+  `(Person & { pets: Pet[] })[]`. Nested spec levels ride the same
+  statement (the NTS-498 machinery).
+  */
+  async all<C extends Newable, const WithSpecT extends QueryLoadSpec<C> = never>(
+    constructor: C,
+    parameters?: Record<string, unknown>,
+    order?: OrderSpec,
+    limit?: number,
+    skip?: number,
+    database?: string,
+    options?: { with: WithSpecT; withoutFilters?: string[] | undefined },
+  ): Promise<LoadedEntity<InstanceType<C>, WithSpecT>[]>
+  async all<T>(
+    constructor: new (...arguments_: never[]) => T,
+    parameters?: Record<string, unknown>,
+    order?: OrderSpec,
+    limit?: number,
+    skip?: number,
+    database?: string,
+    options?: { with?: WithSpec<T>; withoutFilters?: string[] | undefined },
+  ): Promise<T[]>
   async all<T>(
     constructor: new (...arguments_: never[]) => T,
     parameters: Record<string, unknown> = {},
@@ -1665,8 +1718,11 @@ export class Neode implements INeode {
     limit?: number,
     skip?: number,
     database?: string,
-    options?: { with?: WithSpec<T>; withoutFilters?: string[] | undefined },
-  ): Promise<T[]> {
+    options?: {
+      with?: object
+      withoutFilters?: string[] | undefined
+    },
+  ): Promise<unknown> {
     const schema = this.getSchema(constructor)
 
     const tx = await this.beginWorkTransaction('READ', database)

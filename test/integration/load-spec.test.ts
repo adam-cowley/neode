@@ -14,12 +14,25 @@ import { openBackend, TestBackend } from './support/backend'
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
 
 @NodeEntity()
+class SpecToy {
+  @Uuid({ primary: true })
+  id!: string
+
+  @Property({ type: 'string' })
+  name!: string
+}
+
+@NodeEntity()
 class SpecOrder {
   @Uuid({ primary: true })
   id!: string
 
   @NumberProperty()
   orderDate!: number
+
+  // Non-eager: fetched through a nested load spec level (NTS-154)
+  @OneToMany(() => SpecToy, 'FOR', Direction.OUTGOING)
+  toys!: SpecToy[]
 }
 
 @NodeEntity()
@@ -62,6 +75,28 @@ async function seedCustomer(
     const card = await backend.neode.create(SpecCard, { code: 'GOLD' })
 
     await backend.neode.relate(SpecCustomer, customer, card, 'card')
+  }
+
+  return customer
+}
+
+/**
+A customer with ONE order holding the given toys — the nested-spec
+fixtures (NTS-154)
+*/
+async function seedOrderWithToys(
+  backend: TestBackend,
+  toyNames: string[],
+): Promise<WithMethods<SpecCustomer>> {
+  const customer = await backend.neode.create(SpecCustomer, { name: 'Toyed' })
+  const order = await backend.neode.create(SpecOrder, { orderDate: 30 })
+
+  await backend.neode.relate(SpecCustomer, customer, order, 'orders')
+
+  for (const name of toyNames) {
+    const toy = await backend.neode.create(SpecToy, { name })
+
+    await backend.neode.relate(SpecOrder, order, toy, 'toys')
   }
 
   return customer
@@ -184,6 +219,17 @@ describe('load spec (`with`) — integration', () => {
     ).rejects.toThrow('Unknown relationship "wishlists" on SpecCustomer')
   })
 
+  it('a PROPERTY key passes the legacy overloads and is rejected at runtime, naming the key', async () => {
+    const seeded = await seedCustomer(backend)
+
+    // NTS-154 ceiling: property keys fall through the legacy overload's
+    // keyof-T domain (docs/decisions/0002-typing-eager-loads.md) — the
+    // runtime validation is the checked edge
+    await expect(
+      backend.neode.find(SpecCustomer, seeded.id, { with: { name: true } }),
+    ).rejects.toThrow('Unknown relationship "name" on SpecCustomer')
+  })
+
   it('repository findAll() threads the load spec through', async () => {
     const seeded = await seedCustomer(backend)
 
@@ -198,5 +244,43 @@ describe('load spec (`with`) — integration', () => {
     expect(
       (customers[0]?.orders as WithMethods<SpecOrder>[]).map((order) => order.orderDate),
     ).toEqual([30, 20])
+  })
+
+  it('a nested spec level loads the target’s own relationship in the same statement (NTS-154)', async () => {
+    const seeded = await seedOrderWithToys(backend, ['Ball', 'Bone'])
+
+    const customer = await backend.neode.find(SpecCustomer, seeded.id, {
+      with: { orders: { toys: true } },
+    })
+
+    const orders = customer?.orders as WithMethods<SpecOrder>[]
+
+    expect(orders).toHaveLength(1)
+    expect(orders[0]).toBeInstanceOf(SpecOrder)
+    expect((orders[0]?.toys as WithMethods<SpecToy>[]).map((toy) => toy.name)).toEqual(
+      expect.arrayContaining(['Ball', 'Bone']),
+    )
+  })
+
+  it('a nested level with a trim (limit) rides the same statement', async () => {
+    const seeded = await seedOrderWithToys(backend, ['Ball', 'Bone', 'Chew'])
+
+    const customer = await backend.neode.find(SpecCustomer, seeded.id, {
+      with: { orders: { toys: { limit: 1 } } },
+    })
+
+    const orders = customer?.orders as WithMethods<SpecOrder>[]
+
+    expect(orders[0]?.toys).toHaveLength(1)
+  })
+
+  it('a nested key the target does not declare throws, naming the valid relationships', async () => {
+    const seeded = await seedCustomer(backend)
+
+    await expect(
+      backend.neode.find(SpecCustomer, seeded.id, {
+        with: { orders: { wishlist: true } },
+      }),
+    ).rejects.toThrow('Relationship "wishlist" is not defined on model "SpecOrder"')
   })
 })

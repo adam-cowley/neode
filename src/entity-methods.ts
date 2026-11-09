@@ -26,11 +26,8 @@ import type { EntitySchema } from './meta/entity/entity-schema.js'
 import type { Newable } from './meta/newable.js'
 import type { Neode } from './neode.service.js'
 import { toJson } from './serialise.js'
-import type {
-  LoadOptions,
-  RelatedQuery,
-  RelatedScope,
-} from './services/query/load-relation.service.js'
+import type { RelatedQuery, RelatedScope } from './services/query/load-relation.service.js'
+import type { LoadOptions } from './query/load-spec.js'
 import type { DeleteOptions } from './services/query/delete.service.js'
 import type { DetachResult } from './services/query/detach.service.js'
 import { constructorOf as constructorOfInstance } from './services/type-guards.js'
@@ -149,10 +146,11 @@ exactly `order`, `skip`, `limit` or `withoutFilters` cannot be
 nested-loaded through the spec — the single-key load(key) form still
 reaches it.
 
-shortcut: without the NTS-154 model map the key domain is every
-non-method key of the entity type — plain property keys and
-relationship-entity keys type-check here and the runtime rejects them,
-naming the declared relationships at that level.
+shortcut: the NTS-154 model map drives the QUERY-level `with` spec
+(QueryLoadSpec) — this instance surface keeps the every-non-method-key
+domain, because the map hangs off the constructor and `this` here is the
+instance; a map-checked instance spec needs a constructor→instance type
+link (see docs/decisions/0002-typing-eager-loads.md).
 */
 export type InstanceLoadLevel<T> = {
   [K in Exclude<keyof T, keyof EntityMethods> & string]?:

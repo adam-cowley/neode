@@ -13,10 +13,11 @@ import { getModel, getModels } from '../meta/index.js'
 import { EntitySchema } from '../meta/entity/entity-schema.js'
 import type { EntitySchema as EntitySchemaType } from '../meta/entity/entity-schema.js'
 import { elementIdOfEntity } from '../element-id.js'
+import type { Newable } from '../meta/newable.js'
 import type { RelationshipPropertySchema } from '../meta/relationship-property-schema.js'
 import type { INeode } from '../neode.interface.js'
 import type { Builder } from '../query/index.js'
-import type { ReadOptions, WithSpec } from '../query/load-spec.js'
+import type { LoadedEntity, QueryLoadSpec, ReadOptions, WithSpec } from '../query/load-spec.js'
 import { BoundBuilder } from '../query/bound-builder.js'
 import { NeodeError } from '../errors/index.js'
 import { DeleteService, type DeleteOptions } from '../services/query/delete.service.js'
@@ -158,6 +159,20 @@ export class TransactionalService implements INeode {
     return this.state !== 'open'
   }
 
+  /**
+  Map-narrowed load spec (NTS-154, facade parity): `options.with` checked
+  against the model's type-level relationship map — the resolved entity's
+  type carries every requested relationship.
+  */
+  async find<C extends Newable, const WithSpecT extends QueryLoadSpec<C>>(
+    constructor: C,
+    value: string | number,
+    options: {
+      with: WithSpecT
+      database?: string | undefined
+      withoutFilters?: string[] | undefined
+    },
+  ): Promise<LoadedEntity<InstanceType<C>, WithSpecT> | undefined>
   async find<T>(
     constructor: new (...arguments_: never[]) => T,
     value: string | number,
@@ -171,8 +186,14 @@ export class TransactionalService implements INeode {
   async find<T>(
     constructor: new (...arguments_: never[]) => T,
     value: string | number,
-    databaseOrOptions?: string | ReadOptions<T>,
-  ): Promise<T | undefined> {
+    databaseOrOptions?:
+      | string
+      | {
+          with?: object
+          database?: string | undefined
+          withoutFilters?: string[] | undefined
+        },
+  ): Promise<unknown> {
     this.ignoreDatabaseOverride(
       typeof databaseOrOptions === 'string' ? databaseOrOptions : databaseOrOptions?.database,
     )
@@ -488,6 +509,29 @@ export class TransactionalService implements INeode {
   ALL nodes of the given constructor, optionally filtered, ordered,
   limited and skipped — mirror of the facade's all
   */
+  /**
+  Map-narrowed load spec (NTS-154, facade parity): `options.with` checked
+  against the model's type-level relationship map — every entity's type
+  carries the requested relationships.
+  */
+  async all<C extends Newable, const WithSpecT extends QueryLoadSpec<C> = never>(
+    constructor: C,
+    parameters?: Record<string, unknown>,
+    order?: OrderSpec,
+    limit?: number,
+    skip?: number,
+    database?: string,
+    options?: { with: WithSpecT; withoutFilters?: string[] | undefined },
+  ): Promise<LoadedEntity<InstanceType<C>, WithSpecT>[]>
+  async all<T>(
+    constructor: new (...arguments_: never[]) => T,
+    parameters?: Record<string, unknown>,
+    order?: OrderSpec,
+    limit?: number,
+    skip?: number,
+    database?: string,
+    options?: { with?: WithSpec<T>; withoutFilters?: string[] | undefined },
+  ): Promise<T[]>
   async all<T>(
     constructor: new (...arguments_: never[]) => T,
     parameters: Record<string, unknown> = {},
@@ -495,8 +539,11 @@ export class TransactionalService implements INeode {
     limit?: number,
     skip?: number,
     database?: string,
-    options?: { with?: WithSpec<T>; withoutFilters?: string[] | undefined },
-  ): Promise<T[]> {
+    options?: {
+      with?: object
+      withoutFilters?: string[] | undefined
+    },
+  ): Promise<unknown> {
     this.ignoreDatabaseOverride(database)
 
     const schema = this.getSchema(constructor)

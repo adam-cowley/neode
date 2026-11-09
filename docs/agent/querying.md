@@ -92,6 +92,12 @@ Options for the unified raw query entry, `Neode#cypher`.
 
 _source: driver/types.ts_
 
+### `DeclaredRelationships` (type)
+
+The declared relationship map of a model constructor (NTS-154), read off the class's phantom `neodeRelationships` static — `undefined` when the model declares none (the `with` spec then falls back to the inferred object/array-key domain, see QueryLoadLevel). TS cannot read the TC39 decorator context's field registrations at the type level (no `emitDecoratorMetadata` in this repo — decision 0001), so the map is the one declaration the author adds per model. The runtime EntitySchema stays the source of truth: a key the map misses is rejected by the runtime validation with the same descriptive error as before.
+
+_source: query/load-spec.ts_
+
 ### `Direction` (const)
 
 Direction of a relationship pattern. BOTH renders an undirected match pattern (`-[r:TYPE]-`), matching relationships of the type in either direction. Undirected is match-only: Neo4j cannot create a relationship without a direction, so the write paths (relate / create / save) reject BOTH with a descriptive error — set OUTGOING or INCOMING to write (NTS-483). Accepts the legacy case-insensitive 'IN' / 'OUT' / 'BOTH' spellings anywhere a direction is taken.
@@ -188,6 +194,16 @@ A label predicate: `alias:Label` (several labels require all of them), shared by
 
 _source: query/label-predicate.ts_
 
+### `LoadedEntity` (type)
+
+_source: query/load-spec.ts_
+
+### `LoadOptions` (interface)
+
+Traversal options for a lazy relation load (`instance.load(key, options)`, NTS-558): pushed into the traversal's ORDER BY / SKIP / LIMIT — the sorted and truncated related reads that otherwise drop callers to a raw Builder.
+
+_source: query/load-spec.ts_
+
 ### `LoadSpec` (type)
 
 One entry of a load spec (NTS-560): a callback decorating the relation's read. `true` (a plain request) is also accepted at the `with` key.
@@ -238,7 +254,7 @@ _source: services/query/paginate.service.ts_
 
 ### `projectionNode` (function)
 
-The RETURN map projection for a model's read query: all properties, the hydration identity markers, full-entity eager relationships and every projected property — one query per read. `withSpec` (NTS-560) additionally renders requested non-eager relationships: `true` renders the standard comprehension fragment, a decorating callback renders `key: <key>_loaded` (`[0]` for singular) — the alias the CALL subquery loadSpecCalls() published. Requested keys count as loaded: the hydrated values materialize as own properties through the regular eager hydration path.
+The RETURN map projection for a model's read query: all properties, the hydration identity markers, full-entity eager relationships and every projected property — one query per read. `withSpec` (NTS-560, NTS-154) additionally renders requested non-eager relationships: `true` renders the standard comprehension fragment, a nested spec object renders the level's spec fragment (the NTS-498 shape, keys validated down the target's declared relationship graph), and a decorating callback renders `key: <key>_loaded` (`[0]` for singular) — the alias the CALL subquery loadSpecCalls() published. Requested keys count as loaded: the hydrated values materialize as own properties through the regular eager hydration path.
 
 _source: projection/projection.ts_
 
@@ -259,6 +275,18 @@ _source: query/property.ts_
 Payload of QUERY_EXECUTED, emitted once per executed statement.
 
 _source: common/events.ts_
+
+### `QueryLoadLevel` (type)
+
+One nested level of a `with` load spec, keyed off the entity's DECLARED FIELD types (no map entry required): the LoadOptions trim keys (order / skip / limit / withoutFilters) sit beside the relationship keys, exactly the object `parseLoadLevel` (NTS-498) reads at runtime — a relationship named exactly like a reserved option key is unusable in the spec, as the runtime reserves it. Relationship keys descend recursively through the declared field types: an array field loads many (`Item[]` in the narrowed return), an entity field loads one (`Item | undefined`).
+
+_source: query/load-spec.ts_
+
+### `QueryLoadSpec` (type)
+
+The `with` load spec checked against the type-level model map (NTS-154), keyed by the model CONSTRUCTOR: - with a `neodeRelationships` phantom static: the spec's keys must be DECLARED RELATIONSHIPS (`keyof` the map entry, intersected with the class's own fields) — property keys, method keys and typos are type errors; - without one: the inferred fallback domain (QueryLoadLevel) — keys whose declared field type can hold related entities. Every level also accepts the LoadOptions trim keys and descends through the declared field types, mirroring parseLoadLevel at runtime.
+
+_source: query/load-spec.ts_
 
 ### `QueryOutput` (interface)
 

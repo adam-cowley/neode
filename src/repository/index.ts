@@ -6,7 +6,7 @@ import type { Newable } from '../meta/newable.js'
 import { PropertyType, type PropertySchema } from '../meta/property-schema.js'
 import type { INeode } from '../neode.interface.js'
 import { Builder, eagerNode } from '../query/index.js'
-import type { ReadOptions, WithSpec } from '../query/load-spec.js'
+import type { QueryLoadLevel, ReadOptions } from '../query/load-spec.js'
 import { quote } from '../query/quote.js'
 import { applyOrder, type OrderSpec } from '../query/order-spec.js'
 import { getMergeFields } from '../services/query/merge.service.js'
@@ -24,12 +24,10 @@ import {
 } from '../services/query/filters.js'
 
 /**
-Ordering, paging and row-limit options shared by findAll() and where()
-*/
-/**
 Ordering, paging, row-limit and load-spec options shared by findAll()
-and where(). Generic over the entity so the `with` load spec (NTS-560)
-type-checks its relationship keys.
+and where(). Generic over the entity so the `with` load spec
+(NTS-560/NTS-154) type-checks its relationship keys — nested spec levels
+included (the map-checked facade surface is the narrower contract).
 */
 export interface FindOptions<Entity = object> {
   order?: OrderSpec
@@ -51,7 +49,7 @@ export interface FindOptions<Entity = object> {
   With a spec the read goes through the projection path, so the standard
   read filters apply — includeDeleted is not honoured with `with`.
   */
-  with?: WithSpec<Entity>
+  with?: QueryLoadLevel<Entity>
 }
 
 /**
@@ -258,25 +256,27 @@ export class Repository<Entity> {
     const withSpec = options.with
 
     if (!hasIncludeDeleted && (withSpec !== undefined || hasProjectedProperties(this.schema))) {
-      const delegateOptions: { with?: WithSpec<Entity>; withoutFilters?: string[] } = {}
-
-      if (withSpec !== undefined) {
-        delegateOptions.with = withSpec
-      }
-
-      if (options.withoutFilters !== undefined) {
-        delegateOptions.withoutFilters = options.withoutFilters
-      }
-
-      return this.neode.all<Entity>(
-        this.entity,
-        parameters,
-        options.order,
-        options.limit,
-        options.skip,
-        this.database,
-        delegateOptions,
-      )
+      // Split by with-presence: the narrowed facade overload requires the
+      // spec, the plain one rejects it (NTS-154)
+      return withSpec === undefined
+        ? this.neode.all<Entity>(
+            this.entity,
+            parameters,
+            options.order,
+            options.limit,
+            options.skip,
+            this.database,
+            { withoutFilters: options.withoutFilters },
+          )
+        : this.neode.all<Entity>(
+            this.entity,
+            parameters,
+            options.order,
+            options.limit,
+            options.skip,
+            this.database,
+            { with: withSpec, withoutFilters: options.withoutFilters },
+          )
     }
 
     const builder = this.matchAll(parameters, filters)

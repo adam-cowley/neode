@@ -162,7 +162,12 @@ export { fulltextIndexName } from './services/schema/fulltext.service.js'
 export type { OrderSpec } from './query/order-spec.js'
 export type { RelatedQuery, RelatedScope } from './services/query/load-relation.service.js'
 export type {
+  DeclaredRelationships,
+  LoadOptions,
+  LoadedEntity,
   LoadSpec,
+  QueryLoadLevel,
+  QueryLoadSpec,
   ReadOptions,
   RelationQuery,
   WithSpec,

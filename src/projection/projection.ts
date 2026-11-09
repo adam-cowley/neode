@@ -2,6 +2,9 @@ import {
   EAGER_ID,
   EAGER_LABELS,
   eagerPattern,
+  parseLoadLevel,
+  parseTargetSchema,
+  specLevelPattern,
   type EagerFilterContext,
 } from '../query/eager-utilities.js'
 import { type Builder, Direction } from '../query/index.js'
@@ -266,11 +269,18 @@ function isLoadSpec(value: unknown): value is true | LoadSpec {
 }
 
 /**
-One requested entry of the with-spec: undefined when the key was not
-requested, `true` for a plain request, the callback for a decorated one.
-A non-`true` non-callback value counts as not requested (`false`).
+One requested entry of the with-spec (NTS-560, NTS-154): undefined when
+the key was not requested, `true` for a plain request, the callback for a
+decorated one, or the plain object of a NESTED spec level (keys one level
+down the target's declared relationship graph, plus the level's
+order / skip / limit trim — parsed by parseLoadLevel at render time).
+A non-`true` non-callback non-object value counts as not requested
+(`false`).
 */
-function requestedSpec(withSpec: object | undefined, key: string): true | LoadSpec | undefined {
+function requestedSpec(
+  withSpec: object | undefined,
+  key: string,
+): true | LoadSpec | Record<string, unknown> | undefined {
   if (withSpec === undefined || !Object.hasOwn(withSpec, key)) {
     return undefined
   }
@@ -285,8 +295,13 @@ function requestedSpec(withSpec: object | undefined, key: string): true | LoadSp
     return value
   }
 
+  if (isRecord(value)) {
+    return value
+  }
+
   throw new NeodeError(
-    `The load spec ("with") entry for "${key}" must be true or a (relation) => void callback`,
+    `The load spec ("with") entry for "${key}" must be true, a (relation) => void callback, ` +
+      'or a nested spec object of relationship keys',
   )
 }
 
@@ -456,9 +471,11 @@ export function loadSpecCalls(
   for (const relationship of schema.getRelationships()) {
     const callback = requestedSpec(withSpec, relationship.getKey())
 
-    // Plain requests render as the standard comprehension fragment in
-    // projectionNode — no subquery
-    if (callback === undefined || callback === true) {
+    // Only decorating callbacks render CALL subqueries — plain requests
+    // render as the standard comprehension fragment in projectionNode,
+    // and nested spec objects (NTS-154) as specLevelPattern fragments
+    // there too
+    if (typeof callback !== 'function') {
       continue
     }
 
@@ -529,8 +546,10 @@ The RETURN map projection for a model's read query: all properties, the
 hydration identity markers, full-entity eager relationships and every
 projected property — one query per read.
 
-`withSpec` (NTS-560) additionally renders requested non-eager
+`withSpec` (NTS-560, NTS-154) additionally renders requested non-eager
 relationships: `true` renders the standard comprehension fragment, a
+nested spec object renders the level's spec fragment (the NTS-498 shape,
+keys validated down the target's declared relationship graph), and a
 decorating callback renders `key: <key>_loaded` (`[0]` for singular) —
 the alias the CALL subquery loadSpecCalls() published. Requested keys
 count as loaded: the hydrated values materialize as own properties
@@ -564,6 +583,20 @@ export function projectionNode(
 
     if (requested === true) {
       parts.push(eagerPattern(1, alias, relationship, context))
+
+      continue
+    }
+
+    // NTS-154 — a nested spec object parses against the target's schema
+    // (validating its keys down the declared relationship graph) and
+    // renders as a spec-level fragment, the same shape the per-instance
+    // load spec (NTS-498) projects
+    if (requested !== undefined && isRecord(requested)) {
+      const targetSchema = parseTargetSchema(schema, relationship)
+
+      parts.push(
+        specLevelPattern(1, alias, relationship, parseLoadLevel(targetSchema, requested), context),
+      )
 
       continue
     }
