@@ -283,7 +283,7 @@ describe('instance.load(spec) — multi-key, multi-level per-instance load (NTS-
 
     // The second order's only line goes foreign-tenant: filtered out, the
     // order row itself survives (pattern comprehension, never OPTIONAL MATCH)
-    await backend.neode.cypher(
+    await backend.neode.writeCypher(
       'MATCH (l:Line) WHERE l.tenant = $fileTenant AND l.label CONTAINS $prefix SET l.tenant = $other',
       { fileTenant: FILE_TENANT, other: 'tenant-other', prefix: 'line-20-' },
     )
