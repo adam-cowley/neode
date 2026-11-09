@@ -1,8 +1,10 @@
+import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 import type { ConnectionProvider, QueryRecord } from '../../src/driver/types'
 import { parseGenerateArguments } from '../../src/bin/arguments'
 import { NeodeError } from '../../src/errors/index.js'
 import {
+  assignClassNames,
   buildModel,
   generateModels,
   inferProperty,
@@ -19,9 +21,9 @@ import {
  */
 
 const sample = (properties: Record<string, unknown>): QueryRecord => ({
-  keys: ['n'],
-  get: () => ({ elementId: '1', labels: ['Person'], properties }),
-  has: (key) => key === 'n',
+  keys: ['properties'],
+  get: () => properties,
+  has: (key) => key === 'properties',
 })
 
 const record = (values: Record<string, unknown>): QueryRecord => ({
@@ -311,5 +313,249 @@ describe('parseGenerateArgs', () => {
         ]).error,
       ).toMatch(/--sample/)
     })
+  })
+})
+
+/**
+ * Type-check generated decorated output against a stub of the neode
+ * decorator surface (standard TC39 decorators), returning diagnostics and
+ * the parsed top-level statements.
+ */
+const NEODE_STUB = `
+type Field = (value: undefined, context: ClassFieldDecoratorContext) => void
+export function NodeEntity(config?: { labels?: string[] }): (value: Function, context: ClassDecoratorContext) => void
+export function Property(config: { type: string; array?: boolean; primary?: boolean }): Field
+export function RelatedOne(config: { type: string; direction: string; target: () => unknown }): Field
+export function RelatedMany(config: { type: string; direction: string; target: () => unknown }): Field
+`
+
+function compileGenerated(source: string): {
+  diagnostics: string[]
+  statements: ts.Statement[]
+} {
+  const files = new Map([
+    ['/generated.ts', source],
+    [
+      '/neode.d.ts',
+      `declare module 'neode' {${NEODE_STUB.replaceAll('export function', 'function')}}`,
+    ],
+  ])
+  const options: ts.CompilerOptions = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    strict: true,
+    noEmit: true,
+    types: [],
+    skipLibCheck: true,
+    lib: ['lib.es2022.d.ts'],
+  }
+  const host = ts.createCompilerHost(options)
+  const { fileExists, readFile, getSourceFile } = host
+
+  host.fileExists = (name) => files.has(name) || fileExists(name)
+  host.readFile = (name) => files.get(name) ?? readFile(name)
+  host.getSourceFile = (name, languageVersion) => {
+    const text = files.get(name)
+
+    return text === undefined
+      ? getSourceFile(name, languageVersion)
+      : ts.createSourceFile(name, text, languageVersion)
+  }
+
+  const program = ts.createProgram(['/generated.ts', '/neode.d.ts'], options, host)
+  const diagnostics = ts
+    .getPreEmitDiagnostics(program)
+    .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))
+  const statements = [...(program.getSourceFile('/generated.ts')?.statements ?? [])]
+
+  return { diagnostics, statements }
+}
+
+describe('hostile graph names (NTS-577)', () => {
+  const labels = [
+    'X; process.exit()//',
+    'a\\',
+    'line\nbreak',
+    'My-Label',
+    'Property',
+    'NodeEntity',
+    'RelatedOne',
+    'RelatedMany',
+    'Object',
+    'class',
+    'A-B',
+    'AB',
+    'sep\u2028\u2029x',
+    "it's",
+  ]
+
+  const hostileProperties = {
+    id: '1',
+    'k\\': 'a',
+    'new\nline': 'b',
+    'cr\rkey': 'c',
+    'sep\u2028key': 'd',
+    "quo'te": 'e',
+    'a-b': 'f',
+    '1st': 'g',
+    __proto__: undefined,
+  }
+
+  const build = (): { models: GeneratedModel[]; warnings: string[] } => {
+    const generated = new Set(labels)
+    const classNames = assignClassNames(labels)
+    const warnings: string[] = []
+    const models = labels
+      .map((label) =>
+        buildModel(
+          label,
+          [{ ...hostileProperties, ['constructor']: 'x' }],
+          labels
+            .filter((target) => target !== label)
+            .map((target, index) =>
+              walk({
+                type: `rel-${String(index)}`,
+                targetLabels: [target],
+                count: index % 2 === 0 ? 3 : 1,
+                sources: 1,
+              }),
+            ),
+          'id',
+          generated,
+          warnings,
+          classNames,
+        ),
+      )
+      .filter((model) => model !== undefined)
+
+    return { models, warnings }
+  }
+
+  it('renders decorated output that type-checks with only imports and classes', () => {
+    const { models } = build()
+    const { diagnostics, statements } = compileGenerated(renderDecoratedModels(models))
+
+    expect(diagnostics).toEqual([])
+    expect(
+      statements.every(
+        (statement) => ts.isImportDeclaration(statement) || ts.isClassDeclaration(statement),
+      ),
+    ).toBe(true)
+    expect(statements.filter(ts.isClassDeclaration)).toHaveLength(labels.length)
+  }, 30_000)
+
+  it('assigns unique, valid, non-reserved class names deterministically', () => {
+    const names = assignClassNames(labels)
+    const forward = [...names.values()]
+
+    expect(new Set(forward).size).toBe(labels.length)
+    expect(names.get('AB')).toBe('AB')
+    expect(names.get('A-B')).toBe('AB_2')
+    expect(names.get('Property')).toBe('Property_2')
+    expect(names.get('class')).toBe('class_2')
+    expect(names.get('Object')).toBe('Object_2')
+    expect(names.get('My-Label')).toBe('MyLabel')
+    expect(Object.fromEntries(assignClassNames([...labels].reverse()))).toEqual(
+      Object.fromEntries(names),
+    )
+  })
+
+  it('emits the target class name, never the raw label, in relationship declarations', () => {
+    const { models } = build()
+    const typescript = renderDecoratedModels(models)
+
+    expect(typescript).not.toContain('process.exit()//]')
+    expect(typescript).toContain('target: () => AB_2')
+    expect(typescript).toContain('target: () => Property_2')
+    expect(typescript).not.toMatch(/target: \(\) => [^A-Za-z_$]/)
+    expect(models[0]?.relationships.every((relationship) => relationship.target !== '')).toBe(true)
+  })
+
+  it('escapes names as string literals and keeps map output parseable', () => {
+    const { models } = build()
+    const map = renderMapModels(models)
+    const transpiled = ts.transpileModule(map, {
+      reportDiagnostics: true,
+      compilerOptions: { target: ts.ScriptTarget.ES2022 },
+    })
+    const parsed = ts.createSourceFile('map.ts', map, ts.ScriptTarget.ES2022)
+
+    expect(
+      (transpiled.diagnostics ?? []).map((item) =>
+        ts.flattenDiagnosticMessageText(item.messageText, ' '),
+      ),
+    ).toEqual([])
+    expect(
+      parsed.statements.every(
+        (statement) => ts.isImportDeclaration(statement) || ts.isExpressionStatement(statement),
+      ),
+    ).toBe(true)
+    expect(map).toContain("'k\\\\'")
+    expect(map).toContain("'new\\nline'")
+    expect(map).toContain("'sep\\u2028key'")
+  })
+
+  it('skips undeclarable keys with warnings instead of throwing', () => {
+    const { models, warnings } = build()
+
+    expect(warnings.some((warning) => warning.includes('"constructor"'))).toBe(true)
+    expect(
+      models.every(
+        (model) =>
+          !('constructor' in model.properties && Object.hasOwn(model.properties, 'constructor')),
+      ),
+    ).toBe(true)
+  })
+})
+
+describe('conflicts as warnings (NTS-577)', () => {
+  it('collects type conflicts and relationship clashes, keeping the rest of the model', async () => {
+    const connection = provider({
+      labels: ['Person', 'Pet'],
+      samples: {
+        Person: [
+          { id: '1', salary: 100, OWNS: 'x' },
+          { id: '2', salary: 'lots' },
+        ],
+        Pet: [{ id: 'p' }],
+      },
+      walks: {
+        Person: [record({ type: 'OWNS', labels: ['Pet'], rels: 1, sources: 1 })],
+      },
+    })
+
+    const result = await generateModels(connection)
+
+    expect(result.models.map((model) => model.label)).toEqual(['Person', 'Pet'])
+    expect(result.models[0]?.schema['salary']).toBeUndefined()
+    expect(result.models[0]?.schema['id']).toBeDefined()
+    expect(result.warnings).toHaveLength(2)
+    expect(result.warnings.join('\n')).toMatch(/"salary"/)
+    expect(result.warnings.join('\n')).toMatch(/relationship "OWNS"/)
+  })
+
+  it('samples before walking: LIMIT precedes the relationship match, bounded and parameterised', async () => {
+    const statements: { statement: string; parameters: unknown }[] = []
+    const base = provider({ labels: ['Person'], samples: { Person: [{ id: '1' }] } })
+    const connection = {
+      run: (statement: string, parameters: unknown, mode: unknown) => {
+        statements.push({ statement, parameters })
+
+        return (base.run as (...arguments_: unknown[]) => Promise<unknown>)(
+          statement,
+          parameters,
+          mode,
+        )
+      },
+    } as unknown as ConnectionProvider
+
+    await generateModels(connection, { sampleSize: 7 })
+
+    const walkStatement = statements.find((entry) => entry.statement.includes('-[r]->'))
+
+    expect(walkStatement?.statement).toMatch(/WITH n LIMIT 7 MATCH \(n\)-\[r\]->\(m\)/)
+    expect(walkStatement?.statement).not.toContain('$limit')
+    expect(statements.some((entry) => /RETURN n\b/.test(entry.statement))).toBe(false)
   })
 })
