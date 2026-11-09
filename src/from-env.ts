@@ -85,10 +85,18 @@ export function configFromEnv(
   }
 
   for (const [setting, key] of Object.entries(ints)) {
-    const raw = environment[setting]
+    const raw = envValue(environment, setting)
 
-    if (raw !== undefined) {
-      config[key] = Number(raw)
+    if (raw === undefined) {
+      continue
+    }
+
+    const parsed = Number(raw)
+
+    if (Number.isFinite(parsed)) {
+      config[key] = parsed
+    } else {
+      warnIgnoring(setting, `"${raw}" is not a finite number`)
     }
   }
 
@@ -127,7 +135,10 @@ export function configFromEnv(
   const trustedCertificates = envValue(environment, 'NEO4J_TRUSTED_CERTIFICATES')
 
   if (trustedCertificates !== undefined) {
-    config['trustedCertificates'] = trustedCertificates.split(',')
+    config['trustedCertificates'] = trustedCertificates
+      .split(',')
+      .map((path) => path.trim())
+      .filter((path) => path !== '')
   }
 
   const level = envValue(environment, 'NEO4J_LOGGING_LEVEL')

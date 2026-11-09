@@ -5,25 +5,30 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
-  # Releases are manual only — nothing publishes automatically on merge
-  workflow_dispatch:
+
+# Read-only by default; releases live in release.yml (manual dispatch only)
+permissions:
+  contents: read
 
 jobs:
   # Own job: type-aware linting is slow; don't gate the test matrix on it
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
 
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm lint
+
+      # AGENTS.md is generated from the source; fail when it is stale
+      - run: pnpm docs:agents --check
 
   # Typecheck, tests with coverage, build and package checks over the
   # supported Node line
@@ -37,11 +42,11 @@ jobs:
         # the package engines field keeps runtime support at >=20
         node: [22, 24]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node }}
 
@@ -71,11 +76,11 @@ jobs:
       matrix:
         neo4j: ["5-community", "latest"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
 
@@ -92,13 +97,13 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
 
@@ -115,11 +120,11 @@ jobs:
       NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
       NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
 
@@ -138,40 +143,3 @@ jobs:
         env:
           OGM_TEST_BACKEND: neo4j
           NEO4J_DATABASE: ${{ secrets.NEO4J_DATABASE }}
-
-  # Publishes to npm via Changesets + trusted publishing (OIDC — no
-  # NPM_TOKEN secret). Runs on main after CI gates pass; a `next`
-  # pre-release mode keeps stable users unaffected during the migration.
-  release:
-    if: github.ref == 'refs/heads/main'
-    needs: [lint, check, integration]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Publish (changesets)
-        # v2.1.2 minimum: v1's reader cannot parse the v3 .changeset/pre/
-        # layout (ENOENT .changeset/pre/changes.md after a Version PR merges)
-        uses: changesets/action@v2.1.2
-        with:
-          # v2.1.2 renamed its inputs: version -> version-script, publish -> publish-script
-          version-script: pnpm changeset version
-          # npm publishing intentionally disabled (user policy: nothing on npm yet) —
-          # re-add `publish-script: pnpm release` to go live
-          create-github-releases: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

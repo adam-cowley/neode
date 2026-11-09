@@ -167,6 +167,25 @@ describe('configFromEnv', () => {
     expect(warn).toHaveBeenCalled()
   })
 
+  it('trims NEO4J_TRUSTED_CERTIFICATES entries and drops empty ones', () => {
+    const { config } = configFromEnv({ NEO4J_TRUSTED_CERTIFICATES: ' /a.pem , /b.pem,, ' })
+
+    expect(config['trustedCertificates']).toEqual(['/a.pem', '/b.pem'])
+  })
+
+  it('ignores non-finite numeric settings with a warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const { config } = configFromEnv({
+      NEO4J_MAX_CONNECTION_POOLSIZE: 'abc',
+      NEO4J_CONNECTION_TIMEOUT: 'Infinity',
+      NEO4J_MAX_CONNECTION_LIFETIME: '5000',
+    })
+
+    expect(config).toEqual({ maxConnectionLifetime: 5000 })
+    expect(warn).toHaveBeenCalledTimes(2)
+    warn.mockRestore()
+  })
+
   it('comma-splits NEO4J_TRUSTED_CERTIFICATES', () => {
     const env = configFromEnv({
       NEO4J_TRUSTED_CERTIFICATES: '/a.pem,/b.pem,/c.pem',
