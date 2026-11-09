@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { defineModel } from '../../../src/meta/map-schema'
 import { knn } from '../../../src/services/query/knn.service'
+import { clearFilterParams, setFilterParams } from '../../../src/services/query/filters'
 import type { GraphNode, QueryOutput, QueryRecord, Runner } from '../../../src/driver/types'
 
 /**
@@ -144,5 +145,122 @@ describe('knn hydration (NTS-447)', () => {
     )
     await expect(knn({ run }, Doc, 'doc_emb_vector', [1, 0, 0], 0)).rejects.toThrow(TypeError)
     expect(run).not.toHaveBeenCalled()
+  })
+})
+
+describe('kNN filtered reads over-fetch to fill k (NTS-584)', () => {
+  // Soft delete renders as a label predicate (NOT node:Deleted) and the
+  // tenant filter as a parameterised property predicate — the two shapes
+  // the filters take
+  const FilteredDoc = defineModel('KnnUnitFilteredDoc', {
+    title: 'string',
+    emb: 'float',
+    filters: [
+      { name: 'tenant', where: 'node.tenant = $tenant' },
+      { name: 'notDeleted', where: 'NOT node:Deleted' },
+    ],
+  })
+
+  beforeEach(() => {
+    setFilterParams('tenant', 'acme')
+  })
+
+  afterEach(() => {
+    clearFilterParams()
+  })
+
+  const filteredNode = (title: string, score: number): Record<string, unknown> => ({
+    node: node({ title }),
+    score,
+  })
+
+  it('over-fetches round over round until k rows survive the filters', async () => {
+    let calls = 0
+    const run = vi.fn(async (): Promise<QueryOutput> => {
+      calls += 1
+
+      // Round 1 (fetch k=2): one survivor; round 2 (fetch 4): enough
+      return output(
+        calls === 1
+          ? [filteredNode('Survivor', 0.9)]
+          : [
+              filteredNode('Survivor', 0.9),
+              filteredNode('Live 2', 0.8),
+              filteredNode('Live 3', 0.7),
+            ],
+      )
+    })
+
+    const results = await knn<HydratedDoc>(
+      { run },
+      FilteredDoc,
+      'doc_emb_vector',
+      [1, 0.1, 0],
+      2,
+      'procedure',
+    )
+
+    // The over-fetched round is sliced back to k, best first
+    expect(results).toHaveLength(2)
+    expect(results[0].entity).toBeInstanceOf(FilteredDoc)
+    expect(results[0].entity.title).toBe('Survivor')
+    expect(results[1].entity.title).toBe('Live 2')
+
+    expect(run).toHaveBeenCalledTimes(2)
+    expect(run.mock.calls[0][0]).toBe(
+      'CALL db.index.vector.queryNodes($index, $k, $vector) ' +
+        'YIELD node, score WHERE (node.tenant = $tenant) AND (NOT node:Deleted) ' +
+        'RETURN node, score ORDER BY score DESC',
+    )
+    expect(run.mock.calls[0][1]).toEqual({
+      index: 'doc_emb_vector',
+      k: 2,
+      vector: [1, 0.1, 0],
+      tenant: 'acme',
+    })
+    expect(run.mock.calls[1][1]).toEqual({
+      index: 'doc_emb_vector',
+      k: 4,
+      vector: [1, 0.1, 0],
+      tenant: 'acme',
+    })
+  })
+
+  it('the SEARCH clause form takes the filters before the RETURN', async () => {
+    // Two rows for fetch k=2 — a single round, the statement is the point
+    const run = vi.fn(
+      runner(() =>
+        Promise.resolve(output([filteredNode('Survivor', 0.9), filteredNode('Live 2', 0.8)])),
+      ).run,
+    )
+
+    await knn<HydratedDoc>({ run }, FilteredDoc, 'doc_emb_vector', [1, 0.1, 0], 2, 'search-clause')
+
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(run.mock.calls[0][0]).toBe(
+      'MATCH (n:`KnnUnitFilteredDoc`) ' +
+        'SEARCH n IN (VECTOR INDEX `doc_emb_vector` FOR $vector LIMIT $k) ' +
+        'SCORE AS score WHERE (n.tenant = $tenant) AND (NOT n:Deleted) ' +
+        'RETURN n AS node, score ORDER BY score DESC',
+    )
+  })
+
+  it('gives up at the round cap and returns the widest round', async () => {
+    // Every round filters down to one row — k stays a ceiling here
+    const run = vi.fn(runner(() => Promise.resolve(output([filteredNode('Only', 0.9)]))).run)
+
+    const results = await knn<HydratedDoc>(
+      { run },
+      FilteredDoc,
+      'doc_emb_vector',
+      [1, 0.1, 0],
+      2,
+      'procedure',
+    )
+
+    expect(results).toHaveLength(1)
+    expect(results[0].entity.title).toBe('Only')
+    expect(run).toHaveBeenCalledTimes(3)
+    expect(run.mock.calls.map((call) => call[1]?.k)).toEqual([2, 4, 8])
   })
 })

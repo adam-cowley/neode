@@ -28,16 +28,32 @@ export type KnnMode =
 const NODE_ALIAS = 'node'
 
 /**
+The binding variable of the SEARCH clause form's MATCH — the filter
+fragment must reference IT there: `node` is only the RETURN column alias
+in that form, not a variable in scope (NTS-584).
+*/
+const SEARCH_BINDING = 'n'
+
+/**
+NTS-584 — filtered searches over-fetch past the index's top-k so the
+post-filter still fills k: each round fetches this factor more, and the
+round cap bounds the statement count (k, 2k, 4k — three statements at
+most).
+*/
+const OVERFETCH_FACTOR = 2
+const OVERFETCH_ROUNDS = 3
+
+/**
 The Cypher 25 SEARCH clause form — the procedure is deprecated on Cypher 25
 backends. The index name cannot be bound as a parameter in this form, so it
 is inlined (backtick-escaped).
 */
 export function knnSearchClauseStatement(label: string, indexName: string): string {
   return (
-    `MATCH (n:${quote(label)}) ` +
-    `SEARCH n IN (VECTOR INDEX ${quote(indexName)} FOR $vector LIMIT $k) ` +
+    `MATCH (${SEARCH_BINDING}:${quote(label)}) ` +
+    `SEARCH ${SEARCH_BINDING} IN (VECTOR INDEX ${quote(indexName)} FOR $vector LIMIT $k) ` +
     `SCORE AS score ` +
-    `RETURN n AS ${NODE_ALIAS}, score ORDER BY score DESC`
+    `RETURN ${SEARCH_BINDING} AS ${NODE_ALIAS}, score ORDER BY score DESC`
   )
 }
 
@@ -63,6 +79,15 @@ supports neither a combined error is raised.
 NTS-162 — the model's named read filters apply to both query forms (a
 `WHERE` over the matched / YIELDed rows); `filters.withoutFilters`
 disables names for this call.
+
+NTS-584 — the filters are a post-filter over the index's top-k: the
+SEARCH clause's in-index `WHERE` only takes property predicates over
+properties registered as additional filter properties on the vector
+index (which neode's index definitions never declare) and has no label
+predicates, so the soft-delete filter can never go there. Filtered
+searches therefore over-fetch round over round until k rows survive the
+filters or the round cap gives up — k is filled whenever that many valid
+neighbours exist.
 */
 export async function knn<T>(
   runner: Runner,
@@ -116,61 +141,93 @@ export async function knn<T>(
 
   const parameters = { index: indexName, k, vector }
 
-  // NTS-575 — k is a CEILING, not a guarantee: the filters below apply
-  // after the index's top-k, so filtered-out neighbours (soft-deleted,
-  // other tenant) shrink the result below k.
-  // NTS-162 — named read filters over the scored rows. Both forms bind
-  // the node to the same NODE_ALIAS; the procedure form takes the WHERE
-  // after the YIELD, the SEARCH-clause form after SCORE AS.
-  const filterStatements = (statement: string): string => {
-    const { fragment, parameters: filterParameters } = readFilterFragment(
-      schema,
-      NODE_ALIAS,
-      filters,
-    )
+  // NTS-162 — named read filters over the scored rows. The procedure form
+  // yields the node as `node` (the WHERE goes after the YIELD); the
+  // SEARCH-clause form binds the MATCH variable `n` — there the fragment
+  // must reference `n`, `node` is only the RETURN alias (NTS-584).
+  // NTS-584 — the filters stay a POST-filter over the top-k rows: the
+  // SEARCH clause's in-index WHERE only accepts property predicates over
+  // properties the vector index declares as additional filter properties
+  // (the server rejects anything else 22ND3) and has no label predicates,
+  // so the soft-delete filter can never go there. To keep k a guarantee
+  // instead of a ceiling, filtered searches over-fetch: the fetch grows
+  // round over round until the surviving rows fill k or the round cap
+  // gives up.
+  const runForm = async (statement: string, alias: string): Promise<ScoredEntity<T>[]> => {
+    const { fragment, parameters: filterParameters } = readFilterFragment(schema, alias, filters)
 
-    if (fragment === undefined) {
-      return statement
+    if (fragment !== undefined) {
+      Object.assign(parameters, filterParameters)
     }
 
-    Object.assign(parameters, filterParameters)
+    const decorate = (text: string): string => {
+      if (fragment === undefined) {
+        return text
+      }
 
-    // Replacer functions: the fragment carries `$params` and must not
-    // dance with replacement-pattern semantics
-    return statement.includes('YIELD')
-      ? statement.replace(
-          `RETURN ${NODE_ALIAS}, score`,
-          () => `WHERE ${fragment} RETURN ${NODE_ALIAS}, score`,
-        )
-      : statement.replace(`SCORE AS score `, () => `SCORE AS score WHERE ${fragment} `)
-  }
+      // Replacer functions: the fragment carries `$params` and must not
+      // dance with replacement-pattern semantics
+      return text.includes('YIELD')
+        ? text.replace(
+            `RETURN ${NODE_ALIAS}, score`,
+            () => `WHERE ${fragment} RETURN ${NODE_ALIAS}, score`,
+          )
+        : text.replace(`SCORE AS score `, () => `SCORE AS score WHERE ${fragment} `)
+    }
 
-  const runForm = async (statement: string): Promise<ScoredEntity<T>[]> => {
-    const output = await runner.run(filterStatements(statement), parameters)
+    const filteredStatement = decorate(statement)
 
-    return shapeScoredRows<T>(output.records, constructor, NODE_ALIAS)
+    // Unfiltered, the index's top-k is the answer in one round
+    if (fragment === undefined) {
+      const output = await runner.run(filteredStatement, parameters)
+
+      return shapeScoredRows<T>(output.records, constructor, NODE_ALIAS)
+    }
+
+    let fetch = k
+    let best: ScoredEntity<T>[] = []
+
+    for (let round = 0; round < OVERFETCH_ROUNDS; round += 1) {
+      const output = await runner.run(filteredStatement, { ...parameters, k: fetch })
+      const rows = shapeScoredRows<T>(output.records, constructor, NODE_ALIAS)
+
+      // The widest round wins: the index's top-N grows with N, but the
+      // approximate search can fluctuate just below k — never lose an
+      // earlier round's rows to a smaller later round
+      if (rows.length > best.length) {
+        best = rows
+      }
+
+      if (best.length >= k) {
+        break
+      }
+
+      fetch *= OVERFETCH_FACTOR
+    }
+
+    return best.slice(0, k)
   }
 
   if (mode === 'procedure') {
-    return runWithIndexHint(indexName, async () => runForm(knnProcedureStatement()))
+    return runWithIndexHint(indexName, async () => runForm(knnProcedureStatement(), NODE_ALIAS))
   }
 
   if (mode === 'search-clause') {
     return runWithIndexHint(indexName, async () =>
-      runForm(knnSearchClauseStatement(label, indexName)),
+      runForm(knnSearchClauseStatement(label, indexName), SEARCH_BINDING),
     )
   }
 
   let searchClauseError: unknown
 
   try {
-    return await runForm(knnSearchClauseStatement(label, indexName))
+    return await runForm(knnSearchClauseStatement(label, indexName), SEARCH_BINDING)
   } catch (error) {
     searchClauseError = error
   }
 
   try {
-    return await runForm(knnProcedureStatement())
+    return await runForm(knnProcedureStatement(), NODE_ALIAS)
   } catch (procedureError) {
     throw new NeodeError(
       'Cannot run a kNN search: the backend supports neither the Cypher 25 SEARCH clause ' +
