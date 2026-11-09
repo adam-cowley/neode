@@ -419,7 +419,7 @@ _source: services/query/search.service.ts_
 
 ### `setFilterParams` (function)
 
-Set the parameter a named filter's `where` references as `$name` (`setFilterParams('tenant', 'acme')` for `where: 'node.tenantId = $tenant'`). Values are bound as query parameters — they never render into the query text.
+Set the process-wide DEFAULT for the parameter a named filter's `where` references as `$name` (`setFilterParams('tenant', 'acme')` for `where: 'node.tenantId = $tenant'`). Values are bound as query parameters — they never render into the query text. UNSAFE UNDER CONCURRENCY: the value is global to the process, so `setFilterParams('tenant', t); await x; query` lets a concurrent request overwrite it between the set and the read — a cross-tenant leak. Use it only for genuinely process-wide values (single-tenant apps, scripts, tests); for per-request values use `withFilterParams`, whose scope wins over this default.
 
 _source: services/query/filters.ts_
 
@@ -504,6 +504,12 @@ _source: serialise.ts_
 An `IS NULL` / `IS NOT NULL` predicate on a property, rendered by toString() — the value of `Builder.whereNull` / `whereNotNull`.
 
 _source: query/where-null.ts_
+
+### `withFilterParams` (function)
+
+Run the work with request-scoped filter params (NTS-575). Every read the work performs — across awaits, and isolated from concurrent callers — sees these values, which take precedence over `setFilterParams` defaults. Scopes nest: an inner scope overrides the outer one name by name, and a value of `undefined` hides the outer/default value inside the scope. `ts await withFilterParams({ tenant: req.tenantId }, async () => { await Article.all() }) ` Needs a runtime with AsyncLocalStorage (Node.js), like ambient transactions.
+
+_source: services/query/filters.ts_
 
 ### `WITHOUT_ALL_FILTERS` (const)
 
