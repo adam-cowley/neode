@@ -331,7 +331,7 @@ Bare property names on the relation's sub-builder resolve against the
 related node's variable; anything else (dotted, raw fragments) passes
 through untouched
 */
-function relationProperty(nodeVariable: string, property: string): string {
+export function relationProperty(nodeVariable: string, property: string): string {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(property) ? `${nodeVariable}.${property}` : property
 }
 
