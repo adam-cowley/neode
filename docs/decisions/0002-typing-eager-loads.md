@@ -108,6 +108,11 @@ property keys type-checked.
   fallback-tier `QueryLoadLevel<Entity>` (nested levels type-check, no
   return narrowing). Follow-up: parameterize Repository by the
   constructor type.
+  _(RESOLVED by NTS-563: `Repository<Entity, C>` and
+  `getRepository(entity: C)` keep the constructor type, so the
+  Repository's `with` spec is map-checked and find / findAll narrow. The
+  Repository surface never had the legacy keyof-T overloads, so a
+  PROPERTY key is a compile error there — stricter than the facade.)_
 - **Spec depth bounds type recursion, not TS limits.** `LoadedEntity` /
   `QueryLoadLevel` recurse once per SPEC level (the runtime's
   `MAX_EAGER_DEPTH = 3` only caps the static eager patterns; spec-driven
@@ -123,6 +128,6 @@ property keys type-checked.
 - The `with` surface is now TWO precise tiers: map-checked (phantom) and
   field-inferred (fallback) — both exclude property keys from the narrowed
   overload.
-- Follow-up issues should start from this document: INeode re-keying,
-  Repository constructor generics, and the instance-surface map are
-  independent slices.
+- Follow-up issues should start from this document: INeode re-keying and
+  the instance-surface map are independent slices (the Repository
+  constructor generics shipped as NTS-563).

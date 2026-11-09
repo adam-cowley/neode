@@ -246,6 +246,51 @@ describe('load spec (`with`) — integration', () => {
     ).toEqual([30, 20])
   })
 
+  it('repository find() threads the load spec through (NTS-563)', async () => {
+    const seeded = await seedCustomer(backend)
+
+    const customer = await backend.neode.getRepository(SpecCustomer).find(seeded.id, {
+      with: { orders: (relation) => relation.orderBy('orderDate', 'DESC').limit(2) },
+    })
+
+    expect(customer).toBeInstanceOf(SpecCustomer)
+    expect((customer?.orders as WithMethods<SpecOrder>[]).map((order) => order.orderDate)).toEqual([
+      30, 20,
+    ])
+  })
+
+  it('repository findAll() loads a nested spec level in one statement (NTS-563)', async () => {
+    const seeded = await seedOrderWithToys(backend, ['Ball', 'Bone'])
+
+    const customers = await backend.neode
+      .getRepository(SpecCustomer)
+      .findAll({ name: 'Toyed' }, { with: { orders: { toys: true } } })
+
+    expect(customers).toHaveLength(1)
+
+    const orders = customers[0]?.orders as WithMethods<SpecOrder>[]
+
+    expect(orders).toHaveLength(1)
+    expect(orders[0]).toBeInstanceOf(SpecOrder)
+    expect((orders[0]?.toys as WithMethods<SpecToy>[]).map((toy) => toy.name)).toEqual(
+      expect.arrayContaining(['Ball', 'Bone']),
+    )
+  })
+
+  it('repository findAll() composes the spec with the named read filters (NTS-162)', async () => {
+    const seeded = await seedCustomer(backend)
+
+    // withoutFilters is forwarded verbatim to the same rendering as the
+    // facade paths — disabling every named filter changes nothing here (no
+    // filter hides the rows) but the composed statement must still hydrate
+    const customers = await backend.neode
+      .getRepository(SpecCustomer)
+      .findAll({}, { with: { orders: true }, withoutFilters: ['softDelete'] })
+
+    expect(customers).toHaveLength(1)
+    expect(customers[0]?.orders as WithMethods<SpecOrder>[]).toHaveLength(3)
+  })
+
   it('a nested spec level loads the target’s own relationship in the same statement (NTS-154)', async () => {
     const seeded = await seedOrderWithToys(backend, ['Ball', 'Bone'])
 

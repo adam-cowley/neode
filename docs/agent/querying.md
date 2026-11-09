@@ -380,7 +380,7 @@ _source: serialise.ts_
 
 ### `Repository` (class)
 
-Active-record style data-access repository for one registered model — the TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
+Active-record style data-access repository for one registered model — constructor-generic over the model CONSTRUCTOR (NTS-563): the `with` load spec of find / findAll is map-checked against the model's `neodeRelationships` phantom static and the returns narrow, the same with() contract as the facade paths (NTS-154) — the TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
 
 _source: repository/index.ts_
 
