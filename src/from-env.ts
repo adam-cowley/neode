@@ -73,6 +73,7 @@ export function configFromEnv(
   const protocol = envValue(environment, 'NEO4J_PROTOCOL') ?? 'bolt'
   const host = envValue(environment, 'NEO4J_HOST') ?? 'localhost'
   const port = envValue(environment, 'NEO4J_PORT') ?? '7687'
+  const uri = envValue(environment, 'NEO4J_URI') ?? `${protocol}://${host}:${port}`
 
   const config: Record<string, unknown> = {}
 
@@ -92,6 +93,12 @@ export function configFromEnv(
     }
   }
 
+  if (envValue(environment, 'NEO4J_MAX_TRANSACTION_RETRY_TIME') !== undefined) {
+    console.warn(
+      'fromEnv: NEO4J_MAX_TRANSACTION_RETRY_TIME is passed to the driver, but neode opens its own unmanaged transactions and never applies it — control transaction retries with the `retries` option of transaction() instead',
+    )
+  }
+
   const disableLosslessIntegers = envValue(environment, 'NEO4J_DISABLE_LOSSLESS_INTEGERS')
 
   if (disableLosslessIntegers !== undefined) {
@@ -107,6 +114,17 @@ export function configFromEnv(
       config['encrypted'] = false
     } else {
       warnIgnoring('NEO4J_ENCRYPTION', `unknown value "${encryption}"`)
+    }
+
+    // A +s / +ssc scheme implies encryption — the driver rejects an explicit
+    // `encrypted` next to it, so the env value must not reach it (NTS-589)
+    if (config['encrypted'] !== undefined && /^(neo4j|bolt)\+s(sc)?:\/\//.test(uri)) {
+      delete config['encrypted']
+
+      warnIgnoring(
+        'NEO4J_ENCRYPTION',
+        `"${uri}" uses a +s / +ssc scheme, which already decides encryption — the driver rejects an explicit \`encrypted\` there`,
+      )
     }
   }
 
@@ -151,7 +169,7 @@ export function configFromEnv(
   const password = envValue(environment, 'NEO4J_PASSWORD')
 
   return {
-    uri: envValue(environment, 'NEO4J_URI') ?? `${protocol}://${host}:${port}`,
+    uri,
     auth:
       username === undefined || password === undefined ? undefined : auth.basic(username, password),
     config: {

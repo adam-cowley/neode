@@ -109,6 +109,14 @@ export interface ConnectionOptions {
   a per-call `routing` (defaultRouting itself defaults to 'READ')
   */
   defaultRouting?: AccessMode
+
+  /**
+  Milliseconds a statement / transaction waits for the embedded Relate
+  engine's single transaction slot before failing — forwarded to
+  `RelateConnectionProvider` by `forRelate` (default 30000; `0` or
+  `Infinity` waits forever). Ignored by the other providers.
+  */
+  queueTimeoutMs?: number
 }
 
 /**

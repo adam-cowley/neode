@@ -10,7 +10,12 @@ transaction opens; on a transaction handle (`TransactionalService`) they
 run inside it. after* hooks run once the write is COMMITTED (NTS-582): for
 a write in an explicit or ambient transaction that is when the outermost
 transaction commits — they never fire for work that rolls back or is
-retried, and an error thrown by one cannot undo the committed write.
+retried, and an error thrown by one cannot undo the committed write. An
+error an after* hook throws SURFACES AFTER THE COMMIT: it rejects the
+point that flushes the buffered effects (the `transaction()` callback, the
+managed scope, or the explicit `commit()` — or the facade call that
+committed its own transaction), so the data stays committed while the
+caller learns the hook failed (NTS-589).
 
 On the create path beforeSave receives the plain properties record (the
 entity does not exist yet) — mutate it to change what is written.

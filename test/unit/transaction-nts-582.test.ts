@@ -321,3 +321,55 @@ describe('finished scopes (NTS-582)', () => {
     await expect(detached).rejects.toThrow(/already finished \(detached async work\?\)/)
   })
 })
+
+describe('rollback-only poison scope (NTS-589)', () => {
+  it('a swallowed pure-JS failure in a joined call does not poison the transaction', async () => {
+    const provider = new MockProvider()
+    const neode = new Neode(provider)
+
+    // The joined call fails before ANY statement reaches the driver
+    // (save() rejects on the unregistered model in pure JS) and the error
+    // escapes the joined work — the callback handles it, the transaction
+    // is clean and commits
+    const result = await neode.transaction(async () => {
+      try {
+        await neode.inWriteTransaction(async (tx) => {
+          await tx.save({ nope: true })
+        })
+      } catch {
+        // handled — nothing reached the driver, so the commit stands
+      }
+
+      return 'done'
+    })
+
+    expect(result).toBe('done')
+    expect(provider.commits).toBe(1)
+    expect(provider.rollbacks).toBe(0)
+  })
+
+  it('a swallowed statement failure in a joined call still marks rollback-only', async () => {
+    const provider = new MockProvider()
+    const neode = new Neode(provider)
+
+    // The statement fails ON THE DRIVER and the error escapes the joined
+    // work: the shared transaction may be rollback-only server-side, so
+    // the handled error must still prevent the commit
+    provider.runFailures = [new Error('driver boom')]
+
+    await expect(
+      neode.transaction(async () => {
+        try {
+          await neode.inWriteTransaction(async (tx) => {
+            await tx.getTransaction().run('RETURN 1')
+          })
+        } catch {
+          // handled — but the failed statement poisons the scope
+        }
+      }),
+    ).rejects.toThrow('rollback-only')
+
+    expect(provider.rollbacks).toBe(1)
+    expect(provider.commits).toBe(0)
+  })
+})
