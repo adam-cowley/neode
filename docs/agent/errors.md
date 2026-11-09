@@ -8,7 +8,7 @@ Package version: **1.0.0-next.1** (from package.json).
 > churns between versions — LLM training corpora mix neode v1, neode and
 > unrelated OGMs. Regenerate with `pnpm docs:agents`.
 
-Typed error taxonomy and driver-error classification. House rule: every error message names the fix — reload the entity on OptimisticLockError, add the named key to the `with` load spec on RelationNotLoadedError.
+Typed error taxonomy and driver-error classification. House rule (NTS-442): every error names what failed, where, why, and suggests the fix — `<what failed> in <where> — <why>. <suggested fix>`, with did-you-mean suggestions for near-miss keys. Driver failures carry the failing statement with REDACTED parameters (keys and shapes, never values); ValidationError lists every failing property, not just the first.
 
 ### `CardinalityViolationError` (class)
 
@@ -36,7 +36,7 @@ _source: errors/classify.ts_
 
 ### `NeodeError` (class)
 
-Base class of the typed error taxonomy (NTS-129). Typed errors are produced by `classifyError`, which wraps the raw driver/engine error — the original is preserved as `cause`.
+Base class of the typed error taxonomy (NTS-129). Typed errors are produced by `classifyError`, which wraps the raw driver/engine error — the original is preserved as `cause`. House rule (NTS-442): every error names what failed, where, why, and suggests the fix — `<what failed> in <where> — <why>. <suggested fix>`. Driver failures carry the failing statement with REDACTED parameters (`redactParameters` — keys and shapes, never values).
 
 _source: errors/neode-error.ts_
 

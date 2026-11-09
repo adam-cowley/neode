@@ -492,7 +492,29 @@ describe('Repository', () => {
       const repo = new Repository<Movie>(neode, Movie)
 
       // @ts-expect-error "bogus" is not a property of Movie
-      await expect(repo.increment('u1', 'bogus')).rejects.toThrow('not a declared property')
+      await expect(repo.increment('u1', 'bogus')).rejects.toThrow(
+        'Unknown property "bogus" on model "Movie"',
+      )
+    })
+
+    it('suggests the closest property name (did-you-mean, NTS-442)', async () => {
+      const { neode } = stubNeode()
+      const repo = new Repository<Movie>(neode, Movie)
+
+      // @ts-expect-error "titel" is a typo of "title"
+      await expect(repo.increment('u1', 'titel')).rejects.toThrow(
+        /Unknown property "titel" on model "Movie" — did you mean "title"\? Defined properties: /,
+      )
+    })
+
+    it('countBy suggests the closest property (did-you-mean, NTS-442)', async () => {
+      const { neode } = stubNeode()
+      const repo = new Repository<Movie>(neode, Movie)
+
+      // @ts-expect-error "titel" is a typo of "title"
+      await expect(repo.countBy('titel')).rejects.toThrow(
+        /Unknown property "titel" on model "Movie" — did you mean "title"\?/,
+      )
     })
 
     it('rejects declared non-numeric properties', async () => {
@@ -545,7 +567,9 @@ describe('Repository', () => {
       const repo = new Repository<Movie>(neode, Movie)
 
       // @ts-expect-error "bogus" is not a property of Movie
-      await expect(repo.countBy('bogus')).rejects.toThrow('not a declared property')
+      await expect(repo.countBy('bogus')).rejects.toThrow(
+        'Unknown property "bogus" on model "Movie"',
+      )
     })
   })
 

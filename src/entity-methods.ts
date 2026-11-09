@@ -13,6 +13,7 @@ with setDefaultNeode(); the most recently set instance wins.
 */
 
 import type { GraphRelationship } from './driver/types.js'
+import { NeodeError } from './errors/index.js'
 import { elementIdOfEntity } from './element-id.js'
 import {
   dirtyValues,
@@ -55,7 +56,7 @@ function requireNeode(): Neode {
   const neode = defaultNeodeHolder.neode
 
   if (neode === undefined) {
-    throw new Error(
+    throw new NeodeError(
       'No Neode instance available for entity instance methods — call setDefaultNeode(neode) first',
     )
   }
@@ -71,7 +72,7 @@ function requireConstructor(entity: object): Newable {
   const found = constructorOfInstance(entity)
 
   if (found === undefined) {
-    throw new Error('Entity has no constructor — cannot resolve its model')
+    throw new NeodeError('Entity has no constructor — cannot resolve its model')
   }
 
   return found
@@ -94,13 +95,13 @@ function elementIdOf(entity: object): string {
   const schema = getModel(constructor)
 
   if (schema === undefined) {
-    throw new Error('Entity is not a registered model — cannot resolve its elementId')
+    throw new NeodeError('Entity is not a registered model — cannot resolve its elementId')
   }
 
   const elementId = elementIdOfEntity(schema, entity)
 
   if (elementId === undefined) {
-    throw new Error('Entity has no elementId — save() it before changing its labels')
+    throw new NeodeError('Entity has no elementId — save() it before changing its labels')
   }
 
   return elementId

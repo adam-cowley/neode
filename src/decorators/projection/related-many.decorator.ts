@@ -1,3 +1,4 @@
+import { NeodeError } from '../../errors/index.js'
 import { mergeProperty } from '../../meta/index.js'
 import type { Newable } from '../../meta/newable.js'
 import { PropertyType } from '../../meta/property-schema.js'
@@ -62,7 +63,7 @@ export function RelatedMany(
       // label-filtered like a single-hop projection.
       if (config.path !== undefined) {
         if (config.fields === undefined || config.fields.length === 0) {
-          throw new Error(`@RelatedMany on "${propertyKey}" with 'path' requires 'fields'`)
+          throw new NeodeError(`@RelatedMany on "${propertyKey}" with 'path' requires 'fields'`)
         }
 
         property.setPath(
@@ -103,7 +104,9 @@ export function RelatedMany(
       const entity: Newable | undefined = config.target?.()
 
       if (entity === undefined && !config.fields) {
-        throw new Error(`@RelatedMany on "${propertyKey}" requires either 'fields' or a 'target()'`)
+        throw new NeodeError(
+          `@RelatedMany on "${propertyKey}" requires either 'fields' or a 'target()'`,
+        )
       }
 
       if (entity !== undefined) {

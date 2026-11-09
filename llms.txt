@@ -14,7 +14,7 @@ Agent skill pack: [skills/neode/SKILL.md](skills/neode/SKILL.md).
 - [Querying](docs/agent/querying.md) — Query builder, repositories, raw Cypher, transactions, hydration, drivers and read-model projections.
 - [Schema management](docs/agent/schema-management.md) — Indexes, constraints, full-text and vector indexes, schema inspection and drift workflow.
 - [Testing & ops](docs/agent/testing-ops.md) — wipe()/testId() test utilities, factory seeding, connectivity checks and Cypher-script helpers.
-- [Errors](docs/agent/errors.md) — Typed error taxonomy and driver-error classification. House rule: every error message names the fix — reload the entity on OptimisticLockError, add the named key to the `with` load spec on RelationNotLoadedError.
+- [Errors](docs/agent/errors.md) — Typed error taxonomy and driver-error classification. House rule (NTS-442): every error names what failed, where, why, and suggests the fix — `<what failed> in <where> — <why>. <suggested fix>`, with did-you-mean suggestions for near-miss keys. Driver failures carry the failing statement with REDACTED parameters (keys and shapes, never values); ValidationError lists every failing property, not just the first.
 - [Core](docs/agent/core.md) — Collection, serialisation and other shared exports.
 - [Schema reference](docs/agent/schema-reference.md) — Every field of PropertyDefinition / RelationshipDefinition / SchemaDefinition with its type and JSDoc description.
 - [Agent ontology API](docs/agent/agent-ontology-api.md) — ontology() / ontologyMarkdown() emit the live graph schema for Text2Cypher and MCP.

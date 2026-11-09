@@ -1,3 +1,4 @@
+import { NeodeError } from '../errors/index.js'
 import { mergeProperty } from '../meta/index.js'
 import { PropertyType } from '../meta/property-schema.js'
 import type { PropertyConfig } from './property-config.interface.js'
@@ -39,7 +40,7 @@ export function Property(
       const mapped: PropertyType | undefined = TYPE_ALIASES[config.type]
 
       if (mapped === undefined) {
-        throw new Error(
+        throw new NeodeError(
           `Unknown property type "${config.type}". Valid types: ${Object.keys(TYPE_ALIASES).join(', ')}`,
         )
       }

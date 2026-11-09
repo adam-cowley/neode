@@ -234,28 +234,32 @@ export class Neo4jConnectionProvider implements ConnectionProvider {
     mode: AccessMode = 'WRITE',
     database?: string,
   ): Promise<QueryOutput> {
-    const session = await this.session(mode, database)
-
     try {
-      const result = await session.run(statement, parameters)
+      // Inside the try so connect failures (session acquisition) are
+      // classified with the statement's context too (NTS-442)
+      const session = await this.session(mode, database)
 
-      return {
-        records: result.records.map((record) => new DriverQueryRecord(record)),
-        summary: {
-          counters: Object.fromEntries(
-            Object.entries(result.summary.counters.updates()).filter(([, value]) => value > 0),
-          ),
-          // Populated by EXPLAIN / PROFILE statements (query options
-          // are not used; the keywords prefix the statement itself)
-          plan: result.summary.plan,
-          profile: result.summary.profile,
-        },
+      try {
+        const result = await session.run(statement, parameters)
+
+        return {
+          records: result.records.map((record) => new DriverQueryRecord(record)),
+          summary: {
+            counters: Object.fromEntries(
+              Object.entries(result.summary.counters.updates()).filter(([, value]) => value > 0),
+            ),
+            // Populated by EXPLAIN / PROFILE statements (query options
+            // are not used; the keywords prefix the statement itself)
+            plan: result.summary.plan,
+            profile: result.summary.profile,
+          },
+        }
+      } finally {
+        await session.close()
       }
     } catch (error) {
       // NTS-446: statement + redacted params on unclassified failures
       throw withQueryContext(error, statement, parameters)
-    } finally {
-      await session.close()
     }
   }
 

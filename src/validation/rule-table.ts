@@ -377,7 +377,7 @@ function applyBooleanRule(
       const limit = typeof context.config['max'] === 'number' ? context.config['max'] : null
 
       if (limit === null) {
-        throw new Error('"truncate" must have a max limit')
+        throw new NeodeError('"truncate" must have a max limit')
       }
 
       state.truncated = true

@@ -15,6 +15,27 @@ const CONSTRAINT_VIOLATION_CODES = new Set([
 const TRANSIENT_CODE_PREFIX = 'Neo.TransientError.'
 
 /**
+The driver's connect-failure message shapes ("Failed to connect to
+server at …", ECONNREFUSED). These get the connection-config fix
+appended — transient mid-session errors keep their raw message (the
+config may be blameless).
+*/
+const CONNECTION_FAILURE = /\bfailed to connect\b|ECONNREFUSED|connection refused/i
+
+/**
+Prepend the connection-config fix to a connect-failure message (NTS-442).
+The fix sentence never echoes a value — only where to look.
+*/
+function connectionMessage(message: string): string {
+  const why = message.trim().replace(/\.$/, '')
+
+  return (
+    `Cannot connect to the database — ${why}. ` +
+    'Check that the database is running at the configured URI and that the credentials and database name are correct.'
+  )
+}
+
+/**
 Label/property of a unique violation, parsed from the message:
 
  - 5.x:  "New node(123) with label `Movie` and property `title` = 'X' ..."
@@ -58,7 +79,15 @@ export function classifyError(error: unknown): unknown {
 
   const isTransient = code?.startsWith(TRANSIENT_CODE_PREFIX) === true || raw.retryable === true
 
-  return isTransient ? new TransientError(error.message, code, { cause: error }) : error
+  if (!isTransient) {
+    return error
+  }
+
+  const message = CONNECTION_FAILURE.test(error.message)
+    ? connectionMessage(error.message)
+    : error.message
+
+  return new TransientError(message, code, { cause: error })
 }
 
 /**

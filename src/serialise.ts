@@ -8,6 +8,7 @@ import {
   isPoint,
   isTime,
 } from 'neo4j-driver'
+import { NeodeError } from './errors/index.js'
 import { getModel } from './meta/index.js'
 import type { PropertySchema } from './meta/property-schema.js'
 import { PropertyType } from './meta/property-schema.js'
@@ -293,7 +294,10 @@ export function toJson(entity: unknown): Record<string, unknown> {
   if (schema === undefined || instance === undefined) {
     const name = instance?.constructor.name ?? String(entity)
 
-    throw new Error(`Cannot serialise "${name}": no model is registered for it`)
+    throw new NeodeError(
+      `Cannot serialise "${name}": no model is registered for it — ` +
+        'register the class with @NodeEntity or defineModel() first',
+    )
   }
 
   const properties = schema.getProperties()
