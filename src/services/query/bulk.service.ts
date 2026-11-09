@@ -20,6 +20,7 @@ import {
 } from '../write-utilities.js'
 import { validate } from '../../validation/index.js'
 import { NeodeError } from '../../errors/index.js'
+import { quoteLabels } from '../../query/quote.js'
 import { QueryService } from './query.service.js'
 import { getMergeFields } from './merge.service.js'
 
@@ -114,7 +115,7 @@ function isConnectionProvider(runner: Runner): runner is ConnectionProvider {
 `:Label:Label` node pattern suffix for a schema's labels
 */
 export function labelPattern(labels: string[]): string {
-  return labels.length > 0 ? `:${labels.join(':')}` : ''
+  return labels.length > 0 ? `:${quoteLabels(labels)}` : ''
 }
 
 /**

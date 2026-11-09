@@ -1,5 +1,6 @@
 import { getModels } from '../../meta/index.js'
 import type { ConnectionProvider } from '../../driver/types.js'
+import { safeKey } from '../../query/quote.js'
 import {
   ConstraintAction,
   ConstraintType,
@@ -220,13 +221,13 @@ function dropStatement(object: SchemaObject): string {
     case ConstraintType.PROPERTY_TYPE: {
       return object.properties.length > 0
         ? schemaStatement(ConstraintAction.DROP, type, label, object.properties, object.name)
-        : `DROP CONSTRAINT ${object.name} IF EXISTS`
+        : `DROP CONSTRAINT ${safeKey(object.name)} IF EXISTS`
     }
     default: {
       // shortcut: no builder exists for range/text/point index drops,
       // and they all share the plain DROP INDEX spelling — add one per
       // kind if their syntax ever diverges
-      return `DROP INDEX ${object.name} IF EXISTS`
+      return `DROP INDEX ${safeKey(object.name)} IF EXISTS`
     }
   }
 }

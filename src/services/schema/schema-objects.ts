@@ -4,7 +4,7 @@ Leaf declarations shared by the schema services. Kept free of local
 without creating cycles.
 */
 import { PropertyType } from '../../meta/property-schema.js'
-import { quote } from '../../query/quote.js'
+import { quote, safeKey } from '../../query/quote.js'
 
 export const ConstraintAction = {
   CREATE: 'CREATE',
@@ -83,7 +83,7 @@ export function schemaStatement(
   const kind = type === ConstraintType.INDEX ? 'INDEX' : 'CONSTRAINT'
 
   if (action === ConstraintAction.DROP) {
-    return `DROP ${kind} ${name} IF EXISTS`
+    return `DROP ${kind} ${safeKey(name)} IF EXISTS`
   }
 
   const quoted = properties.map((property) => `n.${quote(property)}`)
@@ -110,7 +110,7 @@ export function schemaStatement(
     target = `REQUIRE ${firstQuoted} IS NOT NULL`
   }
 
-  return `CREATE ${kind} ${name} IF NOT EXISTS FOR (${labelPattern}) ${target}`
+  return `CREATE ${kind} ${safeKey(name)} IF NOT EXISTS FOR (${labelPattern}) ${target}`
 }
 
 /**
@@ -127,8 +127,8 @@ export function propertyTypeStatement(
   const labelPattern = shouldQuoteLabel ? `n:${quote(label)}` : `n:${label}`
 
   return action === ConstraintAction.DROP
-    ? `DROP CONSTRAINT ${name} IF EXISTS`
-    : `CREATE CONSTRAINT ${name} IF NOT EXISTS FOR (${labelPattern}) REQUIRE n.${quote(property)} IS :: ${cypherType}`
+    ? `DROP CONSTRAINT ${safeKey(name)} IF EXISTS`
+    : `CREATE CONSTRAINT ${safeKey(name)} IF NOT EXISTS FOR (${labelPattern}) REQUIRE n.${quote(property)} IS :: ${cypherType}`
 }
 
 /**

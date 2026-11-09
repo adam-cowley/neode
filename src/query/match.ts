@@ -1,4 +1,5 @@
 import type { Property } from './property.js'
+import { quoteLabels } from './quote.js'
 
 export class Match {
   private readonly alias: string | undefined
@@ -18,13 +19,10 @@ export class Match {
   toString(): string {
     const alias = this.alias ?? ''
 
-    let label = ''
+    const labels: string | string[] =
+      typeof this.labels === 'string' || Array.isArray(this.labels) ? this.labels : []
 
-    if (Array.isArray(this.labels)) {
-      label = this.labels.length > 0 ? `:${this.labels.join(':')}` : ''
-    } else if (typeof this.labels === 'string' && this.labels.length > 0) {
-      label = `:${this.labels}`
-    }
+    const label = labels.length > 0 ? `:${quoteLabels(labels)}` : ''
 
     let properties = ''
 
