@@ -148,6 +148,10 @@ Register a float property.
 
 _source: decorators/node/float.decorator.ts_
 
+### `getModel` (function)
+
+_source: meta/index.ts_
+
 ### `getModelByName` (function)
 
 Get a previously defined model constructor by name
@@ -802,6 +806,12 @@ Active-record style data-access repository for one registered model — construc
 
 _source: repository/index.ts_
 
+### `requireRelateClient` (function)
+
+Resolve the Relate client module and native library. The client is not yet published to npm, so it is loaded from disk: 1. `RELATE_CLIENT_PATH` env var, or 2. the sibling `relate` repository checkout (`../relate/clients/javascript`) The native library location is passed through via `RELATE_LIB` (see the Relate client's loader) — detected automatically here when a sibling repository checkout exists.
+
+_source: driver/relate.ts_
+
 ### `Runner` (interface)
 
 Anything able to run statements in its scope (autocommit or transaction).
@@ -987,6 +997,10 @@ _source: services/schema/inspect.service.ts_
 ### `VectorIndexDefinition` (interface)
 
 A vector index to keep installed on the database
+
+_source: services/schema/vector.service.ts_
+
+### `vectorIndexName` (function)
 
 _source: services/schema/vector.service.ts_
 
@@ -1205,6 +1219,12 @@ _source: traverse.ts_
 The traversal builder (NTS-512): typed multi-hop reads — chain hops, run, get hydrated entities per hop position. Row semantics: one row per matched path (variable-degree hops fan out). Aggregate reads (NTS-547): declare `groupBy()` / `countDistinct()` and read the result with `runAggregates()` — group aliases come back hydrated, counts as numbers. `orderBy()` / `limit()` shape either mode. Every aliased node whose model is known (the origin and each hop with a target model) carries that model's named read filters (NTS-162, NTS-574): soft-deleted and filtered-out nodes drop out of the paths and the counts. The mid-path nodes of a variable-length hop carry the hop target's read filters too (NTS-593); hops without a target model have no model to filter by and stay unfiltered. `withoutFilters()` opts named filters out for the traversal, as on every other read. Variable-length hops (NTS-593): the result is a distinct-node set — the per-path duplicates collapse (`RETURN DISTINCT`) and counts count distinct nodes. An open-ended range (`*1..`) is capped at MAX_TRAVERSE_DEPTH; `maxDepth()` overrides the cap per traversal. ```ts const rows = await neode.traverse(Product) .hop('SUPPLIED_BY', 'out', Supplier) .hop('COVERS', 'in', Territory, { degrees: '1..2' }) .run() rows[0].nodes // [Product, Supplier, Territory] hydrated // co-purchase style: ranked, capped, excluding the origin's own edges const ranked = await neode.traverse(Order) .where({ orderID }) .hop('CONTAINS', 'out', Product) .hop('CONTAINS', 'in', Order) .hop('CONTAINS', 'out', Product) .exclude('t0', 'CONTAINS', 't3') .groupBy('t3') .countDistinct('t2', 'times') .orderBy('times', 'DESC') .limit(5) .runAggregates() ```
 
 _source: traverse.ts_
+
+### `validate` (function)
+
+Validate an object against an entity schema. Runs the Zod schema for every registered property (type base + rules), collecting all issues — like Joi's abortEarly: false — and throwing a ValidationError when anything fails. Unknown keys are always allowed (allowUnknown): only registered properties are validated. undefined is skipped unless the property is required; null behaves the same (a required property fails with `"<key>" is required`, an optional property passes).
+
+_source: validation/index.ts_
 
 ### `ValidationDetail` (interface)
 

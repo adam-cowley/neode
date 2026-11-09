@@ -291,6 +291,12 @@ Active-record style data-access repository for one registered model — construc
 
 _source: repository/index.ts_
 
+### `requireRelateClient` (function)
+
+Resolve the Relate client module and native library. The client is not yet published to npm, so it is loaded from disk: 1. `RELATE_CLIENT_PATH` env var, or 2. the sibling `relate` repository checkout (`../relate/clients/javascript`) The native library location is passed through via `RELATE_LIB` (see the Relate client's loader) — detected automatically here when a sibling repository checkout exists.
+
+_source: driver/relate.ts_
+
 ### `Runner` (interface)
 
 Anything able to run statements in its scope (autocommit or transaction).

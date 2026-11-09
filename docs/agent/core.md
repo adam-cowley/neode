@@ -67,6 +67,12 @@ The traversal builder (NTS-512): typed multi-hop reads — chain hops, run, get 
 
 _source: traverse.ts_
 
+### `validate` (function)
+
+Validate an object against an entity schema. Runs the Zod schema for every registered property (type base + rules), collecting all issues — like Joi's abortEarly: false — and throwing a ValidationError when anything fails. Unknown keys are always allowed (allowUnknown): only registered properties are validated. undefined is skipped unless the property is required; null behaves the same (a required property fails with `"<key>" is required`, an optional property passes).
+
+_source: validation/index.ts_
+
 ### `ValidationDetail` (interface)
 
 One failed check, shaped like a Joi detail
