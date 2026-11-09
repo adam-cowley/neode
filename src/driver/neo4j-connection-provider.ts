@@ -5,6 +5,7 @@
   type Relationship as DriverRelationship,
   type Session as DriverSession,
   session as DriverSessionMode,
+  type QueryResult,
   type Transaction as DriverTransaction,
   Integer as DriverInteger,
   isDate,
@@ -24,7 +25,7 @@ import type {
   QueryRecord,
   TransactionHandle,
 } from './types.js'
-import { classifyError, withQueryContext } from '../errors/index.js'
+import { classifyError, NeodeError, withQueryContext } from '../errors/index.js'
 import { isRecord } from '../services/type-guards.js'
 
 /**
@@ -34,6 +35,20 @@ function normalizeProperties(properties: Record<string, unknown>): Record<string
   return Object.fromEntries(
     Object.entries(properties).map(([key, item]) => [key, normalizeDriverValue(item)]),
   )
+}
+
+/**
+Integer to number, refusing a silent precision loss (NTS-582): a value
+outside the safe-integer range throws instead of rounding.
+*/
+function safeToNumber(value: DriverInteger): number {
+  if (!DriverInteger.inSafeRange(value)) {
+    throw new NeodeError(
+      `The integer ${value.toString()} is outside JavaScript's safe integer range and cannot be represented as a number without losing precision. Return it as a string in the query (toString(n)) or split it, instead of reading it as a number.`,
+    )
+  }
+
+  return value.toNumber()
 }
 
 /**
@@ -61,7 +76,7 @@ function normalizeInternalIntegers(value: unknown): unknown {
       continue
     }
 
-    clone[key] = item.toNumber()
+    clone[key] = safeToNumber(item)
     hasIntegerFields = true
   }
 
@@ -80,7 +95,7 @@ export function normalizeDriverValue(value: unknown): unknown {
   // Integers are natively represented in driver 5+, but the type can still
   // appear when lossless integers are enabled — convert defensively.
   if (DriverInteger.isInteger(value)) {
-    return value.toNumber()
+    return safeToNumber(value)
   }
 
   if (isDriverNode(value)) {
@@ -182,6 +197,18 @@ async function closeQuietly(session: DriverSession): Promise<void> {
   }
 }
 
+function summaryOf(result: QueryResult): NonNullable<QueryOutput['summary']> {
+  return {
+    counters: Object.fromEntries(
+      Object.entries(result.summary.counters.updates()).filter(([, value]) => value > 0),
+    ),
+    // Populated by EXPLAIN / PROFILE statements (query options
+    // are not used; the keywords prefix the statement itself)
+    plan: result.summary.plan,
+    profile: result.summary.profile,
+  }
+}
+
 export class Neo4jTransactionHandle implements TransactionHandle {
   private readonly session: DriverSession
   private readonly tx: DriverTransaction
@@ -195,7 +222,13 @@ export class Neo4jTransactionHandle implements TransactionHandle {
     try {
       const result = await this.tx.run(statement, parameters)
 
-      return { records: result.records.map((record) => new DriverQueryRecord(record)) }
+      // The summary rides along so write counters (created vs matched) are
+      // visible inside a transaction too — save()'s create/update verdict
+      // reads them (NTS-582)
+      return {
+        records: result.records.map((record) => new DriverQueryRecord(record)),
+        summary: summaryOf(result),
+      }
     } catch (error) {
       // NTS-446: unclassified failures carry the failing statement and
       // redacted params; typed errors pass through with their own message
@@ -264,15 +297,7 @@ export class Neo4jConnectionProvider implements ConnectionProvider {
 
         return {
           records: result.records.map((record) => new DriverQueryRecord(record)),
-          summary: {
-            counters: Object.fromEntries(
-              Object.entries(result.summary.counters.updates()).filter(([, value]) => value > 0),
-            ),
-            // Populated by EXPLAIN / PROFILE statements (query options
-            // are not used; the keywords prefix the statement itself)
-            plan: result.summary.plan,
-            profile: result.summary.profile,
-          },
+          summary: summaryOf(result),
         }
       } finally {
         await closeQuietly(session)
