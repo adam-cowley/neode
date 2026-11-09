@@ -624,6 +624,7 @@ export class TransactionalService implements INeode {
     limit?: number,
     skip?: number,
     database?: string,
+    filters?: { withoutFilters?: string[] | undefined },
   ): Promise<T[]> {
     this.ignoreDatabaseOverride(database)
 
@@ -639,6 +640,7 @@ export class TransactionalService implements INeode {
       order,
       limit,
       skip,
+      filters,
     )
   }
 

@@ -7,6 +7,7 @@ import { convertPropertyValue } from '../../utilities.js'
 import { isPoint } from 'neo4j-driver'
 import { QueryService } from './query.service.js'
 import { applyOrder, type OrderSpec } from './get.service.js'
+import { applyReadFilters, type ReadFilterOptions } from './filters.js'
 
 // SRIDs of the point types Neo4j supports
 const SRID = {
@@ -77,10 +78,14 @@ export class WithinDistanceService extends QueryService {
     order?: OrderSpec,
     limit?: number,
     skip?: number,
+    filters?: ReadFilterOptions,
   ): Promise<T[]> {
     const builder = new Builder()
 
     builder.match(THIS_NODE, schema.getLabels())
+
+    // NTS-574 — the model's named read filters (soft delete, tenant, …)
+    applyReadFilters(builder, schema, filters)
 
     for (const property of schema.getProperties()) {
       const key = property.getKey()

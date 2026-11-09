@@ -43,12 +43,18 @@ function filterAlias(key: string): string {
 }
 
 /**
-Bind the single-hop traversal for a nested filter on a related property:
-`(this)-[:TYPE]->(alias:TargetLabels)`. An inner MATCH filters the read —
-a nested filter is the intent, so related-less rows drop (NTS-565: sorts
-never bind this way, they ride a COLLECT { } subquery instead).
+Bind the single-hop traversal for a nested filter / sort on a related
+property: `(this)-[:TYPE]->(alias:TargetLabels)`, with the target model's
+named read filters (NTS-162, NTS-574) applied — a soft-deleted or
+out-of-tenant related node neither satisfies a filter nor supplies a sort
+key. Only ever called on a sub-builder (EXISTS / COLLECT subquery).
 */
-function bindTraversal(builder: Builder, property: PropertySchema, alias: string): void {
+function bindTraversal(
+  builder: Builder,
+  property: PropertySchema,
+  alias: string,
+  filters?: ReadFilterOptions,
+): void {
   const types = (property.getRelationshipType() ?? property.getKey())
     .split('|')
     .filter((part) => part.length > 0)
@@ -64,22 +70,27 @@ function bindTraversal(builder: Builder, property: PropertySchema, alias: string
   builder.match(THIS_NODE)
 
   builder.relationship(types, direction, `${alias}_rel`).to(alias, labels)
+
+  if (targetSchema instanceof EntitySchema) {
+    applyReadFilters(builder, targetSchema, filters, alias)
+  }
 }
 
 /**
 The property map: own properties filter as property equality (GetService
 parity, unknown keys ignored); object values on @RelatedOne / @RelatedMany
 keys filter on the related node's properties via a bound traversal, and an
-object value on any other property kind is a clear error. Returns the
-traversal aliases bound per property key, for nested sort reuse.
+object value on any other property kind is a clear error. A nested filter
+renders as `WHERE EXISTS { … }` over the traversal (NTS-574): the target's
+read filters apply inside it and a @RelatedMany with several matching
+related nodes never duplicates the root row.
 */
 function applyFilters(
   builder: Builder,
   schema: EntitySchema,
   parameters: Record<string, unknown>,
-): Map<string, string> {
-  const bound = new Map<string, string>()
-
+  filters?: ReadFilterOptions,
+): void {
   for (const property of schema.getProperties()) {
     const key = property.getKey()
 
@@ -103,30 +114,28 @@ function applyFilters(
 
     const alias = filterAlias(key)
 
-    // shortcut: a @RelatedOne with several matching relationships yields
-    // duplicate rows (the projection takes [0], the filter MATCH does not
-    // dedupe) — upgrade to an EXISTS { } wrap if singular graphs stop holding
-    bindTraversal(builder, property, alias)
+    builder.whereExistsSubquery(
+      (sub) => {
+        bindTraversal(sub, property, alias, filters)
 
-    for (const [field, fieldValue] of Object.entries(value)) {
-      builder.where(`${alias}.${field}`, fieldValue)
-    }
+        for (const [field, fieldValue] of Object.entries(value)) {
+          sub.where(`${alias}.${field}`, fieldValue)
+        }
 
-    bound.set(key, alias)
+        return sub
+      },
+      [THIS_NODE],
+    )
   }
-
-  return bound
 }
 
 /**
 One deferred sort key: the ORDER BY expression with its direction (when
-the caller gave one), and the traversal alias it reads when that alias
-must survive the WITH clause carrying the collected keys
+the caller gave one)
 */
 interface SortKey {
   expression: string
   order: string
-  alias?: string
 }
 
 /**
@@ -143,10 +152,11 @@ function collectedSort(
   property: PropertySchema,
   sortAlias: string,
   field: string,
+  filters?: ReadFilterOptions,
 ): string {
   return `${builder.collectExpr(
     (sub) => {
-      bindTraversal(sub, property, sortAlias)
+      bindTraversal(sub, property, sortAlias, filters)
       sub.return(`${sortAlias}.${field}`)
       sub.orderBy(`${sortAlias}.${field}`)
 
@@ -165,9 +175,9 @@ function collectOrder(
   builder: Builder,
   order: OrderSpec | undefined,
   schema: EntitySchema,
-  bound: Map<string, string>,
   keys: SortKey[],
   bindings: string[],
+  filters?: ReadFilterOptions,
 ): void {
   if (order === undefined || order === '') {
     return
@@ -177,7 +187,7 @@ function collectOrder(
     keys.push({ expression: `${THIS_NODE}.${order}`, order: '' })
   } else if (Array.isArray(order)) {
     for (const entry of order) {
-      collectOrder(builder, entry, schema, bound, keys, bindings)
+      collectOrder(builder, entry, schema, keys, bindings, filters)
     }
   } else if ('field' in order && typeof order.field === 'string') {
     keys.push({ expression: `${THIS_NODE}.${order.field}`, order: order.order ?? '' })
@@ -197,17 +207,9 @@ function collectOrder(
         )
       }
 
-      const alias = bound.get(key)
-
-      if (alias !== undefined) {
-        keys.push({ expression: `${alias}.${field}`, order: '', alias })
-
-        continue
-      }
-
       const sortAlias = filterAlias(key)
 
-      bindings.push(collectedSort(builder, property, sortAlias, field))
+      bindings.push(collectedSort(builder, property, sortAlias, field, filters))
 
       keys.push({ expression: `${sortAlias}[0]`, order: '' })
     }
@@ -219,20 +221,20 @@ Ordering with nested sort support (NTS-145): a map key naming a
 @RelatedOne orders by the related node's property — `{ course: 'slug' }`
 collects the traversal into a WITH-carried `COLLECT { … }` subquery and
 the composite ORDER BY sorts on `<alias>[0]` (NTS-565 — no OPTIONAL MATCH
-in library-emitted reads). A nested sort reuses the alias a nested filter
-on the same key already bound. Every other form behaves exactly like the
+in library-emitted reads); the target's read filters apply inside the
+subquery (NTS-574). Every other form behaves exactly like the
 plain applyOrder.
 */
 function applyOrder(
   builder: Builder,
   order: OrderSpec | undefined,
   schema: EntitySchema,
-  bound: Map<string, string>,
+  filters?: ReadFilterOptions,
 ): void {
   const keys: SortKey[] = []
   const bindings: string[] = []
 
-  collectOrder(builder, order, schema, bound, keys, bindings)
+  collectOrder(builder, order, schema, keys, bindings, filters)
 
   if (keys.length === 0) {
     return
@@ -246,18 +248,7 @@ function applyOrder(
     return
   }
 
-  // The WITH re-projects scope: carry every traversal alias a key reads
-  // (nested filters bind theirs on the main statement) alongside the
-  // collected sort keys
-  const aliases = new Set<string>()
-
-  for (const key of keys) {
-    if (key.alias !== undefined) {
-      aliases.add(key.alias)
-    }
-  }
-
-  builder.with(THIS_NODE, ...aliases, ...bindings)
+  builder.with(THIS_NODE, ...bindings)
   builder.withOrder(descriptors)
 }
 
@@ -330,9 +321,9 @@ export class ProjectionService {
 
     applyReadFilters(builder, schema, filters)
 
-    const bound = applyFilters(builder, schema, parameters)
+    applyFilters(builder, schema, parameters, filters)
 
-    applyOrder(builder, order, schema, bound)
+    applyOrder(builder, order, schema, filters)
 
     return this.run<T>(constructor, schema, builder, limit, skip, withSpec, filters)
   }
