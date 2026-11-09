@@ -10,7 +10,7 @@ import { isRecord } from '../services/type-guards.js'
 import { NeodeError } from '../errors/index.js'
 import { loadSpecCalls, projectionNode } from './projection.js'
 import { hydrateProjection } from './hydrate.js'
-import { applySoftDeleteFilter } from '../services/query/soft-delete.js'
+import { applyReadFilters, type ReadFilterOptions } from '../services/query/filters.js'
 
 /**
 True for the related-projection kinds that support nested filters / sort
@@ -287,12 +287,16 @@ export class ProjectionService {
     limit?: number,
     skip?: number,
     withSpec?: object,
+    filters?: ReadFilterOptions,
   ): Promise<T[]> {
     // Decorated load specs (NTS-560) emit their CALL subqueries before
-    // the RETURN, whose projection map reads the collected aliases
-    loadSpecCalls(builder, THIS_NODE, schema, withSpec)
+    // the RETURN, whose projection map reads the collected aliases —
+    // the related rows carry the target models' read filters (NTS-162)
+    loadSpecCalls(builder, THIS_NODE, schema, withSpec, filters)
 
-    builder.return(`${projectionNode(THIS_NODE, schema, withSpec)} AS ${THIS_NODE}`)
+    builder.return(
+      `${projectionNode(THIS_NODE, schema, withSpec, { builder, filters })} AS ${THIS_NODE}`,
+    )
 
     if (skip !== undefined && skip !== 0) {
       builder.skip(skip)
@@ -327,18 +331,19 @@ export class ProjectionService {
     skip?: number,
     order?: OrderSpec,
     withSpec?: object,
+    filters?: ReadFilterOptions,
   ): Promise<T[]> {
     const builder = new Builder()
 
     builder.match(THIS_NODE, schema.getLabels())
 
-    applySoftDeleteFilter(builder, schema)
+    applyReadFilters(builder, schema, filters)
 
     const bound = applyFilters(builder, schema, parameters)
 
     applyOrder(builder, order, schema, bound)
 
-    return this.run<T>(constructor, schema, builder, limit, skip, withSpec)
+    return this.run<T>(constructor, schema, builder, limit, skip, withSpec, filters)
   }
 
   /**
@@ -349,6 +354,7 @@ export class ProjectionService {
     schema: EntitySchema,
     value: unknown,
     withSpec?: object,
+    filters?: ReadFilterOptions,
   ): Promise<T | undefined> {
     const builder = new Builder()
 
@@ -360,9 +366,9 @@ export class ProjectionService {
 
     builder.match(THIS_NODE, schema.getLabels(), { [primaryKey.getKey()]: value })
 
-    applySoftDeleteFilter(builder, schema)
+    applyReadFilters(builder, schema, filters)
 
-    const results = await this.run<T>(constructor, schema, builder, 1, undefined, withSpec)
+    const results = await this.run<T>(constructor, schema, builder, 1, undefined, withSpec, filters)
 
     return results[0]
   }
@@ -374,14 +380,23 @@ export class ProjectionService {
     constructor: new (...arguments_: never[]) => T,
     schema: EntitySchema,
     elementId: string,
+    filters?: ReadFilterOptions,
   ): Promise<T | undefined> {
     const builder = new Builder()
 
     builder.match(THIS_NODE).whereId(THIS_NODE, elementId)
 
-    applySoftDeleteFilter(builder, schema)
+    applyReadFilters(builder, schema, filters)
 
-    const results = await this.run<T>(constructor, schema, builder, 1)
+    const results = await this.run<T>(
+      constructor,
+      schema,
+      builder,
+      1,
+      undefined,
+      undefined,
+      filters,
+    )
 
     return results[0]
   }

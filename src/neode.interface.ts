@@ -52,7 +52,7 @@ export interface INeode {
     limit?: number,
     skip?: number,
     database?: string,
-    options?: { with?: WithSpec<T> },
+    options?: { with?: WithSpec<T>; withoutFilters?: string[] | undefined },
   ): Promise<T[]>
   /**
   MERGE a node of the given constructor on its merge fields (the unique
@@ -125,6 +125,7 @@ export interface INeode {
     indexName: string,
     query: string,
     limit?: number,
+    filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]>
   cypher(query: string, parameters?: QueryParameters, options?: CypherOptions): Promise<QueryOutput>
   cypher<T>(

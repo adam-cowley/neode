@@ -1,9 +1,11 @@
 import type { Runner } from '../../driver/types.js'
 import { hydrate } from '../../hydrate.js'
 import { EntitySchema } from '../../meta/entity/entity-schema.js'
+import { getModel } from '../../meta/index.js'
 import type { Newable } from '../../meta/newable.js'
 import { isConstructorOf } from '../type-guards.js'
 import { isTransientError, NeodeError } from '../../errors/index.js'
+import { readFilterFragment, type ReadFilterOptions } from './filters.js'
 
 /**
 The message of a thrown value (thrown non-Errors have none)
@@ -44,6 +46,9 @@ their relevance score, best match first.
 
 The query string is bound as a parameter, so Lucene syntax characters in it
 are still parsed as such — pass user text through `toFulltextQuery` first.
+
+NTS-162 — the model's named read filters apply (a `WHERE` after the YIELD);
+`filters.withoutFilters` disables names for this call.
 */
 export async function search<T>(
   runner: Runner,
@@ -51,6 +56,7 @@ export async function search<T>(
   indexName: string,
   query: string,
   limit?: number,
+  filters?: ReadFilterOptions,
 ): Promise<ScoredEntity<T>[]> {
   requireString(indexName, 'index name')
   requireString(query, 'query')
@@ -79,6 +85,28 @@ export async function search<T>(
   // type for the generic hydrate call
   if (!isConstructorOf<T>(constructor)) {
     throw new TypeError('Cannot run a full-text search: the model is not a constructor')
+  }
+
+  // NTS-162 — named read filters as a WHERE over the YIELDed rows
+  const schema = model instanceof EntitySchema ? model : getModel(constructor)
+
+  if (schema instanceof EntitySchema) {
+    const { fragment, parameters: filterParameters } = readFilterFragment(
+      schema,
+      NODE_ALIAS,
+      filters,
+    )
+
+    if (fragment !== undefined) {
+      // Replacer function: the fragment carries `$params` and must not
+      // dance with replacement-pattern semantics
+      statement = statement.replace(
+        `RETURN ${NODE_ALIAS}, score`,
+        () => `WHERE ${fragment} RETURN ${NODE_ALIAS}, score`,
+      )
+
+      Object.assign(parameters, filterParameters)
+    }
   }
 
   const output = await (async () => {

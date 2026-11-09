@@ -4,7 +4,7 @@ import { THIS_NODE } from '../../constants.js'
 import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { applyOrder, type OrderSpec } from '../../query/order-spec.js'
 import { QueryService } from './query.service.js'
-import { applySoftDeleteFilter } from './soft-delete.js'
+import { applyReadFilters, type ReadFilterOptions } from './filters.js'
 
 // The order forms live in the shared query module (the Repository uses the
 // same ones) — re-exported here to keep the established import path
@@ -18,12 +18,13 @@ export class GetService extends QueryService {
     limit?: number,
     skip?: number,
     order?: OrderSpec,
+    filters?: ReadFilterOptions,
   ): Promise<T[]> {
     const builder = new Builder()
 
     builder.match(THIS_NODE, schema.getLabels())
 
-    applySoftDeleteFilter(builder, schema)
+    applyReadFilters(builder, schema, filters)
 
     for (const property of schema.getProperties()) {
       const key = property.getKey()
@@ -35,6 +36,6 @@ export class GetService extends QueryService {
 
     applyOrder(builder, order)
 
-    return this.return<T>(constructor, schema, builder, skip, limit)
+    return this.return<T>(constructor, schema, builder, skip, limit, filters)
   }
 }
