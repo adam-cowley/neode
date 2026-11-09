@@ -850,7 +850,9 @@ export class Neode implements INeode {
   Run statements to create the schema
   */
   async installSchema(): Promise<SchemaResult[]> {
-    const service = new SchemaService(this.connection, this.enterprise)
+    // NTS-598 — EXISTS / property-type constraints follow the edition
+    // detected from the connection, not the manual flag
+    const service = new SchemaService(this.connection)
 
     return service.create()
   }
@@ -862,7 +864,7 @@ export class Neode implements INeode {
   names are untouched) — never run it against a database you do not own.
   */
   async dropSchema(): Promise<SchemaResult[]> {
-    const service = new SchemaService(this.connection, this.enterprise)
+    const service = new SchemaService(this.connection)
 
     return service.drop()
   }
@@ -1567,7 +1569,7 @@ export class Neode implements INeode {
   (NTS-142)
   */
   async inspectSchema(options: InspectOptions = {}): Promise<SchemaInspection> {
-    return inspectSchema(this.connection, { enterprise: this.enterprise, ...options })
+    return inspectSchema(this.connection, options)
   }
 
   /**
@@ -1591,7 +1593,7 @@ export class Neode implements INeode {
   the caller's job.
   */
   async schemaDiff(options: InspectOptions = {}): Promise<SchemaDrift> {
-    return schemaDrift(this.connection, { enterprise: this.enterprise, ...options })
+    return schemaDrift(this.connection, options)
   }
 
   /**

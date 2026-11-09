@@ -208,7 +208,7 @@ describe('graph types (NTS-548)', () => {
 
     const shown = await shownGraphType()
 
-    expect(shown).toContain('nts552install_region_code_unique')
+    expect(shown).toContain('nts552install_code_region_unique_47b9fbe9')
 
     // Enforcement: the composite pair must be unique (existence of the KEY
     // half is server-dependent — real Neo4j enforces it, the embedded

@@ -748,8 +748,6 @@ _source: services/query/knn.service.ts_
 
 ### `LabelPredicate` (class)
 
-A label predicate: `alias:Label` (several labels require all of them), shared by `whereLabel` (`WHERE n:Completed`) and `orderByLabel` (`ORDER BY n:Completed DESC`).
-
 _source: query/label-predicate.ts_
 
 ### `LoadedEntity` (type)
@@ -1184,7 +1182,7 @@ _source: services/schema/graph-type.service.ts_
 
 ### `graphTypeConstraintName` (const)
 
-Deterministic name for a graph type constraint item (the same `<label>_<props>_<kind>` shape as the standalone constraint names)
+Deterministic name for a graph type constraint item (the same `<label>_<props>_<kind>_<hash>` shape as the standalone constraint names)
 
 _source: services/schema/graph-type.service.ts_
 
@@ -1238,7 +1236,7 @@ _source: services/schema/graph-type.service.ts_
 
 ### `InspectOptions` (interface)
 
-Which objects count as "declared" for the inspection: pass the full-text/vector index definitions and the enterprise flag your installSchema call used, so the diff is not polluted by false "extra" entries.
+Which objects count as "declared" for the inspection: pass the full-text/vector index definitions your installSchema call used, so the diff is not polluted by false "extra" entries. The edition is DETECTED from the connection (NTS-598) — EXISTS / property-type constraints are declared only on Enterprise.
 
 _source: services/schema/inspect.service.ts_
 
@@ -1504,7 +1502,7 @@ _source: traverse.ts_
 
 ### `ModelObservers` (interface)
 
-The observer hooks a model can carry (NTS-511). before* hooks run before the write statement — an error fails the write. On the facade (`neode.save()` / `create()` / `delete()`) they run BEFORE the write's transaction opens; on a transaction handle (`TransactionalService`) they run inside it. after* hooks run once the write is COMMITTED (NTS-582): for a write in an explicit or ambient transaction that is when the outermost transaction commits — they never fire for work that rolls back or is retried, and an error thrown by one cannot undo the committed write. On the create path beforeSave receives the plain properties record (the entity does not exist yet) — mutate it to change what is written.
+The observer hooks a model can carry (NTS-511). before* hooks run before the write statement — an error fails the write. On the facade (`neode.save()` / `create()` / `delete()`) they run BEFORE the write's transaction opens; on a transaction handle (`TransactionalService`) they run inside it. after* hooks run once the write is COMMITTED (NTS-582): for a write in an explicit or ambient transaction that is when the outermost transaction commits — they never fire for work that rolls back or is retried, and an error thrown by one cannot undo the committed write. An error an after* hook throws SURFACES AFTER THE COMMIT: it rejects the point that flushes the buffered effects (the `transaction()` callback, the managed scope, or the explicit `commit()` — or the facade call that committed its own transaction), so the data stays committed while the caller learns the hook failed (NTS-589). On the create path beforeSave receives the plain properties record (the entity does not exist yet) — mutate it to change what is written.
 
 _source: observers.ts_
 

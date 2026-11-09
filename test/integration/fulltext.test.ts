@@ -23,7 +23,7 @@ class Movie {
 
 // ---------------------------------------------------------------------------
 
-const INDEX = 'movie_title_plot_fulltext'
+const INDEX = 'movie_plot_title_fulltext_fb2ce53c'
 
 describe('full-text search', () => {
   let backend: TestBackend
@@ -117,7 +117,9 @@ describe('full-text search', () => {
 
     expect(results).toHaveLength(1)
     expect(results[0].action).toBe('DROP')
-    expect(results[0].statement).toBe('DROP FULLTEXT INDEX movie_title_plot_fulltext IF EXISTS')
+    expect(results[0].statement).toBe(
+      'DROP FULLTEXT INDEX movie_plot_title_fulltext_fb2ce53c IF EXISTS',
+    )
     // success is not asserted: dropping full-text indexes is not
     // supported on every backend (e.g. Relate), which the result
     // pattern reports per statement instead of throwing

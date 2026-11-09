@@ -179,7 +179,7 @@ describe('Builder expression sets, procedure calls and constraints (NTS-195/462/
 
   it('emits a procedure call with YIELD', () => {
     const { query, params } = new Builder()
-      .param('index', 'post_title_body_fulltext')
+      .param('index', 'post_body_title_fulltext_bc78fce7')
       .param('q', 'cypher')
       .callProcedure('db.index.fulltext.queryNodes', ['$index', '$q'], ['node', 'score'])
       .return('node', 'score')
@@ -189,7 +189,7 @@ describe('Builder expression sets, procedure calls and constraints (NTS-195/462/
     expect(query).toContain('CALL db.index.fulltext.queryNodes($index, $q) YIELD node, score')
     expect(query).toContain('RETURN node, score')
     expect(query).toContain('ORDER BY score DESC')
-    expect(params.index).toBe('post_title_body_fulltext')
+    expect(params.index).toBe('post_body_title_fulltext_bc78fce7')
   })
 
   it('composes constraint DDL', () => {
@@ -204,9 +204,11 @@ describe('Builder expression sets, procedure calls and constraints (NTS-195/462/
     const exists = new Builder().createExistenceConstraint('User', 'email').build().query
 
     expect(unique).toContain(
-      'CREATE CONSTRAINT user_sub_unique IF NOT EXISTS FOR (n:User) REQUIRE n.`sub` IS UNIQUE',
+      'CREATE CONSTRAINT user_sub_unique_9e6327eb IF NOT EXISTS FOR (n:User) REQUIRE n.`sub` IS UNIQUE',
     )
-    expect(index).toContain('CREATE INDEX post_createdAt_index IF NOT EXISTS FOR (n:Post) ON (')
+    expect(index).toContain(
+      'CREATE INDEX post_createdat_index_d00feeea IF NOT EXISTS FOR (n:Post) ON (',
+    )
     expect(composite).toContain('IS UNIQUE')
     expect(composite).toContain('courseSlug')
     expect(typed).toContain('REQUIRE n.`email` IS :: STRING')
@@ -218,10 +220,10 @@ describe('Builder expression sets, procedure calls and constraints (NTS-195/462/
     const drop = new Builder().dropFulltextIndex('Movie', ['title', 'plot']).build().query
 
     expect(create).toBe(
-      'CREATE FULLTEXT INDEX movie_title_plot_fulltext IF NOT EXISTS FOR (n:Movie) ' +
+      'CREATE FULLTEXT INDEX movie_plot_title_fulltext_fb2ce53c IF NOT EXISTS FOR (n:Movie) ' +
         'ON EACH [n.`title`, n.`plot`]',
     )
-    expect(drop).toBe('DROP FULLTEXT INDEX movie_title_plot_fulltext IF EXISTS')
+    expect(drop).toBe('DROP FULLTEXT INDEX movie_plot_title_fulltext_fb2ce53c IF EXISTS')
   })
 
   it('drops constraint and index DDL by type', () => {
@@ -236,10 +238,10 @@ describe('Builder expression sets, procedure calls and constraints (NTS-195/462/
       .dropConstraint('User', 'email', ConstraintType.PROPERTY_TYPE)
       .build().query
 
-    expect(unique).toBe('DROP CONSTRAINT user_sub_unique IF EXISTS')
-    expect(index).toBe('DROP INDEX post_createdAt_index IF EXISTS')
-    expect(exists).toBe('DROP CONSTRAINT user_email_exists IF EXISTS')
-    expect(typed).toBe('DROP CONSTRAINT user_email_property_type IF EXISTS')
+    expect(unique).toBe('DROP CONSTRAINT user_sub_unique_9e6327eb IF EXISTS')
+    expect(index).toBe('DROP INDEX post_createdat_index_d00feeea IF EXISTS')
+    expect(exists).toBe('DROP CONSTRAINT user_email_exists_eab79f78 IF EXISTS')
+    expect(typed).toBe('DROP CONSTRAINT user_email_property_type_8fecf436 IF EXISTS')
   })
 
   it('composes DDL segments alongside query segments', () => {
@@ -250,8 +252,8 @@ describe('Builder expression sets, procedure calls and constraints (NTS-195/462/
 
     expect(query).toBe(
       [
-        'CREATE CONSTRAINT user_sub_unique IF NOT EXISTS FOR (n:User) REQUIRE n.`sub` IS UNIQUE',
-        'CREATE FULLTEXT INDEX movie_title_fulltext IF NOT EXISTS FOR (n:Movie) ON EACH [n.`title`]',
+        'CREATE CONSTRAINT user_sub_unique_9e6327eb IF NOT EXISTS FOR (n:User) REQUIRE n.`sub` IS UNIQUE',
+        'CREATE FULLTEXT INDEX movie_title_fulltext_5ea2c9df IF NOT EXISTS FOR (n:Movie) ON EACH [n.`title`]',
       ].join('\n'),
     )
   })

@@ -240,7 +240,7 @@ describe('deriveGraphType', () => {
     // NTS-549 — hoisted uniqueness renders as a named CONSTRAINT item with
     // the deterministic <label>_<prop>_unique name
     expect(statement).toContain(
-      'CONSTRAINT `gtperson_id_unique` FOR (n:`GtPerson`) REQUIRE (n.`id`) IS UNIQUE',
+      'CONSTRAINT `gtperson_id_unique_c267d993` FOR (n:`GtPerson`) REQUIRE (n.`id`) IS UNIQUE',
     )
   })
 
@@ -249,7 +249,7 @@ describe('deriveGraphType', () => {
     // LEAVES its uniqueness/key ones — those only go by name
     const statement = graphTypeDropStatement(graphType)
 
-    expect(statement).toContain('CONSTRAINT `gtperson_id_unique`')
+    expect(statement).toContain('CONSTRAINT `gtperson_id_unique_c267d993`')
     expect(statement).toContain('(:`GtPerson` =>)')
   })
 })
@@ -298,7 +298,7 @@ describe('graph type constraint items (NTS-549)', () => {
     })
 
     expect(statement).toContain(
-      'CONSTRAINT `stayed_in_startdate_exists` FOR ()-[r:`STAYED_IN`]->() REQUIRE (r.`startDate`) IS NOT NULL',
+      'CONSTRAINT `stayed_in_startdate_exists_3acf3afd` FOR ()-[r:`STAYED_IN`]->() REQUIRE (r.`startDate`) IS NOT NULL',
     )
     expect(statement).toContain(
       'CONSTRAINT `stayed_type` FOR ()-[r:`STAYED_IN`]->() REQUIRE (r.`endDate`) IS :: DATE',
@@ -308,7 +308,7 @@ describe('graph type constraint items (NTS-549)', () => {
   it('generates a deterministic name when none is given', () => {
     expect(
       graphTypeConstraintName({ labelOrType: 'Person', properties: ['ssn'], kind: 'KEY' }),
-    ).toBe('person_ssn_key')
+    ).toBe('person_ssn_key_657d6def')
   })
 
   it('rejects existence/type constraints over more than one property', () => {
@@ -349,7 +349,7 @@ describe('composite REQUIRE constraints (NTS-552)', () => {
     })
 
     expect(graphTypeSetStatement(derived)).toContain(
-      'CONSTRAINT `nts552unique_name_email_unique` FOR (n:`Nts552Unique`) REQUIRE (n.`name`, n.`email`) IS UNIQUE',
+      'CONSTRAINT `nts552unique_email_name_unique_806b60e9` FOR (n:`Nts552Unique`) REQUIRE (n.`name`, n.`email`) IS UNIQUE',
     )
   })
 
@@ -630,6 +630,9 @@ describe('graph type drift (NTS-550)', () => {
 
         return { records: [] }
       },
+
+      // NTS-598 — the declared set follows the DETECTED edition
+      edition: async () => 'community',
     } as unknown as ConnectionProvider
 
     return connection

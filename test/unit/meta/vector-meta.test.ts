@@ -77,8 +77,8 @@ describe('vector property metadata (NTS-447)', () => {
     ])
 
     expect(definitions.map(vectorIndexName)).toEqual([
-      'vectordoc_emb_vector',
-      'vectordoc_embedding_vector',
+      'vectordoc_emb_vector_1896d2bb',
+      'vectordoc_embedding_vector_646bd598',
     ])
   })
 
@@ -89,7 +89,7 @@ describe('vector property metadata (NTS-447)', () => {
     )
 
     expect(createVectorStatement(definition)).toBe(
-      'CREATE VECTOR INDEX vectordoc_emb_vector IF NOT EXISTS ' +
+      'CREATE VECTOR INDEX vectordoc_emb_vector_1896d2bb IF NOT EXISTS ' +
         'FOR (n:`VectorDoc`) ON (n.`emb`) ' +
         "OPTIONS { indexConfig: { `vector.dimensions`: 3, `vector.similarity_function`: 'cosine' } }",
     )

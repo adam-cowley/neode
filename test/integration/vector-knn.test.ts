@@ -39,7 +39,7 @@ class FilteredDoc {
 
 // ---------------------------------------------------------------------------
 
-const INDEX = 'doc_emb_vector'
+const INDEX = 'doc_emb_vector_d9d13582'
 const FILTERED_INDEX = vectorIndexName({ label: 'FilteredDoc', property: 'emb', dimensions: 3 })
 
 describe('vector kNN search', () => {
@@ -227,7 +227,7 @@ describe('vector kNN search', () => {
 
     expect(results).toHaveLength(1)
     expect(results[0].action).toBe('DROP')
-    expect(results[0].statement).toBe('DROP VECTOR INDEX doc_emb_vector IF EXISTS')
+    expect(results[0].statement).toBe('DROP VECTOR INDEX doc_emb_vector_d9d13582 IF EXISTS')
     // success is not asserted: dropping vector indexes is not supported
     // on every backend (e.g. Relate), which the result pattern reports
     // per statement instead of throwing

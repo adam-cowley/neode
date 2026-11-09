@@ -65,6 +65,26 @@ npm i neo4j-driver@^6
 
 ## 5. Smaller behavior changes
 
+- **Schema DDL names changed — ONE-TIME RENAME CHURN (NTS-598).** Generated
+  constraint/index names now carry a deterministic hash suffix
+  (`person_email_unique_b37312eb`) that makes them injective: `User` and
+  `user` labels no longer collide, and composite property lists like
+  (`a`,`b_c`) vs (`a_b`,`c`) no longer collide. On your first
+  `installSchema()` / drift apply against an existing database, every
+  previously installed constraint and index is reported stale and — with
+  `dropStale: true` — dropped and recreated under the new name. Review the
+  drift before applying on shared databases; uniqueness is briefly
+  unenforced while an object is being recreated.
+- **The edition is detected, not flagged (NTS-598).** `installSchema()` /
+  `inspectSchema()` / drift probe `CALL dbms.components()` and declare
+  Enterprise-only DDL (existence + property-type constraints) only when the
+  connected server really is Enterprise. The manual `enterprise` flag /
+  `NEO4J_ENTERPRISE=true` no longer decides this (it still gates graph
+  types); `inspectSchema()` no longer takes an `enterprise` option. A
+  wrongly-set flag no longer produces false "stale" drift on Community.
+- **Graph-type drift fails loudly on unparseable canonical text (NTS-598):**
+  `SHOW CURRENT GRAPH TYPE` output the parser cannot read now throws instead
+  of silently reporting bogus drift — a parse failure is a library bug.
 - **Error messages are richer** (NTS-446): missing-model errors name the
   registered models; hydration failures name the model and property. If you
   matched on exact old messages, loosen the patterns.
