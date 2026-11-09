@@ -138,6 +138,34 @@ async function changeLabel(entity: object, label: string, verb: 'SET' | 'REMOVE'
 }
 
 /**
+The per-instance load spec (NTS-498): relationship key -> request. A key's
+value is `true` (load all), a LoadOptions object (order / skip / limit /
+withoutFilters — the NTS-558 options), or a nested spec object one more
+level down the declared relationship graph (`person.load({ pets: { toys:
+true } })`).
+
+The four option keys are reserved at every level: a relationship named
+exactly `order`, `skip`, `limit` or `withoutFilters` cannot be
+nested-loaded through the spec — the single-key load(key) form still
+reaches it.
+
+shortcut: without the NTS-154 model map the key domain is every
+non-method key of the entity type — plain property keys and
+relationship-entity keys type-check here and the runtime rejects them,
+naming the declared relationships at that level.
+*/
+export type InstanceLoadLevel<T> = {
+  [K in Exclude<keyof T, keyof EntityMethods> & string]?:
+    | true
+    | LoadOptions
+    | (T[K] extends (infer Item)[]
+        ? InstanceLoadLevel<Item>
+        : T[K] extends object
+          ? InstanceLoadLevel<NonNullable<T[K]>>
+          : never)
+}
+
+/**
 The methods wired onto hydrated entities. Uses polymorphic `this` so
 `WithMethods<Person>` chains as `Promise<WithMethods<Person>>`.
 */
@@ -202,6 +230,17 @@ export interface EntityMethods {
     key: K,
     options?: LoadOptions,
   ): Promise<this[K]>
+
+  /**
+  Load SEVERAL relationships in place, per query, with per-level
+  constraints (NTS-498): the spec's keys name declared relationships —
+  `true` loads all, an object carries that level's traversal options
+  (order / skip / limit / withoutFilters) mixed with nested spec keys one
+  level down. One read per root key; nested levels ride that statement's
+  projection, so they never N+1 per entity. The loaded values
+  materialize as own properties per key (the NTS-155 accessor contract).
+  */
+  load(spec: InstanceLoadLevel<this>): Promise<void>
 
   /**
   Query FROM this entity along a declared relationship key (NTS-497) —
@@ -281,7 +320,7 @@ interface MethodImpl {
     other: object,
     relationshipKey: string,
   ): Promise<DetachResult<object, object>>
-  load(this: object, key: string, options?: LoadOptions): Promise<unknown>
+  load(this: object, keyOrSpec: string | object, options?: LoadOptions): Promise<unknown>
   related(this: object, key: string): RelatedQuery
 }
 
@@ -369,8 +408,10 @@ const methods: MethodImpl = {
     return requireNeode().detach(requireConstructor(this), this, other, relationshipKey)
   },
 
-  async load(this, key, options) {
-    return requireNeode().loadRelation(requireConstructor(this), this, key, options)
+  async load(this: object, keyOrSpec: string | object, options?: LoadOptions): Promise<unknown> {
+    return typeof keyOrSpec === 'string'
+      ? requireNeode().loadRelation(requireConstructor(this), this, keyOrSpec, options)
+      : requireNeode().loadRelationSpec(requireConstructor(this), this, keyOrSpec)
   },
 
   related(this, key) {
