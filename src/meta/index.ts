@@ -3,7 +3,12 @@ import type { Direction } from '../query/index.js'
 import type { PropertySchema } from './property-schema.js'
 import { PropertyType } from './property-schema.js'
 
-import type { RelationshipPropertySchema } from './relationship-property-schema.js'
+import type {
+  RelationshipCardinality,
+  RelationshipPropertySchema,
+} from './relationship-property-schema.js'
+
+export type { RelationshipCardinality } from './relationship-property-schema.js'
 
 import { EntitySchema, EntityType } from './entity/entity-schema.js'
 import type { PropertyConfig } from '../decorators/property-config.interface.js'
@@ -286,6 +291,7 @@ export function mergeRelationshipProperty(
   isEager?: boolean,
   description?: string,
   isCascade = false,
+  cardinality?: RelationshipCardinality,
 ): RelationshipPropertySchema {
   const model = mergeModel(constructor)
 
@@ -301,6 +307,11 @@ export function mergeRelationshipProperty(
   relationship.setMany(isMany)
   relationship.setEager(isEager ?? false)
   relationship.setCascade(isCascade)
+
+  // Write-time cardinality (NTS-161): undefined derives from the many flag
+  if (cardinality !== undefined) {
+    relationship.setCardinality(cardinality)
+  }
 
   // Agent-facing relationship explanation (NTS-445)
   if (description !== undefined) {

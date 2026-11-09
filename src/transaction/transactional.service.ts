@@ -22,6 +22,11 @@ import { BoundBuilder } from '../query/bound-builder.js'
 import { NeodeError } from '../errors/index.js'
 import { DeleteService, type DeleteOptions } from '../services/query/delete.service.js'
 import { DetachService, type DetachResult } from '../services/query/detach.service.js'
+import {
+  type SyncEdgesOptions,
+  SyncService,
+  type SyncEdgesResult,
+} from '../services/query/sync.service.js'
 import { FindByIdService } from '../services/query/find-by-id.service.js'
 import { WITHOUT_ALL_FILTERS } from '../services/query/filters.js'
 import { FindService } from '../services/query/find.service.js'
@@ -503,6 +508,24 @@ export class TransactionalService implements INeode {
     const relationship = this.requireRelationship(schema, relationshipKey)
 
     return new DetachService(this.handle).detach(schema, from, to, relationship)
+  }
+
+  /**
+  Diff-and-apply a relationship's edges to an EXACT target set (NTS-161,
+  Eloquent `sync` precedent) — mirror of the facade's syncEdges
+  */
+  async syncEdges<From extends object>(
+    constructor: new (...arguments_: never[]) => From,
+    from: From,
+    relationshipKey: string,
+    targets: object[],
+    options: SyncEdgesOptions = {},
+  ): Promise<SyncEdgesResult> {
+    const schema = this.getSchema(constructor)
+
+    const relationship = this.requireRelationship(schema, relationshipKey)
+
+    return new SyncService(this.handle).sync(schema, from, relationship, targets, options)
   }
 
   /**

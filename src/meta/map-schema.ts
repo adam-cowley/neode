@@ -247,6 +247,7 @@ function wireRelationshipModel(
     definition.eager,
     definition.description,
     definition.cascade,
+    definition.cardinality,
   )
 }
 

@@ -11,6 +11,7 @@ export { String } from './node/string.decorator.js'
 export { Number } from './node/number.decorator.js'
 export { OneToOne } from './node/one-to-one.decorator.js'
 export { OneToMany } from './node/one-to-many.decorator.js'
+export type { RelationshipConfig } from './relationship-config.interface.js'
 
 // Properties
 export { Property } from './property.decorator.js'

@@ -10,7 +10,7 @@ import type { RelationshipPropertySchema } from '../../meta/relationship-propert
 import { convertPropertyValue, matchCriteriaForEntity } from '../../utilities.js'
 import { QueryService } from './query.service.js'
 import { NeodeError } from '../../errors/index.js'
-import { assertWritableDirection } from '../write-utilities.js'
+import { assertCardinality, assertWritableDirection } from '../write-utilities.js'
 import { constructorOf, isGraphRelationship } from '../type-guards.js'
 
 /**
@@ -22,6 +22,13 @@ const INTERNAL_PROPERTY_TYPES = new Set<PropertyType>([
   PropertyType.END_NODE,
   PropertyType.OTHER_NODE,
 ])
+
+/**
+The cardinality guard's aliases (NTS-161): the other-end node and the
+count column, kept out of the user-visible alias space
+*/
+const OTHER_ALIAS = 'other_end'
+const EXISTING_EDGES = 'existing_edges'
 
 /**
 The schema to match the related node by: the target entity's own model,
@@ -165,6 +172,42 @@ export class RelateService extends QueryService {
     const fromMatch = matchCriteriaForEntity(schema, fromEntity)
 
     const toMatch = matchCriteriaForEntity(targetSchema, toEntity)
+
+    // Cardinality guard (NTS-161) BEFORE any write: count the edges the
+    // from-node already holds on this relationship. A MERGE re-relating
+    // the same target is idempotent (those edges are excluded), a
+    // forceCreate duplicate counts too. Restricted cardinalities only —
+    // `many` never pays for the read.
+    if (relationship.getCardinality() !== 'many') {
+      const guard = new Builder()
+
+      guard.matchEntity(fromAlias, schema, fromMatch)
+
+      if (!isForceCreate) {
+        guard.matchEntity(toAlias, targetSchema, toMatch)
+      }
+
+      guard
+        .match(fromAlias)
+        .relationship(relationship.getType(), relationship.getDirection(), relationshipAlias)
+        .to(OTHER_ALIAS)
+
+      if (!isForceCreate) {
+        // elementId comparison rather than node `<>`: plain scalar
+        // inequality, safe on every Cypher-compatible backend
+        guard.whereRaw(`elementId(${OTHER_ALIAS}) <> elementId(${toAlias})`)
+      }
+
+      guard.return(`count(${relationshipAlias}) AS ${EXISTING_EDGES}`)
+
+      const guardQuery = guard.build()
+
+      const guardResult = await this.runner.run(guardQuery.query, guardQuery.params)
+
+      const existingEdges: unknown = guardResult.records[0]?.get(EXISTING_EDGES) ?? 0
+
+      assertCardinality(relationship, Number(existingEdges) + 1)
+    }
 
     const builder = new Builder()
 

@@ -8,7 +8,7 @@ import type { PropertySchema } from '../meta/property-schema.js'
 import { PropertyType, isProjectedProperty } from '../meta/property-schema.js'
 import type { RelationshipPropertySchema } from '../meta/relationship-property-schema.js'
 import { getValueOrDefault, setPropertyInBuilder } from '../utilities.js'
-import { NeodeError } from '../errors/index.js'
+import { CardinalityViolationError, NeodeError } from '../errors/index.js'
 import { isRecord } from './type-guards.js'
 
 /**
@@ -92,6 +92,24 @@ export function assertWritableDirection(relationship: RelationshipPropertySchema
         'match-only: Neo4j cannot create an undirected relationship. ' +
         'Set direction OUTGOING or INCOMING to write this relationship.',
     )
+  }
+}
+
+/**
+Write-path cardinality guard (NTS-161): a `one` / `zeroOrOne` relationship
+holds at most one edge per node — a write that would leave more throws
+CardinalityViolationError. `many` is unrestricted. `edgeCount` is the
+number of edges the relationship would hold AFTER the write (existing
+edges plus the one about to be written).
+*/
+export function assertCardinality(
+  relationship: RelationshipPropertySchema,
+  edgeCount: number,
+): void {
+  const cardinality = relationship.getCardinality()
+
+  if ((cardinality === 'one' || cardinality === 'zeroOrOne') && edgeCount > 1) {
+    throw new CardinalityViolationError(relationship.getKey(), cardinality, edgeCount)
   }
 }
 
@@ -701,6 +719,10 @@ async function createRelationships(
       const value = propertyValue
 
       const values = relationship.getMany() && Array.isArray(value) ? value : [value]
+
+      // Reject before creating anything: a one-cardinality relationship
+      // cannot be seeded with two targets (NTS-161)
+      assertCardinality(relationship, values.length)
 
       await Promise.all(
         values.map(async (target) => createTarget(runner, thisId, relationship, target, depth)),

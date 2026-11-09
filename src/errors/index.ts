@@ -3,6 +3,7 @@
 // these types; unknown errors pass through untouched.
 
 export { classifyError, isTransientError } from './classify.js'
+export { CardinalityViolationError } from './cardinality-violation.js'
 export { ConstraintViolationError } from './constraint-violation.js'
 export { NeodeError } from './neode-error.js'
 export { OptimisticLockError } from './optimistic-lock.js'

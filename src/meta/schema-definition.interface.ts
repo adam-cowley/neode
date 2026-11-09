@@ -1,5 +1,6 @@
 import type { DefaultValue } from './property-schema.js'
 import type { FilterDefinition } from './entity/entity-schema.js'
+import type { RelationshipCardinality } from './relationship-property-schema.js'
 
 /**
 neode-compatible property type names for map-based schema definitions.
@@ -333,6 +334,13 @@ export interface RelationshipDefinition {
   opts in with `{ cascade: true }`.
   */
   cascade?: boolean
+  /**
+  Write-time cardinality (NTS-161): 'one' / 'zeroOrOne' allow at most one
+  edge from a node — a second relate() throws CardinalityViolationError;
+  'many' is unrestricted. Undefined derives from the type: 'relationship'
+  / 'node' declare one, 'relationships' / 'nodes' declare many.
+  */
+  cardinality?: RelationshipCardinality
 }
 
 /**

@@ -414,6 +414,22 @@ lazy() options — the keyset walk behind cursor pagination
 
 _source: services/query/paginate.service.ts_
 
+### `SyncEdgesOptions` (interface)
+
+Options for syncEdges (NTS-161): `properties` is applied to the edges NEWLY related by the sync — common edges are left untouched.
+
+_source: services/query/sync.service.ts_
+
+### `SyncEdgesResult` (interface)
+
+What a sync did: how many edges were related and how many detached (zero and zero for a no-op sync — nothing is written)
+
+_source: services/query/sync.service.ts_
+
+### `SyncService` (class)
+
+_source: services/query/sync.service.ts_
+
 ### `toCollection` (function)
 
 Hydrate a raw query result into a Collection (neode's Factory.hydrate return shape)

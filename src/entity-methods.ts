@@ -30,6 +30,7 @@ import type { RelatedQuery, RelatedScope } from './services/query/load-relation.
 import type { LoadOptions } from './query/load-spec.js'
 import type { DeleteOptions } from './services/query/delete.service.js'
 import type { DetachResult } from './services/query/detach.service.js'
+import type { SyncEdgesOptions, SyncEdgesResult } from './services/query/sync.service.js'
 import { constructorOf as constructorOfInstance } from './services/type-guards.js'
 import { quote } from './query/quote.js'
 
@@ -213,6 +214,18 @@ export interface EntityMethods {
   detachFrom<To extends object>(other: To, relationshipKey: string): Promise<DetachResult<this, To>>
 
   /**
+  Diff-and-apply this relationship's edges to an EXACT target set
+  (NTS-161, Eloquent `sync` precedent): relate the missing targets,
+  detach the absent ones, leave the common ones untouched. `options`
+  carries an edge-properties callback applied to newly related edges.
+  */
+  syncEdges(
+    relationshipKey: string,
+    targets: object[],
+    options?: SyncEdgesOptions,
+  ): Promise<SyncEdgesResult>
+
+  /**
   Lazy-load one relationship in place (NTS-558) — the loader the
   RelationNotLoadedError message promises. Traverses the declared
   relationship, hydrates the related entities through the regular
@@ -318,6 +331,12 @@ interface MethodImpl {
     other: object,
     relationshipKey: string,
   ): Promise<DetachResult<object, object>>
+  syncEdges(
+    this: object,
+    relationshipKey: string,
+    targets: object[],
+    options?: SyncEdgesOptions,
+  ): Promise<SyncEdgesResult>
   load(this: object, keyOrSpec: string | object, options?: LoadOptions): Promise<unknown>
   related(this: object, key: string): RelatedQuery
 }
@@ -404,6 +423,16 @@ const methods: MethodImpl = {
 
   async detachFrom(this, other, relationshipKey) {
     return requireNeode().detach(requireConstructor(this), this, other, relationshipKey)
+  },
+
+  async syncEdges(this, relationshipKey, targets, options = {}) {
+    return requireNeode().syncEdges(
+      requireConstructor(this),
+      this,
+      relationshipKey,
+      targets,
+      options,
+    )
   },
 
   async load(this: object, keyOrSpec: string | object, options?: LoadOptions): Promise<unknown> {

@@ -62,6 +62,11 @@ import { type BulkChunk, type BulkOptions, BulkService } from './services/query/
 import { CreateService } from './services/query/create.service.js'
 import { type DeleteOptions, DeleteService } from './services/query/delete.service.js'
 import { type DetachResult, DetachService } from './services/query/detach.service.js'
+import {
+  type SyncEdgesOptions,
+  type SyncEdgesResult,
+  SyncService,
+} from './services/query/sync.service.js'
 import { diffDirty, isTracked } from './dirty.js'
 import { FindService } from './services/query/find.service.js'
 import { FindByIdService } from './services/query/find-by-id.service.js'
@@ -1282,6 +1287,38 @@ export class Neode implements INeode {
 
     try {
       const result = await new DetachService(tx).detach(schema, from, to, relationship)
+
+      await tx.commit()
+
+      return result
+    } catch (error) {
+      return await rollbackAfterFailure(tx, error)
+    }
+  }
+
+  /**
+  Diff-and-apply a relationship's edges to an EXACT target set (NTS-161,
+  Eloquent `sync` precedent): relate the missing targets, detach the
+  absent ones, leave the common ones untouched — a no-op sync writes
+  nothing. `options.properties` is applied to the edges NEWLY related.
+  Cardinality is checked before any write: syncing a `one` relationship
+  with two targets throws CardinalityViolationError.
+  */
+  async syncEdges(
+    constructor: Newable,
+    from: object,
+    relationshipKey: string,
+    targets: object[],
+    options: SyncEdgesOptions = {},
+    database?: string,
+  ): Promise<SyncEdgesResult> {
+    const schema = this.getSchema(constructor)
+    const relationship = this.requireRelationship(schema, relationshipKey)
+
+    const tx = await this.beginWorkTransaction('WRITE', database)
+
+    try {
+      const result = await new SyncService(tx).sync(schema, from, relationship, targets, options)
 
       await tx.commit()
 
