@@ -287,17 +287,33 @@ mutating it in place: when a vector property declares `from` + `provider`
 and the source property is among the values being written while the
 vector property itself is not provided, the provider computes the vector
 (`await provider(sourceValue)`) and it becomes the vector property's
-written value. An explicitly provided vector value always wins — no
-dirty-tracking exists, so a hydrated entity carrying the vector skips
-recomputation on save. Provider failures surface as a NeodeError naming
+written value. Provider failures surface as a NeodeError naming
 the model and property.
+
+`dirtyKeys` (NTS-157, the tracked-save path) narrows the recompute to a
+dirty source: it runs only when the source property is dirty and the
+vector property itself is not — a dirty vector is the user's explicit
+value and wins, while a clean source means the stored vector is still
+current and no provider call is paid for. Without `dirtyKeys` (create /
+untracked saves / mergeOn / bulk), a vector already present in the
+payload always wins.
+
+Returns the vector property keys whose values were recomputed — callers
+with a dirty-key write set must include them, since a recomputed vector
+is by definition not among the keys the instance changed.
 */
-export async function applyEmbeddings(schema: EntitySchema, values: object): Promise<void> {
+export async function applyEmbeddings(
+  schema: EntitySchema,
+  values: object,
+  dirtyKeys?: ReadonlySet<string>,
+): Promise<string[]> {
   if (!isRecord(values)) {
-    return
+    return []
   }
 
   const modelName = schema.getLabels()[0] ?? 'unknown'
+
+  const recomputed: string[] = []
 
   for (const property of schema.getProperties()) {
     const vector = property.getVector()
@@ -308,14 +324,23 @@ export async function applyEmbeddings(schema: EntitySchema, values: object): Pro
 
     const key = property.getKey()
 
-    // An explicitly provided vector value wins over recomputation
-    if (Object.hasOwn(values, key) && values[key] !== undefined) {
-      continue
-    }
+    if (dirtyKeys === undefined) {
+      // An explicitly provided vector value wins over recomputation
+      if (Object.hasOwn(values, key) && values[key] !== undefined) {
+        continue
+      }
 
-    // Recompute only when the source property is being written
-    if (!Object.hasOwn(values, vector.from)) {
-      continue
+      // Recompute only when the source property is being written
+      if (!Object.hasOwn(values, vector.from)) {
+        continue
+      }
+    } else {
+      // Tracked save (NTS-157): the vector the instance carries when the
+      // source is dirty is the stale stored one — recompute over it. A
+      // dirty vector is the user's explicit value and wins.
+      if (dirtyKeys.has(key) || !dirtyKeys.has(vector.from)) {
+        continue
+      }
     }
 
     const source: unknown = values[vector.from]
@@ -358,7 +383,11 @@ export async function applyEmbeddings(schema: EntitySchema, values: object): Pro
     }
 
     values[key] = computed
+
+    recomputed.push(key)
   }
+
+  return recomputed
 }
 
 /**
