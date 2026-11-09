@@ -954,7 +954,8 @@ export async function generateModels(
   connection: ConnectionProvider,
   options: GenerateModelsOptions = {},
 ): Promise<GenerateModelsResult> {
-  const sampleSize = Math.max(1, Math.floor(options.sampleSize ?? DEFAULT_SAMPLE_SIZE))
+  const requested = Math.floor(options.sampleSize ?? DEFAULT_SAMPLE_SIZE)
+  const sampleSize = Number.isFinite(requested) ? Math.max(1, requested) : DEFAULT_SAMPLE_SIZE
 
   const [labelRows, constraintRows] = await Promise.all([
     connection.run('CALL db.labels()', {}, 'READ'),
@@ -977,18 +978,20 @@ export async function generateModels(
     // Sample first, then walk only the sampled nodes: the relationship walk
     // never scans the whole label, and only property maps (not whole nodes)
     // come back
-    const parameters = { limit: sampleSize }
+    // Inlined: a JS number parameter reaches Neo4j as a float, which LIMIT rejects
+    // (sampleSize is a validated positive integer)
+    const limit = String(sampleSize)
     const [sample, walk] = await Promise.all([
       connection.run(
-        `MATCH (n:${quote(label)}) WITH n LIMIT $limit RETURN properties(n) AS properties`,
-        parameters,
+        `MATCH (n:${quote(label)}) WITH n LIMIT ${limit} RETURN properties(n) AS properties`,
+        {},
         'READ',
       ),
       connection.run(
-        `MATCH (n:${quote(label)}) WITH n LIMIT $limit MATCH (n)-[r]->(m) ` +
+        `MATCH (n:${quote(label)}) WITH n LIMIT ${limit} MATCH (n)-[r]->(m) ` +
           'RETURN type(r) AS type, labels(m) AS labels, count(*) AS rels, count(DISTINCT n) AS sources ' +
           `ORDER BY rels DESC LIMIT ${String(RELATIONSHIP_LIMIT)}`,
-        parameters,
+        {},
         'READ',
       ),
     ])

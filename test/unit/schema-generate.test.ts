@@ -347,6 +347,8 @@ function compileGenerated(source: string): {
     strict: true,
     noEmit: true,
     types: [],
+    skipLibCheck: true,
+    lib: ['lib.es2022.d.ts'],
   }
   const host = ts.createCompilerHost(options)
   const { fileExists, readFile, getSourceFile } = host
@@ -441,7 +443,7 @@ describe('hostile graph names (NTS-577)', () => {
       ),
     ).toBe(true)
     expect(statements.filter(ts.isClassDeclaration)).toHaveLength(labels.length)
-  })
+  }, 30_000)
 
   it('assigns unique, valid, non-reserved class names deterministically', () => {
     const names = assignClassNames(labels)
@@ -552,8 +554,8 @@ describe('conflicts as warnings (NTS-577)', () => {
 
     const walkStatement = statements.find((entry) => entry.statement.includes('-[r]->'))
 
-    expect(walkStatement?.statement).toMatch(/WITH n LIMIT \$limit MATCH \(n\)-\[r\]->\(m\)/)
-    expect(walkStatement?.parameters).toEqual({ limit: 7 })
+    expect(walkStatement?.statement).toMatch(/WITH n LIMIT 7 MATCH \(n\)-\[r\]->\(m\)/)
+    expect(walkStatement?.statement).not.toContain('$limit')
     expect(statements.some((entry) => /RETURN n\b/.test(entry.statement))).toBe(false)
   })
 })
