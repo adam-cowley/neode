@@ -67,6 +67,12 @@ Name index of the original definitions, kept for extendModel cloning
 const definitionsByName = new Map<string, SchemaDefinition>()
 
 /**
+Clone lineage (NTS-596): extend() clone constructor -> the base model
+constructor it was cloned from
+*/
+const extendedFrom = new Map<Newable, Newable>()
+
+/**
 Relationship definitions whose target model was not yet defined
 */
 interface PendingRelationship {
@@ -394,11 +400,30 @@ export function extendModel(name: string, as: string, schema: SchemaDefinition =
     throw new NeodeError(unknownDefinitionError(name))
   }
 
-  return defineModel(as, {
+  // NTS-596: remember the clone's base so observer lookups fire the base
+  // model's observers for the clone's entities too
+  const base = modelsByName.get(name)
+
+  const constructor = defineModel(as, {
     ...original,
     ...schema,
     labels: [...(original.labels ?? [name]), as],
   })
+
+  if (base !== undefined && base !== constructor) {
+    extendedFrom.set(constructor, base)
+  }
+
+  return constructor
+}
+
+/**
+Clone lineage (NTS-596): the model an extend() clone was cloned from, or
+undefined when the model is not a clone. The chain terminates at a
+non-clone model (clones are freshly defined, so it cannot cycle).
+*/
+export function getExtendedFrom(model: Newable): Newable | undefined {
+  return extendedFrom.get(model)
 }
 
 /**

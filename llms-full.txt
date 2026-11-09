@@ -664,7 +664,7 @@ _source: services/query/load-relation.service.ts_
 
 ### `EventType` (const)
 
-Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neode.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() when the merge created the node | hydrated entity | | NODE_UPDATED | save() when the merge matched an existing node | hydrated entity | | NODE_MERGED | reserved (mergeOn) | — | | NODE_DELETED | delete() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
+Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neode.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() when the merge created the node, createMany() | hydrated entity | | NODE_UPDATED | save() when the merge matched an existing node, update(), the label writes (addLabel / removeLabel / soft delete) | hydrated entity | | NODE_MERGED | mergeOn() (also behind merge(), Repository#upsert and mergeMany()) | hydrated entity | | NODE_DELETED | delete() (hard deletes), deleteAll() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
 
 _source: common/events.ts_
 
@@ -1484,7 +1484,7 @@ Collection, serialisation and other shared exports.
 
 ### `clearObservers` (function)
 
-Test seam: drop every registered observer.
+Test seam: drop every registered observer — the process-global registry AND every instance's (NTS-596).
 
 _source: observers.ts_
 
@@ -1508,7 +1508,7 @@ _source: observers.ts_
 
 ### `observe` (function)
 
-Register observers for a model (NTS-511). Returns the off function. Unknown models throw — observers attach to registered models only.
+Register observers for a model process-wide (NTS-511). Returns the off function. Every Neode instance fires process-wide observers; register per-instance with `neode.observe()` instead to scope them to one instance. Unknown models throw.
 
 _source: observers.ts_
 

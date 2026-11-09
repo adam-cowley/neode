@@ -38,7 +38,7 @@ import { RelateService } from '../services/query/relate.service.js'
 import { UpdateService } from '../services/query/update.service.js'
 import { WithinDistanceService } from '../services/query/within-distance.service.js'
 import { search, type ScoredEntity } from '../services/query/search.service.js'
-import { runObservers } from '../observers.js'
+import { globalObservers, type ObserverRegistry } from '../observers.js'
 import { EffectBuffer } from './effects.js'
 import { isConstructorOf, isRecord } from '../services/type-guards.js'
 import { hydrate, hydrateWhenRequested, splitHydrateArguments } from '../hydrate.js'
@@ -66,16 +66,23 @@ export class TransactionalService implements INeode {
   // False when an enclosing unit owns the buffer and flushes it after ITS commit (ambient scopes)
   private readonly shouldFlushOnCommit: boolean
 
+  // NTS-596: the owning Neode instance's observer registry — hooks registered
+  // on the instance fire for this scope's writes; the process-global
+  // registry (the standalone observe() function) is the default
+  private readonly observers: ObserverRegistry
+
   constructor(
     handle: TransactionHandle,
     eventEmitter: EventEmitter,
     effects: EffectBuffer = new EffectBuffer(),
     shouldFlushOnCommit = true,
+    observers: ObserverRegistry = globalObservers,
   ) {
     this.handle = handle
     this.eventEmitter = eventEmitter
     this.effects = effects
     this.shouldFlushOnCommit = shouldFlushOnCommit
+    this.observers = observers
   }
 
   /**
@@ -312,7 +319,7 @@ export class TransactionalService implements INeode {
     const schema = this.getSchema(entity.constructor)
 
     // NTS-511: beforeSave runs before the dirty diff — mutations count
-    await runObservers(entity.constructor, 'beforeSave', entity, {
+    await this.observers.run(entity.constructor, 'beforeSave', entity, {
       isNew: false,
       database: undefined,
     })
@@ -354,7 +361,7 @@ export class TransactionalService implements INeode {
     this.effects.defer(async () => {
       this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
 
-      await runObservers(entity.constructor, 'afterSave', saved, {
+      await this.observers.run(entity.constructor, 'afterSave', saved, {
         isNew: created,
         database: undefined,
       })
@@ -409,6 +416,13 @@ export class TransactionalService implements INeode {
     const match = Object.fromEntries(entries.filter(([key]) => mergeKeys.has(key)))
     const set = Object.fromEntries(entries.filter(([key]) => !mergeKeys.has(key)))
 
+    // NTS-596: beforeSave receives the set record (facade mergeOn parity —
+    // the mutable record of what the write sets). Errors fail the write.
+    await this.observers.run(constructor, 'beforeSave', set, {
+      isNew: false,
+      database: undefined,
+    })
+
     const output = await new MergeService(this.handle).mergeOn(schema, match, set)
 
     const firstRecord = output.records[0]
@@ -423,9 +437,24 @@ export class TransactionalService implements INeode {
       throw new NeodeError('mergeOn did not return an elementId')
     }
 
-    return new FindByIdService(this.handle).find<T>(constructor, schema, elementId, {
+    const merged = await new FindByIdService(this.handle).find<T>(constructor, schema, elementId, {
       withoutFilters: [WITHOUT_ALL_FILTERS],
     })
+
+    if (merged !== undefined) {
+      // NTS-582: fires after the transaction commits (NTS-596: NODE_MERGED
+      // is the merge path's event, facade mergeOn parity)
+      this.effects.defer(async () => {
+        this.eventEmitter.emit(EventType.NODE_MERGED, merged)
+
+        await this.observers.run(constructor, 'afterSave', merged, {
+          isNew: false,
+          database: undefined,
+        })
+      })
+    }
+
+    return merged
   }
 
   /**
@@ -443,8 +472,19 @@ export class TransactionalService implements INeode {
 
     const schema = this.getSchema(entity.constructor)
 
+    // Soft deletes are not deletions (the node survives): the label write
+    // is an update, so NODE_UPDATED fires instead of NODE_DELETED — the
+    // facade's delete() semantics (NTS-596)
+    const cascadeOptions: DeleteOptions | undefined =
+      typeof options === 'string' ? undefined : options
+
+    const isSoft =
+      cascadeOptions?.force !== true &&
+      (schema.getSoftDelete() !== undefined ||
+        (cascadeOptions?.soft !== undefined && cascadeOptions.soft !== ''))
+
     // NTS-511: beforeDelete can fail the delete (tx rolls back)
-    await runObservers(entity.constructor, 'beforeDelete', entity, {
+    await this.observers.run(entity.constructor, 'beforeDelete', entity, {
       isNew: false,
       database: undefined,
     })
@@ -453,11 +493,17 @@ export class TransactionalService implements INeode {
 
     await service.delete(schema, entity, typeof options === 'string' ? undefined : options)
 
-    // NTS-582: event + afterDelete fire after the transaction commits
+    // NTS-582: event + afterDelete fire after the transaction commits.
+    // Event BEFORE the after* observer: a hook error never suppresses the
+    // emission (NTS-596)
     this.effects.defer(async () => {
-      this.eventEmitter.emit(EventType.NODE_DELETED, entity)
+      if (isSoft) {
+        this.eventEmitter.emit(EventType.NODE_UPDATED, entity)
+      } else {
+        this.eventEmitter.emit(EventType.NODE_DELETED, entity)
+      }
 
-      await runObservers(entity.constructor, 'afterDelete', entity, {
+      await this.observers.run(entity.constructor, 'afterDelete', entity, {
         isNew: false,
         database: undefined,
       })
@@ -466,7 +512,9 @@ export class TransactionalService implements INeode {
 
   /**
   UPDATE the given properties on a node (`+=` semantics), then
-  re-hydrate it — mirror of the facade's update
+  re-hydrate it — mirror of the facade's update. NTS-596: beforeSave runs
+  before the statement, and NODE_UPDATED + afterSave fire after the
+  transaction commits (isNew is false: an update never creates).
   */
   async update<T>(
     entity: T,
@@ -480,6 +528,12 @@ export class TransactionalService implements INeode {
     }
 
     const schema = this.getSchema(entity.constructor)
+
+    // NTS-596: beforeSave before the statement — errors fail the write
+    await this.observers.run(entity.constructor, 'beforeSave', properties, {
+      isNew: false,
+      database: undefined,
+    })
 
     await new UpdateService(this.handle).update(schema, entity, properties)
 
@@ -495,9 +549,23 @@ export class TransactionalService implements INeode {
       throw new TypeError('The updated entity has no model constructor')
     }
 
-    return new FindByIdService(this.handle).find<T>(constructor, schema, elementId, {
+    const saved = await new FindByIdService(this.handle).find<T>(constructor, schema, elementId, {
       withoutFilters: [WITHOUT_ALL_FILTERS],
     })
+
+    if (saved !== undefined) {
+      // NTS-582: event + afterSave fire after the transaction commits
+      this.effects.defer(async () => {
+        this.eventEmitter.emit(EventType.NODE_UPDATED, saved)
+
+        await this.observers.run(constructor, 'afterSave', saved, {
+          isNew: false,
+          database: undefined,
+        })
+      })
+    }
+
+    return saved
   }
 
   /**

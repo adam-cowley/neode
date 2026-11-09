@@ -33,7 +33,6 @@ import type { DeleteOptions } from './services/query/delete.service.js'
 import type { DetachResult } from './services/query/detach.service.js'
 import type { SyncEdgesOptions, SyncEdgesResult } from './services/query/sync.service.js'
 import { constructorOf as constructorOfInstance } from './services/type-guards.js'
-import { quote } from './query/quote.js'
 
 /**
 The Neode instance that entity instance methods operate against, held in
@@ -108,20 +107,17 @@ function elementIdOf(entity: object): string {
 }
 
 /**
-SET / REMOVE a label on the node matched by elementId (autocommit — labels
-cannot be parameterised), then re-hydrate the entity in place
+SET / REMOVE a label through the facade's applyLabel() (NTS-596): the
+label write runs the save lifecycle (beforeSave, then NODE_UPDATED +
+afterSave once committed — a label change is an update, not a deletion),
+then the entity is re-hydrated in place
 */
 async function changeLabel(entity: object, label: string, verb: 'SET' | 'REMOVE'): Promise<object> {
   const neode = requireNeode()
-  const elementId = elementIdOf(entity)
 
-  await neode.writeCypher(`MATCH (n) WHERE elementId(n) = $elementId ${verb} n:${quote(label)}`, {
-    elementId,
-  })
+  const hydrated = await neode.applyLabel(entity, label, verb)
 
-  const hydrated = await neode.findById(requireConstructor(entity), elementId)
-
-  if (hydrated !== undefined && hydrated !== null) {
+  if (hydrated !== undefined) {
     // The re-hydrated state is the persisted state — re-baseline the
     // dirty tracking before it lands on the instance (NTS-157)
     const schema = schemaOf(entity)
@@ -403,10 +399,26 @@ const methods: MethodImpl = {
   async delete(this, options) {
     const soft = typeof options === 'object' ? options.soft : undefined
 
-    // Labels-as-state: SET the soft-delete label instead of deleting,
-    // returning the refreshed entity
+    // Labels-as-state: SET the soft-delete label instead of deleting.
+    // NTS-596: routed through the facade delete() so the soft path fires
+    // its own semantics — beforeDelete/afterDelete and NODE_UPDATED (not
+    // NODE_DELETED, the node survives) — then the entity re-hydrates.
     if (soft !== undefined && soft !== '') {
-      return changeLabel(this, soft, 'SET')
+      await requireNeode().delete(this, options)
+
+      const hydrated = await requireNeode().findById(requireConstructor(this), elementIdOf(this))
+
+      if (hydrated !== undefined && hydrated !== null) {
+        const schema = schemaOf(this)
+
+        if (schema !== undefined) {
+          recordSaved(schema, this, hydrated)
+        }
+
+        Object.assign(this, hydrated)
+      }
+
+      return this
     }
 
     await requireNeode().delete(this, options)
