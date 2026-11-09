@@ -42,4 +42,9 @@ export interface ReadOptions<T> {
   Per-call database override (find())
   */
   database?: string
+  /**
+  Named read filters to disable for this query (NTS-162) — each name is
+  independent; `softDelete` names the built-in @SoftDelete filter.
+  */
+  withoutFilters?: string[]
 }

@@ -6,7 +6,7 @@ import type { Newable } from '../meta/newable.js'
 import { PropertyType, type PropertySchema } from '../meta/property-schema.js'
 import type { INeode } from '../neode.interface.js'
 import { Builder, eagerNode } from '../query/index.js'
-import type { WithSpec } from '../query/load-spec.js'
+import type { ReadOptions, WithSpec } from '../query/load-spec.js'
 import { quote } from '../query/quote.js'
 import { applyOrder, type OrderSpec } from '../query/order-spec.js'
 import { getMergeFields } from '../services/query/merge.service.js'
@@ -17,7 +17,7 @@ import { isGraphNode, isRecord } from '../services/type-guards.js'
 import { hydrateNode } from '../utilities.js'
 import { hasProjectedProperties } from '../projection/index.js'
 import { projectionNode } from '../projection/projection.js'
-import { applySoftDeleteFilter } from '../services/query/soft-delete.js'
+import { applyReadFilters, WITHOUT_ALL_FILTERS, type ReadFilterOptions } from '../services/query/filters.js'
 
 /**
 Ordering, paging and row-limit options shared by findAll() and where()
@@ -37,10 +37,15 @@ export interface FindOptions<Entity = object> {
   */
   includeDeleted?: boolean
   /**
+  Named read filters to disable for this query (NTS-162) — each name is
+  independent; `softDelete` names the built-in @SoftDelete filter.
+  */
+  withoutFilters?: string[]
+  /**
   Per-relation eager load spec (NTS-560): request non-eager relationships
   and decorate their read — `with: { orders: (relation) => relation.limit(2) }`.
   With a spec the read goes through the projection path, so the standard
-  soft-delete filter applies — includeDeleted is not honoured with `with`.
+  read filters apply — includeDeleted is not honoured with `with`.
   */
   with?: WithSpec<Entity>
 }
@@ -120,16 +125,24 @@ export class Repository<Entity> {
   /**
   Match every node of the entity's labels, filtered on the schema's
   declared properties only (GetService parity: unknown keys are ignored).
-  The soft-delete filter applies unless hasIncludeDeleted is set.
+  The named read filters apply (soft delete included) unless
+  shouldBypassFilters is set — the bulk-write paths pass true: writes
+  never read through filters (NTS-162).
   */
-  private matchAll(parameters: Partial<Entity> = {}, hasIncludeDeleted = false): Builder {
+  private matchAll(
+    parameters: Partial<Entity> = {},
+    filters?: ReadFilterOptions,
+    shouldBypassFilters = false,
+  ): Builder {
     const record = parameters as Record<string, unknown>
 
     const builder = new Builder()
 
     builder.match(THIS_NODE, this.schema.getLabels())
 
-    applySoftDeleteFilter(builder, this.schema, hasIncludeDeleted)
+    if (!shouldBypassFilters) {
+      applyReadFilters(builder, this.schema, filters)
+    }
 
     for (const property of this.schema.getProperties()) {
       const key = property.getKey()
@@ -142,12 +155,12 @@ export class Repository<Entity> {
     return builder
   }
 
-  private returnNodes(builder: Builder): void {
+  private returnNodes(builder: Builder, filters?: ReadFilterOptions): void {
     // Projected models read through the projection's RETURN map — the
     // includeDeleted bypass renders it directly (the neode.all delegate
-    // always applies the soft-delete filter)
+    // always applies the read filters)
     if (hasProjectedProperties(this.schema)) {
-      builder.return(projectionNode(THIS_NODE, this.schema))
+      builder.return(projectionNode(THIS_NODE, this.schema, undefined, { builder, filters }))
 
       return
     }
@@ -159,7 +172,9 @@ export class Repository<Entity> {
       .some((relationship) => relationship.getEager())
 
     builder.return(
-      hasEagerRelationships ? `${eagerNode(1, THIS_NODE, this.schema)} AS ${THIS_NODE}` : THIS_NODE,
+      hasEagerRelationships
+        ? `${eagerNode(1, THIS_NODE, this.schema, { builder, filters })} AS ${THIS_NODE}`
+        : THIS_NODE,
     )
   }
 
@@ -192,15 +207,18 @@ export class Repository<Entity> {
   /**
   Find one entity by its primary key value, or undefined when absent.
   Accepts string and number keys only — anything else throws TypeError.
+  `options.withoutFilters` disables named read filters for this lookup
+  (NTS-162).
   */
-  async find(id: unknown): Promise<Entity | undefined> {
+  async find(id: unknown, options?: ReadOptions<Entity>): Promise<Entity | undefined> {
     if (typeof id !== 'string' && typeof id !== 'number') {
       throw new TypeError(`Repository.find expects a string or number id, received ${typeof id}`)
     }
 
-    return this.neode.find(this.entity, id, this.database)
+    return options === undefined
+      ? this.neode.find(this.entity, id, this.database)
+      : this.neode.find(this.entity, id, options)
   }
-
   /**
   The first entity matching the given properties (declared properties
   only), or undefined when nothing matches.
@@ -223,9 +241,29 @@ export class Repository<Entity> {
   async findAll(parameters: Partial<Entity> = {}, options: FindOptions = {}): Promise<Entity[]> {
     const hasIncludeDeleted = options.includeDeleted === true
 
+    const filters: ReadFilterOptions = {}
+
+    if (options.includeDeleted === true) {
+      filters.includeDeleted = true
+    }
+
+    if (options.withoutFilters !== undefined) {
+      filters.withoutFilters = options.withoutFilters
+    }
+
     const withSpec = options.with
 
     if (!hasIncludeDeleted && (withSpec !== undefined || hasProjectedProperties(this.schema))) {
+      const delegateOptions: { with?: WithSpec<Entity>; withoutFilters?: string[] } = {}
+
+      if (withSpec !== undefined) {
+        delegateOptions.with = withSpec
+      }
+
+      if (options.withoutFilters !== undefined) {
+        delegateOptions.withoutFilters = options.withoutFilters
+      }
+
       return this.neode.all<Entity>(
         this.entity,
         parameters,
@@ -233,17 +271,17 @@ export class Repository<Entity> {
         options.limit,
         options.skip,
         this.database,
-        withSpec === undefined ? undefined : { with: withSpec },
+        delegateOptions,
       )
     }
 
-    const builder = this.matchAll(parameters, hasIncludeDeleted)
+    const builder = this.matchAll(parameters, filters)
 
     if (options.order !== undefined) {
       applyOrder(builder, options.order)
     }
 
-    this.returnNodes(builder)
+    this.returnNodes(builder, filters)
 
     if (options.skip !== undefined && options.skip !== 0) {
       builder.skip(options.skip)
@@ -275,7 +313,7 @@ export class Repository<Entity> {
 
   /**
   Count of entities matching the given properties (a Cypher count(), so
-  no entities are hydrated).
+  no entities are hydrated). The named read filters apply.
   */
   async count(parameters: Partial<Entity> = {}): Promise<number> {
     const builder = this.matchAll(parameters)
@@ -405,7 +443,9 @@ export class Repository<Entity> {
       return this.neode.delete(target, forwarded, this.database)
     }
 
-    const entity = await this.find(target)
+    // The lookup bypasses the read filters (WITHOUT_ALL_FILTERS): delete
+    // is a write — rows hidden by the current filter view stay deletable
+    const entity = await this.find(target, { withoutFilters: [WITHOUT_ALL_FILTERS] })
 
     if (entity === undefined) {
       if (ifExists === true) {
@@ -458,13 +498,15 @@ export class Repository<Entity> {
 
   /**
   Delete every entity matching params and return the number deleted.
-  
+
   shortcut: one DETACH DELETE statement rather than per-node deletes,
   so per-node delete events and cascade options do not apply — switch to
-  a loop over delete() when cascading bulk deletes are needed
+  a loop over delete() when cascading bulk deletes are needed. A bulk
+  write: named read filters do not apply (NTS-162), every node carrying
+  the model's labels is deleted.
   */
   async deleteAll(parameters: Partial<Entity> = {}): Promise<number> {
-    const builder = this.matchAll(parameters)
+    const builder = this.matchAll(parameters, undefined, true)
 
     builder.detachDelete(THIS_NODE)
     builder.return(`count(${THIS_NODE}) AS count`)

@@ -11,6 +11,7 @@ import { type OrderSpec, applyOrder } from './get.service.js'
 import { NeodeError } from '../../errors/index.js'
 import { labelPattern } from './bulk.service.js'
 import { isGraphNode } from '../type-guards.js'
+import { applyReadFilters, readFilterFragment, type ReadFilterOptions } from './filters.js'
 
 /**
 Property the cursor keyset defaults to when orderBy is not given
@@ -42,6 +43,11 @@ export interface OffsetPaginateOptions {
   Order spec, as accepted by all()/get() — keep it stable across pages
   */
   order?: OrderSpec
+
+  /**
+  Named read filters to disable for this query (NTS-162)
+  */
+  withoutFilters?: string[]
 }
 
 /**
@@ -68,6 +74,11 @@ export interface CursorPaginateOptions {
   Cursor of the previous page's first item: walk backward in time
   */
   before?: string | number
+
+  /**
+  Named read filters to disable for this query (NTS-162)
+  */
+  withoutFilters?: string[]
 }
 
 /**
@@ -134,6 +145,11 @@ export interface FindManyAndCountOptions {
   Rows to skip before the first returned item (total is unaffected)
   */
   skip?: number
+
+  /**
+  Named read filters to disable for this query (NTS-162)
+  */
+  withoutFilters?: string[]
 }
 
 /**
@@ -149,6 +165,11 @@ export interface StreamOptions {
   Property to keyset on (default 'createdAt')
   */
   orderBy?: string
+
+  /**
+  Named read filters to disable for this walk (NTS-162)
+  */
+  withoutFilters?: string[]
 }
 
 /**
@@ -216,6 +237,16 @@ function requireLimit(limit: unknown): number {
 }
 
 /**
+Extract the read-filter options from either pagination mode (and the
+stream/chunk option bags that share the shape)
+*/
+function readFilterOptions(options: object): ReadFilterOptions {
+  const { withoutFilters } = options as { withoutFilters?: string[] }
+
+  return withoutFilters === undefined ? {} : { withoutFilters }
+}
+
+/**
 Property-equality filter, the same semantics as get()/all()
 */
 function applyFilter(
@@ -252,6 +283,7 @@ export class PaginateService extends QueryService {
     filter: Record<string, unknown>,
     options: OffsetPaginateOptions,
     limit: number,
+    filters?: ReadFilterOptions,
   ): Promise<Page<T>> {
     const page = options.page ?? 1
 
@@ -263,15 +295,17 @@ export class PaginateService extends QueryService {
     const data = new Builder()
 
     data.match(THIS_NODE, schema.getLabels())
+    applyReadFilters(data, schema, filters)
     applyFilter(data, schema, filter)
     applyOrder(data, options.order)
 
-    const items = await this.return<T>(constructor, schema, data, (page - 1) * limit, limit)
+    const items = await this.return<T>(constructor, schema, data, (page - 1) * limit, limit, filters)
 
     // Count query — a second autocommit read
     const count = new Builder()
 
     count.match(THIS_NODE, schema.getLabels())
+    applyReadFilters(count, schema, filters)
     applyFilter(count, schema, filter)
     count.return(`count(${THIS_NODE}) AS total`)
 
@@ -300,6 +334,7 @@ export class PaginateService extends QueryService {
     filter: Record<string, unknown>,
     options: CursorWalkOptions,
     limit: number,
+    filters?: ReadFilterOptions,
   ): Promise<CursorPage<T>> {
     if (options.after !== undefined && options.before !== undefined) {
       throw new NeodeError('paginate accepts either after or before, not both')
@@ -325,6 +360,22 @@ export class PaginateService extends QueryService {
 
     const parameters: QueryParameters = {}
     const conditions: string[] = []
+
+    // NTS-162 — the named read filters join the hand-written WHERE (the
+    // cursor statement is written by hand, so the fragment path applies)
+    const { fragment: filterFragment_, parameters: filterParameters_ } = readFilterFragment(
+      schema,
+      THIS_NODE,
+      filters,
+    )
+
+    if (filterFragment_ !== undefined) {
+      conditions.push(filterFragment_)
+
+      for (const [name, value] of Object.entries(filterParameters_)) {
+        parameters[name] = value
+      }
+    }
 
     for (const candidate of schema.getProperties()) {
       const filterKey = candidate.getKey()
@@ -422,6 +473,7 @@ export class PaginateService extends QueryService {
     filter: Record<string, unknown>,
     limit: number,
     orderBy?: string,
+    filters?: ReadFilterOptions,
   ): AsyncGenerator<T[]> {
     let after: string | number | undefined
     let hasMore = true
@@ -433,6 +485,7 @@ export class PaginateService extends QueryService {
         filter,
         { limit, orderBy, after },
         limit,
+        filters,
       )
 
       // A dropped boundary node leaves the cursor undefined (hydrate
@@ -452,15 +505,17 @@ export class PaginateService extends QueryService {
   ): Promise<Page<T> | CursorPage<T>> {
     const limit = requireLimit((options as { limit?: unknown }).limit)
 
+    const filters = readFilterOptions(options)
+
     if ('page' in options) {
       if ('after' in options || 'before' in options) {
         throw new NeodeError('paginate accepts either page or after/before, not both')
       }
 
-      return this.offsetPage<T>(constructor, schema, filter, options, limit)
+      return this.offsetPage<T>(constructor, schema, filter, options, limit, filters)
     }
 
-    return this.cursorPage<T>(constructor, schema, filter, options, limit)
+    return this.cursorPage<T>(constructor, schema, filter, options, limit, filters)
   }
 
   /**
@@ -478,17 +533,19 @@ export class PaginateService extends QueryService {
     const data = new Builder()
 
     data.match(THIS_NODE, schema.getLabels())
+    applyReadFilters(data, schema, options)
     applyFilter(data, schema, filter)
 
     if (options.order !== undefined) {
       applyOrder(data, options.order)
     }
 
-    const items = await this.return<T>(constructor, schema, data, options.skip, options.limit)
+    const items = await this.return<T>(constructor, schema, data, options.skip, options.limit, options)
 
     const count = new Builder()
 
     count.match(THIS_NODE, schema.getLabels())
+    applyReadFilters(count, schema, options)
     applyFilter(count, schema, filter)
     count.return(`count(${THIS_NODE}) AS total`)
 
@@ -509,13 +566,22 @@ export class PaginateService extends QueryService {
     filter: Record<string, unknown>,
     size: number,
     callback: (items: T[]) => unknown,
-    options: { orderBy?: string } = {},
+    options: { orderBy?: string; withoutFilters?: string[] | undefined } = {},
   ): Promise<number> {
     const limit = requireLimit(size)
 
     let delivered = 0
 
-    for await (const items of this.pages<T>(constructor, schema, filter, limit, options.orderBy)) {
+    const walk = this.pages<T>(
+      constructor,
+      schema,
+      filter,
+      limit,
+      options.orderBy,
+      readFilterOptions(options),
+    )
+
+    for await (const items of walk) {
       delivered += items.length
 
       if (callback(items) === false) {
@@ -540,7 +606,16 @@ export class PaginateService extends QueryService {
   ): AsyncGenerator<T> {
     const limit = requireLimit(options.limit ?? DEFAULT_LAZY_LIMIT)
 
-    for await (const items of this.pages<T>(constructor, schema, filter, limit, options.orderBy)) {
+    const walk = this.pages<T>(
+      constructor,
+      schema,
+      filter,
+      limit,
+      options.orderBy,
+      readFilterOptions(options),
+    )
+
+    for await (const items of walk) {
       for (const item of items) {
         yield item
       }

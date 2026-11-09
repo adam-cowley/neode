@@ -6,6 +6,7 @@ import { THIS_NODE } from '../../constants.js'
 import { eagerNode } from '../../query/eager-utilities.js'
 import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { isNodeLike } from '../type-guards.js'
+import type { ReadFilterOptions } from './filters.js'
 
 export class QueryService {
   protected readonly runner: Runner
@@ -32,8 +33,9 @@ export class QueryService {
     constructor: Newable,
     schema: EntitySchema,
     builder: Builder,
+    filters?: ReadFilterOptions,
   ): Promise<T | undefined> {
-    const results = await this.return<T>(constructor, schema, builder, 0, 1)
+    const results = await this.return<T>(constructor, schema, builder, 0, 1, filters)
 
     return results[0]
   }
@@ -44,16 +46,21 @@ export class QueryService {
     builder: Builder,
     skip?: number,
     limit?: number,
+    filters?: ReadFilterOptions,
   ): Promise<T[]> {
     // Eager Loading: when the schema declares eager relationships the
     // root node is returned as a map projection nesting an eager pattern
-    // comprehension per relationship, up to MAX_EAGER_DEPTH degrees deep
+    // comprehension per relationship, up to MAX_EAGER_DEPTH degrees deep.
+    // The eager comprehensions carry the target models' read filters
+    // (NTS-162) — a filtered-out related node reads as absent.
     const hasEagerRelationships = schema
       .getRelationships()
       .some((relationship) => relationship.getEager())
 
     builder.return(
-      hasEagerRelationships ? `${eagerNode(1, THIS_NODE, schema)} AS ${THIS_NODE}` : THIS_NODE,
+      hasEagerRelationships
+        ? `${eagerNode(1, THIS_NODE, schema, { builder, filters })} AS ${THIS_NODE}`
+        : THIS_NODE,
     )
 
     // Skip and limit

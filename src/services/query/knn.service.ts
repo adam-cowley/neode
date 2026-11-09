@@ -6,6 +6,7 @@ import { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { type ScoredEntity, type ModelInput, resolveModel } from './search.service.js'
 import { isConstructorOf } from '../type-guards.js'
 import { isTransientError, NeodeError } from '../../errors/index.js'
+import { readFilterFragment, type ReadFilterOptions } from './filters.js'
 
 /**
 Which query form to use for the kNN search
@@ -58,6 +59,10 @@ entities with their similarity score, best match first.
 With the default `auto` mode the Cypher 25 `SEARCH` clause is attempted
 first and the queryNodes procedure is used as a fallback; when the backend
 supports neither a combined error is raised.
+
+NTS-162 — the model's named read filters apply to both query forms (a
+`WHERE` over the matched / YIELDed rows); `filters.withoutFilters`
+disables names for this call.
 */
 export async function knn<T>(
   runner: Runner,
@@ -66,6 +71,7 @@ export async function knn<T>(
   vector: number[],
   k: number,
   mode: KnnMode = 'auto',
+  filters?: ReadFilterOptions,
 ): Promise<ScoredEntity<T>[]> {
   if (typeof indexName !== 'string' || indexName.length === 0) {
     throw new TypeError('Cannot run a kNN search: index name must be a non-empty string')
@@ -110,8 +116,30 @@ export async function knn<T>(
 
   const parameters = { index: indexName, k, vector }
 
+  // NTS-162 — named read filters over the scored rows. Both forms bind
+  // the node to the same NODE_ALIAS; the procedure form takes the WHERE
+  // after the YIELD, the SEARCH-clause form after SCORE AS.
+  const filterStatements = (statement: string): string => {
+    const { fragment, parameters: filterParameters } = readFilterFragment(schema, NODE_ALIAS, filters)
+
+    if (fragment === undefined) {
+      return statement
+    }
+
+    Object.assign(parameters, filterParameters)
+
+    // Replacer functions: the fragment carries `$params` and must not
+    // dance with replacement-pattern semantics
+    return statement.includes('YIELD')
+      ? statement.replace(
+          `RETURN ${NODE_ALIAS}, score`,
+          () => `WHERE ${fragment} RETURN ${NODE_ALIAS}, score`,
+        )
+      : statement.replace(`SCORE AS score `, () => `SCORE AS score WHERE ${fragment} `)
+  }
+
   const runForm = async (statement: string): Promise<ScoredEntity<T>[]> => {
-    const output = await runner.run(statement, parameters)
+    const output = await runner.run(filterStatements(statement), parameters)
 
     const nodeRows = output.records.filter((row) => hasNode(row))
 

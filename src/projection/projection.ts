@@ -1,4 +1,4 @@
-import { EAGER_ID, EAGER_LABELS, eagerPattern } from '../query/eager-utilities.js'
+import { EAGER_ID, EAGER_LABELS, eagerPattern, type EagerFilterContext } from '../query/eager-utilities.js'
 import { type Builder, Direction } from '../query/index.js'
 import { EntityType, EntitySchema } from '../meta/entity/entity-schema.js'
 import { NeodeError } from '../errors/index.js'
@@ -10,6 +10,7 @@ import { PropertyType, isProjectedProperty } from '../meta/property-schema.js'
 import { RelationshipPropertySchema } from '../meta/relationship-property-schema.js'
 import { getModel } from '../meta/index.js'
 import { isRecord } from '../services/type-guards.js'
+import { applyReadFilters, readFilterFragment, type ReadFilterOptions } from '../services/query/filters.js'
 
 /**
 Read-model projection composition (NTS-135/136/137/138).
@@ -118,18 +119,52 @@ function relationshipPattern(alias: string, property: PropertySchema): string {
 }
 
 /**
-WHERE fragment inside COUNT { } / EXISTS { } subqueries
+WHERE fragment inside COUNT { } / EXISTS { } subqueries: the property's own
+`where` (node convention) plus the target model's named read filters
+(NTS-162) — a filtered-out target is not counted / does not exist.
 */
-function subqueryWhere(property: PropertySchema): string {
+function relatedFilter(property: PropertySchema, context?: EagerFilterContext): string {
+  const parts: string[] = []
+
   const where = property.getWhere()
 
-  return where !== undefined && where.length > 0 ? ` WHERE ${where}` : ''
+  if (where !== undefined && where.length > 0) {
+    parts.push(where)
+  }
+
+  const target = property.getEntity()
+  const targetSchema = target === undefined ? undefined : getModel(target)
+
+  if (targetSchema instanceof EntitySchema) {
+    // `node` is the variable the pattern binds the target to
+    const { fragment, parameters: filterParameters } = readFilterFragment(
+      targetSchema,
+      'node',
+      context?.filters,
+    )
+
+    if (fragment !== undefined) {
+      parts.push(fragment)
+
+      if (context?.builder !== undefined) {
+        for (const [name, value] of Object.entries(filterParameters)) {
+          context.builder.param(name, value)
+        }
+      }
+    }
+  }
+
+  return parts.length > 0 ? ` WHERE ${parts.join(' AND ')}` : ''
 }
 
 /**
 Pattern comprehension for a @RelatedOne / @RelatedMany property
 */
-function relatedProjection(alias: string, property: PropertySchema): string {
+function relatedProjection(
+  alias: string,
+  property: PropertySchema,
+  context?: EagerFilterContext,
+): string {
   const key = property.getKey()
   const fields = property.getFields()
 
@@ -150,7 +185,7 @@ function relatedProjection(alias: string, property: PropertySchema): string {
     relationship.setTarget(target)
     relationship.setMany(property.getType() === PropertyType.RELATED_MANY)
 
-    return eagerPattern(1, alias, relationship)
+    return eagerPattern(1, alias, relationship, context)
   }
 
   const isMany = property.getType() === PropertyType.RELATED_MANY
@@ -160,12 +195,10 @@ function relatedProjection(alias: string, property: PropertySchema): string {
       ? `node.${fields[0] ?? ''}`
       : `node { ${fields.map((field) => `.${field}`).join(', ')} }`
 
-  // NTS-547 — WHERE inside the comprehension filters elements per path
-  // (`node` = the target node, `this` = the annotated node)
-  const where = property.getWhere()
-  const filter = where !== undefined && where.length > 0 ? ` WHERE ${where}` : ''
-
-  const comprehension = `[ ${relationshipPattern(alias, property)}${filter} | ${pattern} ]`
+  // NTS-547/162 — WHERE inside the comprehension filters elements per path
+  // (`node` = the target node, `this` = the annotated node): the property's
+  // own where plus the target model's named read filters
+  const comprehension = `[ ${relationshipPattern(alias, property)}${relatedFilter(property, context)} | ${pattern} ]`
 
   // First related node only for the singular form
   return isMany ? `${key}: ${comprehension}` : `${key}: ${comprehension}[0]`
@@ -174,20 +207,24 @@ function relatedProjection(alias: string, property: PropertySchema): string {
 /**
 One `key: expression` pair of the RETURN map projection
 */
-function projectedProperty(alias: string, property: PropertySchema): string {
+function projectedProperty(
+  alias: string,
+  property: PropertySchema,
+  context?: EagerFilterContext,
+): string {
   const type = property.getType()
   const key = property.getKey()
 
   if (type === PropertyType.RELATED_ONE || type === PropertyType.RELATED_MANY) {
-    return relatedProjection(alias, property)
+    return relatedProjection(alias, property, context)
   }
 
   if (type === PropertyType.RELATIONSHIP_COUNT) {
-    return `${key}: COUNT { ${relationshipPattern(alias, property)}${subqueryWhere(property)} }`
+    return `${key}: COUNT { ${relationshipPattern(alias, property)}${relatedFilter(property, context)} }`
   }
 
   if (type === PropertyType.RELATIONSHIP_EXISTS) {
-    return `${key}: EXISTS { ${relationshipPattern(alias, property)}${subqueryWhere(property)} }`
+    return `${key}: EXISTS { ${relationshipPattern(alias, property)}${relatedFilter(property, context)} }`
   }
 
   if (type === PropertyType.LABEL_PRESENT) {
@@ -401,6 +438,7 @@ export function loadSpecCalls(
   alias: string,
   schema: EntitySchema,
   withSpec: object | undefined,
+  filters?: ReadFilterOptions,
 ): void {
   if (withSpec === undefined) {
     return
@@ -441,6 +479,10 @@ export function loadSpecCalls(
       sub
         .relationship(relationship.getType(), relationship.getDirection(), `${alias}_${key}_rel`)
         .to(nodeVariable, targetSchema.getLabels())
+
+      // NTS-162 — the target model's named filters filter the collected
+      // rows too (compileSub namespaces their parameters)
+      applyReadFilters(sub, targetSchema, filters, nodeVariable)
 
       // Wheres filter the MATCH; the sort/page trim rides the WITH clause
       // (a statement renders its own RETURN before its ORDER BY / LIMIT)
@@ -485,7 +527,12 @@ the alias the CALL subquery loadSpecCalls() published. Requested keys
 count as loaded: the hydrated values materialize as own properties
 through the regular eager hydration path.
 */
-export function projectionNode(alias: string, schema: EntitySchema, withSpec?: object): string {
+export function projectionNode(
+  alias: string,
+  schema: EntitySchema,
+  withSpec?: object,
+  context?: EagerFilterContext,
+): string {
   validateWithSpec(schema, withSpec)
 
   const parts: string[] = [
@@ -507,7 +554,7 @@ export function projectionNode(alias: string, schema: EntitySchema, withSpec?: o
     const requested = requestedSpec(withSpec, key)
 
     if (requested === true) {
-      parts.push(eagerPattern(1, alias, relationship))
+      parts.push(eagerPattern(1, alias, relationship, context))
 
       continue
     }
@@ -525,13 +572,13 @@ export function projectionNode(alias: string, schema: EntitySchema, withSpec?: o
       continue
     }
 
-    parts.push(eagerPattern(1, alias, relationship))
+    parts.push(eagerPattern(1, alias, relationship, context))
   }
 
   // Projected read-model properties
   for (const property of schema.getProperties()) {
     if (isProjectedProperty(property) && property.getType() !== PropertyType.COMPUTED) {
-      parts.push(projectedProperty(alias, property))
+      parts.push(projectedProperty(alias, property, context))
     }
   }
 

@@ -1,5 +1,6 @@
 import { vi } from 'vitest'
 import { Repository } from '../../src/repository'
+import { WITHOUT_ALL_FILTERS } from '../../src/services/query/filters'
 import type { INeode } from '../../src/neode.interface'
 import { GraphNode, QueryOutput, QueryRecord } from '../../src/driver/types'
 import {
@@ -362,7 +363,11 @@ describe('Repository', () => {
 
       await repo.delete('u1')
 
-      expect(mocks.find).toHaveBeenCalledWith(Movie, 'u1', undefined)
+      // The delete lookup bypasses the read filters (NTS-162): a write
+      // may target rows the current filter view hides
+      expect(mocks.find).toHaveBeenCalledWith(Movie, 'u1', {
+        withoutFilters: [WITHOUT_ALL_FILTERS],
+      })
       expect(mocks.delete.mock.calls[0][0]).toBe(entity)
     })
 

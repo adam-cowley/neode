@@ -3,6 +3,36 @@ import type { Newable } from '../newable.js'
 import { PropertySchema } from '../property-schema.js'
 import { RelationshipPropertySchema } from '../relationship-property-schema.js'
 
+/**
+One named global filter (NTS-162), declared with @Filter on an entity:
+
+- `name` — the withoutFilters() key, and the name filter params are set under
+  (setFilterParams(name, value) binds `$name`)
+- `where` — a Cypher predicate over the filtered node; `node` names the node
+  the filter is applied to (the read's root, or the related node inside a
+  pattern comprehension), the same convention as the projection decorators.
+  Values come from parameters (`$name`), never string interpolation.
+- `default` — filters apply to every read unless disabled (default true);
+  false registers the name without making it active.
+*/
+export interface FilterDefinition {
+  name: string
+  where?: string
+  default?: boolean
+}
+
+/**
+Filter names double as Cypher parameter names (letters, digits, underscores)
+and as withoutFilters keys.
+*/
+export function assertFilterName(name: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new NeodeError(
+      `Filter name "${name}" is invalid — use letters, digits and underscores, starting with a letter or underscore`,
+    )
+  }
+}
+
 export const EntityType = {
   NodeEntity: 0,
   RelationshipEntity: 1,
@@ -26,6 +56,12 @@ export class EntitySchema {
   */
   private description: string | undefined
 
+  /**
+  Named global filters (NTS-162), registered by @Filter — applied to every
+  standard read unless disabled per query with withoutFilters
+  */
+  private readonly filters = new Map<string, FilterDefinition>()
+
   protected properties = new Map<string, PropertySchema>()
   protected relationships = new Map<string, RelationshipPropertySchema>()
   protected entityType: EntityType = EntityType.NodeEntity
@@ -47,6 +83,32 @@ export class EntitySchema {
   */
   private modelName(): string {
     return this.labels.join(':') || 'entity'
+  }
+
+  /**
+  Register a named filter. Duplicate names are a model-definition error —
+  a name must stay a stable withoutFilters key.
+  */
+  addFilter(filter: FilterDefinition): void {
+    assertFilterName(filter.name)
+
+    if (this.filters.has(filter.name)) {
+      throw new NeodeError(
+        `Filter "${filter.name}" is already declared on model "${this.modelName()}" — filter names must be unique, they are the withoutFilters keys`,
+      )
+    }
+
+    this.filters.set(filter.name, filter)
+  }
+
+  getFilters(): FilterDefinition[] {
+    const filters: FilterDefinition[] = []
+
+    for (const filter of this.filters.values()) {
+      filters.push(filter)
+    }
+
+    return filters
   }
 
   setSoftDelete(label: string): void {

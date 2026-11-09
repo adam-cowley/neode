@@ -22,6 +22,7 @@ import { NeodeError } from '../errors/index.js'
 import { DeleteService, type DeleteOptions } from '../services/query/delete.service.js'
 import { DetachService, type DetachResult } from '../services/query/detach.service.js'
 import { FindByIdService } from '../services/query/find-by-id.service.js'
+import { WITHOUT_ALL_FILTERS } from '../services/query/filters.js'
 import { FindService } from '../services/query/find.service.js'
 import { GetService, type OrderSpec } from '../services/query/get.service.js'
 import { MergeService, getMergeFields } from '../services/query/merge.service.js'
@@ -263,7 +264,10 @@ export class TransactionalService implements INeode {
       throw new TypeError('The saved entity has no model constructor')
     }
 
-    const saved = await this.findById<T>(constructor, elementId)
+    // Write-path re-hydration bypasses the read filters (WITHOUT_ALL_FILTERS)
+    const saved = await new FindByIdService(this.handle).find<T>(constructor, schema, elementId, {
+      withoutFilters: [WITHOUT_ALL_FILTERS],
+    })
 
     if (saved === undefined) {
       throw new NeodeError('Entity was saved but could not be found immediately afterwards')
@@ -340,7 +344,9 @@ export class TransactionalService implements INeode {
       throw new NeodeError('mergeOn did not return an elementId')
     }
 
-    return new FindByIdService(this.handle).find<T>(constructor, schema, elementId)
+    return new FindByIdService(this.handle).find<T>(constructor, schema, elementId, {
+      withoutFilters: [WITHOUT_ALL_FILTERS],
+    })
   }
 
   /**
@@ -408,7 +414,9 @@ export class TransactionalService implements INeode {
       throw new TypeError('The updated entity has no model constructor')
     }
 
-    return new FindByIdService(this.handle).find<T>(constructor, schema, elementId)
+    return new FindByIdService(this.handle).find<T>(constructor, schema, elementId, {
+      withoutFilters: [WITHOUT_ALL_FILTERS],
+    })
   }
 
   /**

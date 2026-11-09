@@ -50,6 +50,12 @@ Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one U
 
 _source: services/query/bulk.service.ts_
 
+### `clearFilterParams` (function)
+
+Clear every filter param (test hygiene — the store is global).
+
+_source: services/query/filters.ts_
+
 ### `Collection` (class)
 
 An iterable wrapper over an array of entities (parity with neode's Collection): reads like an array, serialises through toJson().
@@ -166,7 +172,7 @@ _source: driver/json-safe.ts_
 
 ### `knn` (function)
 
-k-nearest-neighbour search over a vector index, returning hydrated entities with their similarity score, best match first. With the default `auto` mode the Cypher 25 `SEARCH` clause is attempted first and the queryNodes procedure is used as a fallback; when the backend supports neither a combined error is raised.
+k-nearest-neighbour search over a vector index, returning hydrated entities with their similarity score, best match first. With the default `auto` mode the Cypher 25 `SEARCH` clause is attempted first and the queryNodes procedure is used as a fallback; when the backend supports neither a combined error is raised. NTS-162 — the model's named read filters apply to both query forms (a `WHERE` over the matched / YIELDed rows); `filters.withoutFilters` disables names for this call.
 
 _source: services/query/knn.service.ts_
 
@@ -284,6 +290,18 @@ A raw Cypher expression used as an inline pattern property value (NTS-460): rend
 
 _source: query/expressions.ts_
 
+### `readFilterFragment` (function)
+
+The raw WHERE fragment for the read paths that write their statements by hand (keyset pagination, full-text search, kNN): the active clauses joined with AND, plus the parameters to merge into the statement's parameters.
+
+_source: services/query/filters.ts_
+
+### `ReadFilterOptions` (interface)
+
+Per-query filter options, accepted by every filtered read (NTS-162): - `withoutFilters` — disable named filters for this query only; each name is independent (disabling one leaves the others active, EF named-filter model). `softDelete` names the built-in
+
+_source: services/query/filters.ts_
+
 ### `ReadOptions` (interface)
 
 Options for the model reads that accept a load spec (NTS-560).
@@ -328,9 +346,15 @@ _source: services/query/search.service.ts_
 
 ### `search` (function)
 
-Full-text search over a full-text index (`CALL db.index.fulltext.queryNodes`), returning hydrated entities with their relevance score, best match first. The query string is bound as a parameter, so Lucene syntax characters in it are still parsed as such — pass user text through `toFulltextQuery` first.
+Full-text search over a full-text index (`CALL db.index.fulltext.queryNodes`), returning hydrated entities with their relevance score, best match first. The query string is bound as a parameter, so Lucene syntax characters in it are still parsed as such — pass user text through `toFulltextQuery` first. NTS-162 — the model's named read filters apply (a `WHERE` after the YIELD); `filters.withoutFilters` disables names for this call.
 
 _source: services/query/search.service.ts_
+
+### `setFilterParams` (function)
+
+Set the parameter a named filter's `where` references as `$name` (`setFilterParams('tenant', 'acme')` for `where: 'node.tenantId = $tenant'`). Values are bound as query parameters — they never render into the query text.
+
+_source: services/query/filters.ts_
 
 ### `StreamOptions` (interface)
 
@@ -391,6 +415,12 @@ _source: serialise.ts_
 An `IS NULL` / `IS NOT NULL` predicate on a property, rendered by toString() — the value of `Builder.whereNull` / `whereNotNull`.
 
 _source: query/where-null.ts_
+
+### `WITHOUT_ALL_FILTERS` (const)
+
+The reserved withoutFilters entry that disables EVERY named filter for the query — the write paths' internal re-hydration (save / create / merge use FindByIdService to re-read the row they just wrote) must find rows the current filter view hides. Filters are a read policy; writes never read through them.
+
+_source: services/query/filters.ts_
 
 ### `WithSpec` (type)
 

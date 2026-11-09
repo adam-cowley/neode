@@ -108,6 +108,18 @@ neode's extend(): register `as` as a clone of the model `name` with `as` added a
 
 _source: meta/map-schema.ts_
 
+### `Filter` (decorator)
+
+Named global filter (NTS-162): declare a named read filter on the model and it applies to every standard read — find / get / all / paginate / search / knn / eager loads / projections / repository reads — composed in one central place in the query services. - Disable per query with `withoutFilters: ['name']` on the read options; each filter is independent. - Parameterise with `setFilterParams(name, value)`; the `where` fragment references the value as `$name`. - `where` is a Cypher predicate over the filtered node; `node` names that node (the read root, or the related node inside a filtered relation's pattern comprehension). Label-state filters (labels-as-state, NTS-128) are just label predicates: `where: 'NOT node:Archived'`. - Over relations, the target model's filters render inside the relation's pattern comprehension — a filtered-out target simply doesn't match, so the edge reads as absent and the parent row survives. Never OPTIONAL MATCH. Example — soft delete + tenancy as independent named filters: ```ts
+
+_source: decorators/node/filter.decorator.ts_
+
+### `FilterDefinition` (interface)
+
+One named global filter (NTS-162), declared with
+
+_source: meta/entity/entity-schema.ts_
+
 ### `Float` (decorator)
 
 Register a float property.

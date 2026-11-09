@@ -4,13 +4,14 @@ import { THIS_NODE } from '../../constants.js'
 import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { QueryService } from './query.service.js'
 import { NeodeError } from '../../errors/index.js'
-import { applySoftDeleteFilter } from './soft-delete.js'
+import { applyReadFilters, type ReadFilterOptions } from './filters.js'
 
 export class FindService extends QueryService {
   async find<T>(
     constructor: Newable,
     schema: EntitySchema,
     value: unknown,
+    filters?: ReadFilterOptions,
   ): Promise<T | undefined> {
     const builder = new Builder()
 
@@ -22,8 +23,8 @@ export class FindService extends QueryService {
 
     builder.match(THIS_NODE, schema.getLabels(), { [primaryKey.getKey()]: value })
 
-    applySoftDeleteFilter(builder, schema)
+    applyReadFilters(builder, schema, filters)
 
-    return this.returnFirst<T>(constructor, schema, builder)
+    return this.returnFirst<T>(constructor, schema, builder, filters)
   }
 }

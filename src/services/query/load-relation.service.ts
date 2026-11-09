@@ -10,6 +10,7 @@ import { applyOrder, type OrderSpec } from '../../query/order-spec.js'
 import { hydrateNode } from '../../utilities.js'
 import { isNodeLike } from '../type-guards.js'
 import { QueryService } from './query.service.js'
+import { applyReadFilters, type ReadFilterOptions } from './filters.js'
 
 /**
 Traversal options for a lazy relation load (`instance.load(key, options)`,
@@ -21,6 +22,10 @@ export interface LoadOptions {
   order?: OrderSpec
   skip?: number
   limit?: number
+  /**
+  Named read filters to disable for this load (NTS-162)
+  */
+  withoutFilters?: string[]
 }
 
 /**
@@ -43,6 +48,9 @@ export class LoadRelationService extends QueryService {
     relationship: RelationshipPropertySchema,
     options?: LoadOptions,
   ): Promise<unknown> {
+    const filters: ReadFilterOptions | undefined =
+      options?.withoutFilters === undefined ? undefined : { withoutFilters: options.withoutFilters }
+
     const key = relationship.getKey()
 
     const elementId = elementIdOfEntity(schema, entity)
@@ -84,6 +92,9 @@ export class LoadRelationService extends QueryService {
       .to(nodeVariable, targetSchema.getLabels())
       .whereId(THIS_NODE, elementId)
 
+    // NTS-162 — the target model's named filters filter the loaded rows
+    applyReadFilters(builder, targetSchema, filters, nodeVariable)
+
     if (options?.order !== undefined && options.order !== '') {
       applyOrder(builder, options.order, nodeVariable)
     }
@@ -96,7 +107,9 @@ export class LoadRelationService extends QueryService {
       builder.limit(options.limit)
     }
 
-    builder.return(`${eagerNode(1, nodeVariable, targetSchema)} AS node`)
+    builder.return(
+      `${eagerNode(1, nodeVariable, targetSchema, { builder, filters })} AS node`,
+    )
 
     const { query, params } = builder.build()
 

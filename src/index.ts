@@ -147,6 +147,16 @@ export type {
 export { BulkService } from './services/query/bulk.service.js'
 export type { BulkChunk, BulkOptions } from './services/query/bulk.service.js'
 export { PaginateService } from './services/query/paginate.service.js'
+
+// Named global filters (NTS-162)
+export {
+  setFilterParams,
+  clearFilterParams,
+  readFilterFragment,
+  WITHOUT_ALL_FILTERS,
+} from './services/query/filters.js'
+export type { ReadFilterOptions } from './services/query/filters.js'
+export type { FilterDefinition } from './meta/entity/entity-schema.js'
 export { vectorIndexName } from './services/schema/vector.service.js'
 export { fulltextIndexName } from './services/schema/fulltext.service.js'
 export type { OrderSpec } from './query/order-spec.js'

@@ -51,6 +51,7 @@ import type { ReadOptions, WithSpec } from './query/load-spec.js'
 import { quote } from './query/quote.js'
 import type { Repository } from './repository/index.js'
 import { FactoryBuilder } from './services/factory.service.js'
+import { WITHOUT_ALL_FILTERS } from './services/query/filters.js'
 import { type BulkChunk, type BulkOptions, BulkService } from './services/query/bulk.service.js'
 import { CreateService } from './services/query/create.service.js'
 import { type DeleteOptions, DeleteService } from './services/query/delete.service.js'
@@ -806,6 +807,7 @@ export class Neode implements INeode {
     const options = typeof databaseOrOptions === 'object' ? databaseOrOptions : undefined
     const database = typeof databaseOrOptions === 'string' ? databaseOrOptions : options?.database
     const withSpec = options?.with
+    const filters = options?.withoutFilters === undefined ? undefined : { withoutFilters: options.withoutFilters }
 
     const tx = await this.beginWorkTransaction('READ', database)
 
@@ -815,8 +817,8 @@ export class Neode implements INeode {
       // relationships into the RETURN projection
       const output =
         withSpec !== undefined || hasProjectedProperties(schema)
-          ? await new ProjectionService(tx).find<T>(constructor, schema, value, withSpec)
-          : await new FindService(tx).find<T>(constructor, schema, value)
+          ? await new ProjectionService(tx).find<T>(constructor, schema, value, withSpec, filters)
+          : await new FindService(tx).find<T>(constructor, schema, value, filters)
 
       await tx.commit()
 
@@ -853,16 +855,40 @@ export class Neode implements INeode {
     parameters: Record<string, unknown>,
     limit?: number,
     skip?: number,
-    database?: string,
+    databaseOrOptions?: string | { withoutFilters?: string[] | undefined },
   ): Promise<T[]> {
     const schema = this.getSchema(constructor)
+
+    const filters =
+      typeof databaseOrOptions === 'object' && databaseOrOptions.withoutFilters !== undefined
+        ? { withoutFilters: databaseOrOptions.withoutFilters }
+        : undefined
+
+    const database = typeof databaseOrOptions === 'string' ? databaseOrOptions : undefined
 
     const tx = await this.beginWorkTransaction('READ', database)
 
     try {
       const results = hasProjectedProperties(schema)
-        ? await new ProjectionService(tx).get<T>(constructor, schema, parameters, limit, skip)
-        : await new GetService(tx).get<T>(constructor, schema, parameters, limit, skip)
+        ? await new ProjectionService(tx).get<T>(
+            constructor,
+            schema,
+            parameters,
+            limit,
+            skip,
+            undefined,
+            undefined,
+            filters,
+          )
+        : await new GetService(tx).get<T>(
+            constructor,
+            schema,
+            parameters,
+            limit,
+            skip,
+            undefined,
+            filters,
+          )
 
       await tx.commit()
 
@@ -937,7 +963,12 @@ export class Neode implements INeode {
 
       const findService = new FindByIdService(tx.getRunner())
 
-      const hydrated = await findService.find<T>(entityConstructor, schema, elementId)
+      // The re-hydration of a row the write just touched bypasses the read
+      // filters — the write path may legitimately save outside the current
+      // filter view (WITHOUT_ALL_FILTERS)
+      const hydrated = await findService.find<T>(entityConstructor, schema, elementId, {
+        withoutFilters: [WITHOUT_ALL_FILTERS],
+      })
 
       await tx.commit()
 
@@ -994,7 +1025,10 @@ export class Neode implements INeode {
 
       const findService = new FindByIdService(tx)
 
-      const hydrated = await findService.find<T>(constructor, schema, elementId)
+      // Write-path re-hydration bypasses the read filters (WITHOUT_ALL_FILTERS)
+      const hydrated = await findService.find<T>(constructor, schema, elementId, {
+        withoutFilters: [WITHOUT_ALL_FILTERS],
+      })
 
       if (hydrated === undefined) {
         throw new NeodeError('Entity was created but could not be found immediately afterwards')
@@ -1046,7 +1080,10 @@ export class Neode implements INeode {
 
       const findService = new FindByIdService(tx)
 
-      const hydrated = await findService.find<T>(constructor, schema, elementId)
+      // Write-path re-hydration bypasses the read filters (WITHOUT_ALL_FILTERS)
+      const hydrated = await findService.find<T>(constructor, schema, elementId, {
+        withoutFilters: [WITHOUT_ALL_FILTERS],
+      })
 
       await tx.commit()
 
@@ -1139,7 +1176,9 @@ export class Neode implements INeode {
       const hydrated =
         elementId === undefined
           ? undefined
-          : await new FindByIdService(tx).find<T>(entityConstructor, schema, elementId)
+          : await new FindByIdService(tx).find<T>(entityConstructor, schema, elementId, {
+              withoutFilters: [WITHOUT_ALL_FILTERS],
+            })
 
       await tx.commit()
 
@@ -1265,8 +1304,9 @@ export class Neode implements INeode {
     indexName: string,
     query: string,
     limit?: number,
+    filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]> {
-    return search<T>(this.connection, constructor, indexName, query, limit)
+    return search<T>(this.connection, constructor, indexName, query, limit, filters)
   }
 
   /**
@@ -1279,8 +1319,9 @@ export class Neode implements INeode {
     vector: number[],
     k: number,
     mode?: KnnMode,
+    filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]> {
-    return knn<T>(this.connection, constructor, indexName, vector, k, mode)
+    return knn<T>(this.connection, constructor, indexName, vector, k, mode, filters)
   }
 
   /**
@@ -1513,7 +1554,7 @@ export class Neode implements INeode {
     filter: Record<string, unknown>,
     size: number,
     callback: (items: T[]) => unknown,
-    options: { orderBy?: string } = {},
+    options: { orderBy?: string; withoutFilters?: string[] | undefined } = {},
   ): Promise<number> {
     return new PaginateService(this.connection).chunk<T>(
       constructor,
@@ -1562,7 +1603,7 @@ export class Neode implements INeode {
     limit?: number,
     skip?: number,
     database?: string,
-    options?: { with?: WithSpec<T> },
+    options?: { with?: WithSpec<T>; withoutFilters?: string[] | undefined },
   ): Promise<T[]> {
     const schema = this.getSchema(constructor)
 
@@ -1570,6 +1611,10 @@ export class Neode implements INeode {
 
     try {
       const withSpec = options?.with
+      const filters =
+        options?.withoutFilters === undefined
+          ? undefined
+          : { withoutFilters: options.withoutFilters }
 
       const results =
         withSpec !== undefined || hasProjectedProperties(schema)
@@ -1581,8 +1626,17 @@ export class Neode implements INeode {
               skip,
               order,
               withSpec,
+              filters,
             )
-          : await new GetService(tx).get<T>(constructor, schema, parameters, limit, skip, order)
+          : await new GetService(tx).get<T>(
+              constructor,
+              schema,
+              parameters,
+              limit,
+              skip,
+              order,
+              filters,
+            )
 
       await tx.commit()
 
