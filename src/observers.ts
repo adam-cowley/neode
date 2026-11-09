@@ -168,18 +168,6 @@ export function observe(model: Newable, observers: ModelObservers): () => void {
 }
 
 /**
-Run one hook against the process-global registry (NTS-511).
-*/
-export async function runObservers(
-  constructor: unknown,
-  hook: keyof ModelObservers,
-  entity: unknown,
-  context: ObserverContext,
-): Promise<void> {
-  return globalObservers.run(constructor, hook, entity, context)
-}
-
-/**
 Test seam: drop every registered observer — the process-global registry
 AND every instance's (NTS-596).
 */
