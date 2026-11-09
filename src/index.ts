@@ -35,6 +35,8 @@ export type { EntityMethods, InstanceLoadLevel, WithMethods } from './entity-met
 
 // Strict relation access (NTS-155)
 export { setStrictRelationAccess } from './strict-relation-access.js'
+// Deprecation warnings opt-out (NTS-599)
+export { setDeprecationWarnings } from './deprecate.js'
 export { observe, clearObservers, type ModelObservers, type ObserverContext } from './observers.js'
 export { TraverseBuilder, MAX_TRAVERSE_DEPTH, type Hop, type TraversalRow } from './traverse.js'
 

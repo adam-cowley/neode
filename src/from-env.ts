@@ -6,10 +6,41 @@ a driver config and construct a Neode over a neo4j-driver Driver.
 Lives apart from utilities.ts on purpose — it constructs the Neode
 service, and utilities is imported BY the service layer.
 */
-import { config as configDotenv } from 'dotenv'
+import type { DotenvConfigOutput } from 'dotenv'
 import { auth, type Config, driver as createDriver, logging } from 'neo4j-driver'
+import { createRequire } from 'node:module'
 import { Neo4jConnectionProvider } from './driver/neo4j-connection-provider.js'
+import { NeodeError } from './errors/index.js'
 import { Neode } from './neode.service.js'
+import { isRecord } from './services/type-guards.js'
+
+/**
+The dotenv module surface loadDotenv uses. The import is TYPE-ONLY —
+it never loads dotenv at runtime (NTS-599: importing neode must not pay
+for dotenv, only fromEnv() reads env config). The sync require below keeps
+fromEnv() synchronous — a dynamic import() would force it async, breaking
+the documented API — and dotenv ships CJS, so it is the same module
+`import` would return.
+*/
+interface DotenvModule {
+  config: (options?: { path?: string }) => DotenvConfigOutput
+}
+
+const requireCjs = createRequire(import.meta.url)
+
+function isDotenvModule(value: unknown): value is DotenvModule {
+  return isRecord(value) && typeof value['config'] === 'function'
+}
+
+function loadDotenv(): void {
+  const module_: unknown = requireCjs('dotenv')
+
+  if (!isDotenvModule(module_)) {
+    throw new NeodeError('The dotenv module resolved from node_modules is not the expected shape')
+  }
+
+  module_.config()
+}
 
 export interface EnvConnectionConfig {
   uri: string
@@ -193,7 +224,7 @@ merged over the env-derived values.
 export function fromEnv(driverConfig: Config = {}): Neode {
   // Load vars from .env — dotenv does not clobber variables that are
   // already set in process.env
-  configDotenv()
+  loadDotenv()
 
   const {
     uri,
