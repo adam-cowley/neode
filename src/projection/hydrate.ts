@@ -6,6 +6,7 @@ import type { PropertySchema } from '../meta/property-schema.js'
 import { PropertyType } from '../meta/property-schema.js'
 import { hydrateNode } from '../utilities.js'
 import { isRecord } from '../services/type-guards.js'
+import { EAGER_ID } from '../query/eager-utilities.js'
 
 /**
 Hydrate one row of a projection read (NTS-135/136/137/138).
@@ -56,22 +57,48 @@ function isModelOf<T>(
 }
 
 /**
-First occurrence per distinct value (JSON identity) — preserves order
+First occurrence per distinct node — identity is the elementId marker the
+multi-hop projection carries (NTS-594), never the projected value:
+distinct nodes with identical fields must all survive. Order is preserved,
+the marker is stripped from the result, and a single-field subset unwraps
+back to its scalar.
 */
-function dedupe(values: unknown[]): unknown[] {
+function dedupeNodes(values: unknown[], field: string | undefined): unknown[] {
   const seen = new Set<string>()
   const out: unknown[] = []
 
   for (const value of values) {
-    const key = JSON.stringify(value)
+    if (!isRecord(value)) {
+      out.push(value)
 
-    if (seen.has(key)) {
       continue
     }
 
-    seen.add(key)
+    const identity = value[EAGER_ID]
 
-    out.push(value)
+    if (typeof identity === 'string') {
+      if (seen.has(identity)) {
+        continue
+      }
+
+      seen.add(identity)
+    }
+
+    if (field !== undefined) {
+      out.push(value[field])
+
+      continue
+    }
+
+    const dto: Record<string, unknown> = {}
+
+    for (const [key, propertyValue] of Object.entries(value)) {
+      if (key !== EAGER_ID) {
+        dto[key] = propertyValue
+      }
+    }
+
+    out.push(dto)
   }
 
   return out
@@ -91,9 +118,13 @@ function postProcessProjection(entity: Record<string, unknown>, property: Proper
     if (fields !== undefined && fields.length > 0) {
       // NTS-547 — multi-hop paths yield one element per matched path:
       // the same end node reached through two intermediate nodes appears
-      // twice. Dedupe by value (single-hop projections cannot duplicate).
+      // twice. Dedupe by node identity (NTS-594) — value identity
+      // collapsed distinct nodes with identical fields.
       if (property.getPath() !== undefined && Array.isArray(entity[key])) {
-        entity[key] = dedupe(entity[key] as unknown[])
+        entity[key] = dedupeNodes(
+          entity[key] as unknown[],
+          fields.length === 1 ? fields[0] : undefined,
+        )
       }
 
       return

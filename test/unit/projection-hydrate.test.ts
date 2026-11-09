@@ -55,6 +55,28 @@ class ProjectionHydrateStudent {
   })
   allLessons: ProjectionHydrateLesson[]
 
+  // NTS-594 — multi-hop path, single-field subset (deduped by node identity)
+  @RelatedMany({
+    path: [
+      { type: 'NEXT_COURSE', direction: 'out' },
+      { type: 'IN_COURSE', direction: 'in' },
+    ],
+    target: () => ProjectionHydrateCourse,
+    fields: ['status'],
+  })
+  relatedStatuses: string[]
+
+  // NTS-594 — multi-hop path, multi-field subset
+  @RelatedMany({
+    path: [
+      { type: 'NEXT_COURSE', direction: 'out' },
+      { type: 'IN_COURSE', direction: 'in' },
+    ],
+    target: () => ProjectionHydrateCourse,
+    fields: ['title', 'status'],
+  })
+  relatedCourses: { title: string; status: string }[]
+
   @RelationshipCount({ type: 'HAS_MODULE|HAS_LESSON', direction: 'out' })
   materialCount: number
 
@@ -187,5 +209,64 @@ describe('projection hydration (NTS-135/136/137/138)', () => {
     expect(entity.allLessons).toEqual([])
     expect(entity.completedLessons).toEqual([])
     expect(entity.summary).toBe('Adam: 0')
+  })
+
+  it('keeps distinct nodes with identical single-field values (NTS-594)', () => {
+    const schema = getModel(ProjectionHydrateStudent)
+    const entity = hydrateProjection<ProjectionHydrateStudent>(
+      schema,
+      ProjectionHydrateStudent,
+      studentRow({
+        relatedStatuses: [
+          { status: 'ACTIVE', __EAGER_ID__: '4:abc:10' },
+          { status: 'ACTIVE', __EAGER_ID__: '4:abc:11' },
+          { status: 'DONE', __EAGER_ID__: '4:abc:12' },
+        ],
+      }),
+    )
+
+    // value-dedupe would have collapsed these to ['ACTIVE', 'DONE']
+    expect(entity.relatedStatuses).toEqual(['ACTIVE', 'ACTIVE', 'DONE'])
+  })
+
+  it('collapses the same node reached through two paths, by elementId (NTS-594)', () => {
+    const schema = getModel(ProjectionHydrateStudent)
+    const entity = hydrateProjection<ProjectionHydrateStudent>(
+      schema,
+      ProjectionHydrateStudent,
+      studentRow({
+        relatedStatuses: [
+          { status: 'ACTIVE', __EAGER_ID__: '4:abc:10' },
+          { status: 'ACTIVE', __EAGER_ID__: '4:abc:10' },
+        ],
+      }),
+    )
+
+    expect(entity.relatedStatuses).toEqual(['ACTIVE'])
+  })
+
+  it('strips the identity marker from multi-field DTOs and never merges distinct nodes (NTS-594)', () => {
+    const schema = getModel(ProjectionHydrateStudent)
+    const entity = hydrateProjection<ProjectionHydrateStudent>(
+      schema,
+      ProjectionHydrateStudent,
+      studentRow({
+        relatedCourses: [
+          { title: 'Algebra', status: 'ACTIVE', __EAGER_ID__: '4:abc:10' },
+          // distinct node with identical fields — survives
+          { title: 'Algebra', status: 'ACTIVE', __EAGER_ID__: '4:abc:11' },
+          // same node as the first path — collapsed
+          { title: 'Algebra', status: 'ACTIVE', __EAGER_ID__: '4:abc:10' },
+        ],
+      }),
+    )
+
+    expect(entity.relatedCourses).toEqual([
+      { title: 'Algebra', status: 'ACTIVE' },
+      { title: 'Algebra', status: 'ACTIVE' },
+    ])
+
+    // the DTO stays plain and JSON-serialisable — the marker never leaks
+    expect(JSON.stringify(entity.relatedCourses)).not.toContain('EAGER_ID')
   })
 })

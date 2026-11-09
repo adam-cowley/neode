@@ -12,6 +12,12 @@ export interface RelationQuery {
   orderBy(...arguments_: unknown[]): RelationQuery
   limit(limit: number): RelationQuery
   skip(skip: number): RelationQuery
+  /**
+  Named read filters to disable for this relation's read (NTS-594): the
+  same names a withoutFilters option takes on the parent read, scoped to
+  this decorated relation.
+  */
+  withoutFilters(names: string[]): RelationQuery
 }
 
 /**

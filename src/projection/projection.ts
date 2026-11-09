@@ -254,10 +254,18 @@ function relatedProjection(
 
   const isMany = property.getType() === PropertyType.RELATED_MANY
 
+  // NTS-594 — a multi-hop path yields one element per matched path, so the
+  // same end node can arrive through several intermediates. The elementId
+  // marker gives hydration node identity to dedupe by (value identity
+  // collapsed distinct nodes with identical fields); single-hop reads
+  // cannot duplicate and keep the plain scalar / map projection
+  const identity =
+    isMany && property.getPath() !== undefined ? `, ${EAGER_ID}: elementId(node)` : ''
+
   const pattern =
-    fields.length === 1
+    identity === '' && fields.length === 1
       ? `node.${safeKey(fields[0] ?? '')}`
-      : `node { ${fields.map((field) => `.${safeKey(field)}`).join(', ')} }`
+      : `node { ${fields.map((field) => `.${safeKey(field)}`).join(', ')}${identity} }`
 
   // NTS-547/162 — WHERE inside the comprehension filters elements per path
   // (`node` = the target node, `this` = the annotated node): the property's
@@ -393,7 +401,7 @@ One recorded operation of a load spec callback: the view records, the
 loader replays each kind into the clause it belongs to
 */
 interface RecordedRelationOperation {
-  kind: 'where' | 'order' | 'limit' | 'skip'
+  kind: 'where' | 'order' | 'limit' | 'skip' | 'withoutFilters'
   arguments_: unknown[]
 }
 
@@ -418,6 +426,22 @@ function relationOrderArguments(nodeVariable: string, arguments_: unknown[]): un
 
   if (isRecord(first) && typeof first['field'] === 'string') {
     return [{ ...first, field: relationProperty(nodeVariable, first['field']) }, ...rest]
+  }
+
+  // Property -> direction map ({ name: 'DESC' }): every key is a bare
+  // property name to prefix
+  if (isRecord(first)) {
+    return [
+      Object.fromEntries(
+        Object.entries(first).map(([key, value]) => [relationProperty(nodeVariable, key), value]),
+      ),
+      ...rest,
+    ]
+  }
+
+  // A list of names / maps: prefix each entry
+  if (Array.isArray(first)) {
+    return [first.flatMap((entry) => relationOrderArguments(nodeVariable, [entry])), ...rest]
   }
 
   if (typeof first === 'string') {
@@ -456,6 +480,13 @@ function relationQuery(): { view: RelationQuery; operations: RecordedRelationOpe
     },
     skip: (skip: number) => {
       operations.push({ kind: 'skip', arguments_: [skip] })
+
+      return view
+    },
+    // NTS-594 — the callback can disable named read filters for its
+    // relation's read, scoped to this relation only
+    withoutFilters: (names: string[]) => {
+      operations.push({ kind: 'withoutFilters', arguments_: names })
 
       return view
     },
@@ -499,6 +530,11 @@ function replayTrimOperation(
       break
     }
     case 'where': {
+      break
+    }
+
+    // Not a trim — handled by the filter merge in loadSpecCalls
+    case 'withoutFilters': {
       break
     }
   }
@@ -565,8 +601,21 @@ export function loadSpecCalls(
         .to(nodeVariable, targetSchema.getLabels())
 
       // NTS-162 — the target model's named filters filter the collected
-      // rows too (compileSub namespaces their parameters)
-      applyReadFilters(sub, targetSchema, filters, nodeVariable)
+      // rows too (compileSub namespaces their parameters). The callback's
+      // own disabled names stack on the read's (NTS-594)
+      const disabled = operations
+        .filter((operation) => operation.kind === 'withoutFilters')
+        .flatMap((operation) => operation.arguments_)
+        .filter((name): name is string => typeof name === 'string')
+
+      const withoutFilters = [...(filters?.withoutFilters ?? []), ...disabled]
+
+      applyReadFilters(
+        sub,
+        targetSchema,
+        withoutFilters.length > 0 ? { withoutFilters } : filters,
+        nodeVariable,
+      )
 
       // Wheres filter the MATCH; the sort/page trim rides the WITH clause
       // (a statement renders its own RETURN before its ORDER BY / LIMIT)
@@ -576,6 +625,21 @@ export function loadSpecCalls(
         }
 
         const [property, ...rest] = operation.arguments_
+
+        // Object-map form ({ prop: value }): every key is a bare property
+        // name to prefix (NTS-594)
+        if (isRecord(property)) {
+          sub.where(
+            Object.fromEntries(
+              Object.entries(property).map(([key, value]) => [
+                relationProperty(nodeVariable, key),
+                value,
+              ]),
+            ),
+          )
+
+          continue
+        }
 
         sub.where(
           typeof property === 'string' ? relationProperty(nodeVariable, property) : property,
