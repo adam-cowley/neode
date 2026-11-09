@@ -1295,6 +1295,30 @@ export class Neode implements INeode {
   }
 
   /**
+  Multi-key, multi-level per-instance load (NTS-498): the spec object's
+  keys name relationships on the entity's schema — `true` loads all, an
+  object decorates that level's traversal (order / skip / limit) and
+  nested keys descend one level down. One read transaction; one traversal
+  statement per root key; nested levels ride that statement's projection.
+  The whole spec validates against the declared relationship graph before
+  the first read — an unknown key at ANY level throws the schema's
+  descriptive error naming the valid keys.
+  */
+  async loadRelationSpec(constructor: Newable, entity: object, spec: object): Promise<void> {
+    const schema = this.getSchema(constructor)
+
+    const tx = await this.beginWorkTransaction('READ')
+
+    try {
+      await new LoadRelationService(tx).loadSpec(schema, entity, spec)
+
+      await tx.commit()
+    } catch (error) {
+      return await rollbackAfterFailure(tx, error)
+    }
+  }
+
+  /**
   The related() scope (NTS-497): the queryable generalisation of
   loadRelation() — Builder-style verbs (where / orderBy / limit / skip)
   composed on top of one declared relationship traversal off a hydrated

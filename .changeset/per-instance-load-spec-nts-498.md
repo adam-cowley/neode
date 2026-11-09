@@ -1,0 +1,4 @@
+---
+'neode': minor
+---
+Per-instance multi-key load() (NTS-498): `instance.load({ orders: { order: { placedAt: 'DESC' }, limit: 3, lines: { limit: 2 } } })` hydrates SEVERAL relationships in place — each key `true`, an options level (order / skip / limit / withoutFilters), or a nested spec one more level down the declared relationship graph. One traversal statement per root key; nested levels render inside that statement's projection (pattern comprehension, or a per-row `COLLECT { MATCH … RETURN … ORDER BY … }` when the level trims — no OPTIONAL MATCH), so no level N+1s per entity. Loaded values materialize as own properties per key (the NTS-155 contract); the target's NTS-162 named read filters apply at every level (filtered-out targets read as empty collections, parents survive); an undeclared key at ANY level throws the schema's descriptive error naming the valid relationships.

@@ -6,7 +6,7 @@ import { getModel } from '../../meta/index.js'
 import type { Newable } from '../../meta/newable.js'
 import type { RelationshipPropertySchema } from '../../meta/relationship-property-schema.js'
 import { Builder } from '../../query/index.js'
-import { eagerNode, eagerNodeVariable } from '../../query/eager-utilities.js'
+import { eagerNode, eagerNodeVariable, type ParsedLoadLevel } from '../../query/eager-utilities.js'
 import { applyOrder, type OrderSpec } from '../../query/order-spec.js'
 import { relationProperty } from '../../projection/projection.js'
 import { hydrateNode } from '../../utilities.js'
@@ -75,6 +75,124 @@ interface RelatedReadState {
   nodeVariable: string
   targetSchema: EntitySchema
   target: Newable
+}
+
+/**
+The registered node-entity schema a relationship's spec level parses
+against — unregistered and relationship-entity targets throw the
+descriptive load errors (the same texts relatedRead raises for the
+single-key path).
+*/
+function parseTargetSchema(
+  schema: EntitySchema,
+  relationship: RelationshipPropertySchema,
+): EntitySchema {
+  const key = relationship.getKey()
+
+  const target = relationship.getTarget()
+  // getModel declares non-nullable but returns undefined for
+  // unregistered models — cast to the checked edge (as relatedRead does)
+  const targetSchema = getModel(target) as EntitySchema | undefined
+
+  if (targetSchema === undefined) {
+    throw new NeodeError(
+      `${schema.getLabels()[0] ?? 'entity'}.${key} targets an unregistered model — cannot load '${key}'`,
+    )
+  }
+
+  if (targetSchema.getType() === EntityType.RelationshipEntity) {
+    throw new NeodeError(
+      `${schema.getLabels()[0] ?? 'entity'}.${key} targets a relationship entity — ` +
+        'the load spec hydrates node models only',
+    )
+  }
+
+  return targetSchema
+}
+
+/**
+The OrderSpec forms a spec level's `order` key accepts — the same shapes
+all() / load(key, { order }) take. Entries apply as-is: a malformed entry
+renders no ORDER BY term, as applyOrder treats any non-term.
+*/
+function isOrderSpec(value: unknown): value is OrderSpec {
+  return (
+    typeof value === 'string' ||
+    (Array.isArray(value) &&
+      value.every((entry) => typeof entry === 'string' || isRecord(entry))) ||
+    isRecord(value)
+  )
+}
+
+/**
+Parse and validate one level of a per-instance load spec (NTS-498) against
+the declared relationship graph. `true` is the plain level (load all); a
+spec object's reserved keys (`order` / `skip` / `limit` / `withoutFilters`)
+are the level's traversal options and every other key must name a
+relationship declared on the level's schema — the value descends one more
+level down. Unknown keys throw the schema's descriptive error, naming the
+valid relationships at that level.
+
+shortcut: a relationship named exactly one of the reserved keys cannot be
+nested-loaded through the spec — single-key load(key) still reaches it.
+*/
+export function parseLoadLevel(schema: EntitySchema, value: unknown): ParsedLoadLevel {
+  if (value === true) {
+    return { nested: new Map() }
+  }
+
+  if (!isRecord(value)) {
+    throw new NeodeError(
+      `The load spec entry on ${schema.getLabels().join(':') || 'entity'} ` +
+        'must be true or a spec object of relationship keys',
+    )
+  }
+
+  const level: ParsedLoadLevel = { nested: new Map() }
+
+  for (const [key, child] of Object.entries(value)) {
+    if (key === 'order') {
+      if (!isOrderSpec(child)) {
+        throw new NeodeError(
+          'The load spec "order" must be an OrderSpec — a property name, a list, or a property -> direction map',
+        )
+      }
+
+      level.order = child
+
+      continue
+    }
+
+    if (key === 'skip' || key === 'limit') {
+      if (typeof child !== 'number') {
+        throw new NeodeError(`The load spec "${key}" must be a number`)
+      }
+
+      level[key] = child
+
+      continue
+    }
+
+    if (key === 'withoutFilters') {
+      if (!Array.isArray(child) || child.some((name) => typeof name !== 'string')) {
+        throw new NeodeError('The load spec "withoutFilters" must be an array of filter names')
+      }
+
+      level.withoutFilters = child
+
+      continue
+    }
+
+    // Throws the schema's descriptive error naming the valid
+    // relationships when the key is undeclared
+    const relationship = schema.getRelationship(key)
+
+    const targetSchema = parseTargetSchema(schema, relationship)
+
+    level.nested.set(key, parseLoadLevel(targetSchema, child))
+  }
+
+  return level
 }
 
 /**
@@ -200,31 +318,39 @@ hydrated here yet (their start/end stashes need the eager projection
 shape) — request them via the load spec instead.
 */
 export class LoadRelationService extends QueryService {
-  async load(
+  /**
+  The one traversal read shared by load() and loadSpec(): MATCH through the
+  relationship, trim with the level's order/skip/limit, RETURN the target's
+  eager projection with the level's nested spec rendered inside, hydrate,
+  and materialize the result as an own property on the instance.
+  */
+  private async traverse(
     schema: EntitySchema,
     entity: object,
     relationship: RelationshipPropertySchema,
-    options?: LoadOptions,
+    level: ParsedLoadLevel,
   ): Promise<unknown> {
     const filters: ReadFilterOptions | undefined =
-      options?.withoutFilters === undefined ? undefined : { withoutFilters: options.withoutFilters }
+      level.withoutFilters === undefined || level.withoutFilters.length === 0
+        ? undefined
+        : { withoutFilters: level.withoutFilters }
 
     const read = relatedRead(schema, entity, relationship, filters)
 
-    if (options?.order !== undefined && options.order !== '') {
-      applyOrder(read.builder, options.order, read.nodeVariable)
+    if (level.order !== undefined && level.order !== '') {
+      applyOrder(read.builder, level.order, read.nodeVariable)
     }
 
-    if (options?.skip !== undefined) {
-      read.builder.skip(options.skip)
+    if (level.skip !== undefined) {
+      read.builder.skip(level.skip)
     }
 
-    if (options?.limit !== undefined) {
-      read.builder.limit(options.limit)
+    if (level.limit !== undefined) {
+      read.builder.limit(level.limit)
     }
 
     read.builder.return(
-      `${eagerNode(1, read.nodeVariable, read.targetSchema, { builder: read.builder, filters })} AS node`,
+      `${eagerNode(1, read.nodeVariable, read.targetSchema, { builder: read.builder, filters }, level)} AS node`,
     )
 
     const hydrated = await runTraversal(this.runner, read)
@@ -237,6 +363,71 @@ export class LoadRelationService extends QueryService {
     Object.assign(entity, { [relationship.getKey()]: loaded })
 
     return loaded
+  }
+
+  /**
+  Lazy relation load (NTS-558): traverse ONE declared relationship off a
+  hydrated entity — the loader the RelationNotLoadedError message
+  promises — and materialize the result as an own property on the
+  instance, so the strict-relation-access guard (NTS-155) stops firing
+  for the key.
+
+  The related entities hydrate through the regular hydration path: each
+  traversed node returns as its eager map projection (eagerNode), so nested
+  eager relationships and property transforms apply exactly as they do for
+  the `with` load spec. shortcut: relationship-entity targets are not
+  hydrated here yet (their start/end stashes need the eager projection
+  shape) — request them via the load spec instead.
+  */
+  async load(
+    schema: EntitySchema,
+    entity: object,
+    relationship: RelationshipPropertySchema,
+    options?: LoadOptions,
+  ): Promise<unknown> {
+    return this.traverse(schema, entity, relationship, {
+      order: options?.order,
+      skip: options?.skip,
+      limit: options?.limit,
+      withoutFilters: options?.withoutFilters,
+      nested: new Map(),
+    })
+  }
+
+  /**
+  Multi-key, multi-level per-instance load (NTS-498): hydrate every key of
+  the spec object onto the instance, each value `true`, a LoadOptions-ish
+  level, or a nested spec one level down the declared relationship graph.
+
+  One traversal statement per ROOT key (the roots are unrelated patterns —
+  one shared statement would multiply rows); nested levels render INSIDE
+  that statement's projection (pattern comprehension, or a COLLECT {
+  MATCH … RETURN … ORDER BY … } subquery when the level trims), so no
+  level ever N+1s per entity. The whole spec parses and validates before
+  the first read.
+  */
+  async loadSpec(schema: EntitySchema, entity: object, spec: object): Promise<void> {
+    if (!isRecord(spec)) {
+      throw new NeodeError('load() takes a relationship key, or a spec object of relationship keys')
+    }
+
+    const parsed: { relationship: RelationshipPropertySchema; level: ParsedLoadLevel }[] = []
+
+    for (const key of Object.keys(spec)) {
+      const relationship = schema.getRelationship(key)
+
+      // The value's option keys trim the traversal INTO the target, its
+      // relationship keys name relationships on the target — parse it
+      // against the target's schema
+      parsed.push({
+        relationship,
+        level: parseLoadLevel(parseTargetSchema(schema, relationship), Reflect.get(spec, key)),
+      })
+    }
+
+    for (const { relationship, level } of parsed) {
+      await this.traverse(schema, entity, relationship, level)
+    }
   }
 }
 
