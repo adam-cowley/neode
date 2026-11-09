@@ -602,7 +602,7 @@ export function renderAgentsMd(docs: ExtractedDocs, version: string): string {
     '```ts',
     "import { wipe, testId } from 'neode'",
     '',
-    'await wipe(neode) // drop every constraint + data before a test run',
+    'await wipe(neode, { confirm: true }) // DESTRUCTIVE: drop every constraint + all data (local test DBs only)',
     "const name = testId('person') // unique per-run ids, safe for parallel suites",
     '```',
     '',

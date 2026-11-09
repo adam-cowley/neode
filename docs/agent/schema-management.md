@@ -18,7 +18,7 @@ _source: services/schema/drift.service.ts_
 
 ### `applySchemaDrift` (function)
 
-Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450).
+Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive: on a shared database "stale" objects may belong to other applications — review the drift first). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450).
 
 _source: services/schema/drift.service.ts_
 
@@ -122,6 +122,12 @@ Deterministic name for a graph type constraint item (the same `<label>_<props>_<
 
 _source: services/schema/graph-type.service.ts_
 
+### `GraphTypeCreateOptions` (interface)
+
+Options for installing the model-derived graph type (NTS-578)
+
+_source: services/schema/graph-type.service.ts_
+
 ### `GraphTypeDefinition` (interface)
 
 A complete graph type: the shape derived from the registered models
@@ -154,7 +160,7 @@ _source: services/schema/graph-type.service.ts_
 
 ### `GraphTypeService` (class)
 
-Applies the model-derived graph type with one SET/DROP statement, following the same result-reporting pattern as the other schema services
+Applies the model-derived graph type with one ADD/SET/DROP statement, following the same result-reporting pattern as the other schema services
 
 _source: services/schema/graph-type.service.ts_
 
@@ -202,7 +208,7 @@ _source: services/schema/drift.service.ts_
 
 One drifted schema object: what it is, where it lives, and the exact statement(s) that would resolve the drift (NTS-450)
 
-_source: services/schema/drift.service.ts_
+_source: services/schema/graph-type.service.ts_
 
 ### `SchemaDriftGroup` (interface)
 
