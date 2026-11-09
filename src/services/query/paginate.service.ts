@@ -8,6 +8,7 @@ import type { PropertySchema } from '../../meta/property-schema.js'
 import { PropertyType } from '../../meta/property-schema.js'
 import { QueryService } from './query.service.js'
 import { type OrderSpec, applyOrder } from './get.service.js'
+import { requireLimit } from './limits.js'
 import { NeodeError } from '../../errors/index.js'
 import { labelPattern } from './bulk.service.js'
 import { isGraphNode, isRecord } from '../type-guards.js'
@@ -228,14 +229,6 @@ export function toCursorValue(
   }
 
   return undefined
-}
-
-function requireLimit(limit: unknown): number {
-  if (typeof limit !== 'number' || !Number.isSafeInteger(limit) || limit < 1) {
-    throw new NeodeError(`limit must be a positive integer, received ${String(limit)}`)
-  }
-
-  return limit
 }
 
 /**

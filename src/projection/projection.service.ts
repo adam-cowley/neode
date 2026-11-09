@@ -10,6 +10,7 @@ import { NeodeError } from '../errors/index.js'
 import { assertDirection, propertyReference } from '../query/quote.js'
 import { loadSpecCalls, projectionNode } from './projection.js'
 import { shapeProjectionRows } from '../services/query/shape.js'
+import { requireLimit } from '../services/query/limits.js'
 import { applyReadFilters, type ReadFilterOptions } from '../services/query/filters.js'
 
 /**
@@ -295,8 +296,8 @@ export class ProjectionService {
     if (skip !== undefined && skip !== 0) {
       builder.skip(skip)
     }
-    if (limit !== undefined && limit !== 0) {
-      builder.limit(limit)
+    if (limit !== undefined) {
+      builder.limit(requireLimit(limit))
     }
 
     const { query, params } = builder.build()
