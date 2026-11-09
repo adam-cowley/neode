@@ -61,6 +61,12 @@ jobs:
 
       - run: pnpm check:package
 
+      # The tarball must ship dist/ (git-dep installs depend on `prepare`)
+      - name: Packed tarball includes dist/
+        run: |
+          npm pack --dry-run --json > pack.json
+          node -e "const f=JSON.parse(require('fs').readFileSync('pack.json','utf8'))[0].files.map(x=>x.path);for(const p of ['dist/index.mjs','dist/index.cjs','dist/index.d.mts'])if(!f.includes(p)){console.error('missing '+p);process.exit(1)}"
+
   # Real Neo4j servers via Testcontainers, over the supported server line.
   # Relate (embedded) needs its FFI client built locally (cargo build -p
   # relate-ffi) — it is exercised by local runs, not CI.

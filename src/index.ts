@@ -253,4 +253,5 @@ export type { TransformConfig } from './meta/schema-definition.interface.js'
 
 export * from './decorators/index.js'
 
+export { Neode } from './neode.service.js'
 export { Neode as default } from './neode.service.js'
