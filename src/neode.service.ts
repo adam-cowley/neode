@@ -537,12 +537,19 @@ export class Neode implements INeode {
     parameters: QueryParameters = {},
     options: { database?: string } = {},
   ): Promise<unknown> {
-    const output = await this.connection.run(
-      `EXPLAIN ${query}`,
-      parameters,
-      'READ',
-      options.database ?? this.database,
-    )
+    // NTS-576: inside an ambient transaction the statement joins it
+    // (a separate connection.run would queue behind the slot the
+    // enclosing transaction holds)
+    const ambient = ambientTransaction()
+
+    const output = ambient
+      ? await ambient.runner.run(`EXPLAIN ${query}`, parameters)
+      : await this.connection.run(
+          `EXPLAIN ${query}`,
+          parameters,
+          'READ',
+          options.database ?? this.database,
+        )
 
     return output.summary?.plan
   }
@@ -557,12 +564,19 @@ export class Neode implements INeode {
     parameters: QueryParameters = {},
     options: { database?: string } = {},
   ): Promise<unknown> {
-    const output = await this.connection.run(
-      `PROFILE ${query}`,
-      parameters,
-      'WRITE',
-      options.database ?? this.database,
-    )
+    // NTS-576: inside an ambient transaction the statement joins it
+    // (a separate connection.run would queue behind the slot the
+    // enclosing transaction holds)
+    const ambient = ambientTransaction()
+
+    const output = ambient
+      ? await ambient.runner.run(`PROFILE ${query}`, parameters)
+      : await this.connection.run(
+          `PROFILE ${query}`,
+          parameters,
+          'WRITE',
+          options.database ?? this.database,
+        )
 
     return output.summary?.profile
   }
@@ -706,10 +720,13 @@ export class Neode implements INeode {
   Joining the ambient transaction: every model read/write
   (find/get/all/save/create/merge/update/relate/detach/delete), batch(),
   and the raw Cypher paths (cypher/readCypher/writeCypher and the
-  read()/write() sugar). NOT joining (they manage their own sessions, v1):
+  read()/write() sugar), plus (NTS-576)
   search(), knn(), pagination (paginate/chunk/lazy), bulk
-  (createMany/mergeMany), explain()/profile() and the schema-management
-  methods.
+  (createMany/mergeMany) and explain()/profile(). NOT joining: the
+  schema-management methods (installSchema, dropSchema, inspect/drift,
+  graph type, full-text/vector index DDL) — they run on the connection
+  directly and, on the embedded Relate engine, queue behind the
+  transaction's slot: run them outside `transaction()`.
   */
   async transaction<T>(
     work: (tx: TransactionalService) => Promise<T>,
@@ -1438,7 +1455,7 @@ export class Neode implements INeode {
     limit?: number,
     filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]> {
-    return search<T>(this.connection, constructor, indexName, query, limit, filters)
+    return search<T>(this.getRunner(), constructor, indexName, query, limit, filters)
   }
 
   /**
@@ -1453,7 +1470,7 @@ export class Neode implements INeode {
     mode?: KnnMode,
     filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]> {
-    return knn<T>(this.connection, constructor, indexName, vector, k, mode, filters)
+    return knn<T>(this.getRunner(), constructor, indexName, vector, k, mode, filters)
   }
 
   /**
@@ -1614,7 +1631,7 @@ export class Neode implements INeode {
     options: BulkOptions = {},
     database?: string,
   ): Promise<BulkChunk<T>[]> {
-    return new BulkService(this.connection).createMany<T>(
+    return new BulkService(this.getRunner()).createMany<T>(
       constructor,
       this.getSchema(constructor),
       rows,
@@ -1633,7 +1650,7 @@ export class Neode implements INeode {
     options: BulkOptions = {},
     database?: string,
   ): Promise<BulkChunk<T>[]> {
-    return new BulkService(this.connection).mergeMany<T>(
+    return new BulkService(this.getRunner()).mergeMany<T>(
       constructor,
       this.getSchema(constructor),
       rows,
@@ -1662,7 +1679,7 @@ export class Neode implements INeode {
     filter: Record<string, unknown> = {},
     options?: OffsetPaginateOptions | CursorPaginateOptions,
   ): Promise<Page<T> | CursorPage<T>> {
-    return new PaginateService(this.connection).paginate<T>(
+    return new PaginateService(this.getRunner()).paginate<T>(
       constructor,
       this.getSchema(constructor),
       filter,
@@ -1680,7 +1697,7 @@ export class Neode implements INeode {
     filter: Record<string, unknown> = {},
     options: FindManyAndCountOptions = {},
   ): Promise<ManyAndCount<T>> {
-    return new PaginateService(this.connection).findManyAndCount<T>(
+    return new PaginateService(this.getRunner()).findManyAndCount<T>(
       constructor,
       this.getSchema(constructor),
       filter,
@@ -1701,7 +1718,7 @@ export class Neode implements INeode {
     callback: (items: T[]) => unknown,
     options: { orderBy?: string; withoutFilters?: string[] | undefined } = {},
   ): Promise<number> {
-    return new PaginateService(this.connection).chunk<T>(
+    return new PaginateService(this.getRunner()).chunk<T>(
       constructor,
       this.getSchema(constructor),
       filter,
@@ -1722,7 +1739,7 @@ export class Neode implements INeode {
     filter: Record<string, unknown> = {},
     options: StreamOptions = {},
   ): AsyncGenerator<T> {
-    yield* new PaginateService(this.connection).lazy<T>(
+    yield* new PaginateService(this.getRunner()).lazy<T>(
       constructor,
       this.getSchema(constructor),
       filter,
