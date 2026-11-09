@@ -26,7 +26,7 @@ import { getModel } from './meta/index.js'
 import type { EntitySchema } from './meta/entity/entity-schema.js'
 import type { Newable } from './meta/newable.js'
 import type { Neode } from './neode.service.js'
-import { toJson } from './serialise.js'
+import { toJson, type ToJsonOptions } from './serialise.js'
 import type { RelatedQuery, RelatedScope } from './services/query/load-relation.service.js'
 import type { LoadOptions } from './query/load-spec.js'
 import type { DeleteOptions } from './services/query/delete.service.js'
@@ -294,9 +294,14 @@ export interface EntityMethods {
   wasChanged(key?: string): boolean
 
   /**
-  JSON-safe serialisation of this entity (properties, labels, elementId)
+  JSON-safe serialisation of this entity (properties, labels, elementId).
+  `options.relationships` (NTS-564) controls relationship serialisation:
+  `include` / `exclude` name declared relationships (opt-in / opt-out —
+  unknown keys throw the schema's descriptive error), `depth` bounds how
+  many relationship levels serialise. Without options every loaded
+  relationship serialises, unlimited depth.
   */
-  toJson(): Record<string, unknown>
+  toJson(options?: ToJsonOptions): Record<string, unknown>
 }
 
 /**
@@ -319,7 +324,7 @@ interface MethodImpl {
   isDirty(this: object, key?: string): boolean
   getDirty(this: object): Record<string, unknown>
   wasChanged(this: object, key?: string): boolean
-  toJson(this: object): Record<string, unknown>
+  toJson(this: object, options?: ToJsonOptions): Record<string, unknown>
   relateTo(
     this: object,
     other: object,
@@ -357,8 +362,8 @@ const methods: MethodImpl = {
     return Object.assign(this, saved)
   },
 
-  toJson(this) {
-    return toJson(this)
+  toJson(this, options) {
+    return toJson(this, options)
   },
 
   async update(this, properties) {

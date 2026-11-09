@@ -8,10 +8,13 @@ import {
   Duration,
   Point,
   OneToMany,
+  Filter,
 } from '../../src/decorators'
 import { Direction } from '../../src/query'
+import { clearFilterParams, setFilterParams } from '../../src/index'
 import { Collection } from '../../src/collection'
 import { toJson } from '../../src/serialise'
+import { NeodeError } from '../../src/errors'
 import { openBackend, TestBackend } from './support/backend'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
@@ -47,6 +50,70 @@ class Place {
 
   static build(values: Partial<Place>): Place {
     return Object.assign(new Place(), values) as unknown as Place
+  }
+}
+
+@NodeEntity()
+class Landmark {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @String({ unique: true })
+  name: string
+
+  @OneToMany(() => Landmark, 'NEARBY', Direction.OUTGOING)
+  nearby: Landmark[]
+
+  @OneToMany(() => Landmark, 'VIEW_OF', Direction.OUTGOING)
+  views: Landmark[]
+
+  static build(values: Partial<Landmark>): Landmark {
+    return Object.assign(new Landmark(), values) as unknown as Landmark
+  }
+}
+
+// NTS-564: the filtered-relation fixture — the gates carry the named
+// filter, the site reads them eagerly, a fully filtered-out relation
+// hydrates to the loaded-and-empty shape
+@NodeEntity()
+@Filter({ name: 'gate_tenant', where: 'node.tenant = $gate_tenant' })
+class Gate {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @String()
+  name: string
+
+  @String()
+  tenant: string
+
+  static build(values: Partial<Gate>): Gate {
+    return Object.assign(new Gate(), values) as unknown as Gate
+  }
+}
+
+@NodeEntity()
+class GuardedSite {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @String({ unique: true })
+  name: string
+
+  @OneToMany(() => Gate, 'GATE_OF', Direction.INCOMING, true)
+  gates: Gate[]
+
+  static build(values: Partial<GuardedSite>): GuardedSite {
+    return Object.assign(new GuardedSite(), values) as unknown as GuardedSite
   }
 }
 
@@ -156,5 +223,167 @@ describe('toJson round-trip (serialisation)', () => {
 
     // Serialised collections are JSON friendly end to end
     expect(JSON.parse(JSON.stringify(output))).toHaveLength(2)
+  })
+})
+
+// ---- NTS-564: toJson relationship serialisation control --------------------
+
+describe('toJson relationship serialisation options (NTS-564)', () => {
+  let backend: TestBackend
+
+  // London -nearby-> Paris -nearby-> Lyon; London -views-> Eiffel
+  async function seedChain(): Promise<Landmark> {
+    for (const name of ['London', 'Paris', 'Lyon', 'Eiffel']) {
+      await backend.neode.save(Landmark.build({ name }))
+    }
+
+    await backend.connection.run(
+      'MATCH (a:Landmark {name: $from}), (b:Landmark {name: $to}) CREATE (a)-[:NEARBY]->(b)',
+      { from: 'London', to: 'Paris' },
+    )
+    await backend.connection.run(
+      'MATCH (a:Landmark {name: $from}), (b:Landmark {name: $to}) CREATE (a)-[:NEARBY]->(b)',
+      { from: 'Paris', to: 'Lyon' },
+    )
+    await backend.connection.run(
+      'MATCH (a:Landmark {name: $from}), (b:Landmark {name: $to}) CREATE (a)-[:VIEW_OF]->(b)',
+      { from: 'London', to: 'Eiffel' },
+    )
+
+    const london = await backend.neode.getFirst<Landmark>(Landmark, { name: 'London' })
+
+    expect(london).toBeDefined()
+
+    return london!
+  }
+
+  beforeAll(async () => {
+    backend = await openBackend()
+  })
+
+  afterEach(async () => {
+    clearFilterParams()
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  it('serialises every loaded relationship, unlimited depth, with no options (unchanged)', async () => {
+    const london = await seedChain()
+    await london.load({ nearby: { nearby: true }, views: true })
+
+    const output = toJson(london)
+
+    expect(output.nearby).toEqual([
+      expect.objectContaining({
+        name: 'Paris',
+        nearby: [expect.objectContaining({ name: 'Lyon' })],
+      }),
+    ])
+    expect(output.views).toEqual([expect.objectContaining({ name: 'Eiffel' })])
+  })
+
+  it('include serialises only the named relationships (NTS-564)', async () => {
+    const london = await seedChain()
+    await london.load({ nearby: { nearby: true }, views: true })
+
+    const output = toJson(london, { relationships: { include: ['nearby'] } })
+
+    expect(output.nearby).toEqual([
+      expect.objectContaining({
+        name: 'Paris',
+        nearby: [expect.objectContaining({ name: 'Lyon' })],
+      }),
+    ])
+    expect(output).not.toHaveProperty('views')
+  })
+
+  it('include skips a declared but unloaded relationship without throwing', async () => {
+    const london = await seedChain()
+    await london.load({ nearby: true })
+
+    const output = toJson(london, { relationships: { include: ['nearby', 'views'] } })
+
+    expect(output.nearby).toEqual([expect.objectContaining({ name: 'Paris' })])
+    expect(output).not.toHaveProperty('views')
+  })
+
+  it('exclude drops the named relationship (NTS-564)', async () => {
+    const london = await seedChain()
+    await london.load({ nearby: { nearby: true }, views: true })
+
+    const output = toJson(london, { relationships: { exclude: ['views'] } })
+
+    expect(output.nearby).toEqual([
+      expect.objectContaining({
+        name: 'Paris',
+        nearby: [expect.objectContaining({ name: 'Lyon' })],
+      }),
+    ])
+    expect(output).not.toHaveProperty('views')
+  })
+
+  it('depth truncates nested relationship serialisation (NTS-564)', async () => {
+    const london = await seedChain()
+    await london.load({ nearby: { nearby: true }, views: true })
+
+    const oneLevel = toJson(london, { relationships: { depth: 1 } })
+
+    expect(oneLevel.nearby).toEqual([expect.objectContaining({ name: 'Paris' })])
+    // Paris serialises its properties, not its own relationships
+    const paris = oneLevel.nearby as Record<string, unknown>[]
+    expect(paris[0]).not.toHaveProperty('nearby')
+    expect(oneLevel.views).toEqual([expect.objectContaining({ name: 'Eiffel' })])
+
+    const noRelationships = toJson(london, { relationships: { depth: 0 } })
+
+    expect(noRelationships).not.toHaveProperty('nearby')
+    expect(noRelationships).not.toHaveProperty('views')
+    expect(noRelationships.name).toBe('London')
+  })
+
+  it('filtered-out relation targets serialise as the loaded-and-empty shape (NTS-162/564)', async () => {
+    await backend.neode.save(GuardedSite.build({ name: 'Fort' }))
+    await backend.neode.save(Gate.build({ name: 'North Gate', tenant: 'acme' }))
+    await backend.connection.run(
+      'MATCH (s:GuardedSite {name: $site}), (g:Gate {name: $gate}) CREATE (s)-[:GATE]->(g)',
+      { site: 'Fort', gate: 'North Gate' },
+    )
+
+    setFilterParams('gate_tenant', 'nobody-matches')
+
+    const site = await backend.neode.getFirst<GuardedSite>(GuardedSite, { name: 'Fort' })
+
+    expect(site).toBeDefined()
+    expect(site!.gates).toEqual([])
+
+    // The loaded-and-empty shape serialises as [], never throws — with
+    // and without options
+    expect(toJson(site!).gates).toEqual([])
+    expect(toJson(site!, { relationships: { include: ['gates'] } }).gates).toEqual([])
+    expect(toJson(site!, { relationships: { exclude: ['gates'] } })).not.toHaveProperty('gates')
+  })
+
+  it('unknown include / exclude keys throw the schema error naming valid relationships', async () => {
+    const london = await seedChain()
+
+    expect(() => toJson(london, { relationships: { include: ['nearbi'] } })).toThrow(
+      expect.objectContaining({
+        name: 'NeodeError',
+        message: expect.stringContaining(
+          'Relationship "nearbi" is not defined on model "Landmark" — did you mean "nearby"?',
+        ),
+      }),
+    )
+    expect(() => toJson(london, { relationships: { exclude: ['view'] } })).toThrow(
+      expect.objectContaining({
+        name: 'NeodeError',
+        message: expect.stringContaining('did you mean "views"?'),
+      }),
+    )
+    expect(() => toJson(london, { relationships: { depth: 1.5 } })).toThrow(NeodeError)
+    expect(() => toJson(london, { relationships: { depth: -1 } })).toThrow(NeodeError)
   })
 })
