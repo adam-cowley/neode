@@ -31,22 +31,14 @@ export interface SyncEdgesResult {
 }
 
 /**
-One traversed edge of the current relationship state: the edge's
-elementId plus the far-end node's identity (elementId and primary key)
+A target resolved against the database: its schema, the elementId of the
+stored node (matched by elementId, or by primary key constrained to the
+target's labels) and its position in the caller's target list
 */
-interface CurrentEdge {
-  relId: string
-  otherId: string | undefined
-  otherPk: unknown
-}
-
-/**
-A target's identity: its schema plus how it is matched (elementId when
-hydrated, else the primary key value)
-*/
-interface TargetIdentity {
+interface ResolvedTarget {
   schema: EntitySchema
-  match: ReturnType<typeof matchCriteriaForEntity>
+  elementId: string
+  index: number
 }
 
 /**
@@ -73,18 +65,6 @@ function requireTargetSchema(
   }
 
   return targetSchema
-}
-
-/**
-True when the traversed edge reaches the target the identity describes:
-the same elementId, or the same primary-key value (a target matched by
-key has no elementId of its own)
-*/
-function isEdgeMatched(edge: CurrentEdge, identity: TargetIdentity): boolean {
-  return (
-    (identity.match.elementId !== undefined && identity.match.elementId === edge.otherId) ||
-    (edge.otherPk !== undefined && identity.match.value === edge.otherPk)
-  )
 }
 
 /**
@@ -123,6 +103,66 @@ function setEdgeProperties(
 
 export class SyncService extends QueryService {
   /**
+  Resolve each target to the elementId of its stored node, constrained to
+  the target model's labels. Throws one NeodeError listing every target
+  that is not in the database (nothing has been written at that point).
+  */
+  private async resolveTargets(
+    relationship: RelationshipPropertySchema,
+    targets: object[],
+  ): Promise<ResolvedTarget[]> {
+    const resolved: ResolvedTarget[] = []
+
+    const missing: string[] = []
+
+    for (const [index, target] of targets.entries()) {
+      // Throws for unidentifiable (unsaved) targets
+      const targetSchema = requireTargetSchema(target, relationship)
+
+      const match = matchCriteriaForEntity(targetSchema, target)
+
+      const lookup = new Builder()
+
+      if (match.elementId === undefined || match.elementId === '') {
+        lookup.matchEntity('to', targetSchema, match)
+      } else {
+        lookup.match('to', targetSchema.getLabels()).whereId('to', match.elementId)
+      }
+
+      lookup.return('elementId(to) AS targetId')
+
+      const lookupQuery = lookup.build()
+
+      const found = await this.runner.run(lookupQuery.query, lookupQuery.params)
+
+      const targetId: unknown = found.records[0]?.get('targetId')
+
+      if (typeof targetId === 'string') {
+        resolved.push({ schema: targetSchema, elementId: targetId, index })
+      } else {
+        const label = targetSchema.getLabels().join(':')
+
+        missing.push(
+          match.elementId === undefined || match.elementId === ''
+            ? `${label} with ${match.key} = ${String(match.value)}`
+            : `${label} with elementId ${match.elementId}`,
+        )
+      }
+    }
+
+    if (missing.length > 0) {
+      throw new NeodeError(
+        `Cannot sync relationship "${relationship.getKey()}": ${String(missing.length)} target(s) ` +
+          `do not exist in the database (${missing.join(', ')}). ` +
+          'Save the missing targets first (or remove them from the target list); ' +
+          'no edges were changed.',
+      )
+    }
+
+    return resolved
+  }
+
+  /**
   Diff-and-apply a relationship's edges to an EXACT target set (NTS-161,
   Eloquent `sync` precedent): relate the missing targets, detach the
   absent ones, leave the common ones untouched (a no-op sync writes
@@ -144,75 +184,68 @@ export class SyncService extends QueryService {
 
     const fromMatch = matchCriteriaForEntity(schema, fromEntity)
 
-    // Identity per target — matchCriteriaForEntity throws for
-    // unidentifiable (unsaved) targets
-    const targetIdentities: TargetIdentity[] = targets.map((target) => {
-      const targetSchema = requireTargetSchema(target, relationship)
-
-      return { schema: targetSchema, match: matchCriteriaForEntity(targetSchema, target) }
-    })
-
-    const primaryKey = targetIdentities[0]?.schema.getPrimaryKey()
+    // Resolve every target to its stored node BEFORE anything is written
+    // (NTS-579): a target missing from the database would otherwise match
+    // zero rows on relate, after the stale edges were already detached.
+    const resolved = await this.resolveTargets(relationship, targets)
 
     // Read the relationship's current edges from the from-node — the
-    // diff's only statement when nothing changes
+    // diff's only write-free statement when nothing changes. Compared by
+    // elementId alone: primary-key values may be driver Integers (never
+    // `===` equal) and a node of another label can share a key.
     const scan = new Builder()
 
     scan
       .matchEntity('from', schema, fromMatch)
       .relationship(relationship.getType(), relationship.getDirection(), 'rel')
       .to('other')
-      .return(
-        'elementId(rel) AS relId',
-        'elementId(other) AS otherId',
-        ...(primaryKey === undefined ? [] : [`other.${quote(primaryKey.getKey())} AS otherPk`]),
-      )
+      .return('elementId(rel) AS relId', 'elementId(other) AS otherId')
 
     const scanQuery = scan.build()
 
     const scanned = await this.runner.run(scanQuery.query, scanQuery.params)
 
-    const current: CurrentEdge[] = []
+    const current: { relId: string; otherId: string }[] = []
 
     for (const row of scanned.records) {
       const edgeId: unknown = row.get('relId')
+      const otherId: unknown = row.get('otherId')
 
-      if (typeof edgeId !== 'string') {
+      if (typeof edgeId !== 'string' || typeof otherId !== 'string') {
         throw new NeodeError('The sync scan did not return an elementId for an existing edge')
       }
 
-      const otherId: unknown = row.get('otherId')
-
-      current.push({
-        relId: edgeId,
-        otherId: typeof otherId === 'string' ? otherId : undefined,
-        otherPk: primaryKey === undefined ? undefined : row.get('otherPk'),
-      })
+      current.push({ relId: edgeId, otherId })
     }
+
+    const wanted = new Set(resolved.map((target) => target.elementId))
+
+    const reached = new Set(current.map((edge) => edge.otherId))
 
     // Edges whose far end is not among the targets go; targets no edge
-    // reaches come
-    const toDetach = current.filter((edge) =>
-      targetIdentities.every((identity) => !isEdgeMatched(edge, identity)),
-    )
+    // reaches come (once each, however often a target is listed)
+    const toDetach = current.filter((edge) => !wanted.has(edge.otherId))
 
-    const toRelate: { target: object; identity: TargetIdentity; index: number }[] = []
+    const queued = new Set<string>()
 
-    for (const [index, identity] of targetIdentities.entries()) {
-      const target = targets[index]
-
-      if (target !== undefined && current.every((edge) => !isEdgeMatched(edge, identity))) {
-        toRelate.push({ target, identity, index })
+    const toRelate = resolved.filter((target) => {
+      if (reached.has(target.elementId) || queued.has(target.elementId)) {
+        return false
       }
-    }
+
+      queued.add(target.elementId)
+
+      return true
+    })
 
     // Detach first, then relate — a one-cardinality sync that replaces
     // its edge never transiently holds two
     if (toDetach.length > 0) {
       const detach = new Builder()
 
+      // Anchored on the from-node: only its own edges are scanned
       detach
-        .match('from_node')
+        .matchEntity('from', schema, fromMatch)
         .relationship(relationship.getType(), relationship.getDirection(), 'rel')
         .toAnything()
         .whereRaw('elementId(rel) IN $relIds')
@@ -227,25 +260,35 @@ export class SyncService extends QueryService {
       await this.runner.run(detachQuery.query, detachQuery.params)
     }
 
-    for (const { target, identity, index } of toRelate) {
+    let attached = 0
+
+    for (const { schema: targetSchema, elementId, index } of toRelate) {
+      const target = targets[index]
+
       const relate = new Builder()
 
       relate
         .matchEntity('from', schema, fromMatch)
-        .matchEntity('to', identity.schema, identity.match)
+        .match('to', targetSchema.getLabels())
+        .whereId('to', elementId)
         .merge('from')
         .relationship(relationship.getType(), relationship.getDirection(), 'rel')
         .to('to')
 
-      const properties = options.properties?.(target, index) ?? {}
+      const properties = target === undefined ? {} : (options.properties?.(target, index) ?? {})
 
       setEdgeProperties(relate, relationship, properties)
 
+      relate.return('elementId(rel) AS relId')
+
       const relateQuery = relate.build()
 
-      await this.runner.run(relateQuery.query, relateQuery.params)
+      const related = await this.runner.run(relateQuery.query, relateQuery.params)
+
+      // Truthful count: a statement that matched nothing attached nothing
+      attached += related.records.length
     }
 
-    return { attached: toRelate.length, detached: toDetach.length }
+    return { attached, detached: toDetach.length }
   }
 }
