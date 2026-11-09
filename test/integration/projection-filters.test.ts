@@ -166,6 +166,29 @@ describe('projection nested filters / sort end-to-end (NTS-145)', () => {
     expect((results as FilterStudent[]).map((student) => student.name)).toEqual(['Billy', 'Adam'])
   })
 
+  it('keeps students without the relation when sorting by a nested field (NTS-565)', async () => {
+    await seed()
+
+    // Zeke has no IN_COURSE — the sort must not drop his row (the null
+    // sort key rides the COLLECT { } subquery, ascending last)
+    await backend.connection.run('CREATE (:FilterStudent { id: "zeke", name: "Zeke" })')
+
+    const results = await projections.get<FilterStudent>(
+      FilterStudent,
+      getModel(FilterStudent),
+      {},
+      undefined,
+      undefined,
+      { course: 'title' },
+    )
+
+    expect((results as FilterStudent[]).map((student) => student.name)).toEqual([
+      'Billy',
+      'Adam',
+      'Zeke',
+    ])
+  })
+
   it('surfaces nested filters and sort through the neode facade', async () => {
     await seed()
 

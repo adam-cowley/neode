@@ -1322,6 +1322,17 @@ export class Builder {
   }
 
   /**
+  `COLLECT { … }` as a composable expression (NTS-565): the compiled
+  subquery as a string, for expression positions the clause form cannot
+  reach — the projection service's nested sort rides a WITH-carried
+  `COLLECT { … } AS alias`. Sub-query parameters bind, namespace and
+  fail fast on unbound references exactly like existsExpr.
+  */
+  collectExpr(build: (sub: Builder) => Builder, imports: string[] = []): string {
+    return this.aggregateSubquery('COLLECT', build, imports)
+  }
+
+  /**
   `EXISTS { … }` as a WHERE predicate (NTS: relationship / property
   existence checks without hand-written Cypher)
   */
