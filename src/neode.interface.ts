@@ -127,7 +127,11 @@ export interface INeode {
     limit?: number,
     filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]>
-  cypher(query: string, parameters?: QueryParameters, options?: CypherOptions): Promise<QueryOutput>
+  cypher(
+    query: string,
+    parameters?: QueryParameters,
+    options?: Omit<CypherOptions, 'hydrate'>,
+  ): Promise<QueryOutput>
   cypher<T>(
     query: string,
     parameters: QueryParameters | undefined,
