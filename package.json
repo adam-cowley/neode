@@ -28,6 +28,9 @@
     "skills"
   ],
   "sideEffects": false,
+  "bin": {
+    "neode-generate": "./dist/bin/neode-generate.mjs"
+  },
   "scripts": {
     "build": "tsdown",
     "prepublishOnly": "npm run build && npm run test:unit",

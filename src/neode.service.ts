@@ -107,6 +107,11 @@ import {
 } from './services/schema/inspect.service.js'
 import { type SchemaResult, SchemaService } from './services/schema/schema.service.js'
 import { type VectorIndexDefinition, VectorIndexService } from './services/schema/vector.service.js'
+import { generateModels } from './services/schema/generate.service.js'
+import type {
+  GenerateModelsOptions,
+  GenerateModelsResult,
+} from './services/schema/generate.service.js'
 import {
   GraphTypeService,
   type GraphTypeConstraintDefinition,
@@ -1475,6 +1480,19 @@ export class Neode implements INeode {
   */
   async inspectSchema(options: InspectOptions = {}): Promise<SchemaInspection> {
     return inspectSchema(this.connection, { enterprise: this.enterprise, ...options })
+  }
+
+  /**
+  Database introspector (NTS-164): generate model definitions from the
+  graph — node labels, sampled property types (N nodes per label; absent
+  properties optional; conflicting types a descriptive NeodeError),
+  relationships with direction, and the unique constraint's property as
+  the primary-key suggestion — as decorated TypeScript classes and map
+  schemas. Constraints and indexes are not re-declared: the generated
+  models round-trip through installSchema() with no drift.
+  */
+  async generateModels(options: GenerateModelsOptions = {}): Promise<GenerateModelsResult> {
+    return generateModels(this.connection, options)
   }
 
   /**

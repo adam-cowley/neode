@@ -147,6 +147,13 @@ export type {
   SchemaObject,
   InspectOptions,
 } from './services/schema/inspect.service.js'
+export { generateModels } from './services/schema/generate.service.js'
+export type {
+  GenerateModelsOptions,
+  GenerateModelsResult,
+  GeneratedModel,
+  GeneratedRelationship,
+} from './services/schema/generate.service.js'
 
 // Bulk writes + pagination (NTS-125/126)
 export { BulkService } from './services/query/bulk.service.js'
