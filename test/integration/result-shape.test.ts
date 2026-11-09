@@ -248,9 +248,15 @@ describe('result shape contract (NTS-566) — every read returns the shape', () 
 
     const pages: Pet[][] = []
 
-    const delivered = await backend.neode.chunk(Pet, {}, 2, (items) => {
-      pages.push(items as Pet[])
-    }, { orderBy: 'name' })
+    const delivered = await backend.neode.chunk(
+      Pet,
+      {},
+      2,
+      (items) => {
+        pages.push(items as Pet[])
+      },
+      { orderBy: 'name' },
+    )
 
     expect(delivered).toBe(3)
     expect(pages).toHaveLength(2)

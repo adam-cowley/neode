@@ -44,7 +44,12 @@ function edge(properties: Record<string, unknown> = {}): GraphRelationship {
 
 describe('shapeNodeRows', () => {
   it('hydrates the alias column into entities', () => {
-    const rows = shapeNodeRows([row({ this: node({ name: 'Adam' }) })], getModel(ShapePerson), ShapePerson, 'this')
+    const rows = shapeNodeRows(
+      [row({ this: node({ name: 'Adam' }) })],
+      getModel(ShapePerson),
+      ShapePerson,
+      'this',
+    )
 
     expect(rows).toHaveLength(1)
     expect(rows[0]).toBeInstanceOf(ShapePerson)

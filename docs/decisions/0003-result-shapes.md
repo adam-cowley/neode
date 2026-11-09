@@ -20,7 +20,6 @@ read path had no obvious place to take its shape from.
 1. **One shaping module:** `src/services/query/shape.ts` — every model
    read path routes its rows through it; no per-service bespoke row
    shaping remains. Four functions, one per result shape:
-
    - `shapeNodeRows` — the alias column is a node (or an eager projection
      map), hydrated through the regular hydration path. Strict guard: a
      malformed column is a loud `TypeError`.
@@ -42,24 +41,24 @@ read path had no obvious place to take its shape from.
    (with-spec / eager loads nest as declared; a one-key reads
    `Item | undefined`, a many-key `Item[]`, empty included):
 
-   | Read path | Result shape | Shaped by |
-   |---|---|---|
-   | `find(C, id)` / `findById` | `T \| undefined` | `shapeNodeRows` / `shapeProjectionRows` (with-spec / projected models) |
-   | `all` / `get` / `getFirst` / `first` | `T[]` / `T \| undefined` | same |
-   | `withinDistance` | `T[]` | `shapeNodeRows` |
-   | `find` / `all` / `findAll` with `with` spec | `LoadedEntity<…>` — nested exactly as the spec declares | `shapeProjectionRows` |
-   | `search` / `knn` (and `Repository#search`) | `ScoredEntity<T>[]` = `{ entity, score }[]` | `shapeScoredRows` |
-   | `paginate` (offset) | `Page<T>` = `{ items, total, page, limit, totalPages }` | `shapeNodeRows` items + a COUNT row |
-   | `paginate` (cursor) | `CursorPage<T>` = `{ items, nextCursor, hasMore }` | `hydrate()` items |
-   | `findManyAndCount` | `ManyAndCount<T>` = `{ items, total }` | `shapeNodeRows` + a COUNT row |
-   | `chunk` / `lazy` | `T[]` per page / `AsyncGenerator<T>` | `hydrate()` |
-   | `instance.load(key)` / `load(spec)` | many `T[]`, one `T \| undefined` — materialized as own properties on the instance | `shapeNodeRows` |
-   | `related(k).find()` / `.first()` / `.count()` | `T[]` / `T \| undefined` / `number` | `shapeNodeRows` |
-   | `related(k).withRelationship().find()` / `.first()` | `{ node, edge }[]` / `{ node, edge } \| undefined` | `shapeEdgeRows` |
-   | `Repository#find` / `findBy` / `findAll` / `where` | entities (delegates to the facade with a spec or projected models; local Builder path otherwise) | `shapeNodeRows` |
-   | `cypher()` / `readCypher` / `read()` / `write()` raw | `QueryOutput` = `{ records, summary }` (cypher() JSON-safes the values) | the driver layer |
-   | the same with the `hydrate` option | `T[]` hydrated from the alias column (default `this`) | `hydrate()` |
-   | `traverse().run()` / `runAggregates()` | `TraversalRow[]` = `{ nodes }[]` positional / `Record<string, unknown>[]`, hydrated by labels | `traverse.ts` |
+   | Read path                                            | Result shape                                                                                     | Shaped by                                                              |
+   | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+   | `find(C, id)` / `findById`                           | `T \| undefined`                                                                                 | `shapeNodeRows` / `shapeProjectionRows` (with-spec / projected models) |
+   | `all` / `get` / `getFirst` / `first`                 | `T[]` / `T \| undefined`                                                                         | same                                                                   |
+   | `withinDistance`                                     | `T[]`                                                                                            | `shapeNodeRows`                                                        |
+   | `find` / `all` / `findAll` with `with` spec          | `LoadedEntity<…>` — nested exactly as the spec declares                                          | `shapeProjectionRows`                                                  |
+   | `search` / `knn` (and `Repository#search`)           | `ScoredEntity<T>[]` = `{ entity, score }[]`                                                      | `shapeScoredRows`                                                      |
+   | `paginate` (offset)                                  | `Page<T>` = `{ items, total, page, limit, totalPages }`                                          | `shapeNodeRows` items + a COUNT row                                    |
+   | `paginate` (cursor)                                  | `CursorPage<T>` = `{ items, nextCursor, hasMore }`                                               | `hydrate()` items                                                      |
+   | `findManyAndCount`                                   | `ManyAndCount<T>` = `{ items, total }`                                                           | `shapeNodeRows` + a COUNT row                                          |
+   | `chunk` / `lazy`                                     | `T[]` per page / `AsyncGenerator<T>`                                                             | `hydrate()`                                                            |
+   | `instance.load(key)` / `load(spec)`                  | many `T[]`, one `T \| undefined` — materialized as own properties on the instance                | `shapeNodeRows`                                                        |
+   | `related(k).find()` / `.first()` / `.count()`        | `T[]` / `T \| undefined` / `number`                                                              | `shapeNodeRows`                                                        |
+   | `related(k).withRelationship().find()` / `.first()`  | `{ node, edge }[]` / `{ node, edge } \| undefined`                                               | `shapeEdgeRows`                                                        |
+   | `Repository#find` / `findBy` / `findAll` / `where`   | entities (delegates to the facade with a spec or projected models; local Builder path otherwise) | `shapeNodeRows`                                                        |
+   | `cypher()` / `readCypher` / `read()` / `write()` raw | `QueryOutput` = `{ records, summary }` (cypher() JSON-safes the values)                          | the driver layer                                                       |
+   | the same with the `hydrate` option                   | `T[]` hydrated from the alias column (default `this`)                                            | `hydrate()`                                                            |
+   | `traverse().run()` / `runAggregates()`               | `TraversalRow[]` = `{ nodes }[]` positional / `Record<string, unknown>[]`, hydrated by labels    | `traverse.ts`                                                          |
 
    Two boundaries are deliberate, not bespoke: the RAW paths return the
    server's own rows (user-shaped Cypher — the library cannot know the
@@ -69,7 +68,6 @@ read path had no obvious place to take its shape from.
    no single schema/constructor to shape with).
 
 3. **Alignments made** (same logical query, one shape now wins):
-
    - The repository's local Builder path guarded rows with `isGraphNode`
      where the service paths guard with `isNodeLike` (driver nodes AND
      eager projection maps). **`isNodeLike` won**: `Repository#findAll`
