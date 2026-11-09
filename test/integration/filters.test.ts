@@ -176,7 +176,9 @@ describe('named global filters (NTS-162)', () => {
     await relateComment('p1', 'c1')
     await relateComment('p1', 'c2')
 
-    const [post] = await backend.neode.all(FilterPost)
+    // Ordered read: p1 first regardless of the engine's row order
+    const ordered = await backend.neode.all(FilterPost, {}, 'postID')
+    const post = ordered.find((entry) => entry.postID === 'p1')
 
     // The beta comment is filtered out of the comprehension by the tenant filter
     expect(post?.comments.map((comment) => comment.commentID)).toEqual(['c1'])
@@ -185,7 +187,9 @@ describe('named global filters (NTS-162)', () => {
     // comprehension match — the relation reads [] and p1 still comes back
     await comments.delete('c1')
 
-    const [afterDelete] = await backend.neode.all(FilterPost)
+    const afterDelete = (await backend.neode.all(FilterPost, {}, 'postID')).find(
+      (entry) => entry.postID === 'p1',
+    )
 
     expect(afterDelete?.postID).toBe('p1')
     expect(afterDelete?.comments).toEqual([])
@@ -195,7 +199,9 @@ describe('named global filters (NTS-162)', () => {
     await relateComment('p1', 'c1')
     await relateComment('p1', 'c2')
 
-    const [post] = await backend.neode.all(FilterPost)
+    const [post] = (await backend.neode.all(FilterPost, {}, 'postID')).filter(
+      (entry) => entry.postID === 'p1',
+    )
 
     // Two HAS relationships exist on p1; only the acme comment is counted
     expect(post?.commentCount).toBe(1)
