@@ -13,6 +13,8 @@ import {
 import { Direction } from '../../src/query'
 import { NeodeError, RelationNotLoadedError } from '../../src/errors'
 import { setStrictRelationAccess } from '../../src/strict-relation-access'
+import { EventType } from '../../src/common/events'
+import type { QueryExecutedEvent } from '../../src/common/events'
 
 // ---- Fixtures (per-file: decorator registry is global per module) -----------
 
@@ -208,5 +210,112 @@ describe('instance.load(key) — lazy relation loader (NTS-558)', () => {
 
     await expect(withMethods.load('orders')).rejects.toThrow(NeodeError)
     await expect(withMethods.load('orders')).rejects.toThrow('no elementId')
+  })
+})
+
+describe('one-key load reads one row, deterministically (NTS-591)', () => {
+  let backend: TestBackend
+
+  let executed: QueryExecutedEvent[]
+
+  const onQuery = (event: QueryExecutedEvent): void => {
+    executed.push(event)
+  }
+
+  beforeAll(async () => {
+    backend = await openBackend()
+
+    setDefaultNeode(backend.neode)
+  })
+
+  beforeEach(() => {
+    executed = []
+
+    backend.neode.on(EventType.QUERY_EXECUTED, onQuery)
+  })
+
+  afterEach(async () => {
+    backend.neode.off(EventType.QUERY_EXECUTED, onQuery)
+
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  /** A saved customer with TWO loyalty cards: one related through the API, one raw — the one-key write path guards its cardinality (NTS-161), the second edge is the nondeterminism the read must survive */
+  async function seededTwoCards(): Promise<{
+    found: WithMethods<Customer>
+    cards: { id: string; code: string }[]
+  }> {
+    const customer = new Customer()
+    customer.name = `customer-${Math.random()}`
+
+    const savedCustomer = (await backend.neode.save(customer)) as WithMethods<Customer>
+
+    const cards: { id: string; code: string }[] = []
+
+    for (const [index, code] of ['card-a', 'card-b'].entries()) {
+      const card = new LoyaltyCard()
+      card.code = `${code}-${index}`
+
+      const saved = (await backend.neode.save(card)) as WithMethods<LoyaltyCard>
+
+      cards.push({ id: saved.id, code: card.code })
+
+      if (index === 0) {
+        await savedCustomer.relateTo(saved, 'card')
+      } else {
+        await backend.connection.run(
+          'MATCH (c:Customer {id: $customerId}), (l:LoyaltyCard {id: $cardId}) CREATE (c)-[:LOYALTY]->(l)',
+          { customerId: savedCustomer.id, cardId: saved.id },
+        )
+      }
+    }
+
+    const found = (await backend.neode.find(Customer, savedCustomer.id)) as WithMethods<Customer>
+
+    return { found, cards }
+  }
+
+  it('orders by the primary key and reads one row', async () => {
+    const { found } = await seededTwoCards()
+
+    executed = []
+
+    const card = await found.load('card')
+
+    expect(card).toBeInstanceOf(LoyaltyCard)
+
+    const traversal = executed[0]?.cypher ?? ''
+
+    expect(traversal).toContain('ORDER BY this_card_node.id')
+    expect(traversal).toContain('LIMIT 1')
+  })
+
+  it('a one-key with two edges picks the primary-key-smallest deterministically', async () => {
+    const { found, cards } = await seededTwoCards()
+
+    const card = await found.load('card')
+
+    expect(card?.id).toBe(cards.map((entry) => entry.id).sort()[0])
+  })
+
+  it('the level order stands on a one-key — the primary key does not override it', async () => {
+    const { found, cards } = await seededTwoCards()
+
+    executed = []
+
+    const card = await found.load('card', { order: { code: 'DESC' } })
+
+    const newest = [...cards].sort((a, b) => (a.code < b.code ? 1 : -1))[0]
+
+    expect(card?.id).toBe(newest.id)
+
+    const traversal = executed[0]?.cypher ?? ''
+
+    expect(traversal).toContain('ORDER BY this_card_node.code DESC')
+    expect(traversal).not.toContain('this_card_node.id')
   })
 })
