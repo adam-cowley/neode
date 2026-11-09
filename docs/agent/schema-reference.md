@@ -58,8 +58,9 @@ so new fields (e.g. upcoming schema options) appear here automatically.
 
 ### SchemaDefinition
 
-| Field           | Type                   | Description                                                                                                                           |
-| --------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `labels`        | `string[]` (optional)  |                                                                                                                                       |
-| `description`   | `string` (optional)    | Free-text explanation of the model for LLM-agent-facing ontology emission (NTS-445): surfaced by `ontology()` / `ontologyMarkdown()`. |
-| `[key: string]` | `SchemaDefinitionEntry | string[]                                                                                                                              | string | undefined` |     |
+| Field           | Type                            | Description                                                                                                                                                                                                           |
+| --------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `labels`        | `string[]` (optional)           |                                                                                                                                                                                                                       |
+| `description`   | `string` (optional)             | Free-text explanation of the model for LLM-agent-facing ontology emission (NTS-445): surfaced by `ontology()` / `ontologyMarkdown()`.                                                                                 |
+| `filters`       | `FilterDefinition[]` (optional) | Named global filters (NTS-568) — the map-API form of `@Filter`: each applies to every standard read unless disabled per query with `withoutFilters`. Names must be unique per model and valid Cypher parameter names. |
+| `[key: string]` | `SchemaDefinitionEntry          | string[]                                                                                                                                                                                                              | string | FilterDefinition[] | undefined` |     |

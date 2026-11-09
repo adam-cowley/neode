@@ -317,6 +317,14 @@ export function defineModel(name: string, schema: SchemaDefinition): Newable {
     model.setDescription(schema.description)
   }
 
+  // Named filters (NTS-568) — the map-API form of @Filter: addFilter
+  // asserts the name and rejects duplicates, exactly like the decorator
+  const declaredFilters = schema.filters ?? []
+
+  for (const filter of declaredFilters) {
+    model.addFilter(filter)
+  }
+
   // Every node carries an internal id (parity with neode Node._id / @InternalId)
   if (!Object.hasOwn(schema, '_id')) {
     mergeProperty(constructor, '_id', PropertyType.INTERNAL_ID)
@@ -326,7 +334,7 @@ export function defineModel(name: string, schema: SchemaDefinition): Newable {
   definitionsByName.set(name, schema)
 
   for (const [key, value] of Object.entries(schema)) {
-    if (key === 'labels' || key === 'description' || value === undefined) {
+    if (key === 'labels' || key === 'description' || key === 'filters' || value === undefined) {
       continue
     }
 
@@ -342,8 +350,12 @@ export function defineModel(name: string, schema: SchemaDefinition): Newable {
       } else {
         wireProjectionProperty(constructor, key, value, target)
       }
-    } else {
+    } else if (typeof value === 'string' || isPropertyDefinition(value)) {
       definePropertyModel(constructor, key, value)
+    } else {
+      // Not a definition shape (e.g. a stray array): falls through to ANY,
+      // exactly like definePropertyModel's own fallthrough
+      definePropertyModel(constructor, key, 'any')
     }
   }
 

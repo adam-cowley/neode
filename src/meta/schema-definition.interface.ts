@@ -1,4 +1,5 @@
 import type { DefaultValue } from './property-schema.js'
+import type { FilterDefinition } from './entity/entity-schema.js'
 
 /**
 neode-compatible property type names for map-based schema definitions.
@@ -401,8 +402,15 @@ export interface SchemaDefinition {
   emission (NTS-445): surfaced by `ontology()` / `ontologyMarkdown()`.
   */
   description?: string
+  /**
+  Named global filters (NTS-568) — the map-API form of `@Filter`: each
+  applies to every standard read unless disabled per query with
+  `withoutFilters`. Names must be unique per model and valid Cypher
+  parameter names.
+  */
+  filters?: FilterDefinition[]
   // The `string` arm admits the entity-level `description` key (NTS-445);
   // it subsumes PropertyTypeName, hence the redundancy suppression
   // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- string subsumes PropertyTypeName by design, so `description?: string` can coexist with the index signature
-  [key: string]: SchemaDefinitionEntry | string[] | string | undefined
+  [key: string]: SchemaDefinitionEntry | string[] | string | FilterDefinition[] | undefined
 }
