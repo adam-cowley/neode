@@ -1397,7 +1397,12 @@ export class Neode implements INeode {
   transaction; the target model's global filters apply inside the
   traversal read.
   */
-  relatedQuery(constructor: Newable, entity: object, relationshipKey: string): RelatedQuery {
+  relatedQuery(
+    constructor: Newable,
+    entity: object,
+    relationshipKey: string,
+    options?: { withoutFilters?: string[] | undefined },
+  ): RelatedQuery {
     const schema = this.getSchema(constructor)
     const relationship = this.requireRelationship(schema, relationshipKey)
 
@@ -1418,6 +1423,9 @@ export class Neode implements INeode {
       schema,
       entity,
       relationship,
+      options?.withoutFilters === undefined
+        ? undefined
+        : { withoutFilters: options.withoutFilters },
     )
   }
 
@@ -1823,7 +1831,8 @@ export class Neode implements INeode {
   /**
   Nodes of the given constructor within `distance` of the given point,
   ordered by distance when `order` is 'distance'
-  (neode's FindWithinDistance)
+  (neode's FindWithinDistance). The model's named read filters apply;
+  `filters.withoutFilters` opts names out (NTS-574).
   */
   async withinDistance<T>(
     constructor: new (...arguments_: never[]) => T,
@@ -1835,6 +1844,7 @@ export class Neode implements INeode {
     limit?: number,
     skip?: number,
     database?: string,
+    filters?: { withoutFilters?: string[] | undefined },
   ): Promise<T[]> {
     const schema = this.getSchema(constructor)
 
@@ -1851,6 +1861,7 @@ export class Neode implements INeode {
         order,
         limit,
         skip,
+        filters,
       )
 
       await tx.commit()
@@ -1958,12 +1969,16 @@ export class Neode implements INeode {
   Typed multi-hop traversal (NTS-512): chain hops, run, read hydrated
   rows — one row per matched path, origin entity first.
   */
-  traverse(model: Newable): TraverseBuilder {
+  traverse(model: Newable, options?: { withoutFilters?: string[] | undefined }): TraverseBuilder {
     if (!(getModel(model) instanceof EntitySchema)) {
       throw new NeodeError('traverse() requires a registered model — register it first')
     }
 
-    return new TraverseBuilder(this.getRunner(), () => model)
+    const builder = new TraverseBuilder(this.getRunner(), () => model)
+
+    return options?.withoutFilters === undefined
+      ? builder
+      : builder.withoutFilters(...options.withoutFilters)
   }
 
   /**

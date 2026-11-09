@@ -6,6 +6,7 @@ import { isGraphNode } from './services/type-guards.js'
 import { Builder, type Direction } from './query/index.js'
 import type { GraphNode, QueryOutput } from './driver/types.js'
 import { quote } from './query/quote.js'
+import { applyReadFilters, type ReadFilterOptions } from './services/query/filters.js'
 
 /**
 One hop of a traversal (NTS-512): a relationship type, a direction, an
@@ -39,6 +40,12 @@ Aggregate reads (NTS-547): declare `groupBy()` / `countDistinct()` and read
 the result with `runAggregates()` — group aliases come back hydrated,
 counts as numbers. `orderBy()` / `limit()` shape either mode.
 
+Every aliased node whose model is known (the origin and each hop with a
+target model) carries that model's named read filters (NTS-162, NTS-574):
+soft-deleted and filtered-out nodes drop out of the paths and the counts.
+`withoutFilters()` opts named filters out for the traversal; hops without a
+target model have no model to filter by and stay unfiltered.
+
 ```ts
 const rows = await neode.traverse(Product)
   .hop('SUPPLIED_BY', 'out', Supplier)
@@ -69,6 +76,7 @@ export class TraverseBuilder {
   private countSpec: { alias: string; as: string } | undefined
   private orderSpec: { field: string; order?: 'ASC' | 'DESC' } | undefined
   private limitCount: number | undefined
+  private filterOptions: ReadFilterOptions = {}
 
   private readonly runner: {
     run: (statement: string, parameters?: Record<string, unknown>) => Promise<QueryOutput>
@@ -101,6 +109,8 @@ export class TraverseBuilder {
 
     builder.match('t0', startSchema.getLabels(), this.startFilters)
 
+    applyReadFilters(builder, startSchema, this.filterOptions, 't0')
+
     const aliases = ['t0']
 
     for (const [index, hop] of this.hops.entries()) {
@@ -117,6 +127,10 @@ export class TraverseBuilder {
       builder.relationship(hop.type, hop.direction, `r${String(index + 1)}`, hop.degrees)
 
       builder.to(alias, targetSchema instanceof EntitySchema ? targetSchema.getLabels() : false)
+
+      if (targetSchema instanceof EntitySchema) {
+        applyReadFilters(builder, targetSchema, this.filterOptions, alias)
+      }
 
       aliases.push(alias)
     }
@@ -173,6 +187,17 @@ export class TraverseBuilder {
   */
   where(properties: Record<string, unknown>): this {
     this.startFilters = { ...this.startFilters, ...properties }
+
+    return this
+  }
+
+  /**
+  Disable named read filters for this traversal (NTS-574) — each name is
+  independent, `softDelete` names the built-in @SoftDelete filter, as on
+  every other read.
+  */
+  withoutFilters(...names: string[]): this {
+    this.filterOptions = { ...this.filterOptions, withoutFilters: names }
 
     return this
   }

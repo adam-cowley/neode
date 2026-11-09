@@ -136,7 +136,7 @@ describe('projection Cypher composition (NTS-135/136/137/138)', () => {
 
     // ...with a label-filtered intermediate hop and a WHERE fragment
     expect(query).toContain(
-      'peerLessons: [ (this)-[:`IN_COURSE`]->(this_h1)<-[:`COHORT`]-(this_h2:`ProjectionQueryModel`)-[:`COMPLETED_LESSON`]->(node:`ProjectionQueryLesson`) WHERE NOT (this)-[:BLOCKED]->(node) | node.slug ]',
+      'peerLessons: [ (this)-[:`IN_COURSE`]->(this_h1)<-[:`COHORT`]-(this_h2:`ProjectionQueryModel`)-[:`COMPLETED_LESSON`]->(node:`ProjectionQueryLesson`) WHERE (NOT (this)-[:BLOCKED]->(node)) | node.slug ]',
     )
 
     // ...singular form takes the first element
@@ -149,7 +149,7 @@ describe('projection Cypher composition (NTS-135/136/137/138)', () => {
 
     // ...with WHERE, target labels and variable-length hops
     expect(query).toContain(
-      'requiredLessonsCount: COUNT { (this)-[:`COMPLETED_LESSON`*1..2]->(node:`ProjectionQueryLesson`) WHERE NOT node:OptionalLesson }',
+      'requiredLessonsCount: COUNT { (this)-[:`COMPLETED_LESSON`*1..2]->(node:`ProjectionQueryLesson`) WHERE (NOT node:OptionalLesson) }',
     )
 
     // ...with a fixed hop count
@@ -157,7 +157,7 @@ describe('projection Cypher composition (NTS-135/136/137/138)', () => {
 
     // @RelationshipExists: inline EXISTS { } subquery
     expect(query).toContain(
-      'hasNextLesson: EXISTS { (this)-[:`NEXT_LESSON`]->(node) WHERE NOT node:OptionalLesson }',
+      'hasNextLesson: EXISTS { (this)-[:`NEXT_LESSON`]->(node) WHERE (NOT node:OptionalLesson) }',
     )
 
     // @LabelPresent: label predicate
