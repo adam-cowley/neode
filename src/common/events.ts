@@ -8,10 +8,10 @@ argument:
 
 | Event                  | Emitted by                          | Payload            |
 |------------------------|-------------------------------------|--------------------|
-| NODE_CREATED           | create(), save() when the merge created the node | hydrated entity |
-| NODE_UPDATED           | save() when the merge matched an existing node   | hydrated entity |
-| NODE_MERGED            | reserved (mergeOn)                  | —                  |
-| NODE_DELETED           | delete()                            | deleted entity     |
+| NODE_CREATED           | create(), save() when the merge created the node, createMany() | hydrated entity |
+| NODE_UPDATED           | save() when the merge matched an existing node, update(), the label writes (addLabel / removeLabel / soft delete) | hydrated entity |
+| NODE_MERGED            | mergeOn() (also behind merge(), Repository#upsert and mergeMany()) | hydrated entity |
+| NODE_DELETED           | delete() (hard deletes), deleteAll() | deleted entity     |
 | RELATIONSHIP_CREATED   | relate() with forceCreate           | GraphRelationship  |
 | RELATIONSHIP_MERGED    | relate() (MERGE, the default)       | GraphRelationship  |
 | RELATIONSHIP_UPDATED   | reserved                            | —                  |

@@ -728,14 +728,15 @@ Lower-level handles (if you want to drive the connection port yourself): `readTr
 
 Subscribe with `neode.on(event, handler)` — returns the instance for chaining; `neode.off(event, handler)` unsubscribes. Events are emitted synchronously on an emitter scoped to the instance, and also fire for work done inside transactions.
 
-| Event                                                                   | Emitted by                                                   | Payload             |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------- |
-| `EventType.NODE_CREATED`                                                | `create()`, `save()` when the merge created the node         | hydrated entity     |
-| `EventType.NODE_UPDATED`                                                | `save()` when the merge matched and updated an existing node | hydrated entity     |
-| `EventType.NODE_DELETED`                                                | `delete()` (not for soft deletes — the node survives)        | deleted entity      |
-| `EventType.RELATIONSHIP_CREATED`                                        | `relate()` with `forceCreate`                                | `GraphRelationship` |
-| `EventType.RELATIONSHIP_MERGED`                                         | `relate()` (MERGE, the default)                              | `GraphRelationship` |
-| `EventType.NODE_MERGED`, `RELATIONSHIP_UPDATED`, `RELATIONSHIP_DELETED` | reserved                                                     | —                   |
+| Event                                                    | Emitted by                                                                                                                                | Payload             |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| `EventType.NODE_CREATED`                                 | `create()`, `save()` when the merge created the node, `createMany()`                                                                      | hydrated entity     |
+| `EventType.NODE_UPDATED`                                 | `save()` when the merge matched and updated an existing node, `update()`, the label writes (`addLabel()` / `removeLabel()` / soft delete) | hydrated entity     |
+| `EventType.NODE_DELETED`                                 | `delete()` (not for soft deletes — the node survives; a soft delete emits `NODE_UPDATED`), `deleteAll()` per deleted entity               | deleted entity      |
+| `EventType.RELATIONSHIP_CREATED`                         | `relate()` with `forceCreate`                                                                                                             | `GraphRelationship` |
+| `EventType.RELATIONSHIP_MERGED`                          | `relate()` (MERGE, the default)                                                                                                           | `GraphRelationship` |
+| `EventType.NODE_MERGED`                                  | `mergeOn()` (also behind `merge()`, `Repository#upsert` and `mergeMany()`)                                                                | hydrated entity     |
+| `EventType.RELATIONSHIP_UPDATED`, `RELATIONSHIP_DELETED` | reserved                                                                                                                                  | —                   |
 
 ```typescript
 neode.on(EventType.NODE_CREATED, (entity) => console.log('created', entity))
@@ -864,7 +865,10 @@ const off = neode.observe(Product, {
 
 - `beforeSave` runs before the dirty diff, so observer mutations count as changes; on the create path it receives the mutable properties record (the entity does not exist yet).
 - `afterSave` context: `{ isNew, database }` — `isNew` mirrors whether the merge created the node.
-- Soft deletes fire `beforeDelete`/`afterDelete` (the entity left the read model) but not the `NODE_DELETED` event (the node stays).
+- Every write path runs the lifecycle (NTS-596): `update()` (beforeSave sees the mutable properties record), `mergeOn()` / `merge()` / `Repository#upsert` / `mergeMany()` (`NODE_MERGED`), `createMany()`, `deleteAll()` (per deleted entity) and the label writes — `addLabel()` / `removeLabel()` and a soft delete (`NODE_UPDATED`: the node survives, so the committed change is an update).
+- Soft deletes fire `beforeDelete`/`afterDelete` (the entity left the read model) and `NODE_UPDATED`, but not the `NODE_DELETED` event (the node stays).
+- An after-hook error surfaces after the commit — the data stays committed and the event was already emitted; it never suppresses emission.
+- Observers are scoped to the Neode instance they register on (`neode.observe()`); the standalone `observe()` function registers process-wide observers that fire for every instance. Models registered with `extend()` fire their base model's observers too.
 - Returns the off function.
 
 ## Traversals

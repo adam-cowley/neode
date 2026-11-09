@@ -13,6 +13,7 @@ node:async_hooks compatibility also qualifies). On runtimes without it
 `inReadTransaction()` / `inWriteTransaction()` — which never touches ALS.
 */
 import type { EventEmitter } from 'node:events'
+import type { ObserverRegistry } from '../observers.js'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { AccessMode, TransactionHandle } from '../driver/types.js'
 import { classifyError, isRetryableError, NeodeError } from '../errors/index.js'
@@ -234,12 +235,13 @@ export class AmbientTransactionScope {
   async join<T>(
     eventEmitter: EventEmitter,
     work: (tx: TransactionalService) => Promise<T>,
+    observers?: ObserverRegistry,
   ): Promise<T> {
     this.assertOpen()
 
     try {
       return await work(
-        new TransactionalService(this.joinHandle, eventEmitter, this.effects, false),
+        new TransactionalService(this.joinHandle, eventEmitter, this.effects, false, observers),
       )
     } catch (error) {
       if (this.statementFailed) {
@@ -298,6 +300,7 @@ export async function runAmbientTransaction<T>(
   eventEmitter: EventEmitter,
   work: (tx: TransactionalService) => Promise<T>,
   options: TransactionOptions = {},
+  observers?: ObserverRegistry,
 ): Promise<T> {
   const retries = Math.max(0, options.retries ?? DEFAULT_RETRIES)
   const maxAttempts = 1 + retries
@@ -314,7 +317,7 @@ export async function runAmbientTransaction<T>(
       retryCommit: options.retryCommit ?? false,
     })
 
-    const tx = new TransactionalService(handle, eventEmitter, scope.effects, false)
+    const tx = new TransactionalService(handle, eventEmitter, scope.effects, false, observers)
 
     let result: T
 

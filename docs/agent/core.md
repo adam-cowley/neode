@@ -21,7 +21,7 @@ Collection, serialisation and other shared exports.
 
 ### `clearObservers` (function)
 
-Test seam: drop every registered observer.
+Test seam: drop every registered observer — the process-global registry AND every instance's (NTS-596).
 
 _source: observers.ts_
 
@@ -45,7 +45,7 @@ _source: observers.ts_
 
 ### `observe` (function)
 
-Register observers for a model (NTS-511). Returns the off function. Unknown models throw — observers attach to registered models only.
+Register observers for a model process-wide (NTS-511). Returns the off function. Every Neode instance fires process-wide observers; register per-instance with `neode.observe()` instead to scope them to one instance. Unknown models throw.
 
 _source: observers.ts_
 
