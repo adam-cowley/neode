@@ -1,6 +1,6 @@
 import type { Newable } from '../meta/newable.js'
 import type { Direction } from '../query/index.js'
-import type { VectorConfig, TransformConfig } from './schema-definition.interface.js'
+import type { VectorConfig, TransformConfig, DerivedConfig } from './schema-definition.interface.js'
 import type { EntitySchema } from './entity/entity-schema.js'
 
 /**
@@ -186,6 +186,13 @@ export class PropertySchema {
   into a VectorIndexDefinition for the owning label
   */
   private vector: VectorConfig | undefined
+
+  /**
+  Stored derived property (NTS-569): computed on the write path from the
+  `from` source properties — TypeScript-side (`compute`) or server-side
+  (`cypher`) — and stored like a hand-set value
+  */
+  private derived: DerivedConfig | undefined
 
   /**
   Property value transforms (NTS-449): `in` maps user values to their
@@ -387,6 +394,14 @@ export class PropertySchema {
 
   getVector(): VectorConfig | undefined {
     return this.vector
+  }
+
+  setDerived(derived: DerivedConfig): void {
+    this.derived = derived
+  }
+
+  getDerived(): DerivedConfig | undefined {
+    return this.derived
   }
 
   setTransform(transform: TransformConfig): void {

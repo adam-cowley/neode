@@ -40,6 +40,7 @@ export { Hidden } from './node/hidden.decorator.js'
 export { Protected } from './node/protected.decorator.js'
 export { Readonly } from './node/readonly.decorator.js'
 export { Vector } from './node/vector.decorator.js'
+export { Derived } from './node/derived.decorator.js'
 
 // Relationship Entities
 export { RelationshipEntity } from './relationship/relationship-entity.decorator.js'

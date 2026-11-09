@@ -272,6 +272,7 @@ All of these are understood by `@Property` (and by the sugar decorators, which a
 | `hidden`          | Excluded from `toJson()` output.                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `protected`       | Excluded from hydration input.                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `transform`       | `{ in?, out? }` — value → stored form on writes (may be async), stored form → value at hydration (sync).                                                                                                                                                                                                                                                                                                                                                |
+| `derived`         | Stored derived property (NTS-569) — `@Derived({ from, compute \| cypher })` is the decorator form. See [Derived properties](#derived-properties).                                                                                                                                                                                                                                                                                                       |
 | `vector`          | Vector-index declaration over the property — `@Vector({ dimensions, … })` is the decorator form. With `from` + `provider` the vector is computed on write from the source property (the library stays dependency-free); on `save()` it recomputes only when the source property is dirty, and an explicitly provided vector always wins. Vector properties persist through the dedicated vector write (`SET n.prop = $list`), never the inline pattern. |
 | _(any other key)_ | Treated as a validation rule — see [Validation rules](#validation-rules).                                                                                                                                                                                                                                                                                                                                                                               |
 
@@ -629,6 +630,43 @@ new Builder().merge('p', ['Person', 'Admin'], { name: 'Adam' }).return('p').buil
 ```
 
 Model-defined labels work the same way on the facade: `@NodeEntity({ labels: ['Person', 'Actor'] })` (or the map API's `labels` key) gives the model every label, and every create/merge the facade performs writes — and for MERGE matches on — all of them. Labels are always sorted.
+
+### Derived properties (NTS-569)
+
+A **stored derived property** is computed on the write path from other properties and stored like a hand-set value — the write-time counterpart of `@Computed` (read-time, never stored):
+
+```typescript
+class Order {
+  @Property({ type: 'datetime' }) orderDate: string
+  @Property({ type: 'datetime' }) shippedDate?: string
+
+  // TypeScript-side: runs against the entity's property record
+  @Property({ type: 'duration' })
+  @Derived({
+    from: ['orderDate', 'shippedDate'],
+    compute: (o) => durationBetween(String(o.orderDate), String(o.shippedDate)),
+  })
+  timeToShip?: unknown
+
+  // Cypher-side: evaluated by the database inside the write statement,
+  // `this` = the written node with the sources' new values applied
+  @Property({ type: 'number' })
+  @Derived({ from: ['orderDate', 'shippedDate'], cypher: 'duration.between(this.orderDate, this.shippedDate).days' })
+  daysToShip?: number
+}
+```
+
+Semantics, mirroring the vector `from` + `provider` sugar (NTS-449):
+
+- A write that touches **any** `from` source (explicit value, default or dirty key) recomputes the derived property — on every write path: `create()`, `save()`/`merge()` (tracked saves recompute only from a dirty source, NTS-157), `mergeOn()`, `update()` patches and bulk `createMany()`/`mergeMany()`.
+- An **explicitly provided** derived value in the same payload always wins.
+- `compute` sees the entity's property record; on the `update()` patch path the record is stored-domain (the entity's stored values under the transformed patch), and the output skips `in` transforms. On every other path the record is user-domain and the output flows through `in` transforms and validation like a hand-set value.
+- A compute-side derivation requires every source to hold a value in the payload — a partially available source set (e.g. an order with no `shippedDate` yet) leaves the stored value alone. A cypher-side expression must tolerate its own missing sources (`SET n.prop = null` removes the property; guard with `CASE WHEN …` if a stale value should survive).
+- Cypher-side sets render as their own `SET` clause after the sources are written — plain Neo4j applies them in order; bulk rows coalesce the row's explicit value over the expression.
+- Exactly one of `compute` / `cypher` is required, and every `from` source must be a declared property — violations throw on the model's first write.
+- On tracked saves the recomputed keys join the write set even though the instance did not change them (the stored value is stale by definition). The entity returned by the write carries the fresh values; an instance that hand-set the derived property keeps its own.
+
+Map API: `derived: { from, compute | cypher }` on the property definition.
 
 ### `expr` / `caseExpr` — Cypher expression helpers
 

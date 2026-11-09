@@ -8,11 +8,20 @@ export class Property {
   private readonly key: string
   private readonly param: string
   private readonly operator: string = '='
+  /**
+  True when the value renders verbatim (an inline Cypher expression)
+  */
+  private readonly isRawValue: boolean
 
   constructor(key: string, parameter: string, operator = '=', isRaw = false) {
     this.key = key
     this.param = isRaw ? parameter : `$${parameter}`
     this.operator = operator
+    this.isRawValue = isRaw
+  }
+
+  get isRaw(): boolean {
+    return this.isRawValue
   }
 
   toString(): string {

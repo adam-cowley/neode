@@ -1,4 +1,5 @@
 import { Builder, Direction, RawExpression } from '../query/index.js'
+import { quote } from '../query/quote.js'
 import { INTERNAL_ID, THIS_NODE } from '../constants.js'
 import type { Runner } from '../driver/types.js'
 import { getModel } from '../meta/index.js'
@@ -401,6 +402,157 @@ function describeEmbedding(value: unknown): string {
 }
 
 /**
+A Cypher-side derived property to append to the write statement
+*/
+export interface DerivedSet {
+  key: string
+  cypher: string
+}
+
+export interface DerivedResult {
+  /**
+  compute-side keys whose values were (re)computed onto the payload —
+  callers with a dirty-key write set must include them, since a recomputed
+  value is by definition not among the keys the instance changed
+  */
+  recomputed: string[]
+  /**
+  cypher-side sets to append to the statement after the sources are written
+  */
+  cypherSets: DerivedSet[]
+}
+
+/**
+Resolve the schema's stored derived properties (NTS-569) onto the write
+payload, mirroring applyEmbeddings' semantics: a derived property declares
+`from` source properties and exactly one producer — `compute` (TypeScript,
+called with the entity's property record) or `cypher` (a raw expression the
+database evaluates in the write statement, `this` = the written node with
+the sources' new values applied).
+
+A write that touches any source recomputes the derived property, unless the
+derived property itself is explicitly provided in the same payload (an
+explicit value always wins). compute-side values are written onto
+`values` in place (so `in` transforms and validation see them, and the
+create pattern picks them up); the returned recomputed keys join the
+caller's write set. cypher-side sets are returned for the caller to append
+as `SET this.key = <expression>` after the sources are written — the
+database reads the post-write node, so nothing is computed client-side.
+
+With `dirtyKeys` (tracked saves, NTS-157) the trigger narrows to dirty
+sources; without it (create / mergeOn / update patches / bulk) any source
+present in the payload triggers. A compute-side derivation additionally
+requires EVERY source to hold a value in the payload — a partially
+available source set leaves the stored value alone (an unshipped order
+gains no timeToShip).
+*/
+export function deriveProperties(
+  schema: EntitySchema,
+  values: object,
+  dirtyKeys?: ReadonlySet<string>,
+): DerivedResult {
+  const result: DerivedResult = { recomputed: [], cypherSets: [] }
+
+  if (!isRecord(values)) {
+    return result
+  }
+
+  const modelName = schema.getLabels()[0] ?? 'unknown'
+
+  const declared = new Set(schema.getProperties().map((property) => property.getKey()))
+
+  for (const property of schema.getProperties()) {
+    const derived = property.getDerived()
+
+    if (derived === undefined) {
+      continue
+    }
+
+    const key = property.getKey()
+    const sources = Array.isArray(derived.from) ? derived.from : []
+    const compute = typeof derived.compute === 'function' ? derived.compute : undefined
+    const cypher =
+      typeof derived.cypher === 'string' && derived.cypher !== '' ? derived.cypher : undefined
+
+    const knownSourceCount = sources.filter((source) => declared.has(source)).length
+
+    // Definition errors are loud on every write of the model — a typo'd
+    // config must not silently leave the stored value stale
+    if (knownSourceCount !== sources.length || sources.length === 0) {
+      throw new NeodeError(
+        `Property "${key}" on model "${modelName}" declares @Derived from ` +
+          `[${sources.map((source) => JSON.stringify(source)).join(', ')}] — every source must be ` +
+          'a property declared on the model',
+      )
+    }
+
+    const isBoth = compute !== undefined && cypher !== undefined
+    const isNeither = compute === undefined && cypher === undefined
+
+    if (isBoth || isNeither) {
+      throw new NeodeError(
+        `Property "${key}" on model "${modelName}" declares @Derived with ` +
+          `${isBoth ? 'both' : 'neither'} compute nor cypher — exactly one is required`,
+      )
+    }
+
+    // An explicitly provided derived value wins over recomputation
+    const isExplicit = dirtyKeys === undefined
+      ? Object.hasOwn(values, key) && values[key] !== undefined
+      : dirtyKeys.has(key)
+
+    if (isExplicit) {
+      continue
+    }
+
+    // Trigger: any source being written (untracked) / dirty (tracked)
+    const isTriggered = sources.some((source) =>
+      dirtyKeys === undefined
+        ? Object.hasOwn(values, source) && values[source] !== undefined
+        : dirtyKeys.has(source),
+    )
+
+    if (!isTriggered) {
+      continue
+    }
+
+    if (cypher !== undefined) {
+      result.cypherSets.push({ key, cypher })
+
+      continue
+    }
+
+    // compute-side: every source must hold a value in the payload — a
+    // partially available source set leaves the stored value alone
+    const isAvailable = sources.every(
+      (source) =>
+        Object.hasOwn(values, source) && values[source] !== undefined && values[source] !== null,
+    )
+
+    if (!isAvailable || compute === undefined) {
+      continue
+    }
+
+    let computed: unknown
+
+    try {
+      computed = compute(values)
+    } catch (error) {
+      throw new NeodeError(
+        `Failed to derive property "${key}" on model "${modelName}": ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error instanceof Error ? error : undefined },
+      )
+    }
+
+    values[key] = computed
+
+    result.recomputed.push(key)
+  }
+
+  return result
+}
+
+/**
 Apply the schema's `in` transforms (NTS-449) onto the write payload,
 mutating it in place: value -> stored form, before validation, so the
 validation and the write observe the same stored value. Async transforms
@@ -484,6 +636,14 @@ async function createNode(runner: Runner, schema: EntitySchema, model: object): 
 
   for (const { key, value } of vectors) {
     builder.setVectorProperty(THIS_NODE, key, value)
+  }
+
+  // Cypher-side derived properties (NTS-569): evaluated by the database
+  // against the node created above — its properties already carry the new
+  // values. compute-side values were already folded into `properties` (an
+  // explicit value wins on the second resolve, so compute runs once).
+  for (const { key, cypher } of deriveProperties(schema, model).cypherSets) {
+    builder.setExpr(`${THIS_NODE}.${quote(key)}`, cypher)
   }
 
   builder.return(THIS_NODE, `elementId(${THIS_NODE}) AS ${INTERNAL_ID}`)

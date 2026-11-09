@@ -16,6 +16,7 @@ import {
   applyFakeValues,
   applyInTransforms,
   createNodeAndRelationships,
+  deriveProperties,
   getOtherProperty,
   assertWritableDirection,
   modelPropertyValues,
@@ -23,6 +24,7 @@ import {
   timestampProperty,
   versionProperty,
 } from '../write-utilities.js'
+import { quote } from '../../query/quote.js'
 import { validate } from '../../validation/index.js'
 import { NeodeError, OptimisticLockError } from '../../errors/index.js'
 import { QueryService } from './query.service.js'
@@ -204,8 +206,12 @@ export class MergeService extends QueryService {
     // Resolve embedding sugar (NTS-449) onto the set values first: a
     // vector property declared with `from` + `provider` computes its
     // vector from the source property being written, unless the vector
-    // itself is explicitly provided
+    // itself is explicitly provided. Stored derived properties (NTS-569)
+    // resolve the same way — compute-side onto the set record, cypher-side
+    // appended after the SET clause
     await applyEmbeddings(schema, set)
+
+    const derived = deriveProperties(schema, set)
 
     // Apply `in` transforms (NTS-449): user value -> stored form, on
     // both the match and set values, before validation
@@ -265,6 +271,12 @@ export class MergeService extends QueryService {
       builder.set(`${THIS_NODE}.${key}`, value)
     }
 
+    // Cypher-side derived properties (NTS-569): evaluated after the SET
+    // clause, so the expressions read the new source values
+    for (const { key, cypher } of derived.cypherSets) {
+      builder.setExpr(`${THIS_NODE}.${quote(key)}`, cypher)
+    }
+
     // Server-side timestamps (NTS-165): createdAt stamps on create,
     // updatedAt on every write — an explicitly provided match/set value
     // overrides the stamp in the same statement
@@ -307,7 +319,12 @@ export class MergeService extends QueryService {
     // Tracked saves (NTS-157) recompute only from a dirty source; the
     // recomputed keys join the write set — their stored value is stale
     // by definition, even though the instance itself did not change them
-    const recomputed = await applyEmbeddings(schema, model, dirtyKeys)
+    const recomputedEmbeddings = await applyEmbeddings(schema, model, dirtyKeys)
+
+    // Stored derived properties (NTS-569): compute-side values land on the
+    // model (transforms and validation see them; the recomputed keys join
+    // the write set), cypher-side sets are appended after the SET clause
+    const derived = deriveProperties(schema, model, dirtyKeys)
 
     // Apply `in` transforms (NTS-449): user value -> stored form, before
     // validation, so validation and the write see the same value
@@ -358,11 +375,12 @@ export class MergeService extends QueryService {
       }
 
       // NTS-157: tracked instances write only their dirty keys — plus
-      // vector properties recomputed from a dirty source above
+      // vector and derived properties recomputed from a dirty source above
       if (
         dirtyKeys !== undefined &&
         !dirtyKeys.has(property.getKey()) &&
-        !recomputed.includes(property.getKey())
+        !recomputedEmbeddings.includes(property.getKey()) &&
+        !derived.recomputed.includes(property.getKey())
       ) {
         continue
       }
@@ -373,6 +391,12 @@ export class MergeService extends QueryService {
       if (value !== undefined) {
         setPropertyInBuilder(builder, THIS_NODE, property, value)
       }
+    }
+
+    // Cypher-side derived properties (NTS-569): evaluated by the database
+    // after the sources are SET, so the expressions read the new values
+    for (const { key, cypher } of derived.cypherSets) {
+      builder.setExpr(`${THIS_NODE}.${quote(key)}`, cypher)
     }
 
     // Server-side timestamps (NTS-165): every real write stamps updatedAt

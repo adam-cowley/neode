@@ -4,6 +4,7 @@ import {
   applyFakeValues,
   applyInTransforms,
   createNodeAndRelationships,
+  deriveProperties,
   modelPropertyValues,
 } from '../write-utilities.js'
 import { validate } from '../../validation/index.js'
@@ -24,6 +25,11 @@ export class CreateService extends QueryService {
     // `from` + `provider` computes its vector from the source property
     // being written, unless the vector itself is explicitly provided
     await applyEmbeddings(schema, model)
+
+    // Resolve stored derived properties (NTS-569): compute-side values are
+    // written onto the model here so transforms and validation see them;
+    // cypher-side sets are appended to the statement inside createNode
+    deriveProperties(schema, model)
 
     // Apply `in` transforms (NTS-449): user value -> stored form, before
     // validation, so validation and the write see the same value

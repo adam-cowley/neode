@@ -1,5 +1,5 @@
 import type { DefaultValue } from '../meta/property-schema.js'
-import type { TransformConfig, VectorConfig } from '../meta/schema-definition.interface.js'
+import type { TransformConfig, VectorConfig, DerivedConfig } from '../meta/schema-definition.interface.js'
 
 export interface PropertyConfig {
   /**
@@ -83,6 +83,14 @@ export interface PropertyConfig {
   Also available standalone via the `@Vector` decorator.
   */
   vector?: VectorConfig
+
+  /**
+  Stored derived property (NTS-569): computed on the write path from the
+  `from` source properties and stored like a hand-set value — exactly one
+  of `compute` / `cypher`. Also available standalone via the `@Derived`
+  decorator.
+  */
+  derived?: DerivedConfig
 
   /**
   Property value transforms (NTS-449): `in` converts the user value into

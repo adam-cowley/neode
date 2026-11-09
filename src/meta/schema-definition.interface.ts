@@ -55,6 +55,36 @@ export interface VectorConfig {
 }
 
 /**
+Stored derived property (NTS-569): the property's value is computed on the
+write path from other properties and stored like a hand-set value — the
+write-time counterpart of `@Computed` (read-time, never stored).
+*/
+export interface DerivedConfig {
+  /**
+  The source properties the derivation reads. A write that touches any
+  source (explicit value, default or dirty key) recomputes the derived
+  property, unless the derived property itself is explicitly provided in
+  the same payload (an explicit value always wins).
+  */
+  from: string[]
+  /**
+  TypeScript-side derivation: called with the entity's property record
+  (every declared value the write can see, dirty sources included) and its
+  return value is stored. Exactly one of `compute` / `cypher` is required.
+  Failures surface as a NeodeError naming the model and property.
+  */
+  compute?: (entity: Record<string, unknown>) => unknown
+  /**
+  Cypher-side derivation: a raw Cypher expression evaluated by the
+  database inside the write statement, after the sources are written —
+  `this` is the written node and its properties already carry the new
+  values (e.g. `duration.between(this.orderDate, this.shippedDate).days`).
+  Exactly one of `compute` / `cypher` is required.
+  */
+  cypher?: string
+}
+
+/**
 Property value transforms (NTS-449): user-supplied value mappers applied
 on the write and read paths. `in` converts a user value into its stored
 form before validation on every write path (create / update / merge /
@@ -237,6 +267,12 @@ export interface PropertyDefinition extends ValidationRules {
   dropped by `dropSchema()`.
   */
   vector?: VectorConfig
+  /**
+  Stored derived property (NTS-569): computed on the write path from the
+  `from` source properties and stored like a hand-set value. See
+  DerivedConfig — exactly one of `compute` / `cypher`.
+  */
+  derived?: DerivedConfig
   /**
   Property value transforms (NTS-449): `in` converts the user value into
   its stored form before validation on every write path (create / update
