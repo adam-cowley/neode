@@ -46,17 +46,20 @@ export function getRepository(entity: Newable): RepositoryConstructor | undefine
 /**
 Resolution point for repositories: the custom repository registered for
 the entity (constructed with the given neode and entity), or the default
-Repository
+Repository. Generic over the model CONSTRUCTOR (NTS-563): the resolved
+repository keeps the constructor type, so the `with` load spec of find /
+findAll is map-checked and the returns narrow — a plain-annotated
+`Repository<Entity>` keeps the fallback-tier spec.
 */
-export function resolveRepository<Entity>(
+export function resolveRepository<C extends Newable>(
   neode: INeode,
-  entity: new (...arguments_: never[]) => Entity,
+  entity: C,
   database?: string,
-): Repository<Entity> {
+): Repository<InstanceType<C>, C> {
   const Custom = repositories.get(entity)
 
   if (Custom === undefined) {
-    return new Repository<Entity>(neode, entity, database)
+    return new Repository<InstanceType<C>, C>(neode, entity, database)
   }
 
   const repository: Repository<unknown> = new Custom(neode, entity, database)
@@ -64,5 +67,5 @@ export function resolveRepository<Entity>(
   // The registry keys on the entity class, so the instance constructs this
   // Entity — the map cannot carry that correlation through its type
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the map erases the entity/repository generic correlation; the lookup above re-establishes it
-  return repository as Repository<Entity>
+  return repository as Repository<InstanceType<C>, C>
 }

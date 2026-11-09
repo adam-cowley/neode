@@ -789,12 +789,13 @@ export class Neode implements INeode {
   }
 
   /**
-  Create a Repository
+  Create a Repository. Generic over the model CONSTRUCTOR (NTS-563): the
+  repository's `with` load spec is map-checked against the model's
+  `neodeRelationships` phantom static and find / findAll narrow their
+  returns to the hydrated shape — the same with() contract as the facade
+  paths (NTS-154).
   */
-  getRepository<Entity>(
-    entity: new (...arguments_: never[]) => Entity,
-    database?: string,
-  ): Repository<Entity> {
+  getRepository<C extends Newable>(entity: C, database?: string): Repository<InstanceType<C>, C> {
     return resolveRepository(this, entity, database)
   }
 

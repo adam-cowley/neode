@@ -7,7 +7,7 @@ import type { Newable } from '../meta/newable.js'
 import { PropertyType, type PropertySchema } from '../meta/property-schema.js'
 import type { INeode } from '../neode.interface.js'
 import { Builder, eagerNode } from '../query/index.js'
-import type { QueryLoadLevel, ReadOptions } from '../query/load-spec.js'
+import type { LoadedEntity, QueryLoadSpec, ReadOptions, WithSpec } from '../query/load-spec.js'
 import { quote } from '../query/quote.js'
 import { applyOrder, type OrderSpec } from '../query/order-spec.js'
 import { getMergeFields } from '../services/query/merge.service.js'
@@ -26,11 +26,18 @@ import {
 
 /**
 Ordering, paging, row-limit and load-spec options shared by findAll()
-and where(). Generic over the entity so the `with` load spec
-(NTS-560/NTS-154) type-checks its relationship keys — nested spec levels
-included (the map-checked facade surface is the narrower contract).
+and where(). Generic over the entity AND the model constructor: the
+`with` load spec (NTS-560/NTS-154/NTS-563) is checked against the
+constructor's `neodeRelationships` phantom static when the model declares
+one (QueryLoadSpec), falling back to the declared object/array field keys
+(QueryLoadLevel) — the same spec the facade paths accept.
 */
-export interface FindOptions<Entity = object> {
+export interface FindOptions<
+  Entity = object,
+  C extends Newable = new (
+    ...arguments_: never[]
+  ) => Entity,
+> {
   order?: OrderSpec
   limit?: number
   skip?: number
@@ -46,11 +53,11 @@ export interface FindOptions<Entity = object> {
   withoutFilters?: string[]
   /**
   Per-relation eager load spec (NTS-560): request non-eager relationships
-  and decorate their read — `with: { orders: (relation) => relation.limit(2) }`.
-  With a spec the read goes through the projection path, so the standard
-  read filters apply — includeDeleted is not honoured with `with`.
+  and decorate their read — `with: { orders: { toys: true } }`. With a
+  spec the read goes through the projection path, so the standard read
+  filters apply — includeDeleted is not honoured with `with`.
   */
-  with?: QueryLoadLevel<Entity>
+  with?: QueryLoadSpec<C>
 }
 
 /**
@@ -73,18 +80,28 @@ const NUMERIC_PROPERTY_TYPES = new Set<PropertyType>([
 ])
 
 /**
-Active-record style data-access repository for one registered model — the
-TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
+Active-record style data-access repository for one registered model — constructor-generic over the model CONSTRUCTOR (NTS-563): the `with` load spec of find / findAll is map-checked against the model's `neodeRelationships` phantom static and the returns narrow, the same with() contract as the facade paths (NTS-154) — the TypeORM-parity surface, obtained via `neode.getRepository(Entity)` or the
 @EntityRepository custom subclass.
 
 Constructed with a registered entity class (@NodeEntity / defineModel);
 unregistered entities throw. All reads return hydrated entity instances.
 
+The second type parameter is the MODEL CONSTRUCTOR (NTS-563, closing the
+NTS-154 ceiling): `neode.getRepository(Person)` hands back
+`Repository<Person, typeof Person>`, so the `with` load spec of find /
+findAll checks its keys against the model's `neodeRelationships` phantom
+static (QueryLoadSpec) and the returns narrow to the hydrated shape —
+`findAll({}, { with: { pets: { toys: true } } })` resolves to
+`(Person & { pets: (Pet & { toys: Toy[] })[] })[]`. Annotated as plain
+`Repository<Person>` (the custom-repository default), the spec falls back
+to the declared object/array field keys — nested levels still type-check,
+without the map's property-key exclusion.
+
 shortcut: saveAll() saves entities one at a time, each in its own write
 transaction, so concurrent saves cannot conflict on single-transaction
 connections — batch UNWIND writes are BulkService's job.
 */
-export class Repository<Entity> {
+export class Repository<Entity, C extends Newable = new (...arguments_: never[]) => Entity> {
   /**
   Neo4j driver returns count() as an Integer instance, Relate as a number
   */
@@ -212,15 +229,50 @@ export class Repository<Entity> {
   Accepts string and number keys only — anything else throws TypeError.
   `options.withoutFilters` disables named read filters for this lookup
   (NTS-162).
+
+  Map-narrowed with spec (NTS-563): `options.with` is checked against the
+  model's type-level relationship map (the `neodeRelationships` phantom
+  static, falling back to the declared object/array field keys) and the
+  resolved entity carries every requested relationship —
+  `find(id, { with: { orders: { toys: true } } })` resolves to
+  `(Entity & { orders: (Order & { toys: Toy[] })[] }) | undefined`. The
+  same load-spec rendering runs as on the facade paths (one statement per
+  read).
   */
-  async find(id: unknown, options?: ReadOptions<Entity>): Promise<Entity | undefined> {
+  async find<const WithSpecT extends QueryLoadSpec<C>>(
+    id: unknown,
+    options: {
+      with: WithSpecT
+      database?: string | undefined
+      withoutFilters?: string[] | undefined
+    },
+  ): Promise<LoadedEntity<Entity, WithSpecT> | undefined>
+  async find(id: unknown, options?: ReadOptions<Entity>): Promise<Entity | undefined>
+  async find(
+    id: unknown,
+    options?: {
+      with?: object
+      database?: string | undefined
+      withoutFilters?: string[] | undefined
+    },
+  ): Promise<unknown> {
     if (typeof id !== 'string' && typeof id !== 'number') {
       throw new TypeError(`Repository.find expects a string or number id, received ${typeof id}`)
     }
 
-    return options === undefined
-      ? this.neode.find(this.entity, id, this.database)
-      : this.neode.find(this.entity, id, options)
+    if (options === undefined) {
+      return this.neode.find(this.entity, id, this.database)
+    }
+
+    // The spec rides the legacy ReadOptions overload of INeode — the
+    // map-narrowed INeode overloads are the 0002 breaking follow-up. The
+    // runtime renders nested spec objects identically (NTS-154), and the
+    // runtime validation is the checked edge for keys the compile-time
+    // tiers cannot exclude.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the narrowed overload above carries the precise spec type; INeode keeps the legacy ReadOptions shape (docs/decisions/0002-typing-eager-loads.md)
+    const readOptions = options as ReadOptions<Entity>
+
+    return this.neode.find(this.entity, id, readOptions)
   }
   /**
   The first entity matching the given properties (declared properties
@@ -236,12 +288,40 @@ export class Repository<Entity> {
   All entities matching the given properties (declared properties only —
   unknown keys are ignored), ordered/paged/limited by options.
 
+  Map-narrowed with spec (NTS-563): `options.with` is checked against the
+  model's type-level relationship map and the resolved entities carry
+  every requested relationship — `findAll({}, { with: { pets: { toys:
+  true } } })` resolves to `(Person & { pets: (Pet & { toys: Toy[] })[]
+  })[]`, nested spec levels and the level's order / skip / limit trims
+  riding the same statement as on the facade paths.
+
   Models declaring read-model decorators (@RelatedOne/@RelationshipCount/…)
   read through the projection-aware path (NTS-501): the facade's all()
   returns every projected value hydrated, matching neode.all() semantics.
   Plain models keep the local Builder path.
   */
-  async findAll(parameters: Partial<Entity> = {}, options: FindOptions = {}): Promise<Entity[]> {
+  async findAll<const WithSpecT extends QueryLoadSpec<C>>(
+    parameters: Partial<Entity>,
+    options: {
+      with: WithSpecT
+      order?: OrderSpec
+      limit?: number
+      skip?: number
+      withoutFilters?: string[] | undefined
+    },
+  ): Promise<LoadedEntity<Entity, WithSpecT>[]>
+  async findAll(parameters?: Partial<Entity>, options?: FindOptions<Entity, C>): Promise<Entity[]>
+  async findAll(
+    parameters: Partial<Entity> = {},
+    options: {
+      with?: object
+      order?: OrderSpec
+      limit?: number
+      skip?: number
+      includeDeleted?: boolean
+      withoutFilters?: string[] | undefined
+    } = {},
+  ): Promise<Entity[]> {
     const hasIncludeDeleted = options.includeDeleted === true
 
     const filters: ReadFilterOptions = {}
@@ -257,27 +337,32 @@ export class Repository<Entity> {
     const withSpec = options.with
 
     if (!hasIncludeDeleted && (withSpec !== undefined || hasProjectedProperties(this.schema))) {
-      // Split by with-presence: the narrowed facade overload requires the
-      // spec, the plain one rejects it (NTS-154)
-      return withSpec === undefined
-        ? this.neode.all<Entity>(
-            this.entity,
-            parameters,
-            options.order,
-            options.limit,
-            options.skip,
-            this.database,
-            { withoutFilters: options.withoutFilters },
-          )
-        : this.neode.all<Entity>(
-            this.entity,
-            parameters,
-            options.order,
-            options.limit,
-            options.skip,
-            this.database,
-            { with: withSpec, withoutFilters: options.withoutFilters },
-          )
+      if (withSpec === undefined) {
+        return this.neode.all<Entity>(
+          this.entity,
+          parameters,
+          options.order,
+          options.limit,
+          options.skip,
+          this.database,
+          { withoutFilters: options.withoutFilters },
+        )
+      }
+
+      // The spec rides the legacy INeode overload — the map-narrowed
+      // INeode overloads are the 0002 breaking follow-up. The runtime
+      // renders nested spec objects identically (NTS-154).
+      const legacySpec = withSpec as WithSpec<Entity>
+
+      return this.neode.all<Entity>(
+        this.entity,
+        parameters,
+        options.order,
+        options.limit,
+        options.skip,
+        this.database,
+        { with: legacySpec, withoutFilters: options.withoutFilters },
+      )
     }
 
     const builder = this.matchAll(parameters, filters)

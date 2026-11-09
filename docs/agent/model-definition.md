@@ -438,7 +438,7 @@ _source: decorators/node/required.decorator.ts_
 
 ### `resolveRepository` (function)
 
-Resolution point for repositories: the custom repository registered for the entity (constructed with the given neode and entity), or the default Repository
+Resolution point for repositories: the custom repository registered for the entity (constructed with the given neode and entity), or the default Repository. Generic over the model CONSTRUCTOR (NTS-563): the resolved repository keeps the constructor type, so the `with` load spec of find / findAll is map-checked and the returns narrow — a plain-annotated `Repository<Entity>` keeps the fallback-tier spec.
 
 _source: meta/repositories.ts_
 
