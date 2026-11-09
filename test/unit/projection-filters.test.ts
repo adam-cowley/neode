@@ -6,6 +6,7 @@ import {
   RelationshipCount,
 } from '../../src/decorators'
 import { QueryOutput, Runner } from '../../src/driver/types'
+import { Builder } from '../../src/query'
 import { getModel } from '../../src/meta'
 import { ProjectionService } from '../../src/projection/projection.service'
 
@@ -150,16 +151,20 @@ describe('projection nested filters / sort (NTS-145)', () => {
     )
   })
 
-  it('compiles a nested sort to ORDER BY on the traversal alias', async () => {
+  it('compiles a nested sort to a WITH-carried COLLECT { } subquery', async () => {
     const { query } = await compile({}, { course: 'title' })
 
-    const cypher = normalise(query)
+    // The sub body's clauses join with newlines — compare whitespace-free
+    const cypher = query.replace(/\s+/g, ' ')
 
-    // OPTIONAL MATCH: a sort binds the related node but never filters rows
+    // Doctrine shape (NTS-565): the traversal rides a COLLECT { } subquery
+    // carried by the WITH clause; the ORDER BY sorts on the collected
+    // list's head — no OPTIONAL MATCH, no row drops or multiplication
+    expect(cypher).not.toContain('OPTIONAL MATCH')
     expect(cypher).toContain(
-      'OPTIONAL MATCH (this)-[this_course_filter_rel:`IN_COURSE`]->(this_course_filter:ProjectionFilterCourse)',
+      'WITH this, COLLECT { WITH this MATCH (this)-[this_course_filter_rel:`IN_COURSE`]->(this_course_filter:ProjectionFilterCourse) RETURN this_course_filter.title ORDER BY this_course_filter.title } AS this_course_filter',
     )
-    expect(cypher).toContain('ORDER BY this_course_filter.title')
+    expect(cypher).toContain('ORDER BY this_course_filter[0]')
   })
 
   it('reuses the filter traversal for a nested sort on the same property', async () => {
@@ -167,9 +172,10 @@ describe('projection nested filters / sort (NTS-145)', () => {
 
     const cypher = normalise(query)
 
-    // One traversal (the filtering MATCH), no extra OPTIONAL MATCH
+    // One traversal (the filtering MATCH), no extra subquery for the sort
     expect(cypher.match(/this_course_filter_rel/g)).toHaveLength(1)
     expect(cypher).not.toContain('OPTIONAL MATCH')
+    expect(cypher).not.toContain('COLLECT {')
     expect(cypher).toContain('ORDER BY this_course_filter.title')
   })
 
@@ -181,5 +187,63 @@ describe('projection nested filters / sort (NTS-145)', () => {
     const { query } = await compile({}, { name: 'DESC' })
 
     expect(normalise(query)).toContain('ORDER BY this.name DESC')
+  })
+})
+
+describe('no OPTIONAL MATCH from library-emitted relation reads (NTS-565)', () => {
+  /**
+  The house Cypher doctrine: library-internal emitters never use
+  OPTIONAL MATCH for relation reads — pattern comprehensions for
+  unordered relations, COLLECT { } subqueries when the nested read
+  carries WHERE / ORDER BY. The Builder's optionalMatch() stays exported
+  for raw-Cypher callers; this guard keeps the library honest.
+  */
+  async function compileWith(
+    params: Record<string, unknown>,
+    order?: unknown,
+  ): Promise<CapturedQuery> {
+    const captured: CapturedQuery[] = []
+
+    await new ProjectionService(captureRunner(captured)).get(
+      ProjectionFilterModel,
+      getModel(ProjectionFilterModel),
+      params,
+      undefined,
+      undefined,
+      order as never,
+    )
+
+    expect(captured).toHaveLength(1)
+
+    return captured[0]
+  }
+
+  it('emits no OPTIONAL MATCH for an eager projection read', async () => {
+    const { query } = await compileWith({})
+
+    expect(normalise(query)).not.toContain('OPTIONAL MATCH')
+  })
+
+  it('emits no OPTIONAL MATCH with a nested filter and sort combined', async () => {
+    const { query } = await compileWith({ course: { slug: 'intro' } }, { fullCourse: 'title' })
+
+    const cypher = query.replace(/\s+/g, ' ')
+
+    expect(cypher).not.toContain('OPTIONAL MATCH')
+    // The sorted nested read (a different key than the filtered one) rides
+    // the WITH-carried COLLECT { } subquery
+    expect(cypher).toContain('WITH this, COLLECT { WITH this')
+    expect(cypher).toContain('ORDER BY this_fullCourse_filter[0]')
+  })
+
+  it('the Builder keeps optionalMatch() for raw-Cypher callers', () => {
+    const { query } = new Builder()
+      .match('n', ['Node'])
+      .optionalMatch('n')
+      .relationship('REL', 'out', 'r')
+      .to('m', ['Other'])
+      .build()
+
+    expect(query).toContain('OPTIONAL MATCH')
   })
 })

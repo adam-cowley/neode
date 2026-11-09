@@ -44,17 +44,12 @@ function filterAlias(key: string): string {
 }
 
 /**
-Bind the single-hop traversal for a nested filter / sort on a related
-property: `(this)-[:TYPE]->(alias:TargetLabels)`. An inner MATCH filters
-the read; an OPTIONAL MATCH only binds the alias so a nested sort never
-drops rows.
+Bind the single-hop traversal for a nested filter on a related property:
+`(this)-[:TYPE]->(alias:TargetLabels)`. An inner MATCH filters the read —
+a nested filter is the intent, so related-less rows drop (NTS-565: sorts
+never bind this way, they ride a COLLECT { } subquery instead).
 */
-function bindTraversal(
-  builder: Builder,
-  property: PropertySchema,
-  alias: string,
-  isOptional: boolean,
-): void {
+function bindTraversal(builder: Builder, property: PropertySchema, alias: string): void {
   const types = (property.getRelationshipType() ?? property.getKey())
     .split('|')
     .filter((part) => part.length > 0)
@@ -67,11 +62,7 @@ function bindTraversal(
 
   const labels = targetSchema instanceof EntitySchema ? targetSchema.getLabels() : false
 
-  if (isOptional) {
-    builder.optionalMatch(THIS_NODE)
-  } else {
-    builder.match(THIS_NODE)
-  }
+  builder.match(THIS_NODE)
 
   builder.relationship(types, direction, `${alias}_rel`).to(alias, labels)
 }
@@ -116,7 +107,7 @@ function applyFilters(
     // shortcut: a @RelatedOne with several matching relationships yields
     // duplicate rows (the projection takes [0], the filter MATCH does not
     // dedupe) — upgrade to an EXISTS { } wrap if singular graphs stop holding
-    bindTraversal(builder, property, alias, false)
+    bindTraversal(builder, property, alias)
 
     for (const [field, fieldValue] of Object.entries(value)) {
       builder.where(`${alias}.${field}`, fieldValue)
@@ -129,36 +120,74 @@ function applyFilters(
 }
 
 /**
-Ordering with nested sort support (NTS-145): a map key naming a
-@RelatedOne orders by the related node's property — `{ course: 'slug' }`
-ORDER BYs the traversal alias, bound with an OPTIONAL MATCH when no nested
-filter already bound it. Every other form behaves exactly like the plain
-applyOrder.
+One deferred sort key: the ORDER BY expression with its direction (when
+the caller gave one), and the traversal alias it reads when that alias
+must survive the WITH clause carrying the collected keys
 */
-function applyOrder(
+interface SortKey {
+  expression: string
+  order: string
+  alias?: string
+}
+
+/**
+The WITH-carried binding for one fresh nested sort key (NTS-565, the
+house Cypher doctrine): a per-row `COLLECT { MATCH … RETURN … ORDER BY … }`
+subquery over the traversal, collected into `sortAlias` — a missing
+relation yields [] → [0] → null, so no row is dropped or multiplied (the
+semantics the old OPTIONAL MATCH binding gave, without the row shaping);
+the inner ORDER BY keeps [0] deterministic when a singular graph carries
+several matching relationships
+*/
+function collectedSort(
+  builder: Builder,
+  property: PropertySchema,
+  sortAlias: string,
+  field: string,
+): string {
+  return `${builder.collectExpr(
+    (sub) => {
+      bindTraversal(sub, property, sortAlias)
+      sub.return(`${sortAlias}.${field}`)
+      sub.orderBy(`${sortAlias}.${field}`)
+
+      return sub
+    },
+    [THIS_NODE],
+  )} AS ${sortAlias}`
+}
+
+/**
+Collect every sort key of an order spec, in the order the caller listed
+them — deferred so a composite sort's fresh nested keys can share one
+WITH clause and one ORDER BY
+*/
+function collectOrder(
   builder: Builder,
   order: OrderSpec | undefined,
   schema: EntitySchema,
   bound: Map<string, string>,
+  keys: SortKey[],
+  bindings: string[],
 ): void {
   if (order === undefined || order === '') {
     return
   }
 
   if (typeof order === 'string') {
-    builder.orderBy(`${THIS_NODE}.${order}`)
+    keys.push({ expression: `${THIS_NODE}.${order}`, order: '' })
   } else if (Array.isArray(order)) {
     for (const entry of order) {
-      applyOrder(builder, entry, schema, bound)
+      collectOrder(builder, entry, schema, bound, keys, bindings)
     }
   } else if ('field' in order && typeof order.field === 'string') {
-    builder.orderBy({ field: `${THIS_NODE}.${order.field}`, order: order.order })
+    keys.push({ expression: `${THIS_NODE}.${order.field}`, order: order.order ?? '' })
   } else {
     for (const [key, field] of Object.entries(order as Record<string, string>)) {
       const property = schema.hasProperty(key) ? schema.getProperty(key) : undefined
 
       if (property === undefined || !isRelatedProjection(property)) {
-        builder.orderBy(`${THIS_NODE}.${key}`, field)
+        keys.push({ expression: `${THIS_NODE}.${key}`, order: field })
 
         continue
       }
@@ -172,19 +201,65 @@ function applyOrder(
       const alias = bound.get(key)
 
       if (alias !== undefined) {
-        builder.orderBy(`${alias}.${field}`)
+        keys.push({ expression: `${alias}.${field}`, order: '', alias })
 
         continue
       }
 
       const sortAlias = filterAlias(key)
 
-      bindTraversal(builder, property, sortAlias, true)
-      bound.set(key, sortAlias)
+      bindings.push(collectedSort(builder, property, sortAlias, field))
 
-      builder.orderBy(`${sortAlias}.${field}`)
+      keys.push({ expression: `${sortAlias}[0]`, order: '' })
     }
   }
+}
+
+/**
+Ordering with nested sort support (NTS-145): a map key naming a
+@RelatedOne orders by the related node's property — `{ course: 'slug' }`
+collects the traversal into a WITH-carried `COLLECT { … }` subquery and
+the composite ORDER BY sorts on `<alias>[0]` (NTS-565 — no OPTIONAL MATCH
+in library-emitted reads). A nested sort reuses the alias a nested filter
+on the same key already bound. Every other form behaves exactly like the
+plain applyOrder.
+*/
+function applyOrder(
+  builder: Builder,
+  order: OrderSpec | undefined,
+  schema: EntitySchema,
+  bound: Map<string, string>,
+): void {
+  const keys: SortKey[] = []
+  const bindings: string[] = []
+
+  collectOrder(builder, order, schema, bound, keys, bindings)
+
+  if (keys.length === 0) {
+    return
+  }
+
+  const descriptors = keys.map((key) => ({ field: key.expression, order: key.order }))
+
+  if (bindings.length === 0) {
+    builder.orderBy(descriptors)
+
+    return
+  }
+
+  // The WITH re-projects scope: carry every traversal alias a key reads
+  // (nested filters bind theirs on the main statement) alongside the
+  // collected sort keys
+  const aliases = new Set<string>()
+
+  for (const key of keys) {
+    if (key.alias !== undefined) {
+      aliases.add(key.alias)
+    }
+  }
+
+  builder.with(THIS_NODE, ...aliases, ...bindings)
+  builder.withOrder(descriptors)
 }
 
 /**
@@ -195,7 +270,8 @@ counts, exists, label predicates, expressions — in one query per read.
 
 NTS-145: object values on @RelatedOne / @RelatedMany filter keys traverse
 to the related node and filter on its properties (`{ course: { slug: 'x' } }`);
-a nested sort key (`{ course: 'slug' }`) ORDER BYs the bound traversal alias.
+a nested sort key (`{ course: 'slug' }`) ORDER BYs a COLLECT { } subquery
+over the traversal (NTS-565 — no OPTIONAL MATCH in library-emitted reads).
 */
 export class ProjectionService {
   private readonly runner: Runner

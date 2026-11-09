@@ -13,6 +13,7 @@ Package version: **1.0.0-next.1** (from package.json).
 - Every change needs tests: Cypher snapshot, type test, or integration test as appropriate.
 - Never hand-edit snapshots; regenerate them and review the diff.
 - Integration tests must clean up after themselves.
+- No `OPTIONAL MATCH` in library-emitted relation reads (NTS-565): pattern comprehensions for unordered nested relations, `COLLECT { MATCH … RETURN … ORDER BY … }` when the nested read filters / sorts / pages. `Builder.optionalMatch()` stays for raw-Cypher callers and delete-path binding.
 - Run `pnpm lint && pnpm typecheck && pnpm test` before every commit.
 - Add a changeset for any user-visible change.
 

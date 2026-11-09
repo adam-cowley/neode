@@ -52,6 +52,33 @@ describe('Builder subqueries (NTS: no hand-written Cypher in repositories)', () 
 
     expect(query).toContain('COUNT { WITH u MATCH (e:E) } AS total')
   })
+
+  it('composes COLLECT { … } as an expression for WITH-carried sort keys (NTS-565)', () => {
+    const builder = new Builder().match('u', ['User'])
+
+    builder.with(
+      'u',
+      `${builder.collectExpr(
+        (sub) => {
+          sub.match('u')
+          sub.relationship('REL', 'out', 'r').to('m', ['Other'])
+          sub.return('m.score')
+          sub.orderBy('m.score')
+
+          return sub
+        },
+        ['u'],
+      )} AS k`,
+    )
+    builder.withOrder({ field: 'k[0]', order: '' })
+
+    const { query } = builder.build()
+
+    // The sub body's clauses join with newlines — compare whitespace-free
+    expect(query.replace(/\s+/g, ' ')).toContain(
+      'WITH u, COLLECT { WITH u MATCH (u)-[r:`REL`]->(m:Other) RETURN m.score ORDER BY m.score } AS k ORDER BY k[0]',
+    )
+  })
 })
 
 describe('WHERE after raw segments (NTS-475)', () => {
