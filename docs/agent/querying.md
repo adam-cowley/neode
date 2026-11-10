@@ -409,6 +409,6 @@ _source: services/query/filters.ts_
 
 ### `WITHOUT_ALL_FILTERS` (const)
 
-The reserved withoutFilters entry that disables EVERY named filter for the query — the write paths' internal re-hydration (save / create / merge use FindByIdService to re-read the row they just wrote) must find rows the current filter view hides. Filters are a read policy; writes never read through them.
+The reserved withoutFilters entry that disables EVERY named filter for the query — the write paths' internal re-hydration (save / create / merge use FindByIdService to re-read the row they just wrote) must find rows the current filter view hides. Filters are a read policy; writes never read through them. Internal service call sites pass it directly to the query services; the public read option bags (facade, TransactionalService, Repository, load specs, traverse) reject it through assertPublicWithoutFilters (NTS-610) — without that gate one user-supplied string switches off tenancy AND soft delete on any read.
 
 _source: services/query/filters.ts_

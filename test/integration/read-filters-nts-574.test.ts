@@ -170,7 +170,9 @@ describe('read filters on formerly unfiltered read paths (NTS-574)', () => {
       }
 
       expect(Number(await count())).toBe(2)
-      expect(Number(await count(['*']))).toBe(4)
+      // NTS-610: '*' is no longer accepted on public reads — both filters
+      // are disabled by name instead
+      expect(Number(await count(['softDelete', 'tenant']))).toBe(4)
     })
   })
 
@@ -273,7 +275,11 @@ describe('read filters on formerly unfiltered read paths (NTS-574)', () => {
       ])
 
       expect(await owner.related('items').count()).toBe(2)
-      expect(await owner.related('items', { withoutFilters: ['*'] }).count()).toBe(4)
+      // NTS-610: '*' is no longer accepted on public reads — both filters
+      // are disabled by name instead
+      expect(
+        await owner.related('items', { withoutFilters: ['softDelete', 'tenant'] }).count(),
+      ).toBe(4)
     })
   })
 })

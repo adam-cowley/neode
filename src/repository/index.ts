@@ -29,7 +29,7 @@ import { hasProjectedProperties } from '../projection/index.js'
 import { projectionNode } from '../projection/projection.js'
 import {
   applyReadFilters,
-  WITHOUT_ALL_FILTERS,
+  assertPublicWithoutFilters,
   type ReadFilterOptions,
 } from '../services/query/filters.js'
 
@@ -355,6 +355,8 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       withoutFilters?: string[] | undefined
     } = {},
   ): Promise<Entity[]> {
+    assertPublicWithoutFilters(options.withoutFilters)
+
     const hasIncludeDeleted = options.includeDeleted === true
 
     const filters: ReadFilterOptions = {}
@@ -581,9 +583,19 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       return this.neode.delete(target, forwarded, this.database)
     }
 
-    // The lookup bypasses the read filters (WITHOUT_ALL_FILTERS): delete
-    // is a write — rows hidden by the current filter view stay deletable
-    const entity = await this.find(target, { withoutFilters: [WITHOUT_ALL_FILTERS] })
+    // The lookup bypasses the read filters directly (NTS-610: '*' is no
+    // longer accepted through the public find mappers): delete is a write —
+    // rows hidden by the current filter view stay deletable
+    const primaryKey = this.getPrimaryKey().getKey()
+    const id = isRecord(target) ? target[primaryKey] : target
+
+    const builder = new Builder().match(THIS_NODE, this.schema.getLabels(), { [primaryKey]: id })
+    builder.limit(1)
+    builder.return(THIS_NODE)
+
+    const output = await this.read(builder)
+
+    const [entity] = shapeNodeRows<Entity>(output.records, this.schema, this.entity, THIS_NODE)
 
     if (entity === undefined) {
       if (ifExists === true) {

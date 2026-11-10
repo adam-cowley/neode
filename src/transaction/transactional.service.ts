@@ -28,7 +28,7 @@ import {
   type SyncEdgesResult,
 } from '../services/query/sync.service.js'
 import { FindByIdService } from '../services/query/find-by-id.service.js'
-import { WITHOUT_ALL_FILTERS } from '../services/query/filters.js'
+import { assertPublicWithoutFilters, WITHOUT_ALL_FILTERS } from '../services/query/filters.js'
 import { FindService } from '../services/query/find.service.js'
 import { GetService, type OrderSpec } from '../services/query/get.service.js'
 import { MergeService, getMergeFields } from '../services/query/merge.service.js'
@@ -251,6 +251,8 @@ export class TransactionalService implements INeode {
     const options = typeof databaseOrOptions === 'object' ? databaseOrOptions : undefined
     const withSpec = options?.with
 
+    assertPublicWithoutFilters(options?.withoutFilters)
+
     // NTS-568: withoutFilters plumbs through with the facade's semantics —
     // each name disables only its own filter (per-name independence)
     const filters =
@@ -288,6 +290,10 @@ export class TransactionalService implements INeode {
     )
 
     const schema = this.getSchema(constructor)
+
+    assertPublicWithoutFilters(
+      typeof databaseOrOptions === 'object' ? databaseOrOptions.withoutFilters : undefined,
+    )
 
     const filters =
       typeof databaseOrOptions === 'object' && databaseOrOptions.withoutFilters !== undefined
@@ -684,6 +690,8 @@ export class TransactionalService implements INeode {
 
     const schema = this.getSchema(constructor)
 
+    assertPublicWithoutFilters(options?.withoutFilters)
+
     const withSpec = options?.with
 
     // NTS-568: withoutFilters plumbs through with the facade's semantics
@@ -720,6 +728,8 @@ export class TransactionalService implements INeode {
     limit?: number,
     filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]> {
+    assertPublicWithoutFilters(filters?.withoutFilters)
+
     return search<T>(this.handle, constructor, indexName, query, limit, filters)
   }
 
@@ -742,6 +752,8 @@ export class TransactionalService implements INeode {
     this.ignoreDatabaseOverride(database)
 
     const schema = this.getSchema(constructor)
+
+    assertPublicWithoutFilters(filters?.withoutFilters)
 
     return new WithinDistanceService(this.handle).withinDistance<T>(
       constructor,

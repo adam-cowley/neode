@@ -4,6 +4,7 @@ import { EntitySchema, EntityType } from './meta/entity/entity-schema.js'
 import { hydrateNode } from './utilities.js'
 import { isGraphNode } from './services/type-guards.js'
 import { Builder, type Direction } from './query/index.js'
+import { assertPublicWithoutFilters } from './services/query/filters.js'
 import type { GraphNode, QueryOutput } from './driver/types.js'
 import {
   assertAlias,
@@ -297,6 +298,8 @@ export class TraverseBuilder {
   every other read.
   */
   withoutFilters(...names: string[]): this {
+    assertPublicWithoutFilters(names)
+
     this.filterOptions = { ...this.filterOptions, withoutFilters: names }
 
     return this

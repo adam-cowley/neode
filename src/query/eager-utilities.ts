@@ -7,6 +7,7 @@ import { NeodeError } from '../errors/index.js'
 import { applyOrder, orderTerms, type OrderSpec } from './order-spec.js'
 import {
   applyReadFilters,
+  assertPublicWithoutFilters,
   readFilterClauses,
   type ReadFilterOptions,
 } from '../services/query/filters.js'
@@ -250,6 +251,9 @@ export function parseLoadLevel(schema: EntitySchema, value: unknown): ParsedLoad
       if (!Array.isArray(child) || child.some((name) => typeof name !== 'string')) {
         throw new NeodeError('The load spec "withoutFilters" must be an array of filter names')
       }
+
+      // NTS-610: '*' is the internal write-path escape, not a spec option
+      assertPublicWithoutFilters(child)
 
       level.withoutFilters = child
 

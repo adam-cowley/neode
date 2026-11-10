@@ -20,6 +20,7 @@ import { getModel } from '../meta/index.js'
 import { isRecord } from '../services/type-guards.js'
 import {
   applyReadFilters,
+  assertPublicWithoutFilters,
   readFilterFragment,
   type ReadFilterOptions,
 } from '../services/query/filters.js'
@@ -486,6 +487,8 @@ function relationQuery(): { view: RelationQuery; operations: RecordedRelationOpe
     // NTS-594 — the callback can disable named read filters for its
     // relation's read, scoped to this relation only
     withoutFilters: (names: string[]) => {
+      assertPublicWithoutFilters(names)
+
       operations.push({ kind: 'withoutFilters', arguments_: names })
 
       return view

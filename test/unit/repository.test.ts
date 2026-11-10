@@ -1,6 +1,5 @@
 import { vi } from 'vitest'
 import { Repository } from '../../src/repository'
-import { WITHOUT_ALL_FILTERS } from '../../src/services/query/filters'
 import { NeodeError } from '../../src/errors/neode-error'
 import type { INeode } from '../../src/neode.interface'
 import { GraphNode, QueryOutput, QueryRecord } from '../../src/driver/types'
@@ -356,20 +355,19 @@ describe('Repository', () => {
     })
 
     it('resolves a primary key value to the entity, then deletes it', async () => {
-      const { neode, mocks } = stubNeode()
-      const entity = Movie.build({ id: 'u1', title: 'Alien' })
-      mocks.find.mockResolvedValue(entity)
+      const { neode, mocks } = stubNeode({
+        records: [record(node({ id: 'u1', title: 'Alien' }))],
+      })
 
       const repo = new Repository<Movie>(neode, Movie)
 
       await repo.delete('u1')
 
-      // The delete lookup bypasses the read filters (NTS-162): a write
-      // may target rows the current filter view hides
-      expect(mocks.find).toHaveBeenCalledWith(Movie, 'u1', {
-        withoutFilters: [WITHOUT_ALL_FILTERS],
-      })
-      expect(mocks.delete.mock.calls[0][0]).toBe(entity)
+      // The delete lookup bypasses the read filters directly (a write
+      // may target rows the current filter view hides) — NTS-610: it no
+      // longer routes '*' through the public find mapper
+      expect(mocks.find).not.toHaveBeenCalled()
+      expect(mocks.delete.mock.calls[0][0]).toMatchObject({ id: 'u1', title: 'Alien' })
     })
 
     it('throws when no entity exists for the primary key value', async () => {
