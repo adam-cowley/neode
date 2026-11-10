@@ -43,7 +43,7 @@ _source: meta/schema-definition.interface.ts_
 
 ### `CreatedAt` (decorator)
 
-Stamp the property server-side with `datetime()` once on create (NTS-165): the database clock writes it, so clocks never drift across clients. Stack it with a type decorator (e.g. `@DateTime()`) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
+Stamp the property server-side with `datetime()` once on create (NTS-165): the database clock writes it, so clocks never drift across clients. `{ format: 'iso-string' }` stamps `toString(datetime())` instead — an ISO-8601 string that compares lexically against client-supplied timestamps (NTS-612). Stack it with a type decorator (e.g. `@String()` for the iso-string form, `@DateTime()` for the temporal) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
 
 _source: decorators/node/created-at.decorator.ts_
 
@@ -487,7 +487,7 @@ _source: decorators/node/unique.decorator.ts_
 
 ### `UpdatedAt` (decorator)
 
-Stamp the property server-side with `datetime()` on create and on every write (NTS-165): the database clock writes it, so clocks never drift across clients. Stack it with a type decorator (e.g. `@DateTime()`) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
+Stamp the property server-side with `datetime()` on create and on every write (NTS-165): the database clock writes it, so clocks never drift across clients. `{ format: 'iso-string' }` stamps `toString(datetime())` instead — an ISO-8601 string that compares lexically against client-supplied timestamps (NTS-612). Stack it with a type decorator (e.g. `@String()` for the iso-string form, `@DateTime()` for the temporal) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
 
 _source: decorators/node/updated-at.decorator.ts_
 

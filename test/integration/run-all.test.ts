@@ -1,7 +1,7 @@
 import { openBackend, TestBackend } from './support/backend'
 import { TransactionError } from '../../src/transaction/errors'
 
-describe('batch', () => {
+describe('runAll', () => {
   let backend: TestBackend
 
   beforeAll(async () => {
@@ -17,7 +17,7 @@ describe('batch', () => {
   })
 
   it('runs every statement in one transaction and returns one result per statement', async () => {
-    const results = await backend.neode.batch([
+    const results = await backend.neode.runAll([
       'CREATE (n:BatchItem { name: "a" }) RETURN n.name AS name',
       {
         query: 'CREATE (n:BatchItem { name: $name }) RETURN n.name AS name',
@@ -37,14 +37,14 @@ describe('batch', () => {
 
   it('rolls back every statement and throws a TransactionError when one fails', async () => {
     const error: TransactionError = await backend.neode
-      .batch([
+      .runAll([
         'CREATE (n:BatchFail { name: "first" })',
         'RETURN undefinedVariable',
         'CREATE (n:BatchFail { name: "third" })',
       ])
       .then(
         () => {
-          throw new Error('batch should have failed')
+          throw new Error('runAll should have failed')
         },
         (e) => e,
       )

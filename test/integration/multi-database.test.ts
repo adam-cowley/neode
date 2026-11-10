@@ -117,16 +117,16 @@ describe('multi-database wiring', () => {
     expect(recording.beginDatabases[1]).toBe('explicit-db')
   })
 
-  // Regression test for adam-cowley/neode#182: batch and the transaction()
-  // callback form used the wrong database
-  it('threads the configured database into batch() and transaction()', async () => {
+  // Regression test for adam-cowley/neode#182: runAll() (v3's batch) and the
+  // transaction() callback form used the wrong database
+  it('threads the configured database into runAll() and transaction()', async () => {
     const recording = new RecordingProvider(backend.connection)
     const neode = new Neode(recording)
 
-    // batch() honours the setDatabase default, then the per-call override
+    // runAll() honours the setDatabase default, then the per-call override
     neode.setDatabase('batch-db')
-    await neode.batch(['RETURN 1 AS one'])
-    await neode.batch(['RETURN 1 AS one'], 'override-db')
+    await neode.runAll(['RETURN 1 AS one'])
+    await neode.runAll(['RETURN 1 AS one'], 'override-db')
     expect(recording.beginDatabases[0]).toBe('batch-db')
     expect(recording.beginDatabases[1]).toBe('override-db')
 
@@ -206,9 +206,9 @@ describe('multi-database against the server', () => {
     }
   })
 
-  // Regression test for adam-cowley/neode#182: transaction() and batch()
+  // Regression test for adam-cowley/neode#182: transaction() and runAll()
   // used to write to the wrong database
-  it('runs transaction() and batch() in the setDatabase target', async (ctx) => {
+  it('runs transaction() and runAll() in the setDatabase target', async (ctx) => {
     if (!backend.capabilities.multiDatabase || !isEnterprise(backend.capabilities)) {
       ctx.skip() // CREATE DATABASE requires Enterprise
     }
@@ -223,8 +223,8 @@ describe('multi-database against the server', () => {
       const neode = new Neode(backend.connection)
       neode.setDatabase(name)
 
-      // batch() honours the configured database…
-      await neode.batch(['CREATE (n:MultiDbProbe { name: "batch" })'])
+      // runAll() honours the configured database…
+      await neode.runAll(['CREATE (n:MultiDbProbe { name: "batch" })'])
 
       // …transaction() too…
       await neode.inWriteTransaction(async (tx) => {
@@ -233,7 +233,7 @@ describe('multi-database against the server', () => {
       })
 
       // …and the per-call override wins over setDatabase
-      await neode.batch(['CREATE (n:MultiDbProbe { name: "override" })'], override)
+      await neode.runAll(['CREATE (n:MultiDbProbe { name: "override" })'], override)
 
       // Nothing landed on the default database
       const onDefault = await backend.connection.run('MATCH (n:MultiDbProbe) RETURN count(n) AS n')
