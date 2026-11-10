@@ -14,3 +14,6 @@ logs/
 .turbo/
 .husky/_
 .eslintcache
+
+# Throwaway PR bodies (gh pr create --body-file)
+/pr-body*.md
