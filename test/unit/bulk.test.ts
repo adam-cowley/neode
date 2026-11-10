@@ -17,6 +17,7 @@ import {
   prepareRows,
   processCreateRow,
   processMergeRow,
+  rowToProperties,
 } from '../../src/services/query/bulk.service'
 import { toCursorValue } from '../../src/services/query/paginate.service'
 import { PropertySchema, PropertyType } from '../../src/meta/property-schema'
@@ -303,6 +304,80 @@ describe('bulk helpers', () => {
       expect(toCursorValue('2026-01-02T03:04:05Z', datetime)).toBe('2026-01-02T03:04:05Z')
       expect(toCursorValue(undefined, datetime)).toBeUndefined()
       expect(toCursorValue(null, datetime)).toBeUndefined()
+    })
+  })
+
+  describe('rowToProperties (NTS-625)', () => {
+    it('maps a row through the create pipeline, converting values', async () => {
+      const result = await rowToProperties(getModel(BulkPerson), {
+        id: FIXED_UUID,
+        name: 'Adam',
+        age: '30',
+      })
+
+      expect(result.ok).toBe(true)
+
+      if (result.ok) {
+        expect(result.properties.id).toBe(FIXED_UUID)
+        expect(result.properties.name).toBe('Adam')
+        expect(result.properties.age).toBe(30)
+      }
+    })
+
+    it('resolves defaults and fakes for unset properties', async () => {
+      const result = await rowToProperties(getModel(BulkBadge), { slug: 'slug-manual' })
+
+      expect(result.ok).toBe(true)
+
+      if (result.ok) {
+        expect(result.properties.slug).toBe('slug-manual')
+        expect(result.properties.code).toMatch(/^code-\d+$/) // fake generator ran
+      }
+    })
+
+    it('applies the header rename map before the pipeline', async () => {
+      const result = await rowToProperties(
+        getModel(BulkPerson),
+        { uuid: FIXED_UUID, person_name: 'Adam', age: 30 },
+        { map: { uuid: 'id', person_name: 'name' } },
+      )
+
+      expect(result.ok).toBe(true)
+
+      if (result.ok) {
+        expect(result.properties.id).toBe(FIXED_UUID)
+        expect(result.properties.name).toBe('Adam')
+      }
+    })
+
+    it('collects every failing check as { ok: false } instead of throwing', async () => {
+      const result = await rowToProperties(getModel(BulkPerson), { id: 'not-a-uuid', name: 'A' })
+
+      expect(result.ok).toBe(false)
+
+      if (!result.ok) {
+        expect(result.errors.length).toBeGreaterThanOrEqual(2)
+
+        for (const detail of result.errors) {
+          expect(detail.message).toBeTruthy()
+          expect(detail.type).toBeTruthy()
+        }
+      }
+    })
+
+    it('reports nested relationship rows as a single error', async () => {
+      const result = await rowToProperties(getModel(BulkPost), {
+        id: FIXED_UUID,
+        title: 'T',
+        author: 1,
+      })
+
+      expect(result.ok).toBe(false)
+
+      if (!result.ok) {
+        expect(result.errors).toHaveLength(1)
+        expect(result.errors[0]?.message).toContain('nested relationship values')
+      }
     })
   })
 })

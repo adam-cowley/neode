@@ -73,6 +73,19 @@ class BulkPlace {
 }
 
 @NodeEntity()
+class BulkDated {
+  @InternalId()
+  _id: string
+
+  @Property({ type: 'string' })
+  name: string
+
+  // A typed merge key: file sources deliver it as a string (NTS-637)
+  @Property({ type: 'date', unique: true })
+  day: string
+}
+
+@NodeEntity()
 class BulkAccount {
   @InternalId()
   _id: string
@@ -912,5 +925,56 @@ describe('bulk mergeMany with @Version (NTS-528)', () => {
 
     expect(version + 0).toBe(1)
     expect(hits + 0).toBe(5)
+  })
+})
+
+// ---- NTS-637: merge match keys convert through the schema ----
+
+describe('bulk merge-key conversion (NTS-637)', () => {
+  let backend: TestBackend
+
+  beforeAll(async () => {
+    backend = await openBackend()
+  })
+
+  afterEach(async () => {
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  it('mergeMany matches a typed merge key given as string file data', async () => {
+    const service = new BulkService(backend.neode.getConnection())
+    const schema = getModel(BulkDated)
+
+    const first = await service.mergeMany(BulkDated, schema, [
+      { day: '2024-01-01', name: 'First' },
+      { day: '2024-01-02', name: 'Second' },
+    ])
+
+    expect(first[0]?.entities).toHaveLength(2)
+
+    // Re-running the same file: the string form must match the stored
+    // (converted) temporal value — without conversion the MERGE never
+    // matches and silently duplicates
+    const second = await service.mergeMany(BulkDated, schema, [
+      { day: '2024-01-01', name: 'First updated' },
+    ])
+
+    expect(second[0]?.entities).toHaveLength(1)
+
+    const stored = await backend.neode.readCypher(
+      'MATCH (d:BulkDated) RETURN d.name AS name, d.day AS day ORDER BY d.name',
+      {},
+    )
+
+    expect(stored.records).toHaveLength(2)
+    expect(stored.records.map((record) => record.get('name'))).toEqual(['First updated', 'Second'])
+
+    const day = stored.records[1]?.get('day') as { year?: number }
+
+    expect(day).toMatchObject({ year: 2024, month: 1, day: 2 })
   })
 })

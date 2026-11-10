@@ -21,6 +21,7 @@ import {
   versionProperty,
 } from '../write-utilities.js'
 import { validate } from '../../validation/index.js'
+import { ValidationError, type ValidationDetail } from '../../validation/validation-error.js'
 import { NeodeError } from '../../errors/index.js'
 import { quoteLabels } from '../../query/quote.js'
 import { QueryService } from './query.service.js'
@@ -203,7 +204,10 @@ export function processMergeRow(
     const key = property.getKey()
 
     if (Object.hasOwn(row, key) && row[key] !== undefined) {
-      match[key] = row[key]
+      // NTS-637: match keys go through the same conversion as set values —
+      // file sources (CSV/JSON) deliver strings, and a MERGE pattern value
+      // must equal the stored (converted) form to match at all
+      match[key] = convertPropertyValue(row[key], property)
     }
   }
 
@@ -481,6 +485,83 @@ export async function prepareRows(
   )
 
   return { rows: prepared, derivedSets }
+}
+
+/**
+The result of mapping one source row (a CSV / JSON / NDJSON record)
+through the model's write pipeline
+*/
+export type RowPropertiesResult =
+  | { ok: true; properties: Record<string, unknown> }
+  | { ok: false; errors: ValidationDetail[] }
+
+export interface RowToPropertiesOptions {
+  /**
+  Source-key -> property-key renames (e.g. CSV headers that do not match
+  the model's property names), applied before the pipeline runs
+  */
+  map?: Record<string, string>
+}
+
+/**
+Map one source row to the property map createMany() / mergeMany() take —
+the batch-import row pipeline, non-throwing. Renames apply first, then the
+single-create order (fake -> embeddings -> derived -> transforms, NTS-608/
+449/569), then conversion through the schema BEFORE validation: file
+sources deliver strings (every CSV cell is one), and a numeric string must
+not fail its type rule. Unset properties resolve defaults and fakes
+exactly like create().
+
+Returns `{ ok: false, errors }` instead of throwing — a ValidationError
+carries every failing check; a value its type cannot absorb (nested
+relationship values, `age: "x"`) becomes one synthetic detail. The
+`properties` of an ok result feed createMany()/mergeMany() directly:
+already-converted driver values pass through those pipelines unchanged.
+*/
+export async function rowToProperties(
+  schema: EntitySchema,
+  row: Record<string, unknown>,
+  options: RowToPropertiesOptions = {},
+): Promise<RowPropertiesResult> {
+  const map = options.map
+
+  const source =
+    map === undefined
+      ? row
+      : Object.fromEntries(Object.entries(row).map(([key, value]) => [map[key] ?? key, value]))
+
+  try {
+    const { rows } = await prepareRows([source], schema)
+
+    const prepared = rows[0] ?? {}
+
+    // Conversion is idempotent (driver values pass through), so the
+    // validate-and-reduce below re-converts as a no-op
+    for (const property of schema.getProperties()) {
+      const key = property.getKey()
+
+      if (Object.hasOwn(prepared, key)) {
+        prepared[key] = convertPropertyValue(prepared[key], property)
+      }
+    }
+
+    return { ok: true, properties: processCreateRow(prepared, schema) }
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return { ok: false, errors: error.details }
+    }
+
+    return {
+      ok: false,
+      errors: [
+        {
+          message: error instanceof Error ? error.message : String(error),
+          path: [],
+          type: 'NeodeError',
+        },
+      ],
+    }
+  }
 }
 
 /**

@@ -173,8 +173,13 @@ export type {
 export type { SchemaResult } from './services/schema/schema-objects.js'
 
 // Bulk writes + pagination (NTS-125/126)
-export { BulkService } from './services/query/bulk.service.js'
-export type { BulkChunk, BulkOptions } from './services/query/bulk.service.js'
+export { BulkService, rowToProperties } from './services/query/bulk.service.js'
+export type {
+  BulkChunk,
+  BulkOptions,
+  RowPropertiesResult,
+  RowToPropertiesOptions,
+} from './services/query/bulk.service.js'
 export { PaginateService } from './services/query/paginate.service.js'
 
 // Named global filters (NTS-162) — the parameterisation entry points the

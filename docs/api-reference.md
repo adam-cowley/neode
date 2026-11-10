@@ -1220,6 +1220,39 @@ await new PaginateService(neode.getConnection()).paginate(Person, schema, filter
 
 Both return `BulkChunk<T>` = `{ count, entities }` per chunk. Prefer the facade wrappers (`neode.createMany`, `neode.mergeMany`, `neode.paginate`) — they resolve the schema for you.
 
+### Batch import: files and streams into the bulk APIs
+
+Rows for the bulk APIs come from wherever the data lives. Parse at the edge with any reader (`csv-parse`, NDJSON lines, a paginated API pull) and feed batches as they arrive — `for await` gives backpressure, memory stays bounded by the batch size, and each batch commits its own transaction. Because `mergeMany()` MERGEs on the model's merge fields, re-running a file is idempotent: matched rows update instead of duplicating.
+
+```typescript
+const batch: Record<string, unknown>[] = []
+
+for await (const record of createReadStream('products.csv').pipe(parse({ columns: true }))) {
+  batch.push(record)
+
+  if (batch.length === 1000) {
+    await neode.mergeMany(Product, batch)
+    batch.length = 0
+  }
+}
+
+if (batch.length > 0) await neode.mergeMany(Product, batch)
+```
+
+Headers that do not match the model's property names go through the `map` rename of `neode.rowToProperties(Model, row, { map? })` — it maps ONE row through the write pipeline (renames, defaults, fakes, transforms, validation, type conversion) without throwing, so an import can report bad rows and keep writing good ones:
+
+```typescript
+const result = await neode.rowToProperties(Product, record, { map: { product_name: 'name' } })
+
+if (result.ok) {
+  batch.push(result.properties)
+} else {
+  rejected.push({ line, errors: result.errors }) // ValidationDetail[]: message / path / type per check
+}
+```
+
+Conversion runs before validation in `rowToProperties` (file sources deliver strings, and a numeric string must not fail its type rule); rows it maps feed `createMany()` / `mergeMany()` unchanged — already-converted driver values pass those pipelines through. A full runnable version lives in `examples/cookbook/bulk-import.ts`.
+
 ## Factories & seeding
 
 ```typescript
