@@ -14,7 +14,7 @@ the repo root), then see each folder's README.
 
 - **[`cookbook/`](./cookbook)** — one small self-contained script per
   capability (CRUD, relationships, eager loading and read models,
-  validation, schema sync, full-text + vector search, batch and
+  validation, schema sync, full-text + vector search, runAll and
   transactions, multi-database, server startup). They import `neode` the
   way your app would, run against a dev database, and are compile-checked
   by the repo's `tsc --noEmit` so they can't drift from the API.

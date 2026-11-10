@@ -357,7 +357,7 @@ describe('ambient transactions — integration', () => {
         // A nested facade call fails — its joined scope marks the
         // transaction rollback-only — and the callback swallows the error
         try {
-          await backend.neode.batch(['THIS IS NOT CYPHER'])
+          await backend.neode.runAll(['THIS IS NOT CYPHER'])
         } catch {
           // handled — the transaction still must not commit
         }

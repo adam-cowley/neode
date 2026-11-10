@@ -1,13 +1,15 @@
 /**
-Cookbook — batch() and explicit transactions.
+Cookbook — runAll() and explicit transactions.
 
-batch(): several statements in ONE transaction — every statement is
+runAll(): several statements in ONE transaction — every statement is
 attempted, and on any failure the whole batch rolls back with a
-TransactionError carrying the per-statement errors.
+TransactionError carrying the per-statement errors. (v3's batch(),
+renamed — the statements run sequentially; the one transaction is the
+point, not throughput.)
 inWriteTransaction(): a unit of work mixing raw Cypher and facade
 operations; any throw rolls everything back.
 
-Run:  npx tsx examples/cookbook/batch-and-transactions.ts
+Run:  npx tsx examples/cookbook/run-all-and-transactions.ts
 */
 import { NodeEntity, Property, fromEnv } from 'neode'
 
@@ -21,19 +23,19 @@ async function main(): Promise<void> {
   const neode = fromEnv()
 
   try {
-    // All-or-nothing batch: raw statements and parameterised ones together
-    const results = await neode.batch([
+    // All-or-nothing: raw statements and parameterised ones together
+    const results = await neode.runAll([
       'CREATE (:Tag {name: "alpha"})',
       { query: 'CREATE (:Tag {name: $name})', params: { name: 'beta' } },
     ])
-    console.log(`batch wrote ${results.length} statements`)
+    console.log(`runAll wrote ${results.length} statements`)
 
     // One bad statement rolls back the WHOLE batch — including the
     // statements that succeeded before it
     try {
-      await neode.batch(['CREATE (:Tag {name: "gamma"})', 'CREATE BAD SYNTAX'])
+      await neode.runAll(['CREATE (:Tag {name: "gamma"})', 'CREATE BAD SYNTAX'])
     } catch (error) {
-      console.error('batch rolled back:', error instanceof Error ? error.message : error)
+      console.error('runAll rolled back:', error instanceof Error ? error.message : error)
     }
 
     // Explicit transaction: several operations, one commit, rollback on throw.

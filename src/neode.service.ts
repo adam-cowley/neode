@@ -813,7 +813,7 @@ export class Neode implements INeode {
   touches ALS.
 
   Joining the ambient transaction: every model read/write
-  (find/get/all/save/create/merge/update/relate/detach/delete), batch(),
+  (find/get/all/save/create/merge/update/relate/detach/delete), runAll(),
   and the raw Cypher paths (cypher/readCypher/writeCypher and the
   read()/write() sugar), plus (NTS-576)
   search(), knn(), pagination (paginate/chunk/lazy), bulk
@@ -854,13 +854,15 @@ export class Neode implements INeode {
   }
 
   /**
-  Run a batch of statements within ONE transaction (neode's batch()):
-  begin, run every statement, then commit. On any failure the transaction
-  is rolled back and a TransactionError is thrown, carrying the
-  per-statement errors (aligned with the batch, null where a statement
-  succeeded), the partial results and the failed statements' details.
+  Run every statement of the batch within ONE transaction (v3's batch(),
+  renamed runAll() — NTS-624: the statements run sequentially, the ONE
+  transaction is the point, not throughput): begin, run every statement,
+  then commit. On any failure the transaction is rolled back and a
+  TransactionError is thrown, carrying the per-statement errors (aligned
+  with the batch, null where a statement succeeded), the partial results
+  and the failed statements' details.
   */
-  async batch(
+  async runAll(
     queries: (string | { query: string; params?: QueryParameters })[],
     database?: string,
   ): Promise<QueryOutput[]> {

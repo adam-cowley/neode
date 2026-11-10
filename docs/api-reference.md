@@ -570,9 +570,9 @@ neode.explain(query: string, params?: QueryParams, options?: { database? }): Pro
 // EXPLAIN — returns the plan, never executes.
 neode.profile(query: string, params?: QueryParams, options?: { database? }): Promise<unknown>
 // PROFILE — executes (routes WRITE) and returns the profiled plan.
-neode.batch(queries: Array<string | { query: string; params?: QueryParams }>, database?): Promise<QueryOutput[]>
 // All statements in ONE write transaction; every statement is attempted,
 // then rolled back on any failure (see Transactions).
+neode.runAll(queries: Array<string | { query: string; params?: QueryParams }>, database?): Promise<QueryOutput[]>
 ```
 
 `QueryOutput` is `{ records: QueryRecord[]; summary? }`; a `QueryRecord` offers `get(key)`, `has(key)`, `keys`.
@@ -730,9 +730,9 @@ await neode.inReadTransaction(async (tx) => {
 
 Lower-level handles (if you want to drive the connection port yourself): `readTransaction(database?)` / `writeTransaction(database?)` return a `TransactionHandle` — a `Runner` (`run(statement, params?)`) plus `commit()` / `rollback()`.
 
-### batch() and TransactionError
+### runAll() and TransactionError
 
-`neode.batch(queries, database?)` runs every statement in **one** write transaction. Every statement is attempted; on any failure the transaction rolls back and a `TransactionError` is thrown, carrying:
+`neode.runAll(queries, database?)` — v3's `batch()`, renamed (NTS-624) — runs every statement in **one** write transaction. Every statement is attempted; on any failure the transaction rolls back and a `TransactionError` is thrown, carrying:
 
 - `errors: (BatchStatementError | null)[]` — aligned with the input array, `null` where a statement succeeded,
 - `results: QueryOutput[]` — results produced before the failure,
@@ -1043,7 +1043,7 @@ Two scopes, one rule: **repositories take `INeode`** (the minimal interface — 
 
 - `models/` — decorators + validation, no logic
 - `repositories/` — queries on the `INeode` surface (reads, `Builder` + `readCypher`, simple writes)
-- `services/` — orchestration on the facade: `openWriteTransaction()`, `PaginateService(runner)`, `knn(runner, …)`, `batch()`
+- `services/` — orchestration on the facade: `openWriteTransaction()`, `PaginateService(runner)`, `knn(runner, …)`, `runAll()`
 - `api/` — a listen-free Hono app (`app.request()` in tests, no network)
 
 ## Instance methods

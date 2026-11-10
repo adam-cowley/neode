@@ -13,7 +13,7 @@ This guide covers everything that moved, plus what neode 1.0 gives you that neod
 - [The query builder](#the-query-builder)
 - [Collections → plain arrays](#collections--plain-arrays)
 - [Validation: Joi rules → Zod, same names](#validation-joi-rules--zod-same-names)
-- [batch() and TransactionError](#batch-and-transactionerror)
+- [runAll() and TransactionError](#runall-and-transactionerror)
 - [Cascade delete — and detach — now both work](#cascade-delete--and-detach--now-both-work)
 - [Repositories](#repositories)
 - [Schema sync: installSchema / dropSchema](#schema-sync-installschema--dropschema)
@@ -30,7 +30,7 @@ This guide covers everything that moved, plus what neode 1.0 gives you that neod
 5. **Replace session usage with transactions** — `session()` / `readSession()` / `writeSession()` / `transaction()` are gone; the OGM manages its own transactions. → [Sessions → transactions](#sessions--transactions)
 6. **Port `neode.query()` call sites** — the builder is now a standalone `Builder` class you build and run yourself. → [The query builder](#the-query-builder)
 7. **Expect plain arrays** instead of `Collection` from `all()` / `get()`. → [Collections → plain arrays](#collections--plain-arrays)
-8. **Review error handling** — validation rules keep their Joi names over Zod, and `batch()` reports every failed statement. → [Validation](#validation-joi-rules--zod-same-names), [batch() and TransactionError](#batch-and-transactionerror)
+8. **Review error handling** — validation rules keep their Joi names over Zod, and `runAll()` reports every failed statement. → [Validation](#validation-joi-rules--zod-same-names), [runAll() and TransactionError](#runall-and-transactionerror)
 9. **Review cascade deletes** — the schema-level `cascade: true` annotation cascades that relationship on every delete; `{ cascade: true }` on the delete call still takes everything. → [Cascade delete](#cascade-delete--and-detach--now-both-work)
 10. **Switch ids to elementId** — numeric internal node ids no longer exist on Neo4j 5+. → [IDs: internal ids → elementId](#ids-internal-ids--elementid)
 11. **Install constraints and indexes at boot** — `installSchema()` is new (0.4 never created them for you). → [Schema sync](#schema-sync-installschema--dropschema)
@@ -386,15 +386,15 @@ Differences from neode:
 - The `error` option (custom error builder) is not supported.
 - `duration` finally has real validation, and `point` checks SRIDs (4326/4979/7203/9157).
 
-## batch() and TransactionError
+## runAll() and TransactionError
 
-`batch()` keeps neode's contract — all statements in **one** transaction, rolled back on failure — with a more honest error:
+`runAll()` — neode's `batch()`, renamed (NTS-624): the statements run sequentially and the ONE transaction is the point, so the name no longer suggests a throughput feature — keeps neode's contract, all statements in **one** transaction, rolled back on failure, with a more honest error:
 
 ```typescript
 import { TransactionError } from 'neode'
 
 try {
-  const results = await neode.batch([
+  const results = await neode.runAll([
     'CREATE (n:Person { name: "Adam" })',
     { query: 'CREATE (n:Person { name: $name })', params: { name: 'Joe' } },
   ])

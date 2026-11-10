@@ -56,7 +56,7 @@ _source: meta/schema-definition.interface.ts_
 
 ### `CreatedAt` (decorator)
 
-Stamp the property server-side with `datetime()` once on create (NTS-165): the database clock writes it, so clocks never drift across clients. Stack it with a type decorator (e.g. `@DateTime()`) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
+Stamp the property server-side with `datetime()` once on create (NTS-165): the database clock writes it, so clocks never drift across clients. `{ format: 'iso-string' }` stamps `toString(datetime())` instead — an ISO-8601 string that compares lexically against client-supplied timestamps (NTS-612). Stack it with a type decorator (e.g. `@String()` for the iso-string form, `@DateTime()` for the temporal) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
 
 _source: decorators/node/created-at.decorator.ts_
 
@@ -500,7 +500,7 @@ _source: decorators/node/unique.decorator.ts_
 
 ### `UpdatedAt` (decorator)
 
-Stamp the property server-side with `datetime()` on create and on every write (NTS-165): the database clock writes it, so clocks never drift across clients. Stack it with a type decorator (e.g. `@DateTime()`) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
+Stamp the property server-side with `datetime()` on create and on every write (NTS-165): the database clock writes it, so clocks never drift across clients. `{ format: 'iso-string' }` stamps `toString(datetime())` instead — an ISO-8601 string that compares lexically against client-supplied timestamps (NTS-612). Stack it with a type decorator (e.g. `@String()` for the iso-string form, `@DateTime()` for the temporal) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
 
 _source: decorators/node/updated-at.decorator.ts_
 
@@ -574,7 +574,7 @@ _source: services/query/bulk.service.ts_
 
 ### `BulkService` (class)
 
-Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths. Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the earlier chunks committed — bulk writes are not atomic across chunks. Row preparation bounds its embedding-provider calls at MAX_PREPARE_CONCURRENCY in flight.
+Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths — `fake` generators included (NTS-608), each row's run independently: unique + `fake` properties are NOT guaranteed distinct across rows (see prepareRows). Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the earlier chunks committed — bulk writes are not atomic across chunks. Row preparation bounds its embedding-provider calls at MAX_PREPARE_CONCURRENCY in flight.
 
 _source: services/query/bulk.service.ts_
 
@@ -778,8 +778,6 @@ _source: projection/projection.service.ts_
 
 ### `Property` (class)
 
-A property in a SET clause: `property operator $param` or, inline in a pattern, `property: $param`. With `isRaw`, the value renders verbatim (an inline Cypher expression, NTS-460) instead of a parameter reference.
-
 _source: query/property.ts_
 
 ### `QueryExecutedEvent` (interface)
@@ -916,7 +914,7 @@ _source: transaction/transactional.service.ts_
 
 ### `TransactionError` (class)
 
-Thrown by Neode.batch() when any statement of the batch fails and the transaction is rolled back (port of neode's TransactionError): - `errors` — per-statement error aligned with the input batch, null where the statement succeeded - `results` — results of the statements that succeeded before the failure - `details` — the failed statements only ({ index, query, params, error })
+Thrown by Neode.runAll() (v3's batch(), NTS-624) when any statement of the batch fails and the transaction is rolled back (port of neode's TransactionError): - `errors` — per-statement error aligned with the input batch, null where the statement succeeded - `results` — results of the statements that succeeded before the failure - `details` — the failed statements only ({ index, query, params, error })
 
 _source: transaction/errors.ts_
 
@@ -1304,6 +1302,7 @@ so new fields (e.g. upcoming schema options) appear here automatically.
 | `alwaysSet` | `boolean` (optional) |  |
 | `createdAt` | `boolean` (optional) | Server-side timestamp (NTS-165): stamped with `datetime()` once on create — the map-API form of `@CreatedAt`. |
 | `updatedAt` | `boolean` (optional) | Server-side timestamp (NTS-165): stamped with `datetime()` on create and on every write — the map-API form of `@UpdatedAt`. |
+| `timestampFormat` | `TimestampFormat` (optional) | Stamp form for a server-side timestamp (NTS-612): 'iso-string' renders the stamp as `toString(datetime())` so the stored value compares lexically against client ISO strings; the default stores the temporal — the map-API form of the `@CreatedAt` / `@UpdatedAt` config option. |
 | `version` | `boolean` (optional) | Optimistic locking (NTS-158): the integer property every write keeps in sync — stamped 0 on create, incremented by 1 on every write addressed to the node, and checked with `WHERE n.version = $expected` when the instance carries the version it was hydrated with (a mismatch throws `OptimisticLockError`). The map-API form of `@Version`. |
 | `required` | `boolean` (optional) |  |
 | `hidden` | `boolean` (optional) |  |

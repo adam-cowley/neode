@@ -55,7 +55,7 @@ _source: services/query/bulk.service.ts_
 
 ### `BulkService` (class)
 
-Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths. Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the earlier chunks committed — bulk writes are not atomic across chunks. Row preparation bounds its embedding-provider calls at MAX_PREPARE_CONCURRENCY in flight.
+Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths — `fake` generators included (NTS-608), each row's run independently: unique + `fake` properties are NOT guaranteed distinct across rows (see prepareRows). Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the earlier chunks committed — bulk writes are not atomic across chunks. Row preparation bounds its embedding-provider calls at MAX_PREPARE_CONCURRENCY in flight.
 
 _source: services/query/bulk.service.ts_
 
@@ -259,8 +259,6 @@ _source: projection/projection.service.ts_
 
 ### `Property` (class)
 
-A property in a SET clause: `property operator $param` or, inline in a pattern, `property: $param`. With `isRaw`, the value renders verbatim (an inline Cypher expression, NTS-460) instead of a parameter reference.
-
 _source: query/property.ts_
 
 ### `QueryExecutedEvent` (interface)
@@ -397,7 +395,7 @@ _source: transaction/transactional.service.ts_
 
 ### `TransactionError` (class)
 
-Thrown by Neode.batch() when any statement of the batch fails and the transaction is rolled back (port of neode's TransactionError): - `errors` — per-statement error aligned with the input batch, null where the statement succeeded - `results` — results of the statements that succeeded before the failure - `details` — the failed statements only ({ index, query, params, error })
+Thrown by Neode.runAll() (v3's batch(), NTS-624) when any statement of the batch fails and the transaction is rolled back (port of neode's TransactionError): - `errors` — per-statement error aligned with the input batch, null where the statement succeeded - `results` — results of the statements that succeeded before the failure - `details` — the failed statements only ({ index, query, params, error })
 
 _source: transaction/errors.ts_
 
