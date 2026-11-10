@@ -136,22 +136,33 @@ export class Builder {
   }
 
   /**
-  Generate a unique parameter name and add the value to the params object
+  Generate a unique parameter name for `value` under `base`, sanitised to
+  identifier characters (NTS-609). Uniqueness is checked against used
+  names with `Object.hasOwn` — never against values, so a slot holding
+  `undefined` still counts as taken and a later binding cannot silently
+  reuse it.
   */
-  private addParameter(key: string, value: unknown): string {
+  private addParameterNamed(base: string, value: unknown): string {
     let attempt = 1
-    const base = `where_${key.replaceAll(/[^a-z0-9]+/gi, '_')}`
+    const sanitised = base.replaceAll(/[^a-z0-9]+/gi, '_')
 
-    let variable = base
+    let variable = sanitised
 
-    while (this.params[variable] !== undefined) {
+    while (Object.hasOwn(this.params, variable)) {
       attempt++
-      variable = `${base}_${String(attempt)}`
+      variable = `${sanitised}_${String(attempt)}`
     }
 
     this.params[variable] = value
 
     return variable
+  }
+
+  /**
+  Generate a unique parameter name and add the value to the params object
+  */
+  private addParameter(key: string, value: unknown): string {
+    return this.addParameterNamed(`where_${key}`, value)
   }
 
   /**
@@ -235,9 +246,11 @@ export class Builder {
         return new Property(key, value.toString(), '=', true)
       }
 
-      const propertyAlias = `${String(alias)}_${key}`
-
-      this.params[propertyAlias] = value
+      // NTS-609 — pattern parameters go through the same sanitise and
+      // collide loop as where parameters: two segments sharing an alias
+      // and key (or a key with non-identifier characters) each get their
+      // own sanitised, unique name instead of silently overwriting
+      const propertyAlias = this.addParameterNamed(`${String(alias)}_${key}`, value)
 
       return new Property(key, propertyAlias)
     })
