@@ -1,19 +1,14 @@
 name: Release
 
-# Manual only — nothing runs on push, tag or pull request. Trigger it from
-# the Actions tab on main. The job is bound to the `release` environment so
-# repository settings can require approval / restrict branches.
-#
-# npm publishing is intentionally OFF (user policy: nothing on npm yet; see
-# #254): without `publish-script` changesets/action only opens or updates the
-# "Version Packages" PR and creates GitHub releases. To go live, add
-# `publish-script: pnpm release` below and configure npm trusted publishing
-# for this workflow + environment.
+# Runs only when a v* tag is pushed — nothing releases on branch pushes or
+# PRs. Version bumps come from the changesets "Version Packages" PR (or
+# `pnpm changeset version` locally); push the matching tag to release it.
 on:
-  workflow_dispatch:
+  push:
+    tags: ["v*"]
 
-# Nothing by default; the job grants itself what it needs
-permissions: {}
+permissions:
+  contents: write
 
 concurrency:
   group: release
@@ -21,14 +16,7 @@ concurrency:
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: release
-    permissions:
-      contents: write
-      pull-requests: write
-      # Only used by npm trusted publishing (OIDC) once publishing is enabled
-      id-token: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -37,31 +25,15 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
-
-      # Trusted publishing needs npm >= 11.5.1; Node 22 ships npm 10
-      - name: Upgrade npm
-        run: npm install --global npm@^11.5.1
 
       - run: pnpm install --frozen-lockfile
 
-      # Dispatch has no `needs:` on the CI workflow, so gate here
+      # A tag can point at any local commit, so gate like CI before releasing
       - run: pnpm lint
-
       - run: pnpm typecheck
-
       - run: pnpm test:unit
 
-      - name: Version PR / GitHub releases (changesets)
-        # v2.1.2 minimum: v1's reader cannot parse the v3 .changeset/pre/
-        # layout (ENOENT .changeset/pre/changes.md after a Version PR merges)
-        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
-        with:
-          # v2.1.2 renamed its inputs: version -> version-script, publish -> publish-script
-          version-script: pnpm changeset version
-          # npm publishing intentionally disabled — re-add
-          # `publish-script: pnpm release` to go live
-          create-github-releases: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub release
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
