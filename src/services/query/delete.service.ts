@@ -9,6 +9,12 @@ import type { RelationshipPropertySchema } from '../../meta/relationship-propert
 import { QueryService } from './query.service.js'
 import { isRecord } from '../type-guards.js'
 import { NeodeError } from '../../errors/neode-error.js'
+import {
+  SERVER_TIMESTAMP,
+  timestampProperty,
+  versionBump,
+  versionProperty,
+} from '../write-utilities.js'
 
 /**
 Maximum depth of the self-referential cascade walk — the delete-path
@@ -178,6 +184,25 @@ export class DeleteService extends QueryService {
       builder
         .set(`${THIS_NODE}:${quote(soft.label)}`, undefined)
         .setExpr(`${THIS_NODE}.\`deletedAt\``, 'datetime()')
+
+      // NTS-604: a soft delete is a write like every other — stamp
+      // updatedAt and bump the version, so a guarded update hydrated
+      // before it no longer matches. The label gate above keeps a repeat
+      // soft delete a no-op (NTS-595): zero rows match, nothing re-stamped.
+      const updatedAt = timestampProperty(schema, 'updatedAt')
+
+      if (updatedAt !== undefined) {
+        builder.setExpr(`${THIS_NODE}.${updatedAt.getKey()}`, SERVER_TIMESTAMP)
+      }
+
+      const version = versionProperty(schema)
+
+      if (version !== undefined) {
+        builder.setExpr(
+          `${THIS_NODE}.${version.getKey()}`,
+          versionBump(THIS_NODE, version.getKey()),
+        )
+      }
 
       const { query, params } = builder.build()
 
