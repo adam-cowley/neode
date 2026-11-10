@@ -266,7 +266,13 @@ describe("@CreatedAt / @UpdatedAt { format: 'iso-string' } (NTS-612)", () => {
 
     expect(typeof found?.updatedAt).toBe('string')
     expect(new Date(found?.updatedAt ?? '').getTime()).not.toBeNaN()
-    // Monotonic against the create stamp: lexical comparison stays meaningful
-    expect(found?.updatedAt >= createdAt).toBe(true)
+    // Re-stamped at-or-after the create stamp. The server clock writes both
+    // stamps and only guarantees they do not go backwards: same-resolution
+    // writes give equal stamps, and toString(datetime()) renders fractional
+    // seconds at variable width, so neither strict order nor lexical string
+    // order is a safe assertion — compare parsed times
+    expect(new Date(found?.updatedAt ?? '').getTime()).toBeGreaterThanOrEqual(
+      new Date(createdAt).getTime(),
+    )
   })
 })
