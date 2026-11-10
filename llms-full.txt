@@ -558,7 +558,7 @@ _source: query/bound-builder.ts_
 
 ### `Builder` (class)
 
-Fluent Cypher query builder. A statement-based builder: every `match()` / `create()` / `merge()` call starts a new statement segment; where clauses accumulate against the current segment and are flushed into it when the next segment starts or when `build()` is called. All user values are passed as query parameters - the generated query contains only aliases. The one exception is `RawExpression` property values (NTS-460), which render verbatim into patterns; bind the values they reference via `param(name, value)`.
+Fluent Cypher query builder. A statement-based builder: every `match()` / `create()` / `merge()` call starts a new statement segment; where clauses accumulate against the current segment and are flushed into it when the next segment starts or when `build()` is called. All user values are passed as query parameters - the generated query contains only aliases. The one exception is `RawExpression` property values (NTS-460), which render verbatim into patterns; bind the values they reference via `param(name, value)`. Named read filters compose into the chain with `withFilters(model, alias?, options?)` (NTS-614).
 
 _source: query/builder.ts_
 
@@ -811,6 +811,18 @@ _source: driver/types.ts_
 A raw Cypher expression used as an inline pattern property value (NTS-460): rendered verbatim into the pattern — `{ prop: <expression> }` — instead of being bound as a parameter. Variable references (`row.answers`), server-side calls (`datetime()`) and parameter references (`$name`, bound via `Builder#param`) are all legal; the expression must never interpolate data.
 
 _source: query/expressions.ts_
+
+### `readFilterFragment` (function)
+
+The raw WHERE fragment for the read paths that write their statements by hand (keyset pagination, full-text search, kNN): the active clauses joined with AND, plus the parameters to merge into the statement's parameters.
+
+_source: services/query/filters.ts_
+
+### `ReadFilterOptions` (interface)
+
+Per-query filter options, accepted by every filtered read (NTS-162): - `withoutFilters` — disable named filters for this query only; each name is independent (disabling one leaves the others active, EF named-filter model). `softDelete` names the built-in
+
+_source: services/query/filters.ts_
 
 ### `RelateConnectionProvider` (class)
 

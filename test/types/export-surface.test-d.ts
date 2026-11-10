@@ -48,6 +48,7 @@ import type {
   QueryParams,
   QueryRecord,
   QuerySummary,
+  ReadFilterOptions,
   RelatedConfig,
   RelatedManyDefinition,
   RelatedOneDefinition,
@@ -200,6 +201,7 @@ describe('public export surface (NTS-600)', () => {
       | 'ontology'
       | 'ontologyMarkdown'
       | 'projectionNode'
+      | 'readFilterFragment'
       | 'registerRepository'
       | 'requireRelateClient'
       | 'resolveRepository'
@@ -273,6 +275,7 @@ describe('public export surface (NTS-600)', () => {
         QueryParams,
         QueryRecord,
         QuerySummary,
+        ReadFilterOptions,
         RelatedConfig,
         RelatedManyDefinition,
         RelatedOneDefinition,

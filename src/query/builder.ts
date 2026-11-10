@@ -15,8 +15,12 @@ import { WhereRaw } from './where-raw.js'
 import { WhereStatement } from './where-statement.js'
 import { WithDistinctStatement } from './with-distinct-statement.js'
 import { WithStatement } from './with-statement.js'
+import { THIS_NODE } from '../constants.js'
 import type { AccessMode, QueryOutput, Runner } from '../driver/types.js'
+import { getModel } from '../meta/index.js'
 import type { EntitySchema } from '../meta/entity/entity-schema.js'
+import type { Newable } from '../meta/newable.js'
+import { applyReadFilters, type ReadFilterOptions } from '../services/query/filters.js'
 import { isRecord } from '../services/type-guards.js'
 import {
   ConstraintAction,
@@ -85,7 +89,8 @@ when `build()` is called.
 All user values are passed as query parameters - the generated query
 contains only aliases. The one exception is `RawExpression` property
 values (NTS-460), which render verbatim into patterns; bind the values
-they reference via `param(name, value)`.
+they reference via `param(name, value)`. Named read filters compose into
+the chain with `withFilters(model, alias?, options?)` (NTS-614).
 */
 export class Builder {
   private readonly params: BuilderParameters = {}
@@ -1391,6 +1396,29 @@ export class Builder {
     return criteria.elementId === undefined || criteria.elementId === ''
       ? this.to(alias, schema.getLabels(), { [criteria.key]: criteria.value })
       : this.to(alias).whereId(alias, criteria.elementId)
+  }
+
+  /**
+  Compose a registered model's named read filters into the current where
+  segment (NTS-614) — the same fragments every standard read applies, for
+  Builder chains over hand-written statements. The filter `where`'s `node`
+  convention is rewritten to `alias` (default `this`, the read-root alias
+  `hydrate` expects) and each filter's param merges into the statement's
+  parameters. Disable per name with `options.withoutFilters`.
+  */
+  withFilters(model: Newable, alias: string = THIS_NODE, options: ReadFilterOptions = {}): this {
+    const modelConstructor: unknown = model
+    const schema = getModel(modelConstructor)
+
+    if (schema === undefined) {
+      throw new NeodeError(
+        `Couldn't find a model for "${model.name}". Register it with @NodeEntity or defineModel() first — withFilters() reads the filters declared on the model.`,
+      )
+    }
+
+    applyReadFilters(this, schema, options, alias)
+
+    return this
   }
 
   /**
