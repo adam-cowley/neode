@@ -1,5 +1,6 @@
 import type { EntitySchema } from '../meta/entity/entity-schema.js'
 import { PropertyType } from '../meta/property-schema.js'
+import { RawExpression } from '../query/expressions.js'
 import { buildPropertySchema } from './rule-table.js'
 import { ValidationError, type ValidationDetail } from './validation-error.js'
 
@@ -38,6 +39,13 @@ export function validate(properties: Record<string, unknown>, schema: EntitySche
 
     const key = property.getKey()
     const value = Object.hasOwn(properties, key) ? properties[key] : undefined
+
+    // NTS-629: a raw Cypher expression is evaluated by the database — the
+    // JavaScript value is unknown at write time, so the value is not
+    // validated (the stored value is checked on the next read)
+    if (value instanceof RawExpression) {
+      continue
+    }
 
     // Joi's default `empty` value: '' is treated as unset
     const effective = value === '' ? undefined : value

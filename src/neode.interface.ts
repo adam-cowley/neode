@@ -1,5 +1,6 @@
 import type {
   CypherOptions,
+  GraphRelationship,
   HydrateQueryOptions,
   QueryOutput,
   QueryParams as QueryParameters,
@@ -9,6 +10,8 @@ import type { DeleteOptions } from './services/query/delete.service.js'
 import type { OrderSpec } from './services/query/get.service.js'
 import type { Builder } from './query/index.js'
 import type { ScoredEntity } from './services/query/search.service.js'
+import type { MergeResult } from './services/query/merge.service.js'
+import type { ReplaceRelationshipOptions } from './services/query/replace-relationship.service.js'
 
 /**
 The public API surface of the Neode facade, as implemented by both the
@@ -40,6 +43,33 @@ export interface INeode {
   save<T>(entity: T, database?: string): Promise<T>
   delete(entity: object, options?: DeleteOptions | string, database?: string): Promise<void>
   /**
+  Replace every edge of ONE declared relationship on a node in one
+  statement (NTS-634): deletes the relationship's existing edges and
+  creates the new set — entity instances or primary-key values — with
+  `properties` applied to every created edge. `options.merge` MERGEs the
+  new edges instead of CREATEing them. BOTH-direction declarations are
+  rejected (match-only, NTS-483).
+  */
+  replaceRelationship(
+    entity: object,
+    key: string,
+    targets: unknown[],
+    properties?: Record<string, unknown>,
+    options?: ReplaceRelationshipOptions,
+  ): Promise<void>
+  /**
+  Set the properties of ONE declared relationship's edge (NTS-628): MERGEs
+  the edge (never duplicating it) and SETs the properties — idempotent per
+  re-run. Validates against the relationship's declared `properties`
+  schema when one is declared.
+  */
+  updateEdgeProperties(
+    entity: object,
+    key: string,
+    target: object,
+    properties?: Record<string, unknown>,
+  ): Promise<GraphRelationship | undefined>
+  /**
   All nodes of the given constructor, optionally filtered/ordered/paged —
   the projection-aware read: models declaring read-model decorators
   (@RelatedOne/@RelationshipCount/…) come back hydrated with their
@@ -57,14 +87,27 @@ export interface INeode {
   /**
   MERGE a node of the given constructor on its merge fields (the unique
   and indexed properties present in `properties` form the match,
-  everything else is set) and return the hydrated entity — the seam
-  Repository#upsert builds on
+  everything else is set) and return the hydrated entity with the write
+  outcome (NTS-630) — the seam Repository#upsert builds on
   */
   merge<T>(
     constructor: new (...arguments_: never[]) => T,
     properties: Record<string, unknown>,
     database?: string,
-  ): Promise<T | undefined>
+  ): Promise<MergeResult<T> | undefined>
+  /**
+  MERGE a node on the given match properties, then set the given
+  properties (NTS-630): resolves to the hydrated entity with the write
+  outcome — `created` when the MERGE created the node, `updated` when it
+  matched and wrote, both false on a no-op — plus the aggregated
+  counters and the raw driver summary
+  */
+  mergeOn<T>(
+    constructor: new (...arguments_: never[]) => T,
+    match: Record<string, unknown>,
+    set: Record<string, unknown>,
+    database?: string,
+  ): Promise<MergeResult<T> | undefined>
   readCypher(query: string, parameters: QueryParameters, database?: string): Promise<QueryOutput>
   writeCypher(query: string, parameters: QueryParameters, database?: string): Promise<QueryOutput>
   /**

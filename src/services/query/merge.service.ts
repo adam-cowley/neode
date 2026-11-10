@@ -1,6 +1,6 @@
-import { Builder } from '../../query/index.js'
+import { Builder, RawExpression } from '../../query/index.js'
 import { INTERNAL_ID, THIS_NODE } from '../../constants.js'
-import type { QueryOutput } from '../../driver/types.js'
+import type { QueryOutput, QuerySummary } from '../../driver/types.js'
 import { getModel } from '../../meta/index.js'
 import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { EntityType } from '../../meta/entity/entity-schema.js'
@@ -21,6 +21,7 @@ import {
   assertCardinality,
   assertWritableDirection,
   modelPropertyValues,
+  setPropertyExpression,
   setRelationshipEntityProperties,
   timestampProperty,
   versionProperty,
@@ -30,6 +31,7 @@ import { quote } from '../../query/quote.js'
 import { validate } from '../../validation/index.js'
 import { NeodeError, OptimisticLockError } from '../../errors/index.js'
 import { QueryService } from './query.service.js'
+import { assertPkTarget } from '../relationship-values.js'
 import { isRecord } from '../type-guards.js'
 
 /**
@@ -227,6 +229,44 @@ export class MergeService extends QueryService {
   }
 
   /**
+  Relate an EXISTING node by primary-key value (NTS-627): the save-path
+  counterpart of the create path's root-statement targets — MERGE keeps
+  the round-trip idempotent (the edge never duplicates). Zero matched rows
+  (unknown primary key) fails loudly naming the key and value.
+  */
+  private async relateExisting(
+    fromId: string,
+    relationship: RelationshipPropertySchema,
+    targetSchema: EntitySchema,
+    value: unknown,
+  ): Promise<void> {
+    const primaryKey = assertPkTarget(relationship, targetSchema, value)
+
+    const builder = new Builder()
+
+    builder.match('from').whereId('from', fromId)
+    builder.match('to', targetSchema.getLabels(), { [primaryKey.getKey()]: value })
+
+    builder
+      .merge('from')
+      .relationship(relationship.getType(), relationship.getDirection(), 'rel')
+      .to('to')
+
+    builder.return('to')
+
+    const { query, params } = builder.build()
+
+    const result = await this.runner.run(query, params)
+
+    if (result.records.length === 0) {
+      throw new NeodeError(
+        `Cannot relate "${relationship.getKey()}": no ${targetSchema.getLabels().join(':')} node ` +
+          `matched { ${primaryKey.getKey()}: ${String(value)} } — check the value exists`,
+      )
+    }
+  }
+
+  /**
   MERGE a node on the given match properties, then set the given properties
   */
   async mergeOn(
@@ -294,7 +334,10 @@ export class MergeService extends QueryService {
 
       const value = getValueOrDefault(set, property, schema)
 
-      if (value !== undefined) {
+      // NTS-629: expression values render verbatim as SET clauses
+      if (value instanceof RawExpression) {
+        setPropertyExpression(builder, THIS_NODE, property, value)
+      } else if (value !== undefined) {
         setPropertyInBuilder(builder, THIS_NODE, property, value)
       }
     }
@@ -340,7 +383,12 @@ export class MergeService extends QueryService {
     schema: EntitySchema,
     dirtyKeys?: ReadonlySet<string>,
     options: MergeSaveOptions = {},
-  ): Promise<{ elementId: string; created: boolean }> {
+  ): Promise<{
+    elementId: string
+    created: boolean
+    summary: QuerySummary | undefined
+    output: QueryOutput
+  }> {
     if (!isRecord(model)) {
       throw new TypeError('save requires a model object')
     }
@@ -415,9 +463,9 @@ export class MergeService extends QueryService {
 
       validate(modelPropertyValues(model, schema), schema)
 
-      const elementId = await createNodeAndRelationships(this.runner, schema, model)
+      const { elementId, output } = await createNodeAndRelationships(this.runner, schema, model)
 
-      return { elementId, created: true }
+      return { elementId, created: true, summary: undefined, output }
     }
 
     builder.merge(THIS_NODE, schema.getLabels(), mergeOn)
@@ -444,8 +492,11 @@ export class MergeService extends QueryService {
 
       const value = getValueOrDefault(model, property, schema)
 
-      // If property is not set then ignore it
-      if (value !== undefined) {
+      // If property is not set then ignore it. NTS-629: expression values
+      // render verbatim as SET clauses
+      if (value instanceof RawExpression) {
+        setPropertyExpression(builder, THIS_NODE, property, value)
+      } else if (value !== undefined) {
         setPropertyInBuilder(builder, THIS_NODE, property, value)
       }
     }
@@ -503,7 +554,7 @@ export class MergeService extends QueryService {
     // (NTS-157) never walk the graph: relationship writes belong to the
     // explicit relate()/detach() paths.
     if (dirtyKeys !== undefined) {
-      return { elementId: thisId, created: wasCreated }
+      return { elementId: thisId, created: wasCreated, summary: result.summary, output: result }
     }
 
     await Promise.all(
@@ -578,8 +629,12 @@ export class MergeService extends QueryService {
 
         return Promise.all(
           values.map(async (element) => {
+            // NTS-627: a primary-key value relates an EXISTING node in one
+            // MERGE statement — entity instances keep the nested save walk
             if (!isRecord(element)) {
-              throw new TypeError(`The value of relationship "${key}" must be an object to save`)
+              await this.relateExisting(thisId, relationship, targetSchema, element)
+
+              return
             }
 
             // Save Node — a nested relationship-target write: the target's
@@ -596,6 +651,95 @@ export class MergeService extends QueryService {
       }),
     )
 
-    return { elementId: thisId, created: wasCreated }
+    return { elementId: thisId, created: wasCreated, summary: result.summary, output: result }
+  }
+}
+
+/**
+Aggregated write counters of a merge write (NTS-630): nodes and
+relationships count their creates + deletes, properties counts SET
+operations.
+*/
+export interface MergeCounts {
+  nodes: number
+  relationships: number
+  properties: number
+}
+
+/**
+What a merge write did (NTS-630), derived from the driver summary's write
+counters: `created` when the MERGE created the node, `updated` when it
+matched and wrote to it — both false when nothing changed.
+*/
+export interface MergeOutcome {
+  created: boolean
+  updated: boolean
+  counts: MergeCounts
+}
+
+/**
+The result of merge() / mergeOn() (NTS-630): the hydrated entity plus the
+write outcome and the raw driver summary preserved for power users.
+Breaking (1.0.0-next): replaces the bare-entity return.
+*/
+export interface MergeResult<T> extends MergeOutcome {
+  entity: T
+  counts: MergeCounts
+  summary: QuerySummary | undefined
+}
+
+/**
+Derive the merge outcome from a statement summary's write counters. The
+backends name the counters differently (neo4j: nodesCreated, the Relate
+engine: nodes_created) — both spellings are read.
+*/
+export function mergeOutcome(summary: QuerySummary | undefined): MergeOutcome {
+  const counters = summary?.counters ?? {}
+
+  const nodesCreated = counters['nodesCreated'] ?? counters['nodes_created'] ?? 0
+  const nodesDeleted = counters['nodesDeleted'] ?? counters['nodes_deleted'] ?? 0
+  const relationshipsCreated =
+    counters['relationshipsCreated'] ?? counters['relationships_created'] ?? 0
+  const relationshipsDeleted =
+    counters['relationshipsDeleted'] ?? counters['relationships_deleted'] ?? 0
+  const properties = counters['propertiesSet'] ?? counters['properties_set'] ?? 0
+
+  // A created node's own property sets are part of the create, not an
+  // update — only a matched write counts
+  const wasCreated = nodesCreated > 0
+
+  const didWrite =
+    nodesCreated + nodesDeleted + relationshipsCreated + relationshipsDeleted + properties > 0
+
+  return {
+    created: wasCreated,
+    updated: !wasCreated && didWrite,
+    counts: {
+      nodes: nodesCreated + nodesDeleted,
+      relationships: relationshipsCreated + relationshipsDeleted,
+      properties,
+    },
+  }
+}
+
+/**
+Wrap a save() outcome into a MergeResult (NTS-630): the save path knows
+`created` from its own statement, but the pure-CREATE branch (no merge
+fields) carries no summary — its counters stay unreported (zeros) while
+the created flag stands.
+*/
+export function mergeResultFromSave<T>(
+  entity: T,
+  wasCreated: boolean,
+  summary: QuerySummary | undefined,
+): MergeResult<T> {
+  const outcome = mergeOutcome(summary)
+
+  return {
+    entity,
+    created: wasCreated || outcome.created,
+    updated: outcome.updated,
+    counts: outcome.counts,
+    summary,
   }
 }

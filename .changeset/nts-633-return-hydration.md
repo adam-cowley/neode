@@ -1,0 +1,5 @@
+---
+'neode': minor
+---
+
+Write paths hydrate from their own RETURN (NTS-633): `create()`, `save()`, `merge()`, `mergeOn()` and `update()` no longer pay a follow-up FindByIdService re-read — the write statement already returns the written node (`RETURN this, elementId(this) AS __id`), so the returned row hydrates through the regular hydration path (driver value normalisation, server timestamps, defaults). One statement per write: every `db.create` / `db.update` / `db.merge` call in a consumer's write hot paths drops a round trip. The FindByIdService re-read stays as the fallback only where RETURN cannot serve — models declaring eager relationships (the re-read's projection loads them; nested relationship targets are related after the root statement ran) and backends that return no hydratable node row. `WITHOUT_ALL_FILTERS` semantics are unchanged: the fallback re-read still bypasses read filters. Lifecycle events, observers, dirty-tracking and the NTS-630 merge-outcome shapes are unchanged.

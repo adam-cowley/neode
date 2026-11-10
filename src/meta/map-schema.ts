@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto'
 
-import { mergeModel, mergeProperty, mergeRelationshipProperty } from './index.js'
+import { mergeModel, mergeProperty, mergeRelationshipProperty, METAMODEL_KEYS } from './index.js'
 import { NeodeError } from '../errors/index.js'
 import type { Newable } from './newable.js'
-import type { PropertySchema } from './property-schema.js'
-import { PropertyType } from './property-schema.js'
+import { PropertySchema, PropertyType } from './property-schema.js'
 import { toDirection } from '../query/index.js'
 import { isRecord } from '../services/type-guards.js'
 import type {
   ProjectionDefinition,
   PropertyDefinition,
+  PropertyTypeName,
   RelatedOneDefinition,
   RelatedManyDefinition,
   RelationshipCountDefinition,
@@ -38,7 +38,7 @@ const PROJECTION_TYPES = new Set([
 
 // Keyed openly: map definitions may name types the table does not know
 // (unknown names fall back to ANY, neode parity)
-const PROPERTY_TYPES: Record<string, PropertyType | undefined> = {
+export const PROPERTY_TYPES: Record<string, PropertyType | undefined> = {
   any: PropertyType.ANY,
   string: PropertyType.STRING,
   number: PropertyType.NUMBER,
@@ -237,13 +237,47 @@ function definePropertyModel(
   return mergeProperty(constructor, key, PROPERTY_TYPES[full.type] ?? PropertyType.ANY, full)
 }
 
+/**
+Build the declared edge-property schemas of a relationship (NTS-628):
+the map API's `properties` key. Values validate like property maps —
+same type table, same rule keys.
+*/
+function edgePropertySchemas(
+  declared: Record<string, PropertyTypeName | PropertyDefinition>,
+): PropertySchema[] {
+  return Object.entries(declared).map(([name, definition]) => {
+    const full: PropertyDefinition =
+      typeof definition === 'string' ? { type: definition } : definition
+
+    const property = new PropertySchema(name)
+
+    property.setType(PROPERTY_TYPES[full.type] ?? PropertyType.ANY)
+
+    if (full.array === true) {
+      property.setArray(true)
+    }
+
+    if (full.required === true) {
+      property.setRequired(true)
+    }
+
+    // Every config key the metamodel has no flag for is a validation rule
+    // (mergeProperty parity)
+    property.setRules(
+      Object.fromEntries(Object.entries(full).filter(([key]) => !METAMODEL_KEYS.has(key))),
+    )
+
+    return property
+  })
+}
+
 function wireRelationshipModel(
   constructor: Newable,
   key: string,
   definition: RelationshipDefinition,
   target: Newable,
 ): void {
-  mergeRelationshipProperty(
+  const relationship = mergeRelationshipProperty(
     constructor,
     key,
     definition.relationship,
@@ -255,6 +289,12 @@ function wireRelationshipModel(
     definition.cascade,
     definition.cardinality,
   )
+
+  // NTS-628: the declared `properties` key is the edge-property schema —
+  // every write accepting edge properties validates against it
+  if (definition.properties !== undefined) {
+    relationship.setEdgeProperties(edgePropertySchemas(definition.properties))
+  }
 }
 
 /**

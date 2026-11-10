@@ -88,6 +88,13 @@ class FakeProvider implements ConnectionProvider {
       }
     }
 
+    if (statement.includes('count(this) AS deleted')) {
+      // NTS-634: the guarded delete statement — the fake plays the
+      // database: one row, the delete happened (hard) or matched (soft:
+      // the label gate keeps an already-deleted row at 0, not faked here)
+      return { records: [record((key) => (key === 'deleted' ? 1 : undefined), ['deleted'])] }
+    }
+
     if (statement.includes('DETACH DELETE')) {
       return { records: [record((key) => (key === 'count' ? 2 : undefined), ['count'])] }
     }

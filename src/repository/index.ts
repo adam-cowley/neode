@@ -540,7 +540,9 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       )
     }
 
-    return this.neode.merge(this.entity, properties, this.database)
+    const merged = await this.neode.merge(this.entity, properties, this.database)
+
+    return merged?.entity
   }
 
   /**

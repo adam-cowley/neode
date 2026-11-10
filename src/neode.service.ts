@@ -19,13 +19,16 @@ import type {
   HydrateQueryOptions,
   QueryOutput,
   QueryParams as QueryParameters,
+  QueryRecord,
+  QuerySummary,
   Runner,
   TransactionHandle,
+  TransformedQueryOutput,
 } from './driver/types.js'
 import { elementIdOfEntity } from './element-id.js'
 import { setDefaultNeode } from './entity-methods.js'
 import { NeodeError } from './errors/index.js'
-import { hydrate, hydrateWhenRequested, splitHydrateArguments } from './hydrate.js'
+import { hydrate, hydrateWhenRequested, mapRecords, splitHydrateArguments } from './hydrate.js'
 import { EntitySchema } from './meta/entity/entity-schema.js'
 import { getModel, getModels } from './meta/index.js'
 import {
@@ -77,7 +80,19 @@ import { FindByIdService } from './services/query/find-by-id.service.js'
 import { GetService, type OrderSpec } from './services/query/get.service.js'
 import { type KnnMode, knn } from './services/query/knn.service.js'
 import { LoadRelationService, RelatedQuery } from './services/query/load-relation.service.js'
-import { getMergeFields, MergeService } from './services/query/merge.service.js'
+import {
+  getMergeFields,
+  mergeOutcome,
+  mergeResultFromSave,
+  MergeService,
+  type MergeResult,
+} from './services/query/merge.service.js'
+import {
+  type ReplaceRelationshipOptions,
+  ReplaceRelationshipService,
+} from './services/query/replace-relationship.service.js'
+import { hydrateWrittenNode } from './services/write-utilities.js'
+import { type ParallelBody, type ParallelOptions, runParallel } from './transaction/parallel.js'
 import { rollbackAfterFailure } from './transaction/rollback.js'
 import {
   type CursorPage,
@@ -375,6 +390,101 @@ export class Neode implements INeode {
     }
   }
 
+  /**
+  Save plus the write outcome (NTS-630): the created flag the lifecycle
+  events report and the root statement's summary — merge()'s
+  relationship-values path wraps the same outcome mergeOn() returns.
+  */
+  private async saveOutcome<T>(
+    entity: T,
+    database?: string,
+  ): Promise<{ saved: T; created: boolean; summary: QuerySummary | undefined }> {
+    if (!isRecord(entity)) {
+      throw new TypeError('Cannot save a value that is not an entity object')
+    }
+
+    const entityConstructor: unknown = entity.constructor
+
+    if (!isConstructorOf<T>(entityConstructor)) {
+      throw new TypeError('Cannot save a value whose constructor is not a class')
+    }
+
+    const schema = this.getSchema(entityConstructor)
+
+    // NTS-511: beforeSave runs before the dirty check — an observer may
+    // mutate the entity into dirtiness. Errors fail the write.
+    await this.observers.run(entityConstructor, 'beforeSave', entity, {
+      isNew: false,
+      database,
+    })
+
+    // NTS-157: tracked (hydrated) instances write only their dirty
+    // scalar properties; a clean instance is a no-op — no transaction,
+    // no query, no lifecycle events — but only when saving to the same
+    // (default) database. An explicit `database` overrides the no-op:
+    // saving a clean entity to another database is how the audit-copy
+    // pattern (save(entity, 'audit')) gets the node there.
+    const dirtyKeys = diffDirty(schema, entity)
+
+    if (database === undefined && isTracked(entity) && dirtyKeys.length === 0) {
+      // Clean tracked instance: no write, no events — created: false, no summary
+      return { saved: entity, created: false, summary: undefined }
+    }
+
+    const {
+      hydrated: saved,
+      created,
+      summary,
+    } = await this.inWriteTransaction(async (tx) => {
+      const mergeService = new MergeService(tx.getRunner())
+
+      // NTS-633: the merge statement's RETURN carries the written node —
+      // hydrate it directly; FindByIdService stays as the fallback. The
+      // re-hydration bypasses the read filters — the write path may
+      // legitimately save outside the current filter view
+      // (WITHOUT_ALL_FILTERS)
+      const {
+        elementId,
+        created: wasCreated,
+        summary,
+        output,
+      } = await mergeService.save(
+        entity,
+        schema,
+        dirtyKeys.length > 0 ? new Set(dirtyKeys) : undefined,
+      )
+
+      const hydrated = await hydrateWrittenNode<T>(
+        entityConstructor,
+        schema,
+        tx.getRunner(),
+        output,
+        elementId,
+      )
+
+      await tx.commit()
+
+      if (hydrated === undefined) {
+        throw new NeodeError('Entity was saved but could not be found immediately afterwards')
+      }
+
+      return { hydrated, created: wasCreated, summary }
+    }, database)
+
+    // Emit the lifecycle event the save actually was: a merge either created
+    // the node or matched and updated an existing one
+    await this.afterCommit(ambientTransaction(), async () => {
+      this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
+
+      await this.observers.run(entityConstructor, 'afterSave', saved, {
+        isNew: created,
+        database,
+      })
+    })
+
+    return { saved, created, summary }
+  }
+
   getConnection(): ConnectionProvider {
     return this.connection
   }
@@ -463,7 +573,10 @@ export class Neode implements INeode {
   NTS-559: with the `hydrate` option (the options object as the second
   or third argument) the rows are instead hydrated into entities of the
   given class, read from the `alias` column — the same overload
-  `cypher()` offers.
+  `cypher()` offers. NTS-632: with the `recordTransformer` option (the
+  options object as the third argument) each row is instead mapped
+  through the transformer, JSON-safe values in; ignored when `hydrate`
+  is set.
   */
   async read<T>(
     query: Builder | string,
@@ -474,6 +587,11 @@ export class Neode implements INeode {
     parameters?: QueryParameters,
     database?: string,
   ): Promise<QueryOutput>
+  async read<Row>(
+    query: Builder | string,
+    parameters: QueryParameters | undefined,
+    options: HydrateQueryOptions & { recordTransformer: (record: QueryRecord) => Row },
+  ): Promise<TransformedQueryOutput<Row>>
   async read<T>(
     query: Builder | string,
     parameters: QueryParameters | undefined,
@@ -483,7 +601,7 @@ export class Neode implements INeode {
     query: Builder | string,
     parametersOrOptions: QueryParameters | HydrateQueryOptions = {},
     databaseOrOptions: string | HydrateQueryOptions = {},
-  ): Promise<QueryOutput | unknown[]> {
+  ): Promise<QueryOutput | unknown[] | TransformedQueryOutput> {
     const { parameters, options, database } = splitHydrateArguments(
       parametersOrOptions,
       databaseOrOptions,
@@ -492,19 +610,24 @@ export class Neode implements INeode {
     if (typeof query === 'string') {
       const raw = await this.readCypher(query, parameters, database)
 
-      return hydrateWhenRequested(options, raw)
+      return options.recordTransformer && options.hydrate === undefined
+        ? mapRecords(options.recordTransformer, raw)
+        : hydrateWhenRequested(options, raw)
     }
 
     const built = query.build()
 
     const output = await this.readCypher(built.query, { ...built.params, ...parameters }, database)
 
-    return hydrateWhenRequested(options, output)
+    return options.recordTransformer && options.hydrate === undefined
+      ? mapRecords(options.recordTransformer, output)
+      : hydrateWhenRequested(options, output)
   }
 
   /**
   WRITE counterpart of read(): pass a Builder to build-and-run it, or a
-  string to pass it straight through to writeCypher. Routes WRITE.
+  string to pass it straight through to writeCypher. Routes WRITE. The
+  `recordTransformer` option behaves as on read().
   */
   async write<T>(
     query: Builder | string,
@@ -515,6 +638,11 @@ export class Neode implements INeode {
     parameters?: QueryParameters,
     database?: string,
   ): Promise<QueryOutput>
+  async write<Row>(
+    query: Builder | string,
+    parameters: QueryParameters | undefined,
+    options: HydrateQueryOptions & { recordTransformer: (record: QueryRecord) => Row },
+  ): Promise<TransformedQueryOutput<Row>>
   async write<T>(
     query: Builder | string,
     parameters: QueryParameters | undefined,
@@ -524,7 +652,7 @@ export class Neode implements INeode {
     query: Builder | string,
     parametersOrOptions: QueryParameters | HydrateQueryOptions = {},
     databaseOrOptions: string | HydrateQueryOptions = {},
-  ): Promise<QueryOutput | unknown[]> {
+  ): Promise<QueryOutput | unknown[] | TransformedQueryOutput> {
     const { parameters, options, database } = splitHydrateArguments(
       parametersOrOptions,
       databaseOrOptions,
@@ -533,14 +661,18 @@ export class Neode implements INeode {
     if (typeof query === 'string') {
       const raw = await this.writeCypher(query, parameters, database)
 
-      return hydrateWhenRequested(options, raw)
+      return options.recordTransformer && options.hydrate === undefined
+        ? mapRecords(options.recordTransformer, raw)
+        : hydrateWhenRequested(options, raw)
     }
 
     const built = query.build()
 
     const output = await this.writeCypher(built.query, { ...built.params, ...parameters }, database)
 
-    return hydrateWhenRequested(options, output)
+    return options.recordTransformer && options.hydrate === undefined
+      ? mapRecords(options.recordTransformer, output)
+      : hydrateWhenRequested(options, output)
   }
 
   /**
@@ -560,23 +692,30 @@ export class Neode implements INeode {
   Point — serialised to plain structures). With the `hydrate` option the
   rows are instead hydrated into entities of the given class, read from
   the `alias` column ('this' by default, matching the query builder's
-  return alias).
+  return alias). With `recordTransformer` each row is instead mapped
+  through the transformer (JSON-safe values in, its return replaces the
+  row); ignored when `hydrate` is set.
   */
   cypher(
     query: string,
     parameters?: QueryParameters,
-    options?: Omit<CypherOptions, 'hydrate'>,
+    options?: Omit<CypherOptions, 'hydrate' | 'recordTransformer'>,
   ): Promise<QueryOutput>
   cypher<T>(
     query: string,
     parameters: QueryParameters | undefined,
     options: CypherOptions & { hydrate: new (...arguments_: never[]) => T },
   ): Promise<T[]>
+  cypher<Row>(
+    query: string,
+    parameters: QueryParameters | undefined,
+    options: CypherOptions & { recordTransformer: (record: QueryRecord) => Row },
+  ): Promise<TransformedQueryOutput<Row>>
   async cypher(
     query: string,
     parameters: QueryParameters = {},
     options: CypherOptions = {},
-  ): Promise<QueryOutput | unknown[]> {
+  ): Promise<QueryOutput | unknown[] | TransformedQueryOutput> {
     // NTS-156: inside an ambient transaction the statement joins it; the
     // driver reports no summary for in-transaction runs, so the counters
     // come back empty
@@ -591,12 +730,18 @@ export class Neode implements INeode {
           options.database ?? this.database,
         )
 
-    const rows: QueryOutput = {
+    if (options.hydrate) {
+      return hydrateWhenRequested(options, output)
+    }
+
+    if (options.recordTransformer) {
+      return mapRecords(options.recordTransformer, output)
+    }
+
+    return {
       records: output.records.map((record) => jsonSafeRecord(record)),
       summary: output.summary,
     }
-
-    return options.hydrate ? hydrate(options.hydrate, rows, options.alias) : rows
   }
 
   /**
@@ -675,7 +820,14 @@ export class Neode implements INeode {
   async openReadTransaction(database?: string): Promise<TransactionalService> {
     const handle = await this.readTransaction(database)
 
-    return new TransactionalService(handle, this.eventEmitter, undefined, true, this.observers)
+    return new TransactionalService(
+      handle,
+      this.eventEmitter,
+      undefined,
+      true,
+      this.observers,
+      this.connection,
+    )
   }
 
   /**
@@ -685,7 +837,14 @@ export class Neode implements INeode {
   async openWriteTransaction(database?: string): Promise<TransactionalService> {
     const handle = await this.writeTransaction(database)
 
-    return new TransactionalService(handle, this.eventEmitter, undefined, true, this.observers)
+    return new TransactionalService(
+      handle,
+      this.eventEmitter,
+      undefined,
+      true,
+      this.observers,
+      this.connection,
+    )
   }
 
   /**
@@ -850,6 +1009,7 @@ export class Neode implements INeode {
       work,
       database === undefined ? options : { ...options, database },
       this.observers,
+      this.connection,
     )
   }
 
@@ -894,6 +1054,70 @@ export class Neode implements INeode {
     await tx.commit()
 
     return results
+  }
+
+  /**
+  Fan operations out across CONCURRENT sessions (NTS-631) — a map (or
+  array) of operation CALLBACKS, each run on its own session:
+
+  ```ts
+  const { tiles, throughput } = await neode.parallel({
+    tiles: (scope) => scope.read(dashboardTilesQuery),
+    throughput: (scope) => scope.read(dashboardThroughputQuery),
+  })
+  ```
+
+  - mode 'read' (default) — one READ autocommit session per operation: N
+    independent reads in one wall-clock batch (the dashboard case).
+  - mode 'write' — one WRITE autocommit session per operation; NO
+    cross-operation atomicity (a failure halfway leaves the earlier
+    writes committed). Every operation still runs; the failures surface
+    in one ParallelError aligned with the input.
+  - mode 'atomic' — all-or-nothing across sessions: one WRITE transaction
+    per operation, every body in parallel against its own transaction,
+    then the transactions commit sequentially ONLY if every body
+    succeeded — any body failure rolls back every open transaction. A
+    commit-phase failure remains the residual risk (surfaced per handle
+    as a 'commit'-phase ParallelError).
+
+  Operations are callbacks receiving the operation's own ParallelScope —
+  a session- (autocommit modes) or transaction- (atomic) bound Runner
+  with the facade's build-and-run sugar — NOT promises: a transaction
+  cannot open before its body runs. parallel() owns the transactions'
+  lifecycle; bodies cannot commit or roll back. Called inside a
+  `transaction()` callback it still fans out fresh sessions (deliberately
+  outside the ambient transaction).
+
+  Contention caveat: parallel writes touching the same nodes serialize on
+  the database's locks — keep operation sets NODE-DISJOINT; same-node
+  writes belong in ONE transaction, run sequentially
+  (inWriteTransaction() / transaction()).
+
+  Backend caveat: atomic mode needs a backend with concurrent sessions
+  (neo4j-driver over Bolt). The embedded Relate engine runs ONE
+  transaction per connection — its begin queue releases the slot only on
+  commit/rollback — so atomic mode with more than one operation
+  deadlocks there: on Relate use the autocommit modes (statements queue
+  safely — correct, but no wall-clock gain) or keep the writes in one
+  sequential transaction (runAll() / transaction()).
+
+  Map in, map out; array in, array out (input order). One transaction
+  for sequential statements stays runAll() / transaction().
+
+  - `operations` — named map or array of callbacks over ParallelScope
+  - `options` — mode ('read' | 'write' | 'atomic', default 'read') and
+    database
+  */
+  parallel<Operations extends Record<string, ParallelBody<unknown>>>(
+    operations: Operations,
+    options?: ParallelOptions,
+  ): Promise<{ [Key in keyof Operations]: Awaited<ReturnType<Operations[Key]>> }>
+  parallel<T>(operations: ParallelBody<T>[], options?: ParallelOptions): Promise<T[]>
+  async parallel(
+    operations: Record<string, ParallelBody<unknown>> | ParallelBody<unknown>[],
+    options: ParallelOptions = {},
+  ): Promise<Record<string, unknown> | unknown[]> {
+    return runParallel(this.connection, operations, options)
   }
 
   /**
@@ -1098,76 +1322,9 @@ export class Neode implements INeode {
   }
 
   async save<T>(entity: T, database?: string): Promise<T> {
-    if (!isRecord(entity)) {
-      throw new TypeError('Cannot save a value that is not an entity object')
-    }
+    const outcome = await this.saveOutcome(entity, database)
 
-    const entityConstructor: unknown = entity.constructor
-
-    if (!isConstructorOf<T>(entityConstructor)) {
-      throw new TypeError('Cannot save a value whose constructor is not a class')
-    }
-
-    const schema = this.getSchema(entityConstructor)
-
-    // NTS-511: beforeSave runs before the dirty check — an observer may
-    // mutate the entity into dirtiness. Errors fail the write.
-    await this.observers.run(entityConstructor, 'beforeSave', entity, {
-      isNew: false,
-      database,
-    })
-
-    // NTS-157: tracked (hydrated) instances write only their dirty
-    // scalar properties; a clean instance is a no-op — no transaction,
-    // no query, no lifecycle events — but only when saving to the same
-    // (default) database. An explicit `database` overrides the no-op:
-    // saving a clean entity to another database is how the audit-copy
-    // pattern (save(entity, 'audit')) gets the node there.
-    const dirtyKeys = diffDirty(schema, entity)
-
-    if (database === undefined && isTracked(entity) && dirtyKeys.length === 0) {
-      return entity
-    }
-
-    const { hydrated: saved, created } = await this.inWriteTransaction(async (tx) => {
-      const mergeService = new MergeService(tx.getRunner())
-
-      const { elementId, created: wasCreated } = await mergeService.save(
-        entity,
-        schema,
-        dirtyKeys.length > 0 ? new Set(dirtyKeys) : undefined,
-      )
-
-      const findService = new FindByIdService(tx.getRunner())
-
-      // The re-hydration of a row the write just touched bypasses the read
-      // filters — the write path may legitimately save outside the current
-      // filter view (WITHOUT_ALL_FILTERS)
-      const hydrated = await findService.find<T>(entityConstructor, schema, elementId, {
-        withoutFilters: [WITHOUT_ALL_FILTERS],
-      })
-
-      await tx.commit()
-
-      if (hydrated === undefined) {
-        throw new NeodeError('Entity was saved but could not be found immediately afterwards')
-      }
-
-      return { hydrated, created: wasCreated }
-    }, database)
-
-    // Emit the lifecycle event the save actually was: a merge either created
-    // the node or matched and updated an existing one
-    await this.afterCommit(ambientTransaction(), async () => {
-      this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
-
-      await this.observers.run(entityConstructor, 'afterSave', saved, {
-        isNew: created,
-        database,
-      })
-    })
-
-    return saved
+    return outcome.saved
   }
 
   /**
@@ -1213,19 +1370,23 @@ export class Neode implements INeode {
 
       const service = new CreateService(tx)
 
-      const { elementId } = await service.create(schema, constructed)
+      // NTS-633: the CREATE statement's RETURN carries the written node —
+      // hydrate it directly; FindByIdService stays as the fallback
+      // (write-path re-hydration bypasses the read filters —
+      // WITHOUT_ALL_FILTERS). NTS-628: the relationshipProperties carrier
+      // rides along.
+      const { elementId, output } = await service.create(
+        schema,
+        constructed,
+        typeof options === 'string' ? undefined : options?.relationshipProperties,
+      )
 
       // NTS-615: eager relationships — same transaction as the create
       // (atomic from the caller's view; a mid-write failure rolls the
       // node and its edges back together)
       await this.eagerRelate(schema, constructed, elementId, relate, tx)
 
-      const findService = new FindByIdService(tx)
-
-      // Write-path re-hydration bypasses the read filters (WITHOUT_ALL_FILTERS)
-      const hydrated = await findService.find<T>(constructor, schema, elementId, {
-        withoutFilters: [WITHOUT_ALL_FILTERS],
-      })
+      const hydrated = await hydrateWrittenNode<T>(constructor, schema, tx, output, elementId)
 
       if (hydrated === undefined) {
         throw new NeodeError('Entity was created but could not be found immediately afterwards')
@@ -1254,13 +1415,16 @@ export class Neode implements INeode {
   properties, hydrating the merged node. NTS-596: the merge lifecycle runs
   the save hooks and emits NODE_MERGED with the re-hydrated node once
   committed (also the event path behind merge() and Repository#upsert).
+  Resolves to the merge outcome (NTS-630): `{ entity, created, updated,
+  counts, summary }` — `created` when the MERGE created the node,
+  `updated` when it matched and wrote, both false on a no-op merge.
   */
   async mergeOn<T>(
     constructor: new (...arguments_: never[]) => T,
     match: Record<string, unknown>,
     set: Record<string, unknown> = {},
     database?: string,
-  ): Promise<T | undefined> {
+  ): Promise<MergeResult<T> | undefined> {
     const schema = this.getSchema(constructor)
 
     // NTS-596: beforeSave runs before the statement and receives the set
@@ -1293,12 +1457,11 @@ export class Neode implements INeode {
         throw new NeodeError('mergeOn did not return an elementId')
       }
 
-      const findService = new FindByIdService(tx)
-
-      // Write-path re-hydration bypasses the read filters (WITHOUT_ALL_FILTERS)
-      const hydrated = await findService.find<T>(constructor, schema, elementId, {
-        withoutFilters: [WITHOUT_ALL_FILTERS],
-      })
+      // NTS-633: the MERGE statement's RETURN carries the merged node —
+      // hydrate it directly; FindByIdService stays as the fallback
+      // (write-path re-hydration bypasses the read filters —
+      // WITHOUT_ALL_FILTERS)
+      const hydrated = await hydrateWrittenNode<T>(constructor, schema, tx, output, elementId)
 
       await tx.commit()
 
@@ -1313,7 +1476,9 @@ export class Neode implements INeode {
         })
       })
 
-      return hydrated
+      return hydrated === undefined
+        ? undefined
+        : { entity: hydrated, ...mergeOutcome(output.summary), summary: output.summary }
     } catch (error) {
       return await rollbackAfterFailure(tx, error)
     }
@@ -1323,29 +1488,27 @@ export class Neode implements INeode {
   MERGE a node of the given constructor on its merge fields (the unique
   and indexed properties, neode's Model.merge): those present in
   `properties` form the match, everything else is set, with schema
-  defaults resolving for properties not given
+  defaults resolving for properties not given. Resolves to the same
+  merge outcome mergeOn() returns (NTS-630)
   */
   async merge<T>(
     constructor: new (...arguments_: never[]) => T,
     properties: Record<string, unknown> = {},
     database?: string,
-  ): Promise<T | undefined> {
+  ): Promise<MergeResult<T> | undefined> {
     const schema = this.getSchema(constructor)
 
-    // Entity instances (or arrays of them) in the properties mean
+    // Relationship values (or arrays of them) in the properties mean
     // relationship writes — those go through the save() path, which
     // already creates/relates nested relationships (neode's merge
     // semantics: "Neode will create relationships when either a Node
     // instance, ID property or Object containing match parameters
-    // is passed")
+    // is passed"). NTS-627: primary-key values are relationship writes
+    // too — they route through save() like entity instances.
     const hasRelationshipValues = schema.getRelationships().some((relationship) => {
       const value = properties[relationship.getKey()]
 
-      if (value === undefined || value === null) {
-        return false
-      }
-
-      return Array.isArray(value) ? value.length > 0 : typeof value === 'object'
+      return value !== undefined && value !== null && (!Array.isArray(value) || value.length > 0)
     })
 
     if (hasRelationshipValues) {
@@ -1357,7 +1520,9 @@ export class Neode implements INeode {
 
       Object.assign(constructed, properties)
 
-      return this.save(constructed, database)
+      const { saved, created, summary } = await this.saveOutcome(constructed, database)
+
+      return mergeResultFromSave(saved, created, summary)
     }
 
     const mergeKeys = new Set(getMergeFields(schema).map((property) => property.getKey()))
@@ -1417,7 +1582,11 @@ export class Neode implements INeode {
     const tx = await this.beginWorkTransaction('WRITE', databaseArg)
 
     try {
-      await new UpdateService(tx).update(schema, entity, properties)
+      // NTS-633: the update statement's RETURN carries the mutated node —
+      // hydrate it directly; FindByIdService stays as the fallback
+      // (write-path re-hydration bypasses the read filters —
+      // WITHOUT_ALL_FILTERS)
+      const output = await new UpdateService(tx).update(schema, entity, properties)
 
       // NTS-615: eager relationships — same transaction as the update;
       // the entity is hydrated, so RelateService matches it by identity
@@ -1425,12 +1594,7 @@ export class Neode implements INeode {
 
       const elementId = elementIdOfEntity(schema, entity)
 
-      const hydrated =
-        elementId === undefined
-          ? undefined
-          : await new FindByIdService(tx).find<T>(entityConstructor, schema, elementId, {
-              withoutFilters: [WITHOUT_ALL_FILTERS],
-            })
+      const hydrated = await hydrateWrittenNode<T>(entityConstructor, schema, tx, output, elementId)
 
       await tx.commit()
 
@@ -1519,6 +1683,81 @@ export class Neode implements INeode {
 
     try {
       const result = await new DetachService(tx).detach(schema, from, to, relationship)
+
+      await tx.commit()
+
+      return result
+    } catch (error) {
+      return await rollbackAfterFailure(tx, error)
+    }
+  }
+
+  /**
+  Replace every edge of ONE declared relationship on a node in a single
+  statement (NTS-634): the relationship's existing edges are deleted and
+  the new set created — no read-modify-write, no TOCTOU window. Targets
+  are entity instances or primary-key values; `properties` are applied to
+  every created edge; `options.merge` MERGEs the new edges instead of
+  CREATEing them. Resolves the relationship by key (or type, relate()
+  parity); BOTH-direction declarations are rejected (match-only, NTS-483).
+  */
+  async replaceRelationship(
+    entity: object,
+    key: string,
+    targets: unknown[],
+    properties: Record<string, unknown> = {},
+    options?: ReplaceRelationshipOptions,
+    database?: string,
+  ): Promise<void> {
+    const schema = this.getSchema(constructorOf(entity))
+    const relationship = this.resolveRelationship(schema, key)
+
+    const tx = await this.beginWorkTransaction('WRITE', database)
+
+    try {
+      await new ReplaceRelationshipService(tx).replaceRelationship(
+        schema,
+        entity,
+        relationship,
+        targets,
+        properties,
+        options,
+      )
+
+      await tx.commit()
+    } catch (error) {
+      return await rollbackAfterFailure(tx, error)
+    }
+  }
+
+  /**
+  Set the properties of ONE declared relationship's edge (NTS-628): match
+  both nodes by identity, MERGE the edge (never duplicating it) and SET
+  the properties — idempotent per re-run, the update path relate()'s
+  create-time properties cannot serve. Validates against the
+  relationship's declared `properties` schema when one is declared.
+  Resolves the relationship by key (or type, relate() parity).
+  */
+  async updateEdgeProperties(
+    entity: object,
+    key: string,
+    target: object,
+    properties: Record<string, unknown> = {},
+    database?: string,
+  ): Promise<GraphRelationship | undefined> {
+    const schema = this.getSchema(constructorOf(entity))
+    const relationship = this.resolveRelationship(schema, key)
+
+    const tx = await this.beginWorkTransaction('WRITE', database)
+
+    try {
+      const result = await new RelateService(tx).updateEdgeProperties(
+        schema,
+        entity,
+        relationship,
+        target,
+        properties,
+      )
 
       await tx.commit()
 

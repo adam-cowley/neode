@@ -64,6 +64,17 @@ A raw Cypher expression used as an inline pattern property value
 (`row.answers`), server-side calls (`datetime()`) and parameter
 references (`$name`, bound via `Builder#param`) are all legal; the
 expression must never interpolate data.
+
+On the write paths (NTS-629) an expression value in a create()/merge()
+property map renders as a trailing `SET this.prop = <expression>` clause
+instead of an inline pattern value — inside a CREATE / MERGE pattern the
+node variable is not yet bound, and the trailing SET clauses render in
+map order, so a later expression may reference an earlier property.
+Expression values skip write-time property validation; the stored value
+is validated against the property's type when it is next read.
+
+SET-side expressions: verified on neo4j-driver backends; on the embedded
+Relate engine, avoid pattern syntax inside expressions until verified.
 */
 export class RawExpression {
   private readonly expression: string

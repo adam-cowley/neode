@@ -3,6 +3,7 @@ import type {
   QueryOutput,
   QueryParams as QueryParameters,
   QueryRecord,
+  TransformedQueryOutput,
 } from './driver/types.js'
 import { jsonSafeRecord } from './driver/json-safe.js'
 import { getModel, getModels } from './meta/index.js'
@@ -164,6 +165,22 @@ export function hydrateFirst<T>(
   alias = DEFAULT_ALIAS,
 ): WithMethods<T> | undefined {
   return hydrate<T>(constructor, output, alias)[0]
+}
+
+/**
+Apply a recordTransformer to every row of a raw query result (NTS-632):
+each record is JSON-safe'd first — the pass every `cypher()` row already
+goes through — then handed to the transformer, whose return value
+replaces the row.
+*/
+export function mapRecords<Row>(
+  transformer: (record: QueryRecord) => Row,
+  output: QueryOutput,
+): TransformedQueryOutput<Row> {
+  return {
+    records: output.records.map((record) => transformer(jsonSafeRecord(record))),
+    summary: output.summary,
+  }
 }
 
 /**

@@ -15,7 +15,7 @@ node:async_hooks compatibility also qualifies). On runtimes without it
 import type { EventEmitter } from 'node:events'
 import type { ObserverRegistry } from '../observers.js'
 import { AsyncLocalStorage } from 'node:async_hooks'
-import type { AccessMode, TransactionHandle } from '../driver/types.js'
+import type { AccessMode, ConnectionProvider, TransactionHandle } from '../driver/types.js'
 import { classifyError, isRetryableError, NeodeError } from '../errors/index.js'
 import { EffectBuffer } from './effects.js'
 import { rollbackAfterFailure } from './rollback.js'
@@ -73,6 +73,11 @@ export interface AmbientSettings {
   database: string | undefined
   retries: number
   retryCommit: boolean
+  /**
+  The parent connection parallel() (NTS-631) fans the autocommit modes
+  out onto — the connection the ambient transaction was opened from.
+  */
+  parent?: ConnectionProvider | undefined
 }
 
 /**
@@ -241,7 +246,14 @@ export class AmbientTransactionScope {
 
     try {
       return await work(
-        new TransactionalService(this.joinHandle, eventEmitter, this.effects, false, observers),
+        new TransactionalService(
+          this.joinHandle,
+          eventEmitter,
+          this.effects,
+          false,
+          observers,
+          this.settings.parent,
+        ),
       )
     } catch (error) {
       if (this.statementFailed) {
@@ -301,6 +313,7 @@ export async function runAmbientTransaction<T>(
   work: (tx: TransactionalService) => Promise<T>,
   options: TransactionOptions = {},
   observers?: ObserverRegistry,
+  parent?: ConnectionProvider,
 ): Promise<T> {
   const retries = Math.max(0, options.retries ?? DEFAULT_RETRIES)
   const maxAttempts = 1 + retries
@@ -315,9 +328,17 @@ export async function runAmbientTransaction<T>(
       database: options.database,
       retries,
       retryCommit: options.retryCommit ?? false,
+      parent,
     })
 
-    const tx = new TransactionalService(handle, eventEmitter, scope.effects, false, observers)
+    const tx = new TransactionalService(
+      handle,
+      eventEmitter,
+      scope.effects,
+      false,
+      observers,
+      scope.settings.parent,
+    )
 
     let result: T
 

@@ -330,7 +330,11 @@ export interface RelationshipDefinition {
   */
   target: string
   /**
-  shortcut: edge properties are parsed but not wired yet — needs a generated relationship entity; add when edge-property saves are needed
+  The edge-property schema (NTS-628): the allowed edge properties and
+  their types — runtime edge props on relate() / nested creates /
+  updateEdgeProperties validate against it (unknown property or wrong
+  type throws naming the key). Per-property defaults/transforms on edges
+  are a follow-up.
   */
   properties?: Record<string, PropertyTypeName | PropertyDefinition>
   eager?: boolean

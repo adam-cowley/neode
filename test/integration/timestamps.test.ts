@@ -156,7 +156,7 @@ describe('@CreatedAt / @UpdatedAt timestamps (NTS-165)', () => {
 
     const merged = await backend.neode.mergeOn(
       TimestampedPage,
-      { id: created?.id },
+      { id: created?.entity.id },
       { title: 'v2' },
     )
 
@@ -168,8 +168,8 @@ describe('@CreatedAt / @UpdatedAt timestamps (NTS-165)', () => {
     expect(merge?.cypher).toContain('ON MATCH SET this.updatedAt = datetime()')
 
     // createdAt survives the matched write byte-for-byte
-    expect(merged?.createdAt).toEqual(created?.createdAt)
-    expect(stampedYear(merged?.updatedAt)).toBe(new Date().getFullYear())
+    expect(merged?.entity.createdAt).toEqual(created?.entity.createdAt)
+    expect(stampedYear(merged?.entity.updatedAt)).toBe(new Date().getFullYear())
   })
 
   it('createMany stamps every row', async () => {

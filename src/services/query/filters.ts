@@ -15,8 +15,9 @@ export const SOFT_DELETE_FILTER = 'softDelete'
 
 /**
 The reserved withoutFilters entry that disables EVERY named filter for the
-query — the write paths' internal re-hydration (save / create / merge use
-FindByIdService to re-read the row they just wrote) must find rows the
+query — the write paths' internal re-hydration (save / create / merge /
+update hydrate the row their own RETURN carries, falling back to a
+FindByIdService re-read where RETURN cannot serve) must find rows the
 current filter view hides. Filters are a read policy; writes never read
 through them.
 

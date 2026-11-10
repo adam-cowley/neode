@@ -15,7 +15,7 @@
 
 Decorator-based Object Graph Mapper for Neo4j and Cypher-compatible graph databases.
 Full reference: [llms-full.txt](llms-full.txt). Agent workflow guide: [AGENTS.md](AGENTS.md).
-Agent skill pack: [skills/neode/SKILL.md](skills/neode/SKILL.md).
+Agent skill pack: [skills/neode/SKILL.md](skills/neode/SKILL.md) — how-to · [skills/neode-audit/SKILL.md](skills/neode-audit/SKILL.md) — audit runbook.
 
 ## Sections
 
@@ -27,3 +27,4 @@ Agent skill pack: [skills/neode/SKILL.md](skills/neode/SKILL.md).
 - [Core](docs/agent/core.md) — Collection, serialisation and other shared exports.
 - [Schema reference](docs/agent/schema-reference.md) — Every field of PropertyDefinition / RelationshipDefinition / SchemaDefinition with its type and JSDoc description.
 - [Agent ontology API](docs/agent/agent-ontology-api.md) — ontology() / ontologyMarkdown() emit the live graph schema for Text2Cypher and MCP.
+- [Auditing](docs/agent/auditing.md) — Runbook for auditing how a consumer codebase uses neode/Neo4j — inventory, graph model, inefficiency scan, projection, triage.

@@ -11,6 +11,7 @@ import { convertPropertyValue, matchCriteriaForEntity } from '../../utilities.js
 import { QueryService } from './query.service.js'
 import { NeodeError } from '../../errors/index.js'
 import { assertCardinality, assertWritableDirection } from '../write-utilities.js'
+import { validateEdgeProperties } from '../relationship-values.js'
 import { constructorOf, isGraphRelationship } from '../type-guards.js'
 
 /**
@@ -67,13 +68,17 @@ export class RelateService extends QueryService {
   /**
   Set relationship properties. When the relationship's target is a
   relationship entity, values are converted through that entity's property
-  schemas and internal node/relationship references are skipped.
+  schemas and internal node/relationship references are skipped. With
+  `isUpsert` (NTS-628) the properties render as ON CREATE SET + ON MATCH
+  SET — applied whether the MERGE creates the edge or matches it —
+  instead of a plain SET.
   */
   private setProperties(
     builder: Builder,
     relationship: RelationshipPropertySchema,
     relationshipAlias: string,
     properties: Record<string, unknown>,
+    isUpsert = false,
   ): void {
     const targetConstructor = relationship.getTarget()
 
@@ -84,6 +89,8 @@ export class RelateService extends QueryService {
       if (value === undefined) {
         continue
       }
+
+      const rendered = `${relationshipAlias}.${quote(key)}`
 
       if (
         relationshipTargetSchema instanceof EntitySchema &&
@@ -97,16 +104,70 @@ export class RelateService extends QueryService {
           continue
         }
 
-        builder.set(
-          `${relationshipAlias}.${quote(key)}`,
-          property === undefined ? value : convertPropertyValue(value, property),
-        )
+        const converted = property === undefined ? value : convertPropertyValue(value, property)
+
+        if (isUpsert) {
+          builder.onCreateSet(rendered, converted)
+          builder.onMatchSet(rendered, converted)
+        } else {
+          builder.set(rendered, converted)
+        }
 
         continue
       }
 
-      builder.set(`${relationshipAlias}.${quote(key)}`, value)
+      if (isUpsert) {
+        builder.onCreateSet(rendered, value)
+        builder.onMatchSet(rendered, value)
+      } else {
+        builder.set(rendered, value)
+      }
     }
+  }
+
+  /**
+  Edge-entity properties are writes like any other: convert to the stored
+  form, then validate THAT (node-write order: conversion first, rules on
+  stored values — NTS-509). Declared map-API edge-property schemas (NTS-628)
+  are validated too.
+  */
+  private assertEdgeProperties(
+    relationship: RelationshipPropertySchema,
+    properties: Record<string, unknown>,
+  ): void {
+    // NTS-628: the relationship's declared `properties` schema names the
+    // allowed edge properties and their types
+    validateEdgeProperties(relationship, properties)
+
+    // The edge schema is the relationship's DECLARED target; the to-node
+    // is the far endpoint.
+    const edgeTarget = relationship.getTarget()
+    const edgeSchema = typeof edgeTarget === 'function' ? getModel(edgeTarget) : undefined
+
+    if (
+      !(edgeSchema instanceof EntitySchema) ||
+      edgeSchema.getType() !== EntityType.RelationshipEntity
+    ) {
+      return
+    }
+
+    const converted: Record<string, unknown> = {}
+
+    for (const [key, value] of Object.entries(properties)) {
+      if (value === undefined) {
+        continue
+      }
+
+      const property = edgeSchema.getProperties().find((candidate) => candidate.getKey() === key)
+
+      if (property !== undefined && INTERNAL_PROPERTY_TYPES.has(property.getType())) {
+        continue
+      }
+
+      converted[key] = property === undefined ? value : convertPropertyValue(value, property)
+    }
+
+    validate(converted, edgeSchema)
   }
 
   /**
@@ -144,31 +205,7 @@ export class RelateService extends QueryService {
     // stored form, then validate THAT (node-write order: conversion first,
     // rules on stored values — NTS-509). The edge schema is the
     // relationship's DECLARED target; the to-node is the far endpoint.
-    const edgeTarget = relationship.getTarget()
-    const edgeSchema = typeof edgeTarget === 'function' ? getModel(edgeTarget) : undefined
-
-    if (
-      edgeSchema instanceof EntitySchema &&
-      edgeSchema.getType() === EntityType.RelationshipEntity
-    ) {
-      const converted: Record<string, unknown> = {}
-
-      for (const [key, value] of Object.entries(properties)) {
-        if (value === undefined) {
-          continue
-        }
-
-        const property = edgeSchema.getProperties().find((candidate) => candidate.getKey() === key)
-
-        if (property !== undefined && INTERNAL_PROPERTY_TYPES.has(property.getType())) {
-          continue
-        }
-
-        converted[key] = property === undefined ? value : convertPropertyValue(value, property)
-      }
-
-      validate(converted, edgeSchema)
-    }
+    this.assertEdgeProperties(relationship, properties)
 
     const fromAlias = 'from'
     const toAlias = 'to'
@@ -236,12 +273,62 @@ export class RelateService extends QueryService {
         .create(fromAlias)
         .relationship(relationship.getType(), relationship.getDirection(), relationshipAlias)
         .to(toAlias)
+
+      this.setProperties(builder, relationship, relationshipAlias, properties)
     } else {
       builder
         .merge(fromAlias)
         .relationship(relationship.getType(), relationship.getDirection(), relationshipAlias)
         .to(toAlias)
+
+      // NTS-628: MERGE upserts the edge properties — applied whether the
+      // MERGE created the edge or matched it (ON CREATE SET / ON MATCH SET)
+      this.setProperties(builder, relationship, relationshipAlias, properties, true)
     }
+
+    builder.return(relationshipAlias)
+
+    const { query, params } = builder.build()
+
+    const result = await this.runner.run(query, params)
+
+    const related: unknown = result.records[0]?.get(relationshipAlias)
+
+    return isGraphRelationship(related) ? related : undefined
+  }
+
+  /**
+  Set the properties of ONE declared relationship's edge (NTS-628): match
+  both nodes by identity, MERGE the edge (never duplicating it — re-runs
+  are idempotent) and SET the properties. Validates against the
+  relationship's declared edge-property schema.
+  */
+  async updateEdgeProperties(
+    schema: EntitySchema,
+    fromEntity: object,
+    relationship: RelationshipPropertySchema,
+    toEntity: object,
+    properties: Record<string, unknown> = {},
+  ): Promise<GraphRelationship | undefined> {
+    assertWritableDirection(relationship)
+
+    this.assertEdgeProperties(relationship, properties)
+
+    const targetSchema = requireTargetSchema(toEntity, relationship)
+
+    const fromAlias = 'from'
+    const toAlias = 'to'
+    const relationshipAlias = 'rel'
+
+    const builder = new Builder()
+
+    builder.matchEntity(fromAlias, schema, matchCriteriaForEntity(schema, fromEntity))
+    builder.matchEntity(toAlias, targetSchema, matchCriteriaForEntity(targetSchema, toEntity))
+
+    builder
+      .merge(fromAlias)
+      .relationship(relationship.getType(), relationship.getDirection(), relationshipAlias)
+      .to(toAlias)
 
     this.setProperties(builder, relationship, relationshipAlias, properties)
 

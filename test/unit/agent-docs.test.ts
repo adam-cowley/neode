@@ -86,13 +86,14 @@ describe('per-page markdown (NTS-163)', () => {
   const pages = renderPages(docs, '0.0.0-test')
   const paths = pages.map((page) => page.path)
 
-  it('emits one page per doc area plus schema reference and ontology', () => {
+  it('emits one page per doc area plus schema reference, ontology and auditing', () => {
     expect(paths).toEqual([
       ...docs.areas.map(
         (area) => `docs/agent/${area.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`,
       ),
       'docs/agent/schema-reference.md',
       'docs/agent/agent-ontology-api.md',
+      'docs/agent/auditing.md',
     ])
   })
 

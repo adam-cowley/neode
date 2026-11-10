@@ -29,7 +29,21 @@ class MockProvider implements ConnectionProvider {
   runFailures: (Error | undefined)[] = []
   commitFailures: (Error | undefined)[] = []
 
-  async run(): Promise<QueryOutput> {
+  async run(query?: string): Promise<QueryOutput> {
+    // NTS-634: the guarded delete statement ends RETURN count(...) — the
+    // fake plays the database: one row, the delete happened
+    if (query?.includes('count(this) AS deleted') === true) {
+      return {
+        records: [
+          {
+            get: (name: string) => (name === 'deleted' ? 1 : undefined),
+            has: (name: string) => name === 'deleted',
+            keys: ['deleted'],
+          },
+        ],
+      }
+    }
+
     return { records: [] }
   }
 
@@ -40,9 +54,23 @@ class MockProvider implements ConnectionProvider {
     const commitFailure = this.commitFailures.shift()
 
     return {
-      run: async () => {
+      run: async (statement?: string) => {
         if (runFailure) {
           throw runFailure
+        }
+
+        // NTS-634: the guarded delete statement ends RETURN count(...) —
+        // the fake plays the database: one row, the delete happened
+        if (statement?.includes('count(this) AS deleted') === true) {
+          return {
+            records: [
+              {
+                get: (name: string) => (name === 'deleted' ? 1 : undefined),
+                has: (name: string) => name === 'deleted',
+                keys: ['deleted'],
+              },
+            ],
+          }
         }
 
         return { records: [] }

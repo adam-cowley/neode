@@ -80,6 +80,8 @@ class CapturingProvider implements ConnectionProvider {
                         properties: { id: 'p-1', name: 'Adam' },
                       }
                     : undefined,
+              has: (name: string) => name === INTERNAL_ID || name === 'this',
+              keys: [INTERNAL_ID, 'this'],
             },
           ],
         } as unknown as QueryOutput

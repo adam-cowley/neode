@@ -33,11 +33,20 @@ import type {
   LabelPresentDefinition,
   LoadedEntity,
   ManyAndCount,
+  MergeCounts,
+  MergeOutcome,
+  MergeResult,
   OffsetPaginateOptions,
   Ontology,
   OrderSpec,
   Page,
   PaginateOptions,
+  ParallelBody,
+  ParallelMode,
+  ParallelOperationError,
+  ParallelOptions,
+  ParallelRollbackReport,
+  ParallelScope,
   ProjectionDirection,
   PropertyDefinition,
   PropertyOntology,
@@ -60,6 +69,7 @@ import type {
   RelationshipExistsConfig,
   RelationshipExistsDefinition,
   RelationshipOntology,
+  ReplaceRelationshipOptions,
   RepositoryConstructor,
   RunCypherScriptOptions,
   Runner,
@@ -77,6 +87,7 @@ import type {
   SyncEdgesResult,
   TransactionHandle,
   TransformConfig,
+  TransformedQueryOutput,
   TraversalRow,
   ValidationDetail,
   VectorConfig,
@@ -138,6 +149,7 @@ describe('public export surface (NTS-600)', () => {
       | 'OptimisticLockError'
       | 'OtherNode'
       | 'PaginateService'
+      | 'ParallelError'
       | 'Point'
       | 'Primary'
       | 'ProjectionService'
@@ -197,7 +209,9 @@ describe('public export surface (NTS-600)', () => {
       | 'jsonSafe'
       | 'jsonSafeRecord'
       | 'knn'
+      | 'mergeOutcome'
       | 'mergeRelationshipProperty'
+      | 'mergeResultFromSave'
       | 'ontology'
       | 'ontologyMarkdown'
       | 'projectionNode'
@@ -205,6 +219,7 @@ describe('public export surface (NTS-600)', () => {
       | 'registerRepository'
       | 'requireRelateClient'
       | 'resolveRepository'
+      | 'rows'
       | 'runCypherScript'
       | 'runSeeders'
       | 'schemaDrift'
@@ -260,11 +275,20 @@ describe('public export surface (NTS-600)', () => {
         LabelPresentDefinition,
         LoadedEntity<unknown, never>,
         ManyAndCount<unknown>,
+        MergeCounts,
+        MergeOutcome,
+        MergeResult<unknown>,
         OffsetPaginateOptions,
         Ontology,
         OrderSpec,
         Page<unknown>,
         PaginateOptions,
+        ParallelBody<unknown>,
+        ParallelMode,
+        ParallelOperationError,
+        ParallelOptions,
+        ParallelRollbackReport,
+        ParallelScope,
         ProjectionDirection,
         PropertyDefinition,
         PropertyOntology,
@@ -287,6 +311,7 @@ describe('public export surface (NTS-600)', () => {
         RelationshipExistsConfig,
         RelationshipExistsDefinition,
         RelationshipOntology,
+        ReplaceRelationshipOptions,
         RepositoryConstructor,
         RunCypherScriptOptions,
         Runner,
@@ -304,6 +329,7 @@ describe('public export surface (NTS-600)', () => {
         SyncEdgesResult,
         TransactionHandle,
         TransformConfig,
+        TransformedQueryOutput,
         TraversalRow,
         ValidationDetail,
         VectorConfig,

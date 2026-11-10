@@ -1,9 +1,11 @@
 import type { EventEmitter } from 'node:events'
 import type {
+  ConnectionProvider,
   GraphRelationship,
   HydrateQueryOptions,
   QueryOutput,
   QueryParams as QueryParameters,
+  QuerySummary,
   Runner,
   TransactionHandle,
 } from '../driver/types.js'
@@ -28,13 +30,23 @@ import {
   type SyncEdgesResult,
 } from '../services/query/sync.service.js'
 import { FindByIdService } from '../services/query/find-by-id.service.js'
-import { assertPublicWithoutFilters, WITHOUT_ALL_FILTERS } from '../services/query/filters.js'
+import { assertPublicWithoutFilters } from '../services/query/filters.js'
 import { FindService } from '../services/query/find.service.js'
 import { GetService, type OrderSpec } from '../services/query/get.service.js'
-import { MergeService, getMergeFields } from '../services/query/merge.service.js'
+import {
+  mergeOutcome,
+  mergeResultFromSave,
+  MergeService,
+  getMergeFields,
+  type MergeResult,
+} from '../services/query/merge.service.js'
 import { ProjectionService } from '../projection/projection.service.js'
 import { INTERNAL_ID } from '../constants.js'
 import { RelateService } from '../services/query/relate.service.js'
+import {
+  ReplaceRelationshipService,
+  type ReplaceRelationshipOptions,
+} from '../services/query/replace-relationship.service.js'
 import { UpdateService } from '../services/query/update.service.js'
 import { WithinDistanceService } from '../services/query/within-distance.service.js'
 import { search, type ScoredEntity } from '../services/query/search.service.js'
@@ -42,6 +54,8 @@ import { globalObservers, type ObserverRegistry } from '../observers.js'
 import { EffectBuffer } from './effects.js'
 import { isConstructorOf, isRecord } from '../services/type-guards.js'
 import { hydrate, hydrateWhenRequested, splitHydrateArguments } from '../hydrate.js'
+import { hydrateWrittenNode } from '../services/write-utilities.js'
+import { type ParallelBody, type ParallelOptions, runParallel } from './parallel.js'
 
 /**
 The INeode surface scoped to one open transaction: every read/write runs
@@ -71,18 +85,27 @@ export class TransactionalService implements INeode {
   // registry (the standalone observe() function) is the default
   private readonly observers: ObserverRegistry
 
+  /**
+  The parent connection parallel() (NTS-631) fans the autocommit modes
+  out onto — the facade passes its own connection; ambient scopes
+  forward the connection their transaction was opened from.
+  */
+  private readonly parent: ConnectionProvider | undefined
+
   constructor(
     handle: TransactionHandle,
     eventEmitter: EventEmitter,
     effects: EffectBuffer = new EffectBuffer(),
     shouldFlushOnCommit = true,
     observers: ObserverRegistry = globalObservers,
+    parent?: ConnectionProvider,
   ) {
     this.handle = handle
     this.eventEmitter = eventEmitter
     this.effects = effects
     this.shouldFlushOnCommit = shouldFlushOnCommit
     this.observers = observers
+    this.parent = parent
   }
 
   /**
@@ -131,6 +154,76 @@ export class TransactionalService implements INeode {
       // Deliberately ignored: this transaction runs against the database
       // it was opened with
     }
+  }
+
+  /**
+  Save plus the write outcome (NTS-630): the created flag the lifecycle
+  events report and the root statement's summary — merge()'s
+  relationship-values path wraps the same outcome mergeOn() returns.
+  */
+  private async saveOutcome<T>(
+    entity: T,
+    database?: string,
+  ): Promise<{ saved: T; created: boolean; summary: QuerySummary | undefined }> {
+    this.ignoreDatabaseOverride(database)
+
+    if (!isRecord(entity)) {
+      throw new TypeError('save requires an entity object')
+    }
+
+    const schema = this.getSchema(entity.constructor)
+
+    // NTS-511: beforeSave runs before the dirty diff — mutations count
+    await this.observers.run(entity.constructor, 'beforeSave', entity, {
+      isNew: false,
+      database: undefined,
+    })
+
+    const merge = new MergeService(this.handle)
+
+    // NTS-157: tracked (hydrated) instances write only their dirty
+    // scalar properties — relationships stay on the explicit
+    // relate()/detach() paths. The facade's clean no-op short-circuit
+    // cannot apply inside an open transaction (the write itself still
+    // runs, handing back the persisted state), so only the dirty filter
+    // threads through.
+    const dirtyKeys = diffDirty(schema, entity)
+
+    // NTS-633: the merge statement's RETURN carries the written node —
+    // hydrate it directly; FindByIdService stays as the fallback
+    // (write-path re-hydration bypasses the read filters —
+    // WITHOUT_ALL_FILTERS)
+    const { elementId, created, summary, output } = await merge.save(
+      entity,
+      schema,
+      dirtyKeys.length > 0 ? new Set(dirtyKeys) : undefined,
+    )
+
+    const constructor: unknown = entity.constructor
+
+    if (!isConstructorOf<T>(constructor)) {
+      throw new TypeError('The saved entity has no model constructor')
+    }
+
+    const saved = await hydrateWrittenNode<T>(constructor, schema, this.handle, output, elementId)
+
+    if (saved === undefined) {
+      throw new NeodeError('Entity was saved but could not be found immediately afterwards')
+    }
+
+    // Emit the event the merge actually was: a create or an update
+    // NTS-582: event + afterSave fire after the transaction commits, never
+    // for work that rolls back or is retried
+    this.effects.defer(async () => {
+      this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
+
+      await this.observers.run(entity.constructor, 'afterSave', saved, {
+        isNew: created,
+        database: undefined,
+      })
+    })
+
+    return { saved, created, summary }
   }
 
   getRunner(): Runner {
@@ -198,6 +291,49 @@ export class TransactionalService implements INeode {
   */
   isSettled(): boolean {
     return this.state !== 'open'
+  }
+
+  /**
+  The facade's parallel() from inside a transaction scope (NTS-631):
+
+  - 'read' / 'write' — the autocommit modes delegate through the PARENT
+    connection (fresh sessions). They deliberately run OUTSIDE this
+    transaction — a transaction cannot fan out into more transactions,
+    and joining this scope would serialise every statement again — so
+    these operations do NOT see this transaction's uncommitted writes.
+  - 'atomic' — REJECTED with a descriptive error: a scoped transaction
+    cannot fan out into more transactions. Use the facade's parallel()
+    for atomic fan-out across sessions, or run the writes sequentially
+    on this scope.
+
+  Results mirror the input shape (map → map, array → array); failures
+  throw ParallelError aligned with the input.
+  */
+  parallel<Operations extends Record<string, ParallelBody<unknown>>>(
+    operations: Operations,
+    options?: ParallelOptions,
+  ): Promise<{ [Key in keyof Operations]: Awaited<ReturnType<Operations[Key]>> }>
+  parallel<T>(operations: ParallelBody<T>[], options?: ParallelOptions): Promise<T[]>
+  async parallel(
+    operations: Record<string, ParallelBody<unknown>> | ParallelBody<unknown>[],
+    options: ParallelOptions = {},
+  ): Promise<Record<string, unknown> | unknown[]> {
+    if (options.mode === 'atomic') {
+      throw new NeodeError(
+        'parallel() with mode "atomic" cannot run inside a transaction scope — a scoped transaction ' +
+          "cannot fan out into more transactions. Use the facade's parallel() for atomic fan-out " +
+          'across sessions, or run the writes sequentially on this scope.',
+      )
+    }
+
+    if (this.parent === undefined) {
+      throw new NeodeError(
+        "This transaction scope has no parent connection to fan out onto — call the facade's " +
+          'parallel() instead.',
+      )
+    }
+
+    return runParallel(this.parent, operations, options)
   }
 
   /**
@@ -316,92 +452,36 @@ export class TransactionalService implements INeode {
   }
 
   async save<T>(entity: T, database?: string): Promise<T> {
-    this.ignoreDatabaseOverride(database)
+    const outcome = await this.saveOutcome(entity, database)
 
-    if (!isRecord(entity)) {
-      throw new TypeError('save requires an entity object')
-    }
-
-    const schema = this.getSchema(entity.constructor)
-
-    // NTS-511: beforeSave runs before the dirty diff — mutations count
-    await this.observers.run(entity.constructor, 'beforeSave', entity, {
-      isNew: false,
-      database: undefined,
-    })
-
-    const merge = new MergeService(this.handle)
-
-    // NTS-157: tracked (hydrated) instances write only their dirty
-    // scalar properties — relationships stay on the explicit
-    // relate()/detach() paths. The facade's clean no-op short-circuit
-    // cannot apply inside an open transaction (the re-find still runs to
-    // hand back the persisted state), so only the dirty filter threads
-    // through.
-    const dirtyKeys = diffDirty(schema, entity)
-
-    const { elementId, created } = await merge.save(
-      entity,
-      schema,
-      dirtyKeys.length > 0 ? new Set(dirtyKeys) : undefined,
-    )
-
-    const constructor: unknown = entity.constructor
-
-    if (!isConstructorOf<T>(constructor)) {
-      throw new TypeError('The saved entity has no model constructor')
-    }
-
-    // Write-path re-hydration bypasses the read filters (WITHOUT_ALL_FILTERS)
-    const saved = await new FindByIdService(this.handle).find<T>(constructor, schema, elementId, {
-      withoutFilters: [WITHOUT_ALL_FILTERS],
-    })
-
-    if (saved === undefined) {
-      throw new NeodeError('Entity was saved but could not be found immediately afterwards')
-    }
-
-    // Emit the event the merge actually was: a create or an update
-    // NTS-582: event + afterSave fire after the transaction commits, never
-    // for work that rolls back or is retried
-    this.effects.defer(async () => {
-      this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
-
-      await this.observers.run(entity.constructor, 'afterSave', saved, {
-        isNew: created,
-        database: undefined,
-      })
-    })
-
-    return saved
+    return outcome.saved
   }
 
   /**
   MERGE a node of the given constructor on its merge fields (the unique
   and indexed properties present in `properties` form the match,
   everything else is set) — mirror of the facade's merge, in this
-  transaction's scope
+  transaction's scope. Resolves to the same merge outcome mergeOn()
+  returns (NTS-630)
   */
   async merge<T>(
     constructor: new (...arguments_: never[]) => T,
     properties: Record<string, unknown> = {},
     database?: string,
-  ): Promise<T | undefined> {
+  ): Promise<MergeResult<T> | undefined> {
     this.ignoreDatabaseOverride(database)
 
     const schema = this.getSchema(constructor)
 
-    // Entity instances (or arrays of them) in the properties mean
+    // Relationship values (or arrays of them) in the properties mean
     // relationship writes — those go through the save() path, which
-    // already creates/relates nested relationships (facade parity)
+    // already creates/relates nested relationships (facade parity).
+    // NTS-627: primary-key values are relationship writes too — they
+    // route through save() like entity instances.
     const hasRelationshipValues = schema.getRelationships().some((relationship) => {
       const value = properties[relationship.getKey()]
 
-      if (value === undefined || value === null) {
-        return false
-      }
-
-      return Array.isArray(value) ? value.length > 0 : typeof value === 'object'
+      return value !== undefined && value !== null && (!Array.isArray(value) || value.length > 0)
     })
 
     if (hasRelationshipValues) {
@@ -413,14 +493,37 @@ export class TransactionalService implements INeode {
 
       Object.assign(constructed, properties)
 
-      return this.save(constructed)
+      const { saved, created, summary } = await this.saveOutcome(constructed)
+
+      return mergeResultFromSave(saved, created, summary)
     }
 
     const mergeKeys = new Set(getMergeFields(schema).map((property) => property.getKey()))
     const entries = Object.entries(properties)
 
-    const match = Object.fromEntries(entries.filter(([key]) => mergeKeys.has(key)))
-    const set = Object.fromEntries(entries.filter(([key]) => !mergeKeys.has(key)))
+    return this.mergeOn<T>(
+      constructor,
+      Object.fromEntries(entries.filter(([key]) => mergeKeys.has(key))),
+      Object.fromEntries(entries.filter(([key]) => !mergeKeys.has(key))),
+      database,
+    )
+  }
+
+  /**
+  MERGE a node on the given match properties, then set the given
+  properties — NTS-630: resolves to the merge outcome (the hydrated
+  entity plus created/updated flags, counters and the raw driver
+  summary), mirroring the facade's mergeOn in this transaction's scope
+  */
+  async mergeOn<T>(
+    constructor: new (...arguments_: never[]) => T,
+    match: Record<string, unknown>,
+    set: Record<string, unknown> = {},
+    database?: string,
+  ): Promise<MergeResult<T> | undefined> {
+    this.ignoreDatabaseOverride(database)
+
+    const schema = this.getSchema(constructor)
 
     // NTS-596: beforeSave receives the set record (facade mergeOn parity —
     // the mutable record of what the write sets). Errors fail the write.
@@ -443,9 +546,11 @@ export class TransactionalService implements INeode {
       throw new NeodeError('mergeOn did not return an elementId')
     }
 
-    const merged = await new FindByIdService(this.handle).find<T>(constructor, schema, elementId, {
-      withoutFilters: [WITHOUT_ALL_FILTERS],
-    })
+    // NTS-633: the MERGE statement's RETURN carries the merged node —
+    // hydrate it directly; FindByIdService stays as the fallback
+    // (write-path re-hydration bypasses the read filters —
+    // WITHOUT_ALL_FILTERS)
+    const merged = await hydrateWrittenNode<T>(constructor, schema, this.handle, output, elementId)
 
     if (merged !== undefined) {
       // NTS-582: fires after the transaction commits (NTS-596: NODE_MERGED
@@ -460,7 +565,9 @@ export class TransactionalService implements INeode {
       })
     }
 
-    return merged
+    return merged === undefined
+      ? undefined
+      : { entity: merged, ...mergeOutcome(output.summary), summary: output.summary }
   }
 
   /**
@@ -541,13 +648,13 @@ export class TransactionalService implements INeode {
       database: undefined,
     })
 
-    await new UpdateService(this.handle).update(schema, entity, properties)
+    // NTS-633: the update statement's RETURN carries the mutated node —
+    // hydrate it directly; FindByIdService stays as the fallback
+    // (write-path re-hydration bypasses the read filters —
+    // WITHOUT_ALL_FILTERS)
+    const output = await new UpdateService(this.handle).update(schema, entity, properties)
 
     const elementId = elementIdOfEntity(schema, entity)
-
-    if (elementId === undefined) {
-      return undefined
-    }
 
     const constructor: unknown = entity.constructor
 
@@ -555,9 +662,7 @@ export class TransactionalService implements INeode {
       throw new TypeError('The updated entity has no model constructor')
     }
 
-    const saved = await new FindByIdService(this.handle).find<T>(constructor, schema, elementId, {
-      withoutFilters: [WITHOUT_ALL_FILTERS],
-    })
+    const saved = await hydrateWrittenNode<T>(constructor, schema, this.handle, output, elementId)
 
     if (saved !== undefined) {
       // NTS-582: event + afterSave fire after the transaction commits
@@ -627,6 +732,59 @@ export class TransactionalService implements INeode {
     const relationship = this.requireRelationship(schema, relationshipKey)
 
     return new DetachService(this.handle).detach(schema, from, to, relationship)
+  }
+
+  /**
+  Replace every edge of ONE declared relationship on a node in one
+  statement — mirror of the facade's replaceRelationship (NTS-634)
+  */
+  async replaceRelationship(
+    entity: object,
+    key: string,
+    targets: unknown[],
+    properties: Record<string, unknown> = {},
+    options?: ReplaceRelationshipOptions,
+  ): Promise<void> {
+    if (!isRecord(entity)) {
+      throw new TypeError('replaceRelationship requires an entity object')
+    }
+
+    const schema = this.getSchema(entity.constructor)
+
+    const relationship = this.requireRelationship(schema, key)
+
+    await new ReplaceRelationshipService(this.handle).replaceRelationship(
+      schema,
+      entity,
+      relationship,
+      targets,
+      properties,
+      options,
+    )
+  }
+
+  /**
+  Set the properties of ONE declared relationship's edge (NTS-628) —
+  mirror of the facade's updateEdgeProperties: MERGEs the edge (never
+  duplicating it) and SETs the properties, idempotent per re-run.
+  */
+  async updateEdgeProperties(
+    entity: object,
+    key: string,
+    target: object,
+    properties: Record<string, unknown> = {},
+  ): Promise<GraphRelationship | undefined> {
+    const schema = this.getSchema(entity.constructor)
+
+    const relationship = this.requireRelationship(schema, key)
+
+    return new RelateService(this.handle).updateEdgeProperties(
+      schema,
+      entity,
+      relationship,
+      target,
+      properties,
+    )
   }
 
   /**

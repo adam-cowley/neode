@@ -22,6 +22,15 @@ export type { ValidationDetail } from './validation/validation-error.js'
 export { validate } from './validation/index.js'
 export { TransactionError } from './transaction/errors.js'
 export type { BatchStatementError } from './transaction/errors.js'
+export { ParallelError } from './transaction/parallel.js'
+export type {
+  ParallelBody,
+  ParallelMode,
+  ParallelOptions,
+  ParallelOperationError,
+  ParallelRollbackReport,
+  ParallelScope,
+} from './transaction/parallel.js'
 export { Repository } from './repository/index.js'
 export { TransactionalService } from './transaction/transactional.service.js'
 export { registerRepository, getRepository, resolveRepository } from './meta/repositories.js'
@@ -50,6 +59,7 @@ export { MAX_CASCADE_DEPTH } from './services/query/delete.service.js'
 // NTS-602 — delete()'s options type, named in the facade signature in the
 // API reference
 export type { DeleteOptions } from './services/query/delete.service.js'
+export type { ReplaceRelationshipOptions } from './services/query/replace-relationship.service.js'
 export type { CreateOptions } from './services/query/create.service.js'
 
 // Map-based schema definitions
@@ -81,9 +91,12 @@ export {
 } from './query/index.js'
 export type { INeode } from './neode.interface.js'
 
+// Merge outcome (NTS-630)
+export { mergeOutcome, mergeResultFromSave } from './services/query/merge.service.js'
+export type { MergeCounts, MergeOutcome, MergeResult } from './services/query/merge.service.js'
+
 // Hydration of raw query results (P4.11 parity)
 export { hydrate, hydrateFirst, toCollection } from './hydrate.js'
-
 // Database drivers
 export type {
   ConnectionProvider,
@@ -93,6 +106,7 @@ export type {
   QueryRecord,
   QueryParams,
   QuerySummary,
+  TransformedQueryOutput,
   CypherOptions,
   ConnectionOptions,
   GraphNode,
@@ -106,6 +120,7 @@ export { requireRelateClient } from './driver/relate.js'
 
 // Raw-cypher helpers + instrumented provider (NTS-122/124/132/133)
 export { jsonSafe, jsonSafeRecord } from './driver/json-safe.js'
+export { rows } from './driver/rows.js'
 export { instrumentConnectionProvider } from './driver/instrumented.js'
 export type { QueryExecutedEvent } from './common/events.js'
 

@@ -220,7 +220,7 @@ describe('Repository', () => {
       const tx = await backend.neode.openWriteTransaction()
 
       try {
-        const merged = await tx.merge(Movie, { title: 'Tx Alien', released: 1979 })
+        const merged = (await tx.merge(Movie, { title: 'Tx Alien', released: 1979 }))?.entity
 
         expect(merged).toBeInstanceOf(Movie)
       } finally {

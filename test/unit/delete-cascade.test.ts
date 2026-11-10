@@ -102,7 +102,17 @@ const capture = (): { runner: Runner; statements: string[] } => {
       run: vi.fn(async (statement: string) => {
         statements.push(statement)
 
-        return { records: [] }
+        // NTS-634: the guarded delete statement ends RETURN count(...) —
+        // the fake plays the database: one row, the delete happened
+        return {
+          records: [
+            {
+              get: (name: string) => (name === 'deleted' ? 1 : undefined),
+              has: (name: string) => name === 'deleted',
+              keys: ['deleted'],
+            },
+          ],
+        }
       }),
     },
   }

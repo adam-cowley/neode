@@ -9,6 +9,8 @@ import type { RelationshipPropertySchema } from '../../meta/relationship-propert
 import { QueryService } from './query.service.js'
 import { isRecord } from '../type-guards.js'
 import { NeodeError } from '../../errors/neode-error.js'
+// eslint-disable-next-line unicorn/name-replacements -- `QueryParams` is the documented public API name (driver/types.ts), imported by name in the test suites
+import type { QueryParams } from '../../driver/types.js'
 import {
   stampExpression,
   timestampProperty,
@@ -73,6 +75,32 @@ export interface DeleteOptions {
   (labels-as-state lifecycle). Cascade options are ignored.
   */
   soft?: string
+
+  /**
+  NTS-634 guard predicates: tenant/ownership filters the delete must
+  respect, applied to the statement's guard MATCH. A Cypher fragment over
+  the node variable `this` (the @Expression convention) with its values
+  bound as parameters — a fragment wins over a typed property map because
+  guards like `-[:IN_TENANT]->(:Tenant { id: $tenant })` are patterns,
+  which a property map cannot express. Rendered through whereRaw, like the
+  update path's version guard.
+  */
+  where?: {
+    /**
+    Cypher predicate over the node variable `this`
+    */
+    fragment: string
+    /**
+    Values for the `$name` references in the fragment
+    */
+    params?: QueryParams
+  }
+
+  /**
+  NTS-634: zero matched rows resolve silently instead of throwing the
+  missing-entity error
+  */
+  ifExists?: boolean
 }
 
 export class DeleteService extends QueryService {
@@ -171,6 +199,20 @@ export class DeleteService extends QueryService {
 
     builder.matchEntity(THIS_NODE, schema, criteria)
 
+    // NTS-634 guard predicates (tenant/ownership filters a delete must
+    // respect): a raw Cypher fragment over the node variable `this`, its
+    // values bound as parameters — rendered like the update path's
+    // version guard
+    if (options?.where !== undefined) {
+      const guardParameters = Object.entries(options.where.params ?? {})
+
+      for (const [name, value] of guardParameters) {
+        builder.param(name, value)
+      }
+
+      builder.whereRaw(options.where.fragment)
+    }
+
     // Declarative soft delete (NTS-510): SET the label + stamp instead of
     // deleting the node, unless the caller forces a hard delete. The
     // match is gated on the label NOT being there yet: the label is what
@@ -178,7 +220,60 @@ export class DeleteService extends QueryService {
     // zero rows and a repeat delete is a no-op (deletedAt never re-stamped)
     const soft = schema.getSoftDelete()
 
-    if (soft !== undefined && options?.force !== true) {
+    if (soft === undefined || options?.force === true) {
+      // Soft delete: SET the label instead of deleting the node
+      const softLabel = options?.soft
+
+      if (softLabel === undefined || softLabel === '') {
+        // Which relationships cascade: an explicit `{ cascade: true }` (or a
+        // detach mode) takes everything, `{ cascade: false }` nothing, and
+        // without options the schema's per-relationship annotations decide
+        const isAll = options?.cascade === true || options?.mode !== undefined
+        const selection: 'all' | 'annotated' = isAll ? 'all' : 'annotated'
+
+        if (isAll && options.mode === 'detach') {
+          // Delete the relationships to related nodes first, then the node
+          // itself: related nodes survive (neode DeleteNode.js addDetachNode)
+          for (const [index, relationship] of schema.getRelationships().entries()) {
+            // A previous segment deleted its relationships — carry `this` over
+            if (index > 0) {
+              builder.withDistinct(THIS_NODE)
+            }
+
+            const relationshipAlias = `${THIS_NODE}_${relationship.getKey()}_rel`
+
+            builder
+              .optionalMatch(THIS_NODE)
+              .relationship(relationship.getType(), relationship.getDirection(), relationshipAlias)
+              .toAnything()
+              .delete(relationshipAlias)
+          }
+
+          builder.detachDelete(THIS_NODE)
+        } else if (options?.cascade === false) {
+          builder.detachDelete(THIS_NODE)
+        } else {
+          // Recursively match and delete related nodes, bounded by depth
+          // (neode DeleteNode.js addCascadeDeleteNode) — 'annotated' selection
+          // walks only the relationships declared `cascade: true`
+          for (const relationship of schema.getRelationships()) {
+            this.addCascadeDelete(
+              builder,
+              THIS_NODE,
+              relationship,
+              1,
+              options?.depth ?? MAX_CASCADE_DEPTH,
+              selection,
+              [THIS_NODE],
+            )
+          }
+
+          builder.detachDelete(THIS_NODE)
+        }
+      } else {
+        builder.set(`${THIS_NODE}:${quote(softLabel)}`, undefined)
+      }
+    } else {
       builder.whereLabel(THIS_NODE, soft.label, true)
 
       builder
@@ -203,75 +298,40 @@ export class DeleteService extends QueryService {
           versionBump(THIS_NODE, version.getKey()),
         )
       }
-
-      const { query, params } = builder.build()
-
-      await this.runner.run(query, params)
-
-      return
     }
 
-    // Soft delete: SET the label instead of deleting the node
-    const softLabel = options?.soft
-
-    if (softLabel !== undefined && softLabel !== '') {
-      builder.set(`${THIS_NODE}:${quote(softLabel)}`, undefined)
-
-      const { query, params } = builder.build()
-
-      await this.runner.run(query, params)
-
-      return
-    }
-
-    // Which relationships cascade: an explicit `{ cascade: true }` (or a
-    // detach mode) takes everything, `{ cascade: false }` nothing, and
-    // without options the schema's per-relationship annotations decide
-    const isAll = options?.cascade === true || options?.mode !== undefined
-    const selection: 'all' | 'annotated' = isAll ? 'all' : 'annotated'
-
-    if (isAll && options.mode === 'detach') {
-      // Delete the relationships to related nodes first, then the node
-      // itself: related nodes survive (neode DeleteNode.js addDetachNode)
-      for (const [index, relationship] of schema.getRelationships().entries()) {
-        // A previous segment deleted its relationships — carry `this` over
-        if (index > 0) {
-          builder.withDistinct(THIS_NODE)
-        }
-
-        const relationshipAlias = `${THIS_NODE}_${relationship.getKey()}_rel`
-
-        builder
-          .optionalMatch(THIS_NODE)
-          .relationship(relationship.getType(), relationship.getDirection(), relationshipAlias)
-          .toAnything()
-          .delete(relationshipAlias)
-      }
-
-      builder.detachDelete(THIS_NODE)
-    } else if (options?.cascade === false) {
-      builder.detachDelete(THIS_NODE)
-    } else {
-      // Recursively match and delete related nodes, bounded by depth
-      // (neode DeleteNode.js addCascadeDeleteNode) — 'annotated' selection
-      // walks only the relationships declared `cascade: true`
-      for (const relationship of schema.getRelationships()) {
-        this.addCascadeDelete(
-          builder,
-          THIS_NODE,
-          relationship,
-          1,
-          options?.depth ?? MAX_CASCADE_DEPTH,
-          selection,
-          [THIS_NODE],
-        )
-      }
-
-      builder.detachDelete(THIS_NODE)
-    }
+    // NTS-634: the deleted count rides the same statement — exactly one
+    // record comes back (aggregations always return a row), 0 when the
+    // guard MATCH found nothing
+    builder.return(`count(${THIS_NODE}) AS deleted`)
 
     const { query, params } = builder.build()
 
-    await this.runner.run(query, params)
+    const result = await this.runner.run(query, params)
+
+    const deleted = Number(result.records[0]?.get('deleted') ?? 0)
+
+    // NTS-595 idempotency: a repeat soft delete matches zero rows (the
+    // Deleted-label gate hides the already-stamped node) — that is the
+    // documented no-op, not a missing entity. Only a hard delete's zero
+    // rows mean "not found".
+    const isSoftNoOp = soft !== undefined && options?.force !== true
+
+    if (deleted !== 0 || isSoftNoOp || options?.ifExists === true) {
+      return
+    }
+
+    // The missing-entity contract, byte-identical to the Repository's
+    // by-ID throw whose pre-read this zero-row check replaces
+    let notFoundId = criteria.elementId ?? 'unknown'
+
+    if (criteria.value !== undefined) {
+      notFoundId =
+        typeof criteria.value === 'string' || typeof criteria.value === 'number'
+          ? String(criteria.value)
+          : JSON.stringify(criteria.value)
+    }
+
+    throw new NeodeError(`Cannot delete: entity not found for ID ${notFoundId}`)
   }
 }

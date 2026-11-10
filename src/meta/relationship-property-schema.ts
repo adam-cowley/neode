@@ -53,8 +53,24 @@ export class RelationshipPropertySchema {
   */
   private description: string | undefined
 
+  /**
+  Declared edge-property schemas (NTS-628): the map API's `properties`
+  key on a relationship definition — the schema runtime edge properties
+  validate against. Empty when the relationship declares none (edge
+  properties are then accepted as literals, relate() parity).
+  */
+  private edgeProperties: PropertySchema[] = []
+
   constructor(key: string) {
     this.key = key
+  }
+
+  setEdgeProperties(properties: PropertySchema[]): void {
+    this.edgeProperties = properties
+  }
+
+  getEdgeProperties(): PropertySchema[] {
+    return [...this.edgeProperties]
   }
 
   getKey(): string {

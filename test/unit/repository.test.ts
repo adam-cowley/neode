@@ -329,7 +329,9 @@ describe('Repository', () => {
     it('merges on the given properties and returns the hydrated entity', async () => {
       const { neode, mocks } = stubNeode()
       const merged = Movie.build({ id: 'u1', title: 'Alien', released: 1979 })
-      mocks.merge.mockResolvedValue(merged)
+      // NTS-630: merge() resolves to the merge-outcome wrapper; upsert
+      // unwraps `.entity`
+      mocks.merge.mockResolvedValue({ entity: merged })
 
       const repo = new Repository<Movie>(neode, Movie)
       const result = await repo.upsert({ title: 'Alien', released: 1979 })

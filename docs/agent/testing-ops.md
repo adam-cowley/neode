@@ -69,7 +69,7 @@ _source: testing/random.ts_
 
 ### `Seeder` (class)
 
-Base class for seeders (NTS-167): `runSeeders()` calls seed() once per seeder, in order. Write idempotently inside seed() — `neode.mergeOn(model, match, set)` or `neode.merge(model, properties)` MERGE on the node's merge fields — so rerunning the runner updates instead of duplicating.
+Base class for seeders (NTS-167): `runSeeders()` calls seed() once per seeder, in order. Write idempotently inside seed() — `neode.mergeOn(model, match, set)` or `neode.merge(model, properties)` MERGE on the node's merge fields — so rerunning the runner updates instead of duplicating (the result's `created` flag reports which happened, NTS-630).
 
 _source: testing/seeder.ts_
 

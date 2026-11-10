@@ -99,10 +99,12 @@ describe('P4.11 parity shims', () => {
 
   describe('merge', () => {
     it('creates a node when no match exists, merging on the unique properties', async () => {
-      const merged = await backend.neode.merge(Person, {
-        name: 'Adam',
-        age: 30,
-      })
+      const merged = (
+        await backend.neode.merge(Person, {
+          name: 'Adam',
+          age: 30,
+        })
+      )?.entity
 
       expect(merged).toBeInstanceOf(Person)
       expect(merged!.name).toBe('Adam')
@@ -113,10 +115,12 @@ describe('P4.11 parity shims', () => {
     it('matches an existing node on its unique property and sets the rest', async () => {
       const saved = await backend.neode.save(Person.create('Adam'))
 
-      const merged = await backend.neode.merge(Person, {
-        name: 'Adam',
-        age: 31,
-      })
+      const merged = (
+        await backend.neode.merge(Person, {
+          name: 'Adam',
+          age: 31,
+        })
+      )?.entity
 
       expect(merged!._id).toBe(saved._id)
       expect(merged!.age).toBe(31)

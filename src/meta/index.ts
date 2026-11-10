@@ -25,7 +25,7 @@ const models = new Map<Newable, EntitySchema>()
 /**
 Config keys consumed by the metamodel; anything else is a validation rule
 */
-const METAMODEL_KEYS = new Set([
+export const METAMODEL_KEYS = new Set([
   'type',
   'primary',
   'unique',

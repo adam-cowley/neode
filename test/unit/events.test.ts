@@ -74,7 +74,11 @@ class FakeProvider implements ConnectionProvider {
     }
 
     if (statement.includes('DETACH DELETE')) {
-      return { records: [] }
+      // NTS-634: the guarded delete statement ends RETURN count(...) —
+      // the fake plays the database: one row, the delete happened
+      return {
+        records: [record((key) => (key === 'deleted' ? 1 : undefined), ['deleted'])],
+      }
     }
 
     if (statement.includes('MERGE')) {
