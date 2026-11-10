@@ -59,7 +59,7 @@ import type { Repository } from './repository/index.js'
 import { FactoryBuilder } from './services/factory.service.js'
 import { WITHOUT_ALL_FILTERS } from './services/query/filters.js'
 import { type BulkChunk, type BulkOptions, BulkService } from './services/query/bulk.service.js'
-import { CreateService } from './services/query/create.service.js'
+import { CreateService, type CreateOptions } from './services/query/create.service.js'
 import {
   type DeleteOptions,
   DeleteService,
@@ -122,7 +122,7 @@ import {
   type GraphTypeConstraintDefinition,
   type GraphTypeDefinition,
 } from './services/schema/graph-type.service.js'
-import { constructorOf, isConstructorOf, isRecord } from './services/type-guards.js'
+import { constructorOf, isConstructorOf, isObjectArray, isRecord } from './services/type-guards.js'
 import {
   ambientTransaction,
   runAmbientTransaction,
@@ -343,6 +343,36 @@ export class Neode implements INeode {
     }
 
     await effect()
+  }
+
+  /**
+  NTS-615: eager relationship creation shared by create() and update() —
+  relate the given relationship key -> target(s) in the current unit of
+  work's transaction. Edges are MERGE-based (idempotent on retry) and
+  cardinality-guarded per edge by RelateService; any failure rolls the
+  whole write back. `fromId` matches the freshly created node by
+  elementId (create path — not yet hydrated).
+  */
+  private async eagerRelate(
+    schema: EntitySchema,
+    from: object,
+    fromId: string | undefined,
+    relate: Record<string, object | object[]> | undefined,
+    tx: TransactionHandle,
+  ): Promise<void> {
+    if (relate === undefined) {
+      return
+    }
+
+    for (const [relationshipKey, targets] of Object.entries(relate)) {
+      const relationship = this.resolveRelationship(schema, relationshipKey)
+
+      const list = isObjectArray(targets) ? targets : [targets]
+
+      for (const entry of list) {
+        await new RelateService(tx).relate(schema, from, entry, relationship, {}, false, fromId)
+      }
+    }
   }
 
   getConnection(): ConnectionProvider {
@@ -1132,22 +1162,35 @@ export class Neode implements INeode {
 
   /**
   CREATE a new entity of the given constructor with the given properties
-  (nested relationship targets included), then hydrate the created node
+  (nested relationship targets included), then hydrate the created node.
+
+  NTS-615: `options.relate` maps a relationship key on the model to a
+  saved target entity (or array of targets) to relate it to — eager
+  relationship creation in the same managed transaction as the create, so
+  a failure mid-write leaves no orphan node. Edges are MERGE-based:
+  retries stay idempotent. The legacy form `create(constructor,
+  properties, database)` — a string third argument, as accepted by
+  callers before options — is kept working.
   */
   async create<T>(
     constructor: new (...arguments_: never[]) => T,
     properties: Record<string, unknown> = {},
+    options?: CreateOptions | string,
     database?: string,
   ): Promise<T> {
     const schema = this.getSchema(constructor)
 
+    const relate = typeof options === 'string' ? undefined : options?.relate
+
+    const databaseArg = typeof options === 'string' ? options : database
+
     // NTS-511: beforeSave before the statement — errors fail the create
     await this.observers.run(constructor, 'beforeSave', properties, {
       isNew: true,
-      database,
+      database: databaseArg,
     })
 
-    const tx = await this.beginWorkTransaction('WRITE', database)
+    const tx = await this.beginWorkTransaction('WRITE', databaseArg)
 
     try {
       const constructed = new constructor()
@@ -1161,6 +1204,11 @@ export class Neode implements INeode {
       const service = new CreateService(tx)
 
       const { elementId } = await service.create(schema, constructed)
+
+      // NTS-615: eager relationships — same transaction as the create
+      // (atomic from the caller's view; a mid-write failure rolls the
+      // node and its edges back together)
+      await this.eagerRelate(schema, constructed, elementId, relate, tx)
 
       const findService = new FindByIdService(tx)
 
@@ -1179,7 +1227,10 @@ export class Neode implements INeode {
       await this.afterCommit(ambientTransaction(), async () => {
         this.eventEmitter.emit(EventType.NODE_CREATED, hydrated)
 
-        await this.observers.run(constructor, 'afterSave', hydrated, { isNew: true, database })
+        await this.observers.run(constructor, 'afterSave', hydrated, {
+          isNew: true,
+          database: databaseArg,
+        })
       })
 
       return hydrated
@@ -1314,6 +1365,12 @@ export class Neode implements INeode {
   UPDATE the given properties on a node (`+=` semantics: provided keys
   only, matched by the entity's primary key), then re-hydrate it.
 
+  NTS-615: `options.relate` maps a relationship key on the model to a
+  saved target entity (or array of targets) to relate it to, inside the
+  same managed transaction as the update (create() parity). The legacy
+  form `update(entity, properties, database)` — a string third argument —
+  is kept working.
+
   NTS-596: the update path runs the save lifecycle — beforeSave receives
   the properties record (mutate it to change what is written), and
   NODE_UPDATED + afterSave fire once committed (isNew is false: an update
@@ -1322,6 +1379,7 @@ export class Neode implements INeode {
   async update<T>(
     entity: T,
     properties: Record<string, unknown> = {},
+    options?: CreateOptions | string,
     database?: string,
   ): Promise<T | undefined> {
     if (!isRecord(entity)) {
@@ -1336,16 +1394,24 @@ export class Neode implements INeode {
 
     const schema = this.getSchema(entityConstructor)
 
+    const relate = typeof options === 'string' ? undefined : options?.relate
+
+    const databaseArg = typeof options === 'string' ? options : database
+
     // NTS-596: beforeSave before the statement — errors fail the write
     await this.observers.run(entityConstructor, 'beforeSave', properties, {
       isNew: false,
-      database,
+      database: databaseArg,
     })
 
-    const tx = await this.beginWorkTransaction('WRITE', database)
+    const tx = await this.beginWorkTransaction('WRITE', databaseArg)
 
     try {
       await new UpdateService(tx).update(schema, entity, properties)
+
+      // NTS-615: eager relationships — same transaction as the update;
+      // the entity is hydrated, so RelateService matches it by identity
+      await this.eagerRelate(schema, entity, undefined, relate, tx)
 
       const elementId = elementIdOfEntity(schema, entity)
 
@@ -1369,7 +1435,7 @@ export class Neode implements INeode {
 
         await this.observers.run(entityConstructor, 'afterSave', hydrated, {
           isNew: false,
-          database,
+          database: databaseArg,
         })
       })
 

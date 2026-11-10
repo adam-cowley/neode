@@ -50,6 +50,7 @@ export { MAX_CASCADE_DEPTH } from './services/query/delete.service.js'
 // NTS-602 — delete()'s options type, named in the facade signature in the
 // API reference
 export type { DeleteOptions } from './services/query/delete.service.js'
+export type { CreateOptions } from './services/query/create.service.js'
 
 // Map-based schema definitions
 export {

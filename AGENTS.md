@@ -177,6 +177,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `Collection` (class) — An iterable wrapper over an array of entities (parity with neode's Collection): reads like an array, serialises through toJson().
 - `ConnectionOptions` (interface) — Options a Neode instance accepts alongside its ConnectionProvider.
 - `ConnectionProvider` (interface) — The connection port implemented by every backend.
+- `CreateOptions` (interface) — Eager relationship creation on the write path (NTS-615): `relate` maps a relationship KEY (or type) on the written model to the saved target entity — or array of targets — to relate it to, inside the same managed transaction as the write. Edges are MERGE-based, so a retried write stays idempotent (the same guarantee relate() gives).
 - `CursorPage` (interface) — Cursor/keyset result — items are returned ascending either way
 - `CursorPaginateOptions` (interface) — Keyset/cursor pagination on a temporal (or other comparable) property: paginate(model, filter, { limit, orderBy?, after?, before? })
 - `CypherOptions` (interface) — Options for the unified raw query entry, `Neode#cypher`.
