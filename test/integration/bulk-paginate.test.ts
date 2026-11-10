@@ -11,6 +11,8 @@ import {
   Point,
   Date,
   Property,
+  Unique,
+  UpdatedAt,
 } from '../../src/decorators'
 import { Direction } from '../../src/query'
 import { getModel } from '../../src/meta'
@@ -83,6 +85,22 @@ class BulkDated {
   // A typed merge key: file sources deliver it as a string (NTS-637)
   @Property({ type: 'date', unique: true })
   day: string
+}
+
+@NodeEntity()
+class BulkStamped {
+  @InternalId()
+  _id: string
+
+  @Property({ type: 'string' })
+  name: string
+
+  // The NTS-612 iso-string form: the stored value is the string rendering,
+  // so a string match value must stay a string (NTS-638)
+  @Unique()
+  @UpdatedAt({ format: 'iso-string' })
+  @DateTime()
+  syncedAt: string
 }
 
 @NodeEntity()
@@ -976,5 +994,47 @@ describe('bulk merge-key conversion (NTS-637)', () => {
     const day = stored.records[1]?.get('day') as { year?: number }
 
     expect(day).toMatchObject({ year: 2024, month: 1, day: 2 })
+  })
+
+  it('mergeMany matches an iso-string merge key given as string file data (NTS-638)', async () => {
+    const service = new BulkService(backend.neode.getConnection())
+    const schema = getModel(BulkStamped)
+
+    await service.mergeMany(BulkStamped, schema, [
+      { syncedAt: '2024-03-04T05:06:07Z', name: 'First' },
+    ])
+
+    await service.mergeMany(BulkStamped, schema, [
+      { syncedAt: '2024-03-04T05:06:07Z', name: 'First updated' },
+    ])
+
+    const stored = await backend.neode.readCypher(
+      'MATCH (s:BulkStamped) RETURN s.name AS name, s.syncedAt AS syncedAt',
+      {},
+    )
+
+    // The string match value equals the stored string form — matched and
+    // updated, not duplicated
+    expect(stored.records).toHaveLength(1)
+    expect(stored.records[0]?.get('name')).toBe('First updated')
+    expect(stored.records[0]?.get('syncedAt')).toBe('2024-03-04T05:06:07Z')
+  })
+
+  it('facade rowToProperties resolves the schema and maps rows (NTS-641)', async () => {
+    const ok = await backend.neode.rowToProperties(BulkPerson, {
+      id: '0c0ffee0-0000-4000-8000-000000000000',
+      name: 'Adam',
+      visits: '3',
+    })
+
+    expect(ok.ok).toBe(true)
+
+    if (ok.ok) {
+      expect(ok.properties.visits).toBe(3)
+    }
+
+    const bad = await backend.neode.rowToProperties(BulkPerson, { name: 'A' })
+
+    expect(bad.ok).toBe(false)
   })
 })

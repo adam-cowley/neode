@@ -6,6 +6,7 @@ import {
   InternalId,
   OneToMany,
   Property,
+  Boolean,
 } from '../../src/decorators'
 import { Direction } from '../../src/query'
 import { getModel } from '../../src/meta'
@@ -87,6 +88,18 @@ class BulkBadge {
 
   @Property({ type: 'string', fake: () => `tag-${++fakeSequence}` })
   tag: string
+}
+
+@NodeEntity()
+class BulkFlagged {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @Boolean()
+  active: boolean
 }
 
 const FIXED_UUID = '0c0ffee0-0000-4000-8000-000000000000'
@@ -378,6 +391,22 @@ describe('bulk helpers', () => {
         expect(result.errors).toHaveLength(1)
         expect(result.errors[0]?.message).toContain('nested relationship values')
       }
+    })
+
+    it('coerces boolean strings and passes unparseable forms to validation (NTS-639)', async () => {
+      const schema = getModel(BulkFlagged)
+
+      const coerced = await rowToProperties(schema, { id: FIXED_UUID, active: ' TRUE ' })
+
+      expect(coerced.ok).toBe(true)
+
+      if (coerced.ok) {
+        expect(coerced.properties.active).toBe(true)
+      }
+
+      const rejected = await rowToProperties(schema, { id: FIXED_UUID, active: 'yes' })
+
+      expect(rejected.ok).toBe(false)
     })
   })
 })

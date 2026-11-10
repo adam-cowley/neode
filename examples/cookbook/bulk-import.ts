@@ -28,7 +28,11 @@ class Product {
 
 // Stand-in for a real source (createReadStream().pipe(csv-parse), NDJSON
 // lines, paginated API pulls): an AsyncIterable of raw records, here a
-// CSV body whose headers do not match the property names
+// CSV body whose headers do not match the property names.
+// shortcut: mapping runs per row, so embedding-provider calls (vector
+// properties, NTS-449) fire one at a time instead of sharing the
+// library's prepare-concurrency cap — batch map through the standalone
+// rowToProperties if vector models must import faster
 async function* sourceRows(): AsyncIterable<Record<string, unknown>> {
   const csv = ['sku,product_name,price', 'K1,Kayak,799', 'P1,Paddle,49.5', 'X2,X,12']
   const headerLine = csv[0]
@@ -45,15 +49,14 @@ async function* sourceRows(): AsyncIterable<Record<string, unknown>> {
 }
 
 interface ImportReport {
-  imported: number
-  rejected: { row: Record<string, unknown>; errors: unknown }[]
   products: Product[]
+  rejected: { row: Record<string, unknown>; errors: unknown }[]
 }
 
 async function importRows(neode: ReturnType<typeof fromEnv>): Promise<ImportReport> {
   const BATCH = 1000
   let batch: Record<string, unknown>[] = []
-  const report: ImportReport = { imported: 0, rejected: [], products: [] }
+  const report: ImportReport = { products: [], rejected: [] }
 
   for await (const record of sourceRows()) {
     const mapped = await neode.rowToProperties(Product, record, {
@@ -78,8 +81,6 @@ async function importRows(neode: ReturnType<typeof fromEnv>): Promise<ImportRepo
     report.products.push(...chunks.flatMap((chunk) => chunk.entities))
   }
 
-  report.imported = report.products.length
-
   return report
 }
 
@@ -89,7 +90,7 @@ async function main(): Promise<void> {
   try {
     const first = await importRows(neode)
 
-    console.log(`imported ${first.imported} rows, rejected ${first.rejected.length}`)
+    console.log(`imported ${first.products.length} rows, rejected ${first.rejected.length}`)
 
     for (const failure of first.rejected) {
       console.error(`rejected ${JSON.stringify(failure.row)}:`, failure.errors)
@@ -99,15 +100,10 @@ async function main(): Promise<void> {
     // matches on the model's merge fields (sku here)
     const second = await importRows(neode)
 
-    const distinct = new Set(first.products.concat(second.products).map((product) => product.sku))
+    console.log(`re-run imported ${second.products.length} rows`)
 
-    console.log(
-      `re-run imported ${second.imported} rows — ${distinct.size} distinct products in total`,
-    )
-
-    for (const product of distinct) {
-      const [entity] = second.products.filter((candidate) => candidate.sku === product)
-      if (entity !== undefined) await neode.delete(entity)
+    for (const product of second.products) {
+      await neode.delete(product)
     }
   } finally {
     await neode.close()

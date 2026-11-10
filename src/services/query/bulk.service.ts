@@ -122,6 +122,18 @@ export function labelPattern(labels: string[]): string {
 }
 
 /**
+Convert a value through the schema unless it targets an iso-string
+timestamp property and is already a string (NTS-638): those properties
+store and match the string form (NTS-612), and a temporal value would
+never equal it
+*/
+function convertValueForStorage(value: unknown, property: PropertySchema): unknown {
+  const isStoredString = property.getTimestampFormat() === 'iso-string' && typeof value === 'string'
+
+  return isStoredString ? value : convertPropertyValue(value, property)
+}
+
+/**
 Validate a row exactly like the single-create path (defaults resolved,
 Zod rules applied) and reduce it to the plain property map the UNWIND
 statement writes
@@ -207,7 +219,7 @@ export function processMergeRow(
       // NTS-637: match keys go through the same conversion as set values —
       // file sources (CSV/JSON) deliver strings, and a MERGE pattern value
       // must equal the stored (converted) form to match at all
-      match[key] = convertPropertyValue(row[key], property)
+      match[key] = convertValueForStorage(row[key], property)
     }
   }
 
@@ -541,7 +553,7 @@ export async function rowToProperties(
       const key = property.getKey()
 
       if (Object.hasOwn(prepared, key)) {
-        prepared[key] = convertPropertyValue(prepared[key], property)
+        prepared[key] = convertValueForStorage(prepared[key], property)
       }
     }
 
