@@ -59,6 +59,12 @@ Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one U
 
 _source: services/query/bulk.service.ts_
 
+### `caseExpr` (function)
+
+CASE expression: `CASE WHEN c1 THEN t1 [WHEN …] [ELSE fallback] END`. Conditions and results are Cypher expressions composed by the caller.
+
+_source: query/expressions.ts_
+
 ### `clearFilterParams` (function)
 
 Clear every filter param (test hygiene — the store is global).
@@ -122,6 +128,12 @@ _source: query/direction.ts_
 Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neode.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() when the merge created the node, createMany() | hydrated entity | | NODE_UPDATED | save() when the merge matched an existing node, update(), the label writes (addLabel / removeLabel / soft delete) | hydrated entity | | NODE_MERGED | mergeOn() (also behind merge(), Repository#upsert and mergeMany()) | hydrated entity | | NODE_DELETED | delete() (hard deletes), deleteAll() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
 
 _source: common/events.ts_
+
+### `expr` (const)
+
+Leaf Cypher expression helpers. Statement structure lives in Builder (match / where / call / unwind …); these helpers only compose single expressions for RETURN / SET / WHERE positions, so repositories never assemble hand-written clause strings. Every value a caller supplies must be bound as a parameter (`$name`) — these helpers interpolate structure, never data.
+
+_source: query/expressions.ts_
 
 ### `GraphNode` (interface)
 

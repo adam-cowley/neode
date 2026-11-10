@@ -165,35 +165,71 @@ const KIND_NAMES: Partial<Record<ts.SyntaxKind, string>> = {
 function walkSymbols(source: ts.SourceFile, rel: string): ExtractedSymbol[] {
   const found: ExtractedSymbol[] = []
 
-  for (const statement of source.statements) {
-    const kind = KIND_NAMES[statement.kind]
-    if (kind === undefined) continue
-    const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) : undefined
-    const isExported = modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false
-    if (!isExported) continue
+  const emit = (publicName: string, statement: ts.Statement, kind: string): void => {
+    // Everything exported from src/decorators/ is a decorator factory
+    const isDecorator =
+      rel.startsWith('decorators/') &&
+      (statement.kind === ts.SyntaxKind.FunctionDeclaration ||
+        statement.kind === ts.SyntaxKind.ClassDeclaration)
 
+    found.push({
+      name: publicName,
+      kind: isDecorator ? 'decorator' : kind,
+      file: rel,
+      summary: jsdocSummary(statement),
+    })
+  }
+
+  const declarationNames = (statement: ts.Statement): ts.Identifier[] => {
     const declarationName = ts.getNameOfDeclaration(statement as unknown as ts.Declaration)
-    const nameNodes: ts.Identifier[] = ts.isVariableStatement(statement)
+    return ts.isVariableStatement(statement)
       ? statement.declarationList.declarations
           .map((declaration) => declaration.name)
           .filter(ts.isIdentifier)
       : declarationName !== undefined && ts.isIdentifier(declarationName)
         ? [declarationName]
         : []
+  }
 
-    for (const nameNode of nameNodes) {
-      // Everything exported from src/decorators/ is a decorator factory
-      const isDecorator =
-        rel.startsWith('decorators/') &&
-        (statement.kind === ts.SyntaxKind.FunctionDeclaration ||
-          statement.kind === ts.SyntaxKind.ClassDeclaration)
+  // Pass 1 — inline-exported declarations; unexported locals recorded for
+  // pass 2 (the JSDoc lives on the local, the public name is the alias)
+  const locals = new Map<string, { statement: ts.Statement; kind: string }>()
 
-      found.push({
-        name: nameNode.text,
-        kind: isDecorator ? 'decorator' : kind,
-        file: rel,
-        summary: jsdocSummary(statement),
-      })
+  for (const statement of source.statements) {
+    const kind = KIND_NAMES[statement.kind]
+    if (kind === undefined) continue
+    const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) : undefined
+    const isExported = modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false
+
+    for (const nameNode of declarationNames(statement)) {
+      if (isExported) {
+        emit(nameNode.text, statement, kind)
+      } else {
+        locals.set(nameNode.text, { statement, kind })
+      }
+    }
+  }
+
+  // Pass 2 — local export lists (`export { local as alias }`): keyed by the
+  // exported alias, which is the name publicNames() and the package index use
+  for (const statement of source.statements) {
+    if (
+      !ts.isExportDeclaration(statement) ||
+      statement.moduleSpecifier !== undefined ||
+      statement.exportClause === undefined ||
+      !ts.isNamedExports(statement.exportClause)
+    ) {
+      continue
+    }
+
+    for (const element of statement.exportClause.elements) {
+      const localName =
+        element.propertyName !== undefined ? element.propertyName.text : element.name.text
+      const local = locals.get(localName)
+
+      if (local !== undefined) {
+        emit(element.name.text, local.statement, local.kind)
+      }
     }
   }
 
