@@ -53,9 +53,8 @@ export type {
   GeneratedRelationship,
 } from './services/schema/generate.service.js'
 
-// Filter plumbing (the read paths' own fragments and per-query option type)
-export { readFilterFragment } from './services/query/filters.js'
-export type { ReadFilterOptions } from './services/query/filters.js'
+// Filter plumbing (NTS-614): readFilterFragment and ReadFilterOptions are
+// public since NTS-614 (exported from index.js above)
 export type { FilterDefinition } from './meta/entity/entity-schema.js'
 
 // Index-name helpers

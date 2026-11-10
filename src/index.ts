@@ -168,7 +168,11 @@ export {
   withFilterParams,
   clearFilterParams,
   WITHOUT_ALL_FILTERS,
+  // NTS-614 — the escape hatch for hand-written statements: the raw WHERE
+  // fragment + params the read services' hand-written paths compose
+  readFilterFragment,
 } from './services/query/filters.js'
+export type { ReadFilterOptions } from './services/query/filters.js'
 export type { OrderSpec } from './query/order-spec.js'
 export type {
   Page,
