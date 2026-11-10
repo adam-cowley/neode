@@ -70,6 +70,16 @@ describe('generate-agent-docs extraction', () => {
     )
     expect(ontology?.summary).toContain('prompt-ready markdown')
   })
+
+  it('extracts symbols exported under an alias (expr / caseExpr)', () => {
+    const querying = areaSymbols('Querying')
+
+    const expr = querying.find((symbol) => symbol.name === 'expr')
+    expect(expr?.summary).toContain('Leaf Cypher expression helpers')
+
+    const caseExpr = querying.find((symbol) => symbol.name === 'caseExpr')
+    expect(caseExpr?.summary).toContain('CASE')
+  })
 })
 
 describe('per-page markdown (NTS-163)', () => {
