@@ -10,7 +10,7 @@ import { QueryService } from './query.service.js'
 import { isRecord } from '../type-guards.js'
 import { NeodeError } from '../../errors/neode-error.js'
 import {
-  SERVER_TIMESTAMP,
+  stampExpression,
   timestampProperty,
   versionBump,
   versionProperty,
@@ -192,7 +192,7 @@ export class DeleteService extends QueryService {
       const updatedAt = timestampProperty(schema, 'updatedAt')
 
       if (updatedAt !== undefined) {
-        builder.setExpr(`${THIS_NODE}.${updatedAt.getKey()}`, SERVER_TIMESTAMP)
+        builder.setExpr(`${THIS_NODE}.${updatedAt.getKey()}`, stampExpression(updatedAt))
       }
 
       const version = versionProperty(schema)

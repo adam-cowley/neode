@@ -17,6 +17,7 @@ import {
   deriveProperties,
   modelPropertyValues,
   timestampProperty,
+  stampExpression,
   versionProperty,
 } from '../write-utilities.js'
 import { validate } from '../../validation/index.js'
@@ -338,7 +339,7 @@ function rowStamps(schema: EntitySchema, kind: 'createdAt' | 'updatedAt', alias 
 
   const key = property.getKey()
 
-  return [`${THIS_NODE}.${key} = coalesce(${alias}.${key}, datetime())`]
+  return [`${THIS_NODE}.${key} = coalesce(${alias}.${key}, ${stampExpression(property)})`]
 }
 
 /**

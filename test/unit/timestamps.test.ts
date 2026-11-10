@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { MergeService } from '../../src/services/query/merge.service'
 import { UpdateService } from '../../src/services/query/update.service'
-import { buildCreateQuery, buildMergeQuery } from '../../src/services/query/bulk.service'
+import {
+  buildCreateQuery,
+  buildMergeQuery,
+  BulkService,
+} from '../../src/services/query/bulk.service'
 import { EntitySchema } from '../../src/meta/entity/entity-schema'
 import { PropertyType } from '../../src/meta/property-schema'
+import type { TimestampFormat } from '../../src/meta/property-schema'
 import { getModel } from '../../src/meta'
 import { CreatedAt, DateTime, NodeEntity, UpdatedAt } from '../../src/decorators'
 import { defineModel } from '../../src/meta/map-schema'
@@ -17,13 +22,14 @@ function schemaWith(
     unique?: boolean
     createdAt?: boolean
     updatedAt?: boolean
+    timestampFormat?: TimestampFormat
   }[],
 ): EntitySchema {
   const schema = new EntitySchema()
 
   schema.setLabels(['Thing'])
 
-  for (const { key, type, primary, unique, createdAt, updatedAt } of properties) {
+  for (const { key, type, primary, unique, createdAt, updatedAt, timestampFormat } of properties) {
     schema.addProperty(key)
     schema.getProperty(key).setType(type)
 
@@ -41,6 +47,10 @@ function schemaWith(
 
     if (updatedAt) {
       schema.getProperty(key).setUpdatedAt(true)
+    }
+
+    if (timestampFormat) {
+      schema.getProperty(key).setTimestampFormat(timestampFormat)
     }
   }
 
@@ -96,6 +106,34 @@ describe('@CreatedAt / @UpdatedAt registration (NTS-165)', () => {
     expect(schema.getProperty('updatedAt').isUpdatedAt()).toBe(true)
     expect(schema.getProperty('createdAt').getRules()['createdAt']).toBeUndefined()
     expect(schema.getProperty('updatedAt').getRules()['updatedAt']).toBeUndefined()
+  })
+
+  it('registers the iso-string stamp format (NTS-612) and never treats it as a validation rule', () => {
+    @NodeEntity()
+    class IsoStamped {
+      @CreatedAt({ format: 'iso-string' })
+      createdAt: unknown
+
+      @UpdatedAt({ format: 'iso-string' })
+      updatedAt: unknown
+    }
+
+    const schema = getModel(IsoStamped)
+
+    expect(schema.getProperty('createdAt').getTimestampFormat()).toBe('iso-string')
+    expect(schema.getProperty('updatedAt').getTimestampFormat()).toBe('iso-string')
+    expect(schema.getProperty('createdAt').getRules()['timestampFormat']).toBeUndefined()
+    expect(schema.getProperty('updatedAt').getRules()['timestampFormat']).toBeUndefined()
+  })
+
+  it('defaults the stamp format to datetime (NTS-612)', () => {
+    @NodeEntity()
+    class DefaultStamped {
+      @UpdatedAt()
+      updatedAt: unknown
+    }
+
+    expect(getModel(DefaultStamped).getProperty('updatedAt').getTimestampFormat()).toBe('datetime')
   })
 })
 
@@ -241,5 +279,86 @@ describe('bulk timestamps (NTS-165)', () => {
     expect(buildCreateQuery(['Thing'])).toBe(
       'UNWIND $rows AS row\nCREATE (this:Thing)\nSET this += row\nRETURN this',
     )
+  })
+})
+
+describe("iso-string stamp format renders toString(datetime()) (NTS-612, { format: 'iso-string' })", () => {
+  const BulkIso = defineModel('Nts612BulkIsoThing', {
+    id: { type: 'string', primary: true },
+    name: { type: 'string' },
+    createdAt: { type: 'datetime', createdAt: true, timestampFormat: 'iso-string' },
+    updatedAt: { type: 'datetime', updatedAt: true, timestampFormat: 'iso-string' },
+  })
+
+  const isoSchemaWith = (): EntitySchema =>
+    schemaWith([
+      { key: 'name', type: PropertyType.STRING, unique: true },
+      { key: 'createdAt', type: PropertyType.ANY, createdAt: true, timestampFormat: 'iso-string' },
+      { key: 'updatedAt', type: PropertyType.ANY, updatedAt: true, timestampFormat: 'iso-string' },
+    ])
+
+  it('save() without merge criteria stamps toString(datetime()) into the CREATE pattern', async () => {
+    const schema = schemaWith([
+      { key: 'name', type: PropertyType.STRING },
+      { key: 'createdAt', type: PropertyType.ANY, createdAt: true, timestampFormat: 'iso-string' },
+      { key: 'updatedAt', type: PropertyType.ANY, updatedAt: true, timestampFormat: 'iso-string' },
+    ])
+
+    const mockRunner = runner()
+
+    await new MergeService(mockRunner).save({ name: 'Rex' }, schema)
+
+    const [createStatement] = vi.mocked(mockRunner.run).mock.calls[0]!
+
+    expect(createStatement).toContain('createdAt: toString(datetime())')
+    expect(createStatement).toContain('updatedAt: toString(datetime())')
+  })
+
+  it('save() merge stamps toString(datetime()) on create and on match', async () => {
+    const mockRunner = runner()
+
+    await new MergeService(mockRunner).save({ name: 'Rex' }, isoSchemaWith())
+
+    const [statement] = vi.mocked(mockRunner.run).mock.calls[0]!
+
+    expect(statement).toContain(
+      'ON CREATE SET this.createdAt = toString(datetime()), this.updatedAt = toString(datetime())',
+    )
+    expect(statement).toContain('ON MATCH SET this.updatedAt = toString(datetime())')
+  })
+
+  it('update() stamps toString(datetime()) and never rewrites createdAt', async () => {
+    const schema = schemaWith([
+      { key: 'id', type: PropertyType.STRING, primary: true },
+      { key: 'name', type: PropertyType.STRING, unique: true },
+      { key: 'createdAt', type: PropertyType.ANY, createdAt: true, timestampFormat: 'iso-string' },
+      { key: 'updatedAt', type: PropertyType.ANY, updatedAt: true, timestampFormat: 'iso-string' },
+    ])
+
+    const mockRunner = runner()
+
+    await new UpdateService(mockRunner).update(
+      schema,
+      { id: 'unit-1', name: 'Rex' },
+      { name: 'Ada' },
+    )
+
+    const [statement] = vi.mocked(mockRunner.run).mock.calls[0]!
+
+    expect(statement).toContain('this.updatedAt = toString(datetime())')
+    expect(statement).not.toContain('this.createdAt')
+  })
+
+  it('bulk createMany coalesces the row value with toString(datetime())', async () => {
+    const mockRunner = runner()
+
+    await new BulkService(mockRunner).createMany(BulkIso, getModel(BulkIso)!, [
+      { id: 'row-1', name: 'A' },
+    ])
+
+    const [statement] = vi.mocked(mockRunner.run).mock.calls[0]!
+
+    expect(statement).toContain('coalesce(row.createdAt, toString(datetime()))')
+    expect(statement).toContain('coalesce(row.updatedAt, toString(datetime()))')
   })
 })

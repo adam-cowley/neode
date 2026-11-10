@@ -1,7 +1,6 @@
 import type { Newable } from '../meta/newable.js'
 import type { Direction } from '../query/index.js'
-import type { PropertySchema } from './property-schema.js'
-import { PropertyType } from './property-schema.js'
+import { PropertyType, type PropertySchema } from './property-schema.js'
 
 import type {
   RelationshipCardinality,
@@ -37,6 +36,7 @@ const METAMODEL_KEYS = new Set([
   'alwaysSet',
   'createdAt',
   'updatedAt',
+  'timestampFormat',
   'version',
   'fulltext',
   'required',
@@ -201,6 +201,11 @@ export function mergeProperty(
 
   if (Object.hasOwn(config, 'updatedAt')) {
     property.setUpdatedAt(config.updatedAt)
+  }
+
+  // Stamp form for the timestamps (NTS-612)
+  if (config.timestampFormat !== undefined) {
+    property.setTimestampFormat(config.timestampFormat)
   }
 
   // Optimistic locking (NTS-158)

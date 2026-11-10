@@ -18,7 +18,7 @@ import type { ScoredEntity } from '../services/query/search.service.js'
 import { fulltextIndexName } from '../services/schema/fulltext.service.js'
 import { isGraphNode, isRecord } from '../services/type-guards.js'
 import {
-  SERVER_TIMESTAMP,
+  stampExpression,
   timestampProperty,
   versionBump,
   versionProperty,
@@ -575,7 +575,7 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     const updatedAt = timestampProperty(this.schema, 'updatedAt')
 
     if (updatedAt !== undefined) {
-      builder.setExpr(`${THIS_NODE}.${updatedAt.getKey()}`, SERVER_TIMESTAMP)
+      builder.setExpr(`${THIS_NODE}.${updatedAt.getKey()}`, stampExpression(updatedAt))
     }
 
     const version = versionProperty(this.schema)
@@ -760,7 +760,7 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     const version = versionProperty(this.schema)
 
     if (updatedAt !== undefined && updatedAt.getKey() !== declared.getKey()) {
-      builder.setExpr(`${THIS_NODE}.${quote(updatedAt.getKey())}`, SERVER_TIMESTAMP)
+      builder.setExpr(`${THIS_NODE}.${quote(updatedAt.getKey())}`, stampExpression(updatedAt))
     }
 
     if (version !== undefined && version.getKey() !== declared.getKey()) {

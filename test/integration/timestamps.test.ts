@@ -28,6 +28,24 @@ class TimestampedPage {
   updatedAt: unknown
 }
 
+@NodeEntity()
+class IsoStampedPage {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @String()
+  title: string
+
+  @CreatedAt({ format: 'iso-string' })
+  createdAt: string
+
+  @UpdatedAt({ format: 'iso-string' })
+  updatedAt: string
+}
+
 /**
 The stamped year off a hydrated timestamp value: a driver DateTime instance
 on the Bolt backends (its `year` is a driver Integer — low/high pair), the
@@ -186,5 +204,69 @@ describe('@CreatedAt / @UpdatedAt timestamps (NTS-165)', () => {
     expect(merged?.entities[0]?.createdAt).toEqual(created?.entities[0]?.createdAt)
     expect(stampedYear(merged?.entities[0]?.updatedAt)).toBe(new Date().getFullYear())
     expect(merged?.entities[0]?.title).toBe('B')
+  })
+})
+
+describe("@CreatedAt / @UpdatedAt { format: 'iso-string' } (NTS-612)", () => {
+  let backend: TestBackend
+  let queries: QueryExecutedEvent[]
+
+  const statementContaining = (needle: string): QueryExecutedEvent | undefined =>
+    queries.find((event) => event.cypher.includes(needle))
+
+  beforeAll(async () => {
+    backend = await openBackend()
+
+    setDefaultNeode(backend.neode)
+
+    backend.neode.on(EventType.QUERY_EXECUTED, (event) => queries.push(event as QueryExecutedEvent))
+  })
+
+  beforeEach(() => {
+    queries = []
+  })
+
+  afterEach(async () => {
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  it('create() stamps toString(datetime()) and stores an ISO string', async () => {
+    const page = await backend.neode.create(IsoStampedPage, { title: 'Home' })
+
+    expect(queries[0]?.cypher).toContain('createdAt: toString(datetime())')
+    expect(queries[0]?.cypher).toContain('updatedAt: toString(datetime())')
+
+    // An ISO-8601 string, not a temporal: parses as a date, ends in Z, and
+    // compares lexically against a client-supplied ISO string — the
+    // temporal's own string form carries a +00:00 offset and would not
+    expect(typeof page.createdAt).toBe('string')
+    expect(page.createdAt.endsWith('Z')).toBe(true)
+    expect(new Date(page.createdAt).getTime()).not.toBeNaN()
+    expect(page.updatedAt > '2026-01-01T00:00:00.000Z').toBe(true)
+  })
+
+  it('update() re-stamps an ISO string', async () => {
+    const page = await backend.neode.create(IsoStampedPage, { title: 'Home' })
+
+    const createdAt = page.createdAt
+
+    queries.length = 0
+
+    await page.update({ title: 'About' })
+
+    const update = statementContaining('this.updatedAt = toString(datetime())')
+
+    expect(update?.cypher).toContain('this.updatedAt = toString(datetime())')
+
+    const found = await backend.neode.find(IsoStampedPage, page.id)
+
+    expect(typeof found?.updatedAt).toBe('string')
+    expect(new Date(found?.updatedAt ?? '').getTime()).not.toBeNaN()
+    // Monotonic against the create stamp: lexical comparison stays meaningful
+    expect(found?.updatedAt >= createdAt).toBe(true)
   })
 })
