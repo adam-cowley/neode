@@ -1,5 +1,6 @@
 import { openBackend, isEnterprise, TestBackend } from './support/backend'
 import { Neode } from '../../src/neode.service'
+import { NodeEntity, Property, Uuid } from '../../src/decorators'
 import {
   AccessMode,
   ConnectionProvider,
@@ -7,6 +8,16 @@ import {
   QueryParams,
   TransactionHandle,
 } from '../../src/driver/types'
+
+// Per-file fixture: the decorator registry is global per module
+@NodeEntity()
+class MultiDbPerson {
+  @Uuid({ primary: true })
+  id!: string
+
+  @Property({ type: 'string' })
+  name!: string
+}
 
 /**
  * Wraps an inner provider (edition/close forward) while recording the
@@ -199,6 +210,38 @@ describe('multi-database against the server', () => {
       )
 
       expect(onTarget.records[0].get('n')).toBe(1)
+    } finally {
+      await backend.connection
+        .run(`DROP DATABASE \`${name}\` IF EXISTS`, undefined, 'WRITE', 'system')
+        .catch(() => {})
+    }
+  })
+
+  // Regression: save(entity, database) on a CLEAN tracked entity used to
+  // hit the dirty-check no-op and silently write nothing — the audit-copy
+  // pattern (save(person, 'audit')) never reached the target database
+  it('save(entity, database) lands a clean entity in the named database', async (ctx) => {
+    if (!backend.capabilities.multiDatabase || !isEnterprise(backend.capabilities)) {
+      ctx.skip() // CREATE DATABASE requires Enterprise
+    }
+
+    const name = 'ogm-save-audit-copy'
+
+    try {
+      await createDatabaseOnline(backend.connection, name)
+
+      const neode = new Neode(backend.connection)
+
+      const adam = await neode.create(MultiDbPerson, { name: 'Adam' })
+      await neode.save(adam, name)
+
+      const copies = await backend.connection.run(
+        'MATCH (n:MultiDbPerson) RETURN count(n) AS n',
+        undefined,
+        'WRITE',
+        name,
+      )
+      expect(copies.records[0].get('n')).toBe(1)
     } finally {
       await backend.connection
         .run(`DROP DATABASE \`${name}\` IF EXISTS`, undefined, 'WRITE', 'system')
