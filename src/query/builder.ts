@@ -254,7 +254,9 @@ export class Builder {
       // NTS-609 — pattern parameters go through the same sanitise and
       // collide loop as where parameters: two segments sharing an alias
       // and key (or a key with non-identifier characters) each get their
-      // own sanitised, unique name instead of silently overwriting
+      // own sanitised, unique name instead of silently overwriting.
+      // NTS-605 — the sanitised alias also keeps a hostile property key
+      // out of the rendered `$name` reference
       const propertyAlias = this.addParameterNamed(`${String(alias)}_${key}`, value)
 
       return new Property(key, propertyAlias)
