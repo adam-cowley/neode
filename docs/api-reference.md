@@ -577,6 +577,13 @@ neode.batch(queries: Array<string | { query: string; params?: QueryParams }>, da
 
 `QueryOutput` is `{ records: QueryRecord[]; summary? }`; a `QueryRecord` offers `get(key)`, `has(key)`, `keys`.
 
+> **Passing `cypher()` options as a variable (NTS-617).** With `{ hydrate: Model }` as an inline literal the rows come back typed `Promise<Model[]>`. A pre-built options variable annotated `CypherOptions` instead resolves to `Promise<QueryOutput>` even when it carries `hydrate` (and the runtime hydrates): excess property checks only apply to literals, so the variable matches the raw overload. TypeScript cannot distinguish the two at the call site — annotate the variable with `satisfies` instead of a `CypherOptions` annotation to keep the literal type:
+>
+> ```typescript
+> const options = { hydrate: Order } satisfies CypherOptions
+> await neode.cypher(query, undefined, options) // Promise<Order[]>
+> ```
+
 ### The rest of the facade
 
 Beyond CRUD, the facade wraps most of the standalone services below (identical signatures, with the model/runner arguments resolved for you):
