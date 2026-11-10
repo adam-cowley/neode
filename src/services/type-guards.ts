@@ -22,6 +22,15 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+True for a list of entities (the array form of a `relate` target). A
+user-defined guard: Array.isArray's built-in `any[]` guard would let the
+`any` leak into the eager-relate call (NTS-615).
+*/
+export function isObjectArray(value: object | object[]): value is object[] {
+  return Array.isArray(value)
+}
+
+/**
 True for a driver node value or an eager projection map — the two shapes
 `hydrateNode` understands (both are plain objects carrying node data).
 */

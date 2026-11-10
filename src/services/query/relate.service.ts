@@ -120,6 +120,10 @@ export class RelateService extends QueryService {
   properties are converted through the relationship entity's property
   schemas.
 
+  `fromId` (NTS-615) matches the from-node by elementId instead of the
+  entity's identity — the create path relates a node it just created,
+  before hydration.
+
   @returns the created/matched relationship, or undefined when either
            node could not be matched
   */
@@ -130,6 +134,7 @@ export class RelateService extends QueryService {
     relationship: RelationshipPropertySchema,
     properties: Record<string, unknown> = {},
     isForceCreate = false,
+    fromId?: string,
   ): Promise<GraphRelationship | undefined> {
     assertWritableDirection(relationship)
 
@@ -169,7 +174,12 @@ export class RelateService extends QueryService {
     const toAlias = 'to'
     const relationshipAlias = 'rel'
 
-    const fromMatch = matchCriteriaForEntity(schema, fromEntity)
+    // NTS-615 (eager relates on create): the from-node may exist only as a
+    // just-created elementId — the created instance is not hydrated yet
+    const fromMatch =
+      fromId === undefined
+        ? matchCriteriaForEntity(schema, fromEntity)
+        : { elementId: fromId, key: schema.getPrimaryKey()?.getKey() ?? '', value: undefined }
 
     const toMatch = matchCriteriaForEntity(targetSchema, toEntity)
 

@@ -499,8 +499,12 @@ All methods take an optional trailing `database?: string` override. Query method
 neode.save<T>(entity: T, database?): Promise<T>
 // MERGE on the primary key, re-hydrate. Idempotent per unique value.
 
-neode.create<T>(constructor, properties?, database?): Promise<T>
+neode.create<T>(constructor, properties?, options?: CreateOptions | string, database?): Promise<T>
 // CREATE — nested relationship targets included — then hydrate.
+// `options.relate` (NTS-615) maps a relationship key to a saved target
+// entity (or array of targets) related in the SAME managed transaction —
+// MERGE-based edges, so retries stay idempotent. A string third argument
+// stays the legacy database override.
 
 neode.mergeOn<T>(constructor, match, set, database?): Promise<T | undefined>
 // MERGE on the given match properties, then SET.
@@ -519,8 +523,11 @@ neode.getFirst<T>(constructor, params, database?): Promise<T | undefined>
 neode.all<T>(constructor, params?, order?, limit?, skip?, database?): Promise<T[]>
 // order forms: 'name' | ['name', 'age'] | { name: 'DESC' } | [{ name: 'DESC' }] | { field, order? }
 
-neode.update<T>(entity, properties?, database?): Promise<T | undefined>
+neode.update<T>(entity, properties?, options?: CreateOptions | string, database?): Promise<T | undefined>
 // `+=` on the primary key: provided keys only, then re-hydrate.
+// `options.relate` (NTS-615) relates eager targets in the same managed
+// transaction as the update (create() parity); a string third argument
+// stays the legacy database override.
 
 neode.relate<From, To>(constructor, from, to, relationshipKey, properties?, forceCreate?, database?): Promise<GraphRelationship | undefined>
 // MERGE the relationship (CREATE with forceCreate). The relationship is
