@@ -49,6 +49,19 @@ describe('Decorators', () => {
     oneToMany: SomeNodeEntity[]
   }
 
+  // NTS-623: the config-object form — the README's documented shape
+  @NodeEntity({ labels: ['ConfigForm'] })
+  class ConfigFormEntity {
+    @Uuid({ primary: true })
+    id: string
+
+    @OneToMany(() => SomeNodeEntity, 'KNOWS', { direction: Direction.OUTGOING, eager: true })
+    friends: SomeNodeEntity[]
+
+    @OneToMany(() => SomeNodeEntity, 'LIKES')
+    liked: SomeNodeEntity[]
+  }
+
   @RelationshipEntity()
   class SomeRelationshipEntity {
     @Uuid()
@@ -146,6 +159,26 @@ describe('Decorators', () => {
         expect(property.getEager()).toBeFalsy()
         expect(property.getMany()).toEqual(true)
         expect(property.getDirection()).toEqual(Direction.OUTGOING)
+      })
+    })
+
+    describe('@OneToMany (config form, NTS-623)', () => {
+      it('should accept the README config object: direction, eager', () => {
+        const property = getModel(ConfigFormEntity).getRelationship('friends')
+
+        expect(property).toBeInstanceOf(RelationshipPropertySchema)
+        expect(property.getType()).toEqual('KNOWS')
+        expect(property.getMany()).toEqual(true)
+        expect(property.getDirection()).toEqual(Direction.OUTGOING)
+        expect(property.getEager()).toEqual(true)
+      })
+
+      it('should default direction to BOTH when the config omits it', () => {
+        const property = getModel(ConfigFormEntity).getRelationship('liked')
+
+        expect(property.getType()).toEqual('LIKES')
+        expect(property.getDirection()).toEqual(Direction.BOTH)
+        expect(property.getEager()).toBeFalsy()
       })
     })
   })
