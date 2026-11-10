@@ -10,7 +10,7 @@ import type { RelationshipPropertySchema } from '../../meta/relationship-propert
 import { getValueOrDefault, getValuesAsRecord, setPropertyInBuilder } from '../../utilities.js'
 import { elementIdOfEntity } from '../../element-id.js'
 import {
-  SERVER_TIMESTAMP,
+  stampExpression,
   versionBump,
   applyEmbeddings,
   applyFakeValues,
@@ -77,10 +77,10 @@ function stampMergeTimestamps(builder: Builder, schema: EntitySchema): void {
 
     const key = `${THIS_NODE}.${property.getKey()}`
 
-    builder.onCreateSetExpr(key, SERVER_TIMESTAMP)
+    builder.onCreateSetExpr(key, stampExpression(property))
 
     if (kind === 'updatedAt') {
-      builder.onMatchSetExpr(key, SERVER_TIMESTAMP)
+      builder.onMatchSetExpr(key, stampExpression(property))
     }
   }
 }

@@ -32,6 +32,18 @@ clocks never drift across clients
 export const SERVER_TIMESTAMP = 'datetime()'
 
 /**
+The stamp expression for a timestamp property (NTS-612): the default
+'datetime' format renders the bare temporal; 'iso-string' wraps it in
+`toString()` so the stored value compares lexically against client
+ISO-8601 strings (a temporal's string form carries a +00:00 offset)
+*/
+export function stampExpression(property: PropertySchema): string {
+  return property.getTimestampFormat() === 'iso-string'
+    ? `toString(${SERVER_TIMESTAMP})`
+    : SERVER_TIMESTAMP
+}
+
+/**
 The schema's @CreatedAt / @UpdatedAt property (NTS-165), or undefined —
 one of each per model (the same find-first contract as getPrimaryKey())
 */
@@ -83,7 +95,7 @@ function stampCreateTimestamps(schema: EntitySchema, properties: Record<string, 
     const property = timestampProperty(schema, kind)
 
     if (property !== undefined && properties[property.getKey()] === undefined) {
-      properties[property.getKey()] = new RawExpression(SERVER_TIMESTAMP)
+      properties[property.getKey()] = new RawExpression(stampExpression(property))
     }
   }
 }

@@ -1,4 +1,4 @@
-import type { DefaultValue } from './property-schema.js'
+import type { DefaultValue, TimestampFormat } from './property-schema.js'
 import type { FilterDefinition } from './entity/entity-schema.js'
 import type { RelationshipCardinality } from './relationship-property-schema.js'
 
@@ -240,6 +240,13 @@ export interface PropertyDefinition extends ValidationRules {
   on every write — the map-API form of `@UpdatedAt`.
   */
   updatedAt?: boolean
+  /**
+  Stamp form for a server-side timestamp (NTS-612): 'iso-string' renders
+  the stamp as `toString(datetime())` so the stored value compares
+  lexically against client ISO strings; the default stores the temporal —
+  the map-API form of the `@CreatedAt` / `@UpdatedAt` config option.
+  */
+  timestampFormat?: TimestampFormat
   /**
   Optimistic locking (NTS-158): the integer property every write keeps in
   sync — stamped 0 on create, incremented by 1 on every write addressed to

@@ -9,7 +9,7 @@ import { validate } from '../../validation/index.js'
 import { QueryService } from './query.service.js'
 import { isGraphNode } from '../type-guards.js'
 import {
-  SERVER_TIMESTAMP,
+  stampExpression,
   versionBump,
   applyEmbeddings,
   applyInTransforms,
@@ -275,7 +275,7 @@ export class UpdateService extends QueryService {
     const updatedAt = timestampProperty(schema, 'updatedAt')
 
     if (updatedAt !== undefined && set[updatedAt.getKey()] === undefined) {
-      builder.setExpr(`${THIS_NODE}.${updatedAt.getKey()}`, SERVER_TIMESTAMP)
+      builder.setExpr(`${THIS_NODE}.${updatedAt.getKey()}`, stampExpression(updatedAt))
     }
 
     builder.return(THIS_NODE, `elementId(${THIS_NODE}) AS ${INTERNAL_ID}`)
