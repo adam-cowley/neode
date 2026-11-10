@@ -17,7 +17,14 @@ import { fromEnv, waitUntilReachable } from 'neode'
 async function main(): Promise<void> {
   // 1. Fail fast when the database is down — with a bounded budget
   await waitUntilReachable(
-    { uri: process.env['NEO4J_URI'] ?? 'bolt://localhost:7687' },
+    {
+      uri: process.env['NEO4J_URI'] ?? 'bolt://localhost:7687',
+      auth: {
+        scheme: 'basic',
+        principal: process.env['NEO4J_USERNAME'] ?? 'neo4j',
+        credentials: process.env['NEO4J_PASSWORD'] ?? '',
+      },
+    },
     { timeout: 15_000 },
   )
 
@@ -27,13 +34,16 @@ async function main(): Promise<void> {
   // 3. Schema before traffic
   await neode.installSchema()
 
+  // Port is configurable so the recipe can run alongside other dev servers
+  const port = Number(process.env['PORT'] || 3000)
+
   const server = createServer(async (_request, response) => {
     const output = await neode.cypher('MATCH (n) RETURN count(n) AS nodes')
     response.end(`nodes: ${String(output.records[0]?.get('nodes'))}`)
   })
 
-  server.listen(3000, () => {
-    console.log('listening on :3000')
+  server.listen(port, () => {
+    console.log(`listening on :${port}`)
   })
 
   // Shut down cleanly — close the OGM's connections with the server
