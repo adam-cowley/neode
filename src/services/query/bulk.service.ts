@@ -12,6 +12,7 @@ import { convertPropertyValue, getValueOrDefault } from '../../utilities.js'
 import {
   versionBump,
   applyEmbeddings,
+  applyFakeValues,
   applyInTransforms,
   deriveProperties,
   modelPropertyValues,
@@ -393,9 +394,15 @@ function rowVersionBump(schema: EntitySchema): string[] {
 
 /**
 Bulk rows are transformed per row before the shared validate-and-reduce
-pass: embedding sugar first (NTS-449), then `in` transforms — the same
-order and semantics as the single create / merge paths. Each row is
-copied, so the caller's records are left untouched.
+pass: `fake` generators first (NTS-608 — the single-create order: fake
+runs before transforms and validation), then embedding sugar (NTS-449),
+then `in` transforms — the same order and semantics as the single create /
+merge paths. Each row is copied, so the caller's records are left
+untouched.
+
+Unlike the FactoryBuilder (NTS-444), each row's `fake` generator runs
+independently: unique + `fake` properties are NOT guaranteed distinct
+across rows — use fake generators that are DB-safe (e.g. random UUIDs).
 
 Rows run through a bounded-concurrency pass (NTS-597): an embedding
 provider is a remote service, and one call per row all at once would
@@ -435,7 +442,7 @@ async function mapWithConcurrency<T, R>(
   return results
 }
 
-async function prepareRows(
+export async function prepareRows(
   rows: Record<string, unknown>[],
   schema: EntitySchema,
 ): Promise<{ rows: Record<string, unknown>[]; derivedSets: string[] }> {
@@ -443,6 +450,11 @@ async function prepareRows(
 
   const prepared = await mapWithConcurrency(rows, MAX_PREPARE_CONCURRENCY, async (row) => {
     const copy = { ...row }
+
+    // Resolve `fake` generators first (NTS-608), the single-create order:
+    // fake runs before transforms and validation, so validation and the
+    // write see the same value
+    applyFakeValues(schema, copy)
 
     await applyEmbeddings(schema, copy)
 
@@ -500,7 +512,10 @@ async function inWriteTransaction(
 /**
 Bulk CREATE and MERGE via UNWIND: one managed write transaction per
 chunk, one UNWIND statement per transaction, rows validated and reduced
-to property maps exactly like the single-create / merge paths.
+to property maps exactly like the single-create / merge paths — `fake`
+generators included (NTS-608), each row's run independently: unique +
+`fake` properties are NOT guaranteed distinct across rows (see
+prepareRows).
 
 Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the
 earlier chunks committed — bulk writes are not atomic across chunks. Row
@@ -534,8 +549,9 @@ export class BulkService extends QueryService {
 
   /**
   CREATE every row in chunks. Rows are flat property records: nested
-  relationship targets are not supported (they throw), defaults and
-  validation behave exactly like create()
+  relationship targets are not supported (they throw), defaults, fakes
+  and validation behave exactly like create() — unique + `fake`
+  properties are not guaranteed distinct across rows
   */
   async createMany<T>(
     constructor: new (...arguments_: never[]) => T,

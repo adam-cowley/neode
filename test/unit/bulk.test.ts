@@ -1,4 +1,12 @@
-import { NodeEntity, Uuid, String, Number, InternalId, OneToMany } from '../../src/decorators'
+import {
+  NodeEntity,
+  Uuid,
+  String,
+  Number,
+  InternalId,
+  OneToMany,
+  Property,
+} from '../../src/decorators'
 import { Direction } from '../../src/query'
 import { getModel } from '../../src/meta'
 import { ValidationError } from '../../src/validation'
@@ -6,6 +14,7 @@ import {
   buildCreateQuery,
   buildMergeQuery,
   chunk,
+  prepareRows,
   processCreateRow,
   processMergeRow,
 } from '../../src/services/query/bulk.service'
@@ -57,6 +66,26 @@ class BulkPost {
 
   @OneToMany(() => BulkPerson, 'WROTE', Direction.OUTGOING)
   author: BulkPerson
+}
+
+let fakeSequence = 0
+
+@NodeEntity()
+class BulkBadge {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @Property({ type: 'string', unique: true, fake: () => `slug-${++fakeSequence}` })
+  slug: string
+
+  @Property({ type: 'string', required: true, fake: () => `code-${++fakeSequence}` })
+  code: string
+
+  @Property({ type: 'string', fake: () => `tag-${++fakeSequence}` })
+  tag: string
 }
 
 const FIXED_UUID = '0c0ffee0-0000-4000-8000-000000000000'
@@ -177,6 +206,44 @@ describe('bulk helpers', () => {
       expect(() => processMergeRow({ name: 'adam', visits: 'not-a-number' }, schema)).toThrow(
         ValidationError,
       )
+    })
+  })
+
+  describe('fake generators (NTS-608)', () => {
+    it('resolves fake properties in createMany rows like single create', async () => {
+      const schema = getModel(BulkBadge)!
+      const rows = [{}, {}, {}]
+
+      const { rows: prepared } = await prepareRows(rows, schema)
+      const maps = prepared.map((row) => processCreateRow(row, schema))
+
+      // The required fake property: rows validate (no throw) and every
+      // row carries a generated value
+      const codes = maps.map((map) => map.code)
+      expect(codes.every((code) => typeof code === 'string' && code.startsWith('code-'))).toBe(true)
+
+      // Distinct within the batch (generator-side; bulk does not retry)
+      expect(new Set(codes).size).toBe(rows.length)
+
+      // The plain fake property is present too
+      expect(maps.every((map) => typeof map.tag === 'string' && map.tag.startsWith('tag-'))).toBe(
+        true,
+      )
+    })
+
+    it('resolves fakes in mergeMany rows before the match/set split', async () => {
+      const schema = getModel(BulkBadge)!
+
+      // No explicit merge field: the faked unique property supplies the
+      // match (a fresh value per row — merge creates, like single merge())
+      const { rows: prepared } = await prepareRows([{}], schema)
+      const [row] = prepared
+      const { match, set } = processMergeRow(row!, schema)
+
+      expect(match.slug).toMatch(/^slug-/)
+      expect(set).not.toHaveProperty('slug')
+      // The required fake property is written like any other value
+      expect(set.code).toMatch(/^code-/)
     })
   })
 

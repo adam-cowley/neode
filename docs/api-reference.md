@@ -1200,8 +1200,8 @@ await new BulkService(neode.getConnection()).createMany(Person, schema, rows, { 
 await new PaginateService(neode.getConnection()).paginate(Person, schema, filter, { page: 1, limit: 25 })
 ```
 
-- `BulkService.createMany(constructor, schema, rows, options?)` — bulk CREATE via UNWIND: one managed write transaction per chunk (default 1000 rows), rows validated and reduced exactly like single `create()`. Nested relationship targets in rows throw.
-- `BulkService.mergeMany(...)` — bulk MERGE on the model's merge fields; rows matching an existing node update it (`+=`), the rest are created. Every row must merge on the same merge fields.
+- `BulkService.createMany(constructor, schema, rows, options?)` — bulk CREATE via UNWIND: one managed write transaction per chunk (default 1000 rows), rows validated and reduced exactly like single `create()` (fake generators included). Nested relationship targets in rows throw. Each row's `fake` generator runs independently: unique + `fake` properties are **not** guaranteed distinct across rows — use DB-safe generators (e.g. random UUIDs).
+- `BulkService.mergeMany(...)` — bulk MERGE on the model's merge fields; rows matching an existing node update it (`+=`), the rest are created. Every row must merge on the same merge fields. Fake generators resolve per row before the match/set split, so a unique property carrying a `fake` yields a fresh value per row (each row creates).
 - `PaginateService.paginate(constructor, schema, filter, options)` — offset mode (`{ page?, limit, order? }`) returns `Page<T>` = `{ items, total, page, limit, totalPages }` over two autocommit reads; keyset mode (`{ limit, orderBy?, after?, before? }`) walks a temporal property (default `createdAt`) and returns `CursorPage<T>` = `{ items, nextCursor, hasMore }`. Cursors are opaque composites, so rows sharing a property value are never skipped between pages.
 
 Both return `BulkChunk<T>` = `{ count, entities }` per chunk. Prefer the facade wrappers (`neode.createMany`, `neode.mergeMany`, `neode.paginate`) — they resolve the schema for you.
