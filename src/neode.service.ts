@@ -57,7 +57,7 @@ import type {
 import { quote } from './query/quote.js'
 import type { Repository } from './repository/index.js'
 import { FactoryBuilder } from './services/factory.service.js'
-import { WITHOUT_ALL_FILTERS } from './services/query/filters.js'
+import { assertPublicWithoutFilters, WITHOUT_ALL_FILTERS } from './services/query/filters.js'
 import { type BulkChunk, type BulkOptions, BulkService } from './services/query/bulk.service.js'
 import { CreateService } from './services/query/create.service.js'
 import {
@@ -943,6 +943,7 @@ export class Neode implements INeode {
     const options = typeof databaseOrOptions === 'object' ? databaseOrOptions : undefined
     const database = typeof databaseOrOptions === 'string' ? databaseOrOptions : options?.database
     const withSpec = options?.with
+    assertPublicWithoutFilters(options?.withoutFilters)
     const filters =
       options?.withoutFilters === undefined ? undefined : { withoutFilters: options.withoutFilters }
 
@@ -995,6 +996,10 @@ export class Neode implements INeode {
     databaseOrOptions?: string | { withoutFilters?: string[] | undefined },
   ): Promise<T[]> {
     const schema = this.getSchema(constructor)
+
+    assertPublicWithoutFilters(
+      typeof databaseOrOptions === 'object' ? databaseOrOptions.withoutFilters : undefined,
+    )
 
     const filters =
       typeof databaseOrOptions === 'object' && databaseOrOptions.withoutFilters !== undefined
@@ -1554,6 +1559,9 @@ export class Neode implements INeode {
     options?: { withoutFilters?: string[] | undefined },
   ): RelatedQuery {
     const schema = this.getSchema(constructor)
+
+    assertPublicWithoutFilters(options?.withoutFilters)
+
     const relationship = this.requireRelationship(schema, relationshipKey)
 
     return new RelatedQuery(
@@ -1596,6 +1604,8 @@ export class Neode implements INeode {
     limit?: number,
     filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]> {
+    assertPublicWithoutFilters(filters?.withoutFilters)
+
     return search<T>(this.getRunner(), constructor, indexName, query, limit, filters)
   }
 
@@ -1611,6 +1621,8 @@ export class Neode implements INeode {
     mode?: KnnMode,
     filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]> {
+    assertPublicWithoutFilters(filters?.withoutFilters)
+
     return knn<T>(this.getRunner(), constructor, indexName, vector, k, mode, filters)
   }
 
@@ -1864,6 +1876,8 @@ export class Neode implements INeode {
     filter: Record<string, unknown> = {},
     options?: OffsetPaginateOptions | CursorPaginateOptions,
   ): Promise<Page<T> | CursorPage<T>> {
+    assertPublicWithoutFilters(options?.withoutFilters)
+
     return new PaginateService(this.getRunner()).paginate<T>(
       constructor,
       this.getSchema(constructor),
@@ -1882,6 +1896,8 @@ export class Neode implements INeode {
     filter: Record<string, unknown> = {},
     options: FindManyAndCountOptions = {},
   ): Promise<ManyAndCount<T>> {
+    assertPublicWithoutFilters(options.withoutFilters)
+
     return new PaginateService(this.getRunner()).findManyAndCount<T>(
       constructor,
       this.getSchema(constructor),
@@ -1903,6 +1919,8 @@ export class Neode implements INeode {
     callback: (items: T[]) => unknown,
     options: { orderBy?: string; withoutFilters?: string[] | undefined } = {},
   ): Promise<number> {
+    assertPublicWithoutFilters(options.withoutFilters)
+
     return new PaginateService(this.getRunner()).chunk<T>(
       constructor,
       this.getSchema(constructor),
@@ -1924,6 +1942,8 @@ export class Neode implements INeode {
     filter: Record<string, unknown> = {},
     options: StreamOptions = {},
   ): AsyncGenerator<T> {
+    assertPublicWithoutFilters(options.withoutFilters)
+
     yield* new PaginateService(this.getRunner()).lazy<T>(
       constructor,
       this.getSchema(constructor),
@@ -1983,6 +2003,8 @@ export class Neode implements INeode {
   ): Promise<unknown> {
     const schema = this.getSchema(constructor)
 
+    assertPublicWithoutFilters(options?.withoutFilters)
+
     const tx = await this.beginWorkTransaction('READ', database)
 
     try {
@@ -2041,6 +2063,8 @@ export class Neode implements INeode {
     filters?: { withoutFilters?: string[] | undefined },
   ): Promise<T[]> {
     const schema = this.getSchema(constructor)
+
+    assertPublicWithoutFilters(filters?.withoutFilters)
 
     const tx = await this.beginWorkTransaction('READ', database)
 

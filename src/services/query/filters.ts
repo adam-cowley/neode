@@ -19,8 +19,28 @@ query — the write paths' internal re-hydration (save / create / merge use
 FindByIdService to re-read the row they just wrote) must find rows the
 current filter view hides. Filters are a read policy; writes never read
 through them.
+
+Internal service call sites pass it directly to the query services; the
+public read option bags (facade, TransactionalService, Repository, load
+specs, traverse) reject it through assertPublicWithoutFilters (NTS-610) —
+without that gate one user-supplied string switches off tenancy AND soft
+delete on any read.
 */
 export const WITHOUT_ALL_FILTERS = '*'
+
+/**
+The public read boundary's gate (NTS-610): `'*'` (WITHOUT_ALL_FILTERS) is
+the write paths' internal re-hydration escape, never a public read option.
+Every public option bag runs its user-supplied `withoutFilters` list
+through this before mapping it into filter options.
+*/
+export function assertPublicWithoutFilters(names: readonly string[] | undefined): void {
+  if (names?.includes(WITHOUT_ALL_FILTERS) === true) {
+    throw new NeodeError(
+      `withoutFilters: ['*'] disables every named read filter (tenancy, soft delete) — it is reserved for the library's internal write-path re-hydration and is not accepted on a public read. Disable the filters you need by name instead, e.g. withoutFilters: ['${SOFT_DELETE_FILTER}'].`,
+    )
+  }
+}
 
 /**
 Per-query filter options, accepted by every filtered read (NTS-162):
