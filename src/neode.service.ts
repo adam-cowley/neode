@@ -1119,10 +1119,13 @@ export class Neode implements INeode {
 
     // NTS-157: tracked (hydrated) instances write only their dirty
     // scalar properties; a clean instance is a no-op — no transaction,
-    // no query, no lifecycle events
+    // no query, no lifecycle events — but only when saving to the same
+    // (default) database. An explicit `database` overrides the no-op:
+    // saving a clean entity to another database is how the audit-copy
+    // pattern (save(entity, 'audit')) gets the node there.
     const dirtyKeys = diffDirty(schema, entity)
 
-    if (isTracked(entity) && dirtyKeys.length === 0) {
+    if (database === undefined && isTracked(entity) && dirtyKeys.length === 0) {
       return entity
     }
 
