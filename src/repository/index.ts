@@ -559,9 +559,28 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     const primaryKey = this.getPrimaryKey().getKey()
     const id = isRecord(target) ? target[primaryKey] : target
 
-    const builder = new Builder().match(THIS_NODE, this.schema.getLabels(), { [primaryKey]: id })
+    // Gated on the label being there: restoring a live node matches zero
+    // rows — a no-op that never re-stamps or double-bumps (NTS-595
+    // symmetry with the delete path's not-labelled gate)
+    const builder = new Builder()
+      .match(THIS_NODE, this.schema.getLabels(), { [primaryKey]: id })
+      .whereLabel(THIS_NODE, soft.label, false)
 
     builder.remove(`${THIS_NODE}:${quote(soft.label)}`, `${THIS_NODE}.deletedAt`)
+
+    // NTS-604: restore is a write like every other — stamp updatedAt and
+    // bump the version, mirroring the soft-delete branch
+    const updatedAt = timestampProperty(this.schema, 'updatedAt')
+
+    if (updatedAt !== undefined) {
+      builder.setExpr(`${THIS_NODE}.${updatedAt.getKey()}`, SERVER_TIMESTAMP)
+    }
+
+    const version = versionProperty(this.schema)
+
+    if (version !== undefined) {
+      builder.setExpr(`${THIS_NODE}.${version.getKey()}`, versionBump(THIS_NODE, version.getKey()))
+    }
 
     const { query, params } = builder.build()
 

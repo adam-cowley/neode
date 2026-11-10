@@ -1,4 +1,12 @@
-import { NodeEntity, Property, Primary, Repository, SoftDelete } from '../../src/index'
+import {
+  NodeEntity,
+  Property,
+  Primary,
+  Repository,
+  SoftDelete,
+  UpdatedAt,
+  Version,
+} from '../../src/index'
 import { openBackend, TestBackend } from './support/backend'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
@@ -40,17 +48,44 @@ class PlainDoc {
   }
 }
 
+@NodeEntity()
+@SoftDelete()
+class VersionedDoc {
+  @Primary()
+  @Property({ type: 'string' })
+  docID!: string
+
+  @Property({ type: 'string' })
+  title!: string
+
+  @UpdatedAt()
+  updatedAt: unknown
+
+  @Version()
+  version: number
+
+  static create(docID: string, title: string): VersionedDoc {
+    const doc = new VersionedDoc()
+    doc.docID = docID
+    doc.title = title
+
+    return doc
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 describe('@SoftDelete (NTS-510)', () => {
   let backend: TestBackend
   let docs: Repository<Doc>
   let plainDocs: Repository<PlainDoc>
+  let versionedDocs: Repository<VersionedDoc>
 
   beforeAll(async () => {
     backend = await openBackend()
     docs = backend.neode.getRepository(Doc)
     plainDocs = backend.neode.getRepository(PlainDoc)
+    versionedDocs = backend.neode.getRepository(VersionedDoc)
   })
 
   afterEach(async () => {
@@ -152,5 +187,50 @@ describe('@SoftDelete (NTS-510)', () => {
     await docs.delete('d1')
 
     expect(await docs.findBy({ title: 'note' })).toBeUndefined()
+  })
+
+  it('soft delete and restore stamp updatedAt and bump the version (NTS-604)', async () => {
+    const state = async (): Promise<{ version: unknown; updatedAt: unknown }> => {
+      const output = await backend.neode.readCypher(
+        'MATCH (d:VersionedDoc { docID: "v1" }) RETURN d.version AS version, d.updatedAt AS updatedAt',
+        {},
+      )
+
+      return {
+        version: output.records[0]?.get('version'),
+        updatedAt: output.records[0]?.get('updatedAt'),
+      }
+    }
+
+    await versionedDocs.save(VersionedDoc.create('v1', 'state'))
+
+    const created = await state()
+    expect(Number(created.version)).toBe(0)
+    expect(created.updatedAt).toBeDefined()
+
+    await versionedDocs.delete('v1')
+
+    // Soft delete is a write: the version moved and updatedAt re-stamped
+    const deleted = await state()
+    expect(Number(deleted.version)).toBe(1)
+    expect(JSON.stringify(deleted.updatedAt)).not.toBe(JSON.stringify(created.updatedAt))
+
+    // NTS-595: a repeat soft delete is a no-op — no second bump
+    await versionedDocs.delete('v1')
+
+    const repeated = await state()
+    expect(Number(repeated.version)).toBe(1)
+    expect(JSON.stringify(repeated.updatedAt)).toBe(JSON.stringify(deleted.updatedAt))
+
+    const restored = await versionedDocs.restore('v1')
+
+    // Restore is a write too: moved again
+    expect(Number(restored?.version)).toBe(2)
+    expect(JSON.stringify(restored?.updatedAt)).not.toBe(JSON.stringify(deleted.updatedAt))
+
+    // And restoring a live node is a no-op — never a spurious bump
+    await versionedDocs.restore('v1')
+
+    expect(Number((await state()).version)).toBe(2)
   })
 })
