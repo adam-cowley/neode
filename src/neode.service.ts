@@ -61,7 +61,14 @@ import { quote } from './query/quote.js'
 import type { Repository } from './repository/index.js'
 import { FactoryBuilder } from './services/factory.service.js'
 import { assertPublicWithoutFilters, WITHOUT_ALL_FILTERS } from './services/query/filters.js'
-import { type BulkChunk, type BulkOptions, BulkService } from './services/query/bulk.service.js'
+import {
+  type BulkChunk,
+  type BulkOptions,
+  BulkService,
+  type RowPropertiesResult,
+  type RowToPropertiesOptions,
+  rowToProperties,
+} from './services/query/bulk.service.js'
 import { CreateService, type CreateOptions } from './services/query/create.service.js'
 import {
   type DeleteOptions,
@@ -2161,6 +2168,21 @@ export class Neode implements INeode {
     })
 
     return chunks
+  }
+
+  /**
+  Map one import row (a CSV / JSON / NDJSON record) to the property map
+  createMany() / mergeMany() take: header renames, defaults, fakes,
+  transforms, validation and type conversion through the model schema —
+  collecting failures per row (`{ ok: false, errors }`) instead of
+  throwing, the accumulate-and-report shape file imports want.
+  */
+  async rowToProperties(
+    constructor: new (...arguments_: never[]) => unknown,
+    row: Record<string, unknown>,
+    options: RowToPropertiesOptions = {},
+  ): Promise<RowPropertiesResult> {
+    return rowToProperties(this.getSchema(constructor), row, options)
   }
 
   /**

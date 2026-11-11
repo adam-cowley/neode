@@ -423,11 +423,27 @@ Resolve the Relate client module and native library. The client is not yet publi
 
 _source: driver/relate.ts_
 
+### `RowPropertiesResult` (type)
+
+The result of mapping one source row (a CSV / JSON / NDJSON record) through the model's write pipeline
+
+_source: services/query/bulk.service.ts_
+
 ### `rows` (function)
 
 The rows of a raw query result as plain objects keyed by column name — the `toObject()` shape the neo4j driver's Record offers, with every value run through jsonSafe. The row type is a caller assertion (the RETURN columns are not statically known): pass it explicitly for dot access — `rows<{ name: string }>(output)` — or read index-signature style with brackets. The scalar pattern for a single-row result is `rows<{ n: number }>(output)[0]?.n`.
 
 _source: driver/rows.ts_
+
+### `rowToProperties` (function)
+
+Map one source row to the property map createMany() / mergeMany() take — the batch-import row pipeline, non-throwing. Renames apply first, then the single-create order (fake -> embeddings -> derived -> transforms, NTS-608/ 449/569), then conversion through the schema BEFORE validation: file sources deliver strings (every CSV cell is one), and a numeric string must not fail its type rule. Unset properties resolve defaults and fakes exactly like create(). Returns `{ ok: false, errors }` instead of throwing — a ValidationError carries every failing check; a value its type cannot absorb (nested relationship values, `age: "x"`) becomes one synthetic detail. The `properties` of an ok result feed createMany()/mergeMany() directly: already-converted driver values pass through those pipelines unchanged.
+
+_source: services/query/bulk.service.ts_
+
+### `RowToPropertiesOptions` (interface)
+
+_source: services/query/bulk.service.ts_
 
 ### `Runner` (interface)
 

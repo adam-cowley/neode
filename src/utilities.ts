@@ -1087,12 +1087,33 @@ function convertSingleValue(value: unknown, type: PropertyType): unknown {
       return convertFloat(value)
     }
 
+    case PropertyType.BOOLEAN: {
+      // File sources deliver strings: absorb the two unambiguous forms,
+      // pass everything else through for validation to report (NTS-639)
+      if (typeof value === 'boolean') {
+        return value
+      }
+
+      if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase()
+
+        if (normalized === 'true') {
+          return true
+        }
+
+        if (normalized === 'false') {
+          return false
+        }
+      }
+
+      return value
+    }
+
     case PropertyType.ANY:
     case PropertyType.INTERNAL_ID:
     case PropertyType.ALL_PROPERTIES:
     case PropertyType.UUID:
     case PropertyType.STRING:
-    case PropertyType.BOOLEAN:
     case PropertyType.ONE_TO_ONE:
     case PropertyType.ONE_TO_MANY:
     case PropertyType.RELATED_ONE:

@@ -220,6 +220,7 @@ describe('public export surface (NTS-600)', () => {
       | 'requireRelateClient'
       | 'resolveRepository'
       | 'rows'
+      | 'rowToProperties'
       | 'runCypherScript'
       | 'runSeeders'
       | 'schemaDrift'
