@@ -67,7 +67,7 @@ _source: decorators/node/default.decorator.ts_
 
 ### `defineModel` (function)
 
-Register a model from a map-based schema definition (neode parity), returning the generated virtual class for the model.
+Register a model from a map-based schema definition (neode parity), returning the generated virtual class for the model. The registry is process-global and a model name registers once: a second `defineModel()` under the same name throws a descriptive error (the previous behaviour silently orphaned the first model's schema). Pass `{ idempotent: true }` to keep the existing registration instead — the idempotent form returns the already-registered class for the name.
 
 _source: meta/map-schema.ts_
 
