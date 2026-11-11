@@ -1222,6 +1222,8 @@ await new PaginateService(neode.getConnection()).paginate(Person, schema, filter
 
 Both return `BulkChunk<T>` = `{ count, entities }` per chunk. Prefer the facade wrappers (`neode.createMany`, `neode.mergeMany`, `neode.paginate`) — they resolve the schema for you.
 
+**When a chunk fails (NTS-649):** the chunk's transaction rolls back — every row of the failed chunk is unwritten, valid rows included, while earlier chunks stay committed (bulk writes are not atomic across chunks). The thrown `BulkChunkError` reports the per-row fate: `chunkIndex` and `failedRows` — each failing row's index in the full input with its own error, found by re-running the chunk's rows one transaction per row with every diagnostic transaction rolled back (nothing the diagnosis touches commits). Rows that only fail together (e.g. duplicate unique values within a chunk) report an empty `failedRows` with the reason in the message — fix the failing rows and re-run the import from the first uncommitted chunk.
+
 ### Batch import: files and streams into the bulk APIs
 
 Rows for the bulk APIs come from wherever the data lives. Parse at the edge with any reader (`csv-parse`, NDJSON lines, a paginated API pull) and feed batches as they arrive — `for await` gives backpressure, memory stays bounded by the batch size, and each batch commits its own transaction. Because `mergeMany()` MERGEs on the model's merge fields, re-running a file is idempotent: matched rows update instead of duplicating.

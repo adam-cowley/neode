@@ -173,10 +173,11 @@ export type {
 export type { SchemaResult } from './services/schema/schema-objects.js'
 
 // Bulk writes + pagination (NTS-125/126)
-export { BulkService, rowToProperties } from './services/query/bulk.service.js'
+export { BulkChunkError, BulkService, rowToProperties } from './services/query/bulk.service.js'
 export type {
   BulkChunk,
   BulkOptions,
+  BulkRowFailure,
   RowPropertiesResult,
   RowToPropertiesOptions,
 } from './services/query/bulk.service.js'

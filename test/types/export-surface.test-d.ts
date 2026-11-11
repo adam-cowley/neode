@@ -11,6 +11,7 @@ import type {
   BatchStatementError,
   BulkChunk,
   BulkOptions,
+  BulkRowFailure,
   ComputedDefinition,
   ConnectionOptions,
   ConnectionProvider,
@@ -107,6 +108,7 @@ describe('public export surface (NTS-600)', () => {
       | 'Boolean'
       | 'BoundBuilder'
       | 'Builder'
+      | 'BulkChunkError'
       | 'BulkService'
       | 'CardinalityViolationError'
       | 'Collection'
@@ -254,6 +256,7 @@ describe('public export surface (NTS-600)', () => {
         BatchStatementError,
         BulkChunk<unknown>,
         BulkOptions,
+        BulkRowFailure,
         ComputedDefinition,
         ConnectionOptions,
         ConnectionProvider,
