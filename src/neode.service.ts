@@ -169,6 +169,16 @@ function isSchemaDefinition(value: unknown): value is SchemaDefinition {
   return isRecord(value)
 }
 
+/**
+Per-call database override (NTS-644), intersected onto the option bags of
+the facade's paginate() / findManyAndCount(): wins over the setDatabase()
+default. The service-level bags stay free of it — PaginateService runs on
+the runner it is given, and the runner's scope fixes the database.
+*/
+interface PerCallDatabaseOption {
+  database?: string | undefined
+}
+
 /* eslint-disable unicorn/prefer-event-target -- the event emitter is shared with TransactionalService (its constructor takes it and calls on/emit), which an EventTarget adapter would break */
 /**
 The OGM facade: models, raw queries, transactions, schema management and
@@ -346,6 +356,27 @@ export class Neode implements INeode {
     return (
       ambient?.runner ?? (await this.connection.beginTransaction(mode, database ?? this.database))
     )
+  }
+
+  /**
+  The runner the per-call-`database` reads run on (NTS-644): with a
+  target — the per-call argument, else the setDatabase() default — the
+  instance connection with it threaded to the port (the query services
+  take a bare Runner, which cannot name a database); without a target, or
+  inside an ambient transaction (bound to one database at open time —
+  NTS-156), getRunner().
+  */
+  private runnerOn(database?: string): Runner {
+    const target = database ?? this.database
+
+    if (target === undefined || ambientTransaction()) {
+      return this.getRunner()
+    }
+
+    return {
+      run: async (statement, parameters) =>
+        this.connection.run(statement, parameters, undefined, target),
+    }
   }
 
   /**
@@ -1918,10 +1949,11 @@ export class Neode implements INeode {
     query: string,
     limit?: number,
     filters?: { withoutFilters?: string[] | undefined },
+    database?: string,
   ): Promise<ScoredEntity<T>[]> {
     assertPublicWithoutFilters(filters?.withoutFilters)
 
-    return search<T>(this.getRunner(), constructor, indexName, query, limit, filters)
+    return search<T>(this.runnerOn(database), constructor, indexName, query, limit, filters)
   }
 
   /**
@@ -2189,26 +2221,28 @@ export class Neode implements INeode {
   Pagination helper (NTS-125). Offset mode — `{ page, limit, order? }` —
   returns `{ items, total, page, limit, totalPages }`; keyset mode —
   `{ limit, orderBy?, after?/before? }` — walks a temporal property and
-  returns `{ items, nextCursor, hasMore }`
+  returns `{ items, nextCursor, hasMore }`. A `database` option on either
+  shape targets a database per call (NTS-644), winning over the
+  setDatabase() default.
   */
   async paginate<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown>,
-    options: OffsetPaginateOptions,
+    options: OffsetPaginateOptions & PerCallDatabaseOption,
   ): Promise<Page<T>>
   async paginate<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown>,
-    options: CursorPaginateOptions,
+    options: CursorPaginateOptions & PerCallDatabaseOption,
   ): Promise<CursorPage<T>>
   async paginate<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown> = {},
-    options?: OffsetPaginateOptions | CursorPaginateOptions,
+    options?: (OffsetPaginateOptions | CursorPaginateOptions) & PerCallDatabaseOption,
   ): Promise<Page<T> | CursorPage<T>> {
     assertPublicWithoutFilters(options?.withoutFilters)
 
-    return new PaginateService(this.getRunner()).paginate<T>(
+    return new PaginateService(this.runnerOn(options?.database)).paginate<T>(
       constructor,
       this.getSchema(constructor),
       filter,
@@ -2219,16 +2253,18 @@ export class Neode implements INeode {
   /**
   Non-paginated `{ items, total }` read (NTS-166): every entity matching
   the filter plus its total in one call. Options trim the data read
-  only — `total` is always the full filter count.
+  only — `total` is always the full filter count. A `database` option
+  targets a database per call (NTS-644), winning over the setDatabase()
+  default.
   */
   async findManyAndCount<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown> = {},
-    options: FindManyAndCountOptions = {},
+    options: FindManyAndCountOptions & PerCallDatabaseOption = {},
   ): Promise<ManyAndCount<T>> {
     assertPublicWithoutFilters(options.withoutFilters)
 
-    return new PaginateService(this.getRunner()).findManyAndCount<T>(
+    return new PaginateService(this.runnerOn(options.database)).findManyAndCount<T>(
       constructor,
       this.getSchema(constructor),
       filter,

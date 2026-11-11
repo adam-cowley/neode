@@ -169,6 +169,7 @@ export interface INeode {
     query: string,
     limit?: number,
     filters?: { withoutFilters?: string[] | undefined },
+    database?: string,
   ): Promise<ScoredEntity<T>[]>
   cypher(
     query: string,
