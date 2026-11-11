@@ -7,13 +7,19 @@ import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import type { PropertySchema } from '../../meta/property-schema.js'
 import { PropertyType } from '../../meta/property-schema.js'
 import { QueryService } from './query.service.js'
-import { type OrderSpec, applyOrder } from './get.service.js'
+import { applyOrder, type OrderSpec } from './get.service.js'
 import { requireLimit } from './limits.js'
 import { NeodeError } from '../../errors/index.js'
 import { labelPattern } from './bulk.service.js'
 import { isGraphNode, isRecord } from '../type-guards.js'
 import { EAGER_ID } from '../../query/eager-utilities.js'
 import { applyReadFilters, readFilterFragment, type ReadFilterOptions } from './filters.js'
+import {
+  applyFilterBag,
+  assertFilterKeys,
+  isFilterMap,
+  renderFilterOperatorConditions,
+} from './filter-bag.js'
 import { shapeNodeRows } from './shape.js'
 
 /**
@@ -242,23 +248,6 @@ function readFilterOptions(options: object): ReadFilterOptions {
 }
 
 /**
-Property-equality filter, the same semantics as get()/all()
-*/
-function applyFilter(
-  builder: Builder,
-  schema: EntitySchema,
-  filter: Record<string, unknown>,
-): void {
-  for (const property of schema.getProperties()) {
-    const key = property.getKey()
-
-    if (Object.hasOwn(filter, key)) {
-      builder.where(`${THIS_NODE}.${key}`, filter[key])
-    }
-  }
-}
-
-/**
 Pagination helpers.
 
 Two modes, selected by the options shape:
@@ -291,7 +280,7 @@ export class PaginateService extends QueryService {
 
     data.match(THIS_NODE, schema.getLabels())
     applyReadFilters(data, schema, filters)
-    applyFilter(data, schema, filter)
+    applyFilterBag(data, schema, filter)
     applyOrder(data, options.order)
 
     // NTS-592 — SKIP/LIMIT pages need a total order or rows shift between
@@ -314,7 +303,7 @@ export class PaginateService extends QueryService {
 
     count.match(THIS_NODE, schema.getLabels())
     applyReadFilters(count, schema, filters)
-    applyFilter(count, schema, filter)
+    applyFilterBag(count, schema, filter)
     count.return(`count(${THIS_NODE}) AS total`)
 
     const built = count.build()
@@ -385,6 +374,12 @@ export class PaginateService extends QueryService {
       }
     }
 
+    // NTS-646 — every bag key is checked against the schema, the same
+    // fail-loud contract as the Builder consumption path: an unknown key
+    // or a nested relationship bag throws instead of silently narrowing
+    // nothing
+    assertFilterKeys(schema, filter)
+
     for (const candidate of schema.getProperties()) {
       const filterKey = candidate.getKey()
 
@@ -392,9 +387,28 @@ export class PaginateService extends QueryService {
         continue
       }
 
+      const value = filter[filterKey]
+
+      // NTS-646 — the keyset statement is hand-written (the builder cannot
+      // wrap a parameter in the temporal cast), so the operator tier
+      // renders through the shared condition renderer instead of the
+      // Builder methods
+      if (isFilterMap(value)) {
+        for (const condition of renderFilterOperatorConditions(
+          THIS_NODE,
+          filterKey,
+          value,
+          parameters,
+        )) {
+          conditions.push(condition)
+        }
+
+        continue
+      }
+
       const parameter = `filter_${filterKey.replaceAll(/[^a-z0-9]+/gi, '_')}`
 
-      parameters[parameter] = filter[filterKey]
+      parameters[parameter] = value
       conditions.push(`${propertyReference(THIS_NODE, filterKey)} = $${parameter}`)
     }
 
@@ -571,7 +585,7 @@ export class PaginateService extends QueryService {
 
     data.match(THIS_NODE, schema.getLabels())
     applyReadFilters(data, schema, options)
-    applyFilter(data, schema, filter)
+    applyFilterBag(data, schema, filter)
 
     if (options.order !== undefined) {
       applyOrder(data, options.order)
@@ -590,7 +604,7 @@ export class PaginateService extends QueryService {
 
     count.match(THIS_NODE, schema.getLabels())
     applyReadFilters(count, schema, options)
-    applyFilter(count, schema, filter)
+    applyFilterBag(count, schema, filter)
     count.return(`count(${THIS_NODE}) AS total`)
 
     const built = count.build()

@@ -452,6 +452,31 @@ describe('Repository', () => {
       await expect(repo.deleteAll()).rejects.toThrow(/\{ all: true \}/)
       await expect(repo.deleteAll({})).rejects.toThrow(NeodeError)
     })
+
+    it('renders operator objects (NTS-646)', async () => {
+      const { neode, mocks } = stubNeode({ records: [record(2)] })
+
+      const repo = new Repository<Movie>(neode, Movie)
+      const deleted = await repo.deleteAll({ released: { gte: 1979 } })
+
+      expect(deleted).toBe(2)
+
+      const [query] = mocks.writeCypher.mock.calls[0]
+
+      expect(query).toContain('this.released >= $where_this_released')
+    })
+
+    it('refuses a bag whose keys all miss the schema — it would wipe unfiltered (NTS-646)', async () => {
+      const { neode, mocks } = stubNeode({ records: [record(2)] })
+
+      const repo = new Repository<Movie>(neode, Movie)
+
+      await expect(repo.deleteAll({ nope: 'x' })).rejects.toThrow(
+        /Unknown where-filter key "nope" on Movie/,
+      )
+
+      expect(mocks.writeCypher).not.toHaveBeenCalled()
+    })
   })
 
   describe('typing', () => {
@@ -484,12 +509,12 @@ describe('Repository', () => {
       expect([one, first, all, filtered, total, saved, many, updated, gone, bulk]).toBeDefined()
     })
 
-    it('rejects unknown properties in typed calls', async () => {
+    it('rejects unknown properties in typed calls — compile time and runtime', async () => {
       const { neode } = stubNeode()
       const repo = new Repository<Movie>(neode, Movie)
 
       // @ts-expect-error "bogus" is not a property of Movie
-      await repo.findBy({ bogus: true })
+      await expect(repo.findBy({ bogus: true })).rejects.toThrow(NeodeError)
     })
   })
 

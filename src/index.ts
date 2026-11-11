@@ -149,6 +149,13 @@ export type {
 // .withRelationship()` edge rows and the with-spec-narrowed read returns
 export type { RelationshipEdgeRead } from './services/query/load-relation.service.js'
 export type { LoadedEntity } from './query/load-spec.js'
+// NTS-646 — the typed where-filter bag keyed to the model's declared properties
+export type {
+  WhereFilter,
+  WhereFilterLevel,
+  FilterOperators,
+  FilterOperand,
+} from './query/where-filter.js'
 
 // Full-text + vector search (NTS-123/127)
 export { search } from './services/query/search.service.js'
