@@ -822,6 +822,8 @@ const results = await neode.installSchema()
 await neode.dropSchema()
 ```
 
+Every schema-management method — `installSchema()`, `dropSchema()`, `inspectSchema()`, `schemaDiff()` and `applySchemaDiff()` — accepts a `{ database }` option that targets a non-default database for that one call, winning over `setDatabase()` (NTS-645): `await neode.installSchema({ database: 'analytics' })`.
+
 Property-existence constraints (`REQUIRE n.prop IS NOT NULL`) and property-type constraints are Enterprise-only — the edition is detected from the connection (`CALL dbms.components()`) and the statements are skipped on Community.
 
 ## Schema inspection & drift
@@ -843,7 +845,7 @@ await applySchemaDrift(connection, drift, { dropStale?: boolean }) // idempotent
 
 - `schemaDrift` — declared-vs-installed inspection of constraints and every index kind (range/text/fulltext/vector), one `SchemaDriftEntry` per object carrying the CREATE/DROP statement that would resolve it. `SchemaDriftGroup` groups one family by action; `ApplySchemaDiffOptions.dropStale` also drops installed-but-undeclared objects (destructive, off by default).
 - `applySchemaDrift` — apply the missing objects idempotently; mismatched objects are never auto-applied; stale objects only dropped with `dropStale: true`. Each statement is reported with a `SchemaResult`.
-- The facade mirrors these as `neode.inspectSchema(options?)`, `neode.schemaDiff(options?)`, `neode.formatSchemaDiff(diff)` and `neode.applySchemaDiff(diff, options?)` — they pass the instance's connection and declared index definitions for you.
+- The facade mirrors these as `neode.inspectSchema(options?)`, `neode.schemaDiff(options?)`, `neode.formatSchemaDiff(diff)` and `neode.applySchemaDiff(diff, options?)` — they pass the instance's connection and declared index definitions for you. All of them (and `installSchema()` / `dropSchema()`) accept a `database` option that scopes the statements to that database per call (NTS-645).
 
 ## Soft delete
 
