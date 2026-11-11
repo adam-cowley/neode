@@ -290,17 +290,17 @@ Each applies the matching config option to the property it decorates:
 @NodeEntity()
 class Movie {
   @InternalId()
-  _id: string
+  _id!: string
 
   @Uuid({ primary: true })
-  id: string
+  id!: string
 
   @Property({ type: 'string', unique: true })
-  title: string
+  title!: string
 
   @Property({ type: 'datetime' })
   @Default(() => new Date().toISOString())
-  createdAt: string
+  createdAt!: string
 }
 ```
 
@@ -326,13 +326,13 @@ For relationships modelled as their own entity (with start/end nodes and edge pr
 ```typescript
 @RelationshipEntity()
 class Rating {
-  @InternalId() _id: string
+  @InternalId() _id!: string
 
-  @StartNode(() => User) user: User
-  @EndNode(() => Movie) movie: Movie
+  @StartNode(() => User) user!: User
+  @EndNode(() => Movie) movie!: Movie
 
   @Property({ type: 'number' })
-  score: number
+  score!: number
 }
 ```
 
@@ -345,28 +345,34 @@ These declare values projected into the read query — one RETURN projection per
 ```typescript
 @NodeEntity()
 class Learner {
-  @InternalId() _id: string
+  @InternalId() _id!: string
+
+  @Property({ type: 'string' })
+  firstName!: string
+
+  @Property({ type: 'string' })
+  lastName!: string
 
   @RelatedOne({ type: 'IN_COURSE', direction: 'out', target: () => Course, fields: ['title'] })
   course?: Pick<Course, 'title'> // nested read-only DTO
 
   @RelatedMany({ type: 'COMPLETED_LESSON', target: () => Lesson, fields: ['slug'] })
-  completedLessons: string[] // single field → scalar array
+  completedLessons!: string[] // single field → scalar array
 
   @RelationshipCount({ type: 'COMPLETED_LESSON', direction: 'out' })
-  completedCount: number // inline COUNT { } subquery
+  completedCount!: number // inline COUNT { } subquery
 
   @RelationshipExists({ type: 'NEXT_LESSON', direction: 'out' })
-  hasNextLesson: boolean // inline EXISTS { } boolean
+  hasNextLesson!: boolean // inline EXISTS { } boolean
 
   @LabelPresent('OptionalLesson')
-  isOptional: boolean // true when the node has the label
+  isOptional!: boolean // true when the node has the label
 
   @Expression('size((this)-[:KNOWS]->())')
-  friendCount: number // raw Cypher, `this` = the root node
+  friendCount!: number // raw Cypher, `this` = the root node
 
-  @Computed((entity) => `${entity.firstName} ${entity.lastName}`)
-  fullName: string // computed in TypeScript after hydration
+  @Computed((entity) => `${(entity as Learner).firstName} ${(entity as Learner).lastName}`)
+  fullName!: string // computed in TypeScript after hydration
 }
 ```
 
@@ -434,10 +440,12 @@ Rules are plain keys in the property config, using neode's rule names, mapped on
 Validation runs automatically on every write path (`save`, `create`, `update`). Failures throw a validation error whose `details` array carries one `{ path, message }` entry per failing check (and `.input` holds the rejected values):
 
 ```typescript
+import { ValidationError } from 'neode'
+
 try {
   await neode.save(Object.assign(new User(), { email: 'nope' }))
 } catch (e) {
-  e.details // [{ path: ['email'], message: '"email" must be a valid email', … }]
+  if (e instanceof ValidationError) e.details // [{ path: ['email'], message: '"email" must be a valid email', … }]
 }
 ```
 
@@ -651,14 +659,14 @@ A **stored derived property** is computed on the write path from other propertie
 
 ```typescript
 class Order {
-  @Property({ type: 'datetime' }) orderDate: string
+  @Property({ type: 'datetime' }) orderDate!: string
   @Property({ type: 'datetime' }) shippedDate?: string
 
   // TypeScript-side: runs against the entity's property record
   @Property({ type: 'duration' })
   @Derived({
     from: ['orderDate', 'shippedDate'],
-    compute: (o) => durationBetween(String(o.orderDate), String(o.shippedDate)),
+    compute: (o) => durationBetween(String(o['orderDate']), String(o['shippedDate'])),
   })
   timeToShip?: unknown
 
@@ -869,11 +877,13 @@ await repo.delete('p1', { force: true }) // real DETACH DELETE
 ```typescript
 const off = neode.observe(Product, {
   beforeSave: (entity) => {
-    entity.slug ??= slugify(entity.name)
+    const product = entity as Product // hooks receive the entity loosely typed
+    product.slug ??= slugify(product.name)
   }, // create path: receives the properties record
   afterSave: (entity, { isNew }) => audit.log(isNew ? 'created' : 'updated', entity),
   beforeDelete: (entity) => {
-    if (entity.protected) throw new Error('protected')
+    const product = entity as Product
+    if (product.protected) throw new Error('protected')
   },
   afterDelete: (entity) => audit.log('deleted', entity),
 })
@@ -892,14 +902,16 @@ const off = neode.observe(Product, {
 `neode.traverse(Model)` (NTS-512) — typed multi-hop reads through the Builder, one hydrated row per matched path:
 
 ```typescript
+import { Direction } from 'neode'
+
 const rows = await neode
   .traverse(Product)
   .where({ productID: 1 }) // declared-property filters on the start node
-  .hop('SUPPLIED_BY', 'out', Supplier) // class or lazy thunk
-  .hop('COVERS', 'in', Territory, { degrees: '1..2' }) // variable-length hop
+  .hop('SUPPLIED_BY', Direction.OUTGOING, Supplier) // class or lazy thunk
+  .hop('COVERS', Direction.INCOMING, Territory, '1..2') // variable-length hop
   .run()
 
-rows[0].nodes // [Product, Supplier, Territory] — hydrated entities
+rows[0]?.nodes // [Product, Supplier, Territory] — hydrated entities
 ```
 
 - Each node is hydrated with the registered model whose labels match the node (most specific wins); unmatched nodes come back as raw driver nodes.
@@ -911,12 +923,14 @@ rows[0].nodes // [Product, Supplier, Territory] — hydrated entities
 The same builder runs as an aggregate read — the co-purchase shape ("entities reached through shared origins, ranked by how many origins they share, excluding the ones already connected to the start"):
 
 ```typescript
+import { Direction } from 'neode'
+
 const rows = await neode
   .traverse(Order)
   .where({ orderID })
-  .hop('CONTAINS', 'out', Product) //  t1: this order's products
-  .hop('CONTAINS', 'in', Order) //    t2: other orders…
-  .hop('CONTAINS', 'out', Product) // t3: …and what they contain
+  .hop('CONTAINS', Direction.OUTGOING, Product) //  t1: this order's products
+  .hop('CONTAINS', Direction.INCOMING, Order) //    t2: other orders…
+  .hop('CONTAINS', Direction.OUTGOING, Product) // t3: …and what they contain
   .exclude('t0', 'CONTAINS', 't3') // not already in THIS order
   .groupBy('t3')
   .countDistinct('t2', 'times')
@@ -937,8 +951,13 @@ The database-agnostic port every backend implements:
 
 ```typescript
 interface ConnectionProvider {
-  run(statement, parameters?, mode?: 'READ' | 'WRITE', database?): Promise<QueryOutput>
-  beginTransaction(mode?, database?): Promise<TransactionHandle>
+  run(
+    statement: string,
+    parameters?: QueryParams,
+    mode?: AccessMode,
+    database?: string,
+  ): Promise<QueryOutput>
+  beginTransaction(mode?: AccessMode, database?: string): Promise<TransactionHandle>
   edition(): Promise<'enterprise' | 'community' | 'unknown'>
   close(): Promise<void>
 }
@@ -1053,10 +1072,12 @@ Two scopes, one rule: **repositories take `INeode`** (the minimal interface — 
 Hydrated entities get active-record methods on their prototype (wired once per class at first hydration):
 
 ```typescript
+import type { DeleteOptions, DetachResult, GraphRelationship } from 'neode'
+
 interface EntityMethods {
   save(): Promise<this> // MERGE, re-hydrate
   update(properties?: Record<string, unknown>): Promise<this> // `+=`, re-hydrate
-  delete(options?: { cascade?; mode?; depth?; soft? } | string): Promise<this>
+  delete(options?: DeleteOptions | string): Promise<this>
   // With { soft: 'Archived' } the label is SET instead and the refreshed
   // entity is returned; otherwise the node is deleted and the (detached)
   // instance is returned.
@@ -1065,10 +1086,10 @@ interface EntityMethods {
   relateTo(
     other: object,
     relationshipKey: string,
-    properties?,
-    shouldForceCreate?,
+    properties?: Record<string, unknown>,
+    shouldForceCreate?: boolean,
   ): Promise<GraphRelationship | undefined>
-  detachFrom<To extends object>(other: To, relationshipKey: string): Promise<{ from; to }>
+  detachFrom<To extends object>(other: To, relationshipKey: string): Promise<DetachResult<this, To>>
   toJson(): Record<string, unknown>
 }
 ```
@@ -1185,7 +1206,12 @@ Declarative read models composed into a single RETURN projection per read — on
 When a projection reads a field subset, pass `target()` and derive the annotation with `Pick`:
 
 ```typescript
-@RelatedOne({ type: 'PLACED_BY', direction: 'out', target: () => Customer, fields: ['customerID', 'companyName', 'country'] })
+@RelatedOne({
+  type: 'PLACED_BY',
+  direction: 'out',
+  target: () => Customer,
+  fields: ['customerID', 'companyName', 'country'],
+})
 customer?: Pick<Customer, 'customerID' | 'companyName' | 'country'>
 ```
 
