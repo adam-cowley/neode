@@ -151,6 +151,18 @@ Leaf Cypher expression helpers. Statement structure lives in Builder (match / wh
 
 _source: query/expressions.ts_
 
+### `FilterOperand` (type)
+
+One filter entry: a bare value (equality — today's bag, byte-identical Cypher) or an operator object.
+
+_source: query/where-filter.ts_
+
+### `FilterOperators` (interface)
+
+The operator-object tier of a filter operand (NTS-646): every operator maps 1:1 onto a Builder method — eq/neq → where/whereNot, gt/gte/lt/lte → where(prop, op, value), in → whereIn, contains/startsWith/endsWith → whereContains/whereStartsWith/whereEndsWith, null → whereNull/whereNotNull. No `between` (compose { gte, lte }), no `nin` (no Builder counterpart), and no raw/alias-taking operators — those stay Builder-only. The string operators type to `never` on non-string values, so `{ age: { contains: 'x' } }` is a type error.
+
+_source: query/where-filter.ts_
+
 ### `GraphNode` (interface)
 
 A node value in a normalized shape, as returned in result records.
@@ -544,6 +556,18 @@ _source: driver/types.ts_
 Convert a single property value into its JSON friendly shape.
 
 _source: serialise.ts_
+
+### `WhereFilter` (type)
+
+A where filter checked against the model's declared properties (NTS-646), keyed by the model CONSTRUCTOR: equality values and operator objects type-check against the declared property keys, relationship keys take nested bags. Unknown keys — typos, method keys — are compile errors at the call site (object-literal excess-property checking); a `Record<string, unknown>` variable still passes (literals are the contract), and the runtime helper throws on unknown operator keys. `ts await neode.get(Person, { name: 'Adam', age: { gte: 18 } }) await neode.get(Person, { pets: { kind: { startsWith: 'ca' } } }) await neode.get(Person, { nme: 'Adam' }) // ← compile error `
+
+_source: query/where-filter.ts_
+
+### `WhereFilterLevel` (type)
+
+One level of a where filter, keyed off the entity's DECLARED FIELD types: property keys take bare values or operator objects, relationship keys take nested filter bags (recursing through FieldTarget, the same descent QueryLoadLevel uses). No phantom map required — a mis-filed key the fallback domain lets through is caught by the runtime consumption loop.
+
+_source: query/where-filter.ts_
 
 ### `WhereNull` (class)
 
