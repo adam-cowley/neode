@@ -885,7 +885,10 @@ export class TransactionalService implements INeode {
     query: string,
     limit?: number,
     filters?: { withoutFilters?: string[] | undefined },
+    database?: string,
   ): Promise<ScoredEntity<T>[]> {
+    this.ignoreDatabaseOverride(database)
+
     assertPublicWithoutFilters(filters?.withoutFilters)
 
     return search<T>(this.handle, constructor, indexName, query, limit, filters)
