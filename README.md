@@ -131,6 +131,23 @@ That's the whole loop. Everything else the library does is in the matrix below.
 | Agent ontology        | `ontology()` / `ontologyMarkdown()` — emit the live graph schema for grounding Text2Cypher prompts or MCP resources                                                                                                                                                                              | [API reference](docs/api-reference.md)                                   |
 | Testing & ops         | `wipe()`, `testId()`, data factories (`neode.factory()`), `verifyConnectivity()` / `waitUntilReachable()`, `splitCypherStatements()` / `runCypherScript()`                                                                                                                                       | [API reference](docs/api-reference.md)                                   |
 
+### Benchmarks
+
+Vitest benches live in [`bench/`](bench/) — read/hydration/validation throughput and, in
+[`bench/write-bolt.bench.ts`](bench/write-bolt.bench.ts), the neode write path (`create()` / `createMany()` /
+`merge()` / `mergeMany()`) against raw Cypher over the neo4j-driver (Bolt) path at 300 / 3,000 / 30,000 rows,
+recording wall-clock and statements per write. They run manually against a local Neo4j testcontainer (needs Docker)
+and are not part of the default test gate:
+
+```sh
+./node_modules/.bin/vitest bench --project unit bench/write-bolt.bench.ts
+```
+
+Dated runs are recorded in [`bench/results/`](bench/results/) — e.g.
+[2026-11-11-write.md](bench/results/2026-11-11-write.md) for the write-path numbers (headline: batched
+`UNWIND` writes are 8–35x faster than per-row writes and within ~3x of the raw single-statement ceiling;
+statements per write, not OGM pipeline time, is what separates the strategies).
+
 ### kNN & full-text search
 
 ```typescript

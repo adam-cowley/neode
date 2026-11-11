@@ -17,3 +17,6 @@ logs/
 
 # Throwaway PR bodies (gh pr create --body-file)
 /pr-body*.md
+
+# Machine-readable bench output (the dated .md records are committed)
+bench/results/*.json
