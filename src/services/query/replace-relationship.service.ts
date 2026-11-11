@@ -8,6 +8,7 @@ import { matchCriteriaForEntity } from '../../utilities.js'
 import { QueryService } from './query.service.js'
 import { NeodeError } from '../../errors/index.js'
 import { assertWritableDirection, validateEdgeProperties } from '../relationship-values.js'
+import { assertCardinality } from '../write-utilities.js'
 import { isRecord } from '../type-guards.js'
 
 /**
@@ -52,6 +53,11 @@ export class ReplaceRelationshipService extends QueryService {
 
     // BOTH is match-only — same rejection as relate() (NTS-483)
     assertWritableDirection(relationship)
+
+    // The replace ends with exactly one edge per target: a restricted
+    // cardinality with two or more targets is a violation before any
+    // write happens (same contract as syncEdges, NTS-161)
+    assertCardinality(relationship, targets.length)
 
     // NTS-628: edge properties validate against the relationship's
     // declared `properties` schema (relate() parity)

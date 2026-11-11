@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { getModel, mergeRelationshipProperty } from '../../../src/meta/index.js'
 import { defineModel } from '../../../src/meta/map-schema.js'
+import { CardinalityViolationError } from '../../../src/errors/index.js'
 import { Direction } from '../../../src/query/index.js'
 import { ReplaceRelationshipService } from '../../../src/services/query/replace-relationship.service.js'
 import { FakeRunner } from './fake-runner.js'
@@ -21,6 +22,20 @@ const Form = defineModel('Nts634ReplaceForm', {
 
 // BOTH is match-only (NTS-483) — replaceRelationship must reject it up front
 mergeRelationshipProperty(Form, 'MANAGER', 'MANAGER', Membership, Direction.BOTH, false)
+
+// NTS-643: a one-cardinality declaration must bound the target set
+mergeRelationshipProperty(
+  Form,
+  'OWNER',
+  'OWNER',
+  Membership,
+  Direction.OUTGOING,
+  false,
+  undefined,
+  undefined,
+  false,
+  'one',
+)
 
 const schema = getModel(Form)
 
@@ -172,5 +187,35 @@ describe('ReplaceRelationshipService (NTS-634 one-statement edge replace)', () =
         [{}, 'm-2'],
       ),
     ).rejects.toThrow('a target instance is missing a id value')
+  })
+
+  it('rejects a multi-target replace on a one-cardinality relationship before any statement runs (NTS-643)', async () => {
+    const runner = new FakeRunner()
+
+    const attempt = new ReplaceRelationshipService(runner).replaceRelationship(
+      schema,
+      { id: 'form-1' },
+      schema.getRelationship('OWNER'),
+      ['m-1', 'm-2'],
+    )
+
+    await expect(attempt).rejects.toBeInstanceOf(CardinalityViolationError)
+    await expect(attempt).rejects.toThrow(/"OWNER"/)
+    await expect(attempt).rejects.toThrow(/'one'/)
+
+    expect(runner.statements).toHaveLength(0)
+  })
+
+  it('accepts a single-target replace on a one-cardinality relationship', async () => {
+    const runner = new FakeRunner()
+
+    await new ReplaceRelationshipService(runner).replaceRelationship(
+      schema,
+      { id: 'form-1' },
+      schema.getRelationship('OWNER'),
+      ['m-1'],
+    )
+
+    expect(runner.statements[0]?.query).toContain('CREATE (this)-[new_rel:`OWNER`]->(target_node)')
   })
 })
