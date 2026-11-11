@@ -170,10 +170,11 @@ function isSchemaDefinition(value: unknown): value is SchemaDefinition {
 }
 
 /**
-Per-call database override (NTS-644), intersected onto the option bags of
-the facade's paginate() / findManyAndCount(): wins over the setDatabase()
-default. The service-level bags stay free of it — PaginateService runs on
-the runner it is given, and the runner's scope fixes the database.
+Per-call database override (NTS-644, NTS-645), intersected onto the option
+bags of the facade's paginate() / findManyAndCount() / search() and the
+schema-management methods: wins over the setDatabase() default. The
+service-level bags stay free of it — those services run on the runner /
+connection they are given, and its scope fixes the database.
 */
 interface PerCallDatabaseOption {
   database?: string | undefined
@@ -376,6 +377,33 @@ export class Neode implements INeode {
     return {
       run: async (statement, parameters) =>
         this.connection.run(statement, parameters, undefined, target),
+    }
+  }
+
+  /**
+  The connection the schema-management statements run on (NTS-645): the
+  ConnectionProvider counterpart of runnerOn() — the schema services take
+  the whole port (they probe its edition), so the per-call `database`
+  threads as a view of the instance connection whose every statement
+  (DDL, SHOW, edition probe forwards) lands in the target. Without a
+  target, the instance connection itself — exactly today's behaviour,
+  edition-probe cache included. Schema DDL never joins the ambient
+  transaction (it ran autocommit before per-call databases existed), so
+  no ambientTransaction() check here.
+  */
+  private connectionOn(database?: string): ConnectionProvider {
+    const target = database ?? this.database
+
+    if (target === undefined) {
+      return this.connection
+    }
+
+    return {
+      run: async (statement, parameters, mode) =>
+        this.connection.run(statement, parameters, mode, target),
+      beginTransaction: async (mode) => this.connection.beginTransaction(mode, target),
+      edition: async () => this.connection.edition(),
+      close: async () => this.connection.close(),
     }
   }
 
@@ -1157,12 +1185,13 @@ export class Neode implements INeode {
   }
 
   /**
-  Run statements to create the schema
+  Run statements to create the schema. A `database` option installs into
+  that database per call (NTS-645), winning over the setDatabase() default.
   */
-  async installSchema(): Promise<SchemaResult[]> {
+  async installSchema(options: PerCallDatabaseOption = {}): Promise<SchemaResult[]> {
     // NTS-598 — EXISTS / property-type constraints follow the edition
     // detected from the connection, not the manual flag
-    const service = new SchemaService(this.connection)
+    const service = new SchemaService(this.connectionOn(options.database))
 
     return service.create()
   }
@@ -1172,9 +1201,11 @@ export class Neode implements INeode {
   index the registered models declare on the connected database (by
   deterministic name, so objects other applications created under other
   names are untouched) — never run it against a database you do not own.
+  A `database` option drops from that database per call (NTS-645), winning
+  over the setDatabase() default.
   */
-  async dropSchema(): Promise<SchemaResult[]> {
-    const service = new SchemaService(this.connection)
+  async dropSchema(options: PerCallDatabaseOption = {}): Promise<SchemaResult[]> {
+    const service = new SchemaService(this.connectionOn(options.database))
 
     return service.drop()
   }
@@ -1993,10 +2024,13 @@ export class Neode implements INeode {
   /**
   Read the installed database schema (SHOW CONSTRAINTS / SHOW INDEXES)
   and diff it against the declared schema of the registered models
-  (NTS-142)
+  (NTS-142). A `database` option inspects that database per call
+  (NTS-645), winning over the setDatabase() default.
   */
-  async inspectSchema(options: InspectOptions = {}): Promise<SchemaInspection> {
-    return inspectSchema(this.connection, options)
+  async inspectSchema(
+    options: InspectOptions & PerCallDatabaseOption = {},
+  ): Promise<SchemaInspection> {
+    return inspectSchema(this.connectionOn(options.database), options)
   }
 
   /**
@@ -2017,10 +2051,11 @@ export class Neode implements INeode {
   every index kind (range/text/fulltext/vector), each entry carrying
   the exact fix statement (NTS-450). Drift is data, not an error —
   this never throws on drift; failing a CI run on a non-empty diff is
-  the caller's job.
+  the caller's job. A `database` option inspects that database per call
+  (NTS-645), winning over the setDatabase() default.
   */
-  async schemaDiff(options: InspectOptions = {}): Promise<SchemaDrift> {
-    return schemaDrift(this.connection, options)
+  async schemaDiff(options: InspectOptions & PerCallDatabaseOption = {}): Promise<SchemaDrift> {
+    return schemaDrift(this.connectionOn(options.database), options)
   }
 
   /**
@@ -2035,13 +2070,15 @@ export class Neode implements INeode {
   Apply the missing objects of a schema drift idempotently; stale
   objects are only dropped with `dropStale: true` (dropping is
   destructive: they are installed on the connected database, which on a
-  shared one may belong to other applications). Reports each statement like installSchema (NTS-450)
+  shared one may belong to other applications). Reports each statement like installSchema (NTS-450).
+  A `database` option applies against that database per call (NTS-645),
+  winning over the setDatabase() default.
   */
   async applySchemaDiff(
     diff: SchemaDrift,
-    options: ApplySchemaDiffOptions = {},
+    options: ApplySchemaDiffOptions & PerCallDatabaseOption = {},
   ): Promise<SchemaResult[]> {
-    return applySchemaDrift(this.connection, diff, options)
+    return applySchemaDrift(this.connectionOn(options.database), diff, options)
   }
 
   /**

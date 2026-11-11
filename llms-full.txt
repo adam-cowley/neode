@@ -589,7 +589,7 @@ _source: services/query/bulk.service.ts_
 
 ### `BulkService` (class)
 
-Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths — `fake` generators included (NTS-608), each row's run independently: unique + `fake` properties are NOT guaranteed distinct across rows (see prepareRows). Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the earlier chunks committed — bulk writes are not atomic across chunks. A failed chunk throws a `BulkChunkError` (NTS-649) that names the failing rows with per-row errors, found by a rolled-back per-row diagnostic pass: every row of the failed chunk (valid rows included) is unwritten, earlier chunks stay committed. Row preparation bounds its embedding-provider calls at MAX_PREPARE_CONCURRENCY in flight.
+Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths — `fake` generators included (NTS-608), each row's run independently: unique + `fake` properties are NOT guaranteed distinct across rows (see prepareRows). Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the earlier chunks committed — bulk writes are not atomic across chunks. A failed chunk throws a `BulkChunkError` (NTS-649) that names the failing rows with per-row errors, found by a rolled-back per-row diagnostic pass: every row of the failed chunk (valid rows included) is unwritten, earlier chunks stay committed. Row preparation bounds its embedding-provider calls at MAX_BULK_CONCURRENCY in flight.
 
 _source: services/query/bulk.service.ts_
 
@@ -650,6 +650,10 @@ _source: driver/types.ts_
 ### `DeleteOptions` (interface)
 
 _source: services/query/delete.service.ts_
+
+### `DetachResult` (interface)
+
+_source: services/query/detach.service.ts_
 
 ### `Direction` (const)
 
@@ -1393,7 +1397,7 @@ _source: traverse.ts_
 
 ### `TraverseBuilder` (class)
 
-The traversal builder (NTS-512): typed multi-hop reads — chain hops, run, get hydrated entities per hop position. Row semantics: one row per matched path (variable-degree hops fan out). Aggregate reads (NTS-547): declare `groupBy()` / `countDistinct()` and read the result with `runAggregates()` — group aliases come back hydrated, counts as numbers. `orderBy()` / `limit()` shape either mode. Every aliased node whose model is known (the origin and each hop with a target model) carries that model's named read filters (NTS-162, NTS-574): soft-deleted and filtered-out nodes drop out of the paths and the counts. The mid-path nodes of a variable-length hop carry the hop target's read filters too (NTS-593); hops without a target model have no model to filter by and stay unfiltered. `withoutFilters()` opts named filters out for the traversal, as on every other read. Variable-length hops (NTS-593): the result is a distinct-node set — the per-path duplicates collapse (`RETURN DISTINCT`) and counts count distinct nodes. An open-ended range (`*1..`) is capped at MAX_TRAVERSE_DEPTH; `maxDepth()` overrides the cap per traversal. ```ts const rows = await neode.traverse(Product) .hop('SUPPLIED_BY', 'out', Supplier) .hop('COVERS', 'in', Territory, { degrees: '1..2' }) .run() rows[0].nodes // [Product, Supplier, Territory] hydrated // co-purchase style: ranked, capped, excluding the origin's own edges const ranked = await neode.traverse(Order) .where({ orderID }) .hop('CONTAINS', 'out', Product) .hop('CONTAINS', 'in', Order) .hop('CONTAINS', 'out', Product) .exclude('t0', 'CONTAINS', 't3') .groupBy('t3') .countDistinct('t2', 'times') .orderBy('times', 'DESC') .limit(5) .runAggregates() ```
+The traversal builder (NTS-512): typed multi-hop reads — chain hops, run, get hydrated entities per hop position. Row semantics: one row per matched path (variable-degree hops fan out). Aggregate reads (NTS-547): declare `groupBy()` / `countDistinct()` and read the result with `runAggregates()` — group aliases come back hydrated, counts as numbers. `orderBy()` / `limit()` shape either mode. Every aliased node whose model is known (the origin and each hop with a target model) carries that model's named read filters (NTS-162, NTS-574): soft-deleted and filtered-out nodes drop out of the paths and the counts. The mid-path nodes of a variable-length hop carry the hop target's read filters too (NTS-593); hops without a target model have no model to filter by and stay unfiltered. `withoutFilters()` opts named filters out for the traversal, as on every other read. Variable-length hops (NTS-593): the result is a distinct-node set — the per-path duplicates collapse (`RETURN DISTINCT`) and counts count distinct nodes. An open-ended range (`*1..`) is capped at MAX_TRAVERSE_DEPTH; `maxDepth()` overrides the cap per traversal. ```ts const rows = await neode.traverse(Product) .hop('SUPPLIED_BY', Direction.OUTGOING, Supplier) .hop('COVERS', Direction.INCOMING, Territory, '1..2') .run() rows[0].nodes // [Product, Supplier, Territory] hydrated // co-purchase style: ranked, capped, excluding the origin's own edges const ranked = await neode.traverse(Order) .where({ orderID }) .hop('CONTAINS', 'out', Product) .hop('CONTAINS', 'in', Order) .hop('CONTAINS', 'out', Product) .exclude('t0', 'CONTAINS', 't3') .groupBy('t3') .countDistinct('t2', 'times') .orderBy('times', 'DESC') .limit(5) .runAggregates() ```
 
 _source: traverse.ts_
 

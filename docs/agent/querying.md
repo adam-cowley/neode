@@ -67,7 +67,7 @@ _source: services/query/bulk.service.ts_
 
 ### `BulkService` (class)
 
-Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths — `fake` generators included (NTS-608), each row's run independently: unique + `fake` properties are NOT guaranteed distinct across rows (see prepareRows). Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the earlier chunks committed — bulk writes are not atomic across chunks. A failed chunk throws a `BulkChunkError` (NTS-649) that names the failing rows with per-row errors, found by a rolled-back per-row diagnostic pass: every row of the failed chunk (valid rows included) is unwritten, earlier chunks stay committed. Row preparation bounds its embedding-provider calls at MAX_PREPARE_CONCURRENCY in flight.
+Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths — `fake` generators included (NTS-608), each row's run independently: unique + `fake` properties are NOT guaranteed distinct across rows (see prepareRows). Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the earlier chunks committed — bulk writes are not atomic across chunks. A failed chunk throws a `BulkChunkError` (NTS-649) that names the failing rows with per-row errors, found by a rolled-back per-row diagnostic pass: every row of the failed chunk (valid rows included) is unwritten, earlier chunks stay committed. Row preparation bounds its embedding-provider calls at MAX_BULK_CONCURRENCY in flight.
 
 _source: services/query/bulk.service.ts_
 
@@ -128,6 +128,10 @@ _source: driver/types.ts_
 ### `DeleteOptions` (interface)
 
 _source: services/query/delete.service.ts_
+
+### `DetachResult` (interface)
+
+_source: services/query/detach.service.ts_
 
 ### `Direction` (const)
 

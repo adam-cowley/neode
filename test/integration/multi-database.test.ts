@@ -153,6 +153,41 @@ describe('multi-database wiring', () => {
     expect(recording.runDatabases[4]).toBe('override-db')
   })
 
+  // NTS-645: the schema-management methods — installSchema() /
+  // dropSchema() / inspectSchema() / schemaDiff() / applySchemaDiff() —
+  // honour a per-call `database` over the setDatabase() default
+  it('threads the per-call database of the schema methods to the provider', async () => {
+    // Backward compat: no setDatabase, no override — the provider decides
+    // (undefined passes through, exactly the pre-NTS-645 behaviour)
+    const recording = new RecordingProvider(backend.connection)
+    const plain = new Neode(recording)
+    await plain.installSchema()
+    await plain.dropSchema()
+    expect(recording.runDatabases.length).toBeGreaterThan(0)
+    expect(recording.runDatabases.every((database) => database === undefined)).toBe(true)
+
+    recording.runDatabases.length = 0
+    const neode = new Neode(recording)
+    neode.setDatabase('default-db')
+
+    // No override: the setDatabase() default drives the DDL
+    await neode.installSchema()
+    expect(recording.runDatabases.length).toBeGreaterThan(0)
+    expect(recording.runDatabases.every((database) => database === 'default-db')).toBe(true)
+
+    recording.runDatabases.length = 0
+
+    // The per-call override wins on every schema method
+    await neode.dropSchema({ database: 'override-db' })
+    await neode.inspectSchema({ database: 'override-db' })
+
+    const drift = await neode.schemaDiff({ database: 'override-db' })
+    await neode.applySchemaDiff(drift, { database: 'override-db' })
+
+    expect(recording.runDatabases.length).toBeGreaterThan(0)
+    expect(recording.runDatabases.every((database) => database === 'override-db')).toBe(true)
+  })
+
   // Regression test for adam-cowley/neode#182: runAll() (v3's batch) and the
   // transaction() callback form used the wrong database
   it('threads the configured database into runAll() and transaction()', async () => {
@@ -322,6 +357,52 @@ describe('multi-database against the server', () => {
           .run(`DROP DATABASE \`${db}\` IF EXISTS`, undefined, 'WRITE', 'system')
           .catch(() => {})
       }
+    }
+  })
+
+  // NTS-645: the schema-management methods install into / inspect / drop
+  // from a per-call named database — the drift workflow included
+  it('installs and drops the schema in a per-call named database', async (ctx) => {
+    if (!backend.capabilities.multiDatabase || !isEnterprise(backend.capabilities)) {
+      ctx.skip() // CREATE DATABASE requires Enterprise
+    }
+
+    const name = 'ogm-schema-per-call-db'
+
+    try {
+      await createDatabaseOnline(backend.connection, name)
+
+      const neode = new Neode(backend.connection)
+
+      // Install into the named database (no setDatabase — per-call only)
+      const installed = await neode.installSchema({ database: name })
+      expect(installed.length).toBeGreaterThan(0)
+      expect(installed.every((result) => result.success)).toBe(true)
+
+      // Everything declared is installed there — no drift
+      const inspection = await neode.inspectSchema({ database: name })
+      expect(inspection.constraints.missing).toEqual([])
+
+      const drift = await neode.schemaDiff({ database: name })
+      expect(drift.constraints.missing).toEqual([])
+
+      // Drop from the named database, then heal it back through the
+      // drift-apply — all per call
+      await neode.dropSchema({ database: name })
+
+      const dropped = await neode.schemaDiff({ database: name })
+      expect(dropped.constraints.missing.length).toBeGreaterThan(0)
+
+      const applied = await neode.applySchemaDiff(dropped, { database: name })
+      expect(applied.length).toBeGreaterThan(0)
+      expect(applied.every((result) => result.success)).toBe(true)
+
+      const healed = await neode.inspectSchema({ database: name })
+      expect(healed.constraints.missing).toEqual([])
+    } finally {
+      await backend.connection
+        .run(`DROP DATABASE \`${name}\` IF EXISTS`, undefined, 'WRITE', 'system')
+        .catch(() => {})
     }
   })
 
