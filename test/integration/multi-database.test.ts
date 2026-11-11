@@ -310,11 +310,7 @@ describe('multi-database against the server', () => {
       const onOverride = await neode.findManyAndCount(MultiDbPerson, {}, { database: other })
       expect(onOverride.total).toBe(0)
 
-      const paged = await neode.paginate(
-        MultiDbPerson,
-        {},
-        { page: 1, limit: 10, database: other },
-      )
+      const paged = await neode.paginate(MultiDbPerson, {}, { page: 1, limit: 10, database: other })
       expect(paged.total).toBe(0)
     } finally {
       // Clean the default database too, so a regression (reads falling
