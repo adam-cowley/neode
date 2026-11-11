@@ -83,7 +83,7 @@ _source: decorators/node/default.decorator.ts_
 
 ### `defineModel` (function)
 
-Register a model from a map-based schema definition (neode parity), returning the generated virtual class for the model.
+Register a model from a map-based schema definition (neode parity), returning the generated virtual class for the model. The registry is process-global and a model name registers once: a second `defineModel()` under the same name throws a descriptive error (the previous behaviour silently orphaned the first model's schema). Pass `{ idempotent: true }` to keep the existing registration instead — the idempotent form returns the already-registered class for the name.
 
 _source: meta/map-schema.ts_
 
@@ -1287,7 +1287,7 @@ Typed error taxonomy and driver-error classification. House rule (NTS-442): ever
 
 ### `CardinalityViolationError` (class)
 
-Raised when a write would give a relationship more edges than its declared cardinality allows (NTS-161): relating a second edge onto a `one` / `zeroOrOne` relationship — through relate(), a multi-target save, or syncEdges — names the relationship, the violated cardinality and the fix. Detach the existing edge first (or use syncEdges, which detaches for you), or change the declaration to `many`.
+Raised when a write would give a relationship more edges than its declared cardinality allows (NTS-161): relating a second edge onto a `one` / `zeroOrOne` relationship — through relate(), a multi-target save, syncEdges or replaceRelationship — names the relationship, the violated cardinality and the fix. Detach the existing edge first (or use syncEdges, which detaches for you), or change the declaration to `many`.
 
 _source: errors/cardinality-violation.ts_
 

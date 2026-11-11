@@ -117,7 +117,7 @@ Decorator reference:
 
 Map-API reference (alternative — not the default):
 
-- `defineModel` (function) — Register a model from a map-based schema definition (neode parity), returning the generated virtual class for the model.
+- `defineModel` (function) — Register a model from a map-based schema definition (neode parity), returning the generated virtual class for the model. The registry is process-global and a model name registers once: a second `defineModel()` under the same name throws a descriptive error (the previous behaviour silently orphaned the first model's schema). Pass `{ idempotent: true }` to keep the existing registration instead — the idempotent form returns the already-registered class for the name.
 - `extendModel` (function) — neode's extend(): register `as` as a clone of the model `name` with `as` added as an extra label and `schema` merged over the original definition.
 - `getModelByName` (function) — Get a previously defined model constructor by name
 - `getModelsByName` (function) — Get all defined model constructors, keyed by name
@@ -309,7 +309,7 @@ const name = testId('person') // unique per-run ids, safe for parallel suites
 
 ### Error taxonomy
 
-- `CardinalityViolationError` (class) — Raised when a write would give a relationship more edges than its declared cardinality allows (NTS-161): relating a second edge onto a `one` / `zeroOrOne` relationship — through relate(), a multi-target save, or syncEdges — names the relationship, the violated cardinality and the fix. Detach the existing edge first (or use syncEdges, which detaches for you), or change the declaration to `many`.
+- `CardinalityViolationError` (class) — Raised when a write would give a relationship more edges than its declared cardinality allows (NTS-161): relating a second edge onto a `one` / `zeroOrOne` relationship — through relate(), a multi-target save, syncEdges or replaceRelationship — names the relationship, the violated cardinality and the fix. Detach the existing edge first (or use syncEdges, which detaches for you), or change the declaration to `many`.
 - `classifyError` (function) — Map a raw driver/engine error to the typed taxonomy (NTS-129): constraint violations → ConstraintViolationError, transient codes and retryable-flagged failures → TransientError. Everything else — unknown shapes and already-typed errors — passes through untouched.
 - `ConstraintViolationError` (class) — A unique-constraint violation, raised on `merge()`/`create()` flows that race an existing node. `label`/`property` are parsed from the database message when it names them (Neo4j does; the embedded Relate engine only names the constraint), and stay undefined otherwise.
 - `isTransientError` (function) — Type guard for classified transient errors.
