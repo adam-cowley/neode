@@ -115,34 +115,6 @@ function stampCreateTimestamps(schema: EntitySchema, properties: Record<string, 
 }
 
 /**
-The expression properties of a write's property map (NTS-629), split from
-the literal values: literals render inline in the CREATE / MERGE pattern,
-expressions render as trailing `SET alias.prop = <expression>` clauses in
-the write path's canonical map order (schema-declared property order) —
-inside the pattern the node variable is not yet bound, and the SET order
-is what lets a later expression reference an earlier property of the same
-write. Relationship paths adopting expressions later reuse the same split.
-*/
-export function splitPropertyExpressions(properties: Record<string, unknown>): {
-  literals: Record<string, unknown>
-  expressions: [string, RawExpression][]
-} {
-  const literals: Record<string, unknown> = {}
-
-  const expressions: [string, RawExpression][] = []
-
-  for (const [key, value] of Object.entries(properties)) {
-    if (value instanceof RawExpression) {
-      expressions.push([key, value])
-    } else {
-      literals[key] = value
-    }
-  }
-
-  return { literals, expressions }
-}
-
-/**
 Render one expression property as a SET clause (NTS-629): the raw Cypher
 evaluates in the database, with the node variable bound by the preceding
 CREATE / MERGE pattern. Clause selection mirrors setPropertyInBuilder —

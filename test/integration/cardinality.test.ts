@@ -436,3 +436,71 @@ describe('syncEdges (NTS-161)', () => {
     expect(await relatedNames()).toEqual(['B', 'C'])
   })
 })
+
+// ---------------------------------------------------------------------------
+
+describe('replaceRelationship cardinality (NTS-643)', () => {
+  let backend: TestBackend
+  let person: Subscriber
+  let roleA: Role
+  let roleB: Role
+  let roleC: Role
+
+  const countEdgesFor = async (type: string): Promise<number> => {
+    const result = await backend.neode.readCypher(
+      `MATCH (:Subscriber { name: "Adam" })-[r:${type}]->() RETURN count(r) AS c`,
+    )
+
+    return Number(result.records[0].get('c'))
+  }
+
+  beforeAll(async () => {
+    backend = await openBackend()
+  })
+
+  beforeEach(async () => {
+    await backend.clearGraph()
+
+    person = await backend.neode.save(Subscriber.create('Adam'))
+    roleA = await backend.neode.save(Role.create('A'))
+    roleB = await backend.neode.save(Role.create('B'))
+    roleC = await backend.neode.save(Role.create('C'))
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  it('one: a multi-target replace throws CardinalityViolationError naming the relationship', async () => {
+    await backend.neode.relate(Subscriber, person, roleA, 'role')
+
+    const attempt = backend.neode.replaceRelationship(person, 'role', [roleB, roleC])
+
+    await expect(attempt).rejects.toBeInstanceOf(CardinalityViolationError)
+    await expect(attempt).rejects.toThrow(/"role"/)
+    await expect(attempt).rejects.toThrow(/'one'/)
+
+    // Nothing was written — the existing edge survives untouched
+    expect(await countEdgesFor('ROLE')).toBe(1)
+  })
+
+  it('one: a single-target replace swaps the edge', async () => {
+    await backend.neode.relate(Subscriber, person, roleA, 'role')
+
+    await backend.neode.replaceRelationship(person, 'role', [roleB])
+
+    expect(await countEdgesFor('ROLE')).toBe(1)
+
+    const holder = await backend.neode.readCypher(
+      'MATCH (:Subscriber { name: "Adam" })-[:ROLE]->(r:Role) RETURN r.name AS name',
+    )
+
+    expect(holder.records[0].get('name')).toBe('B')
+  })
+
+  it('many: a multi-target replace writes every edge', async () => {
+    await backend.neode.replaceRelationship(person, 'tags', [roleA, roleB, roleC])
+
+    expect(await countEdgesFor('TAGS')).toBe(3)
+  })
+})
