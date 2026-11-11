@@ -438,7 +438,7 @@ describe('toJson guards (NTS-597)', () => {
 // ---- Item 6: bulk prepare bounds embedding-provider concurrency -------------
 
 describe('bulk row preparation bounds provider concurrency (NTS-597)', () => {
-  it('at most MAX_PREPARE_CONCURRENCY provider calls are in flight', async () => {
+  it('at most MAX_BULK_CONCURRENCY provider calls are in flight', async () => {
     embedInFlight = 0
     embedPeak = 0
 
