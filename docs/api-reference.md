@@ -728,6 +728,8 @@ await neode.inReadTransaction(async (tx) => {
 })
 ```
 
+Facade methods called inside the callback **join the unit's transaction** (NTS-642) — `neode.cypher(...)`, `neode.create(...)`, `neode.save(...)`, … run on the same transaction and commit or roll back with the unit, exactly like inside `neode.transaction()`. Only calls on a _different_ `Neode` instance run outside it. Like `transaction()`, a statement that failed on the driver and was swallowed inside the callback marks the unit rollback-only: the commit is refused with a `NeodeError` naming the swallowed failure — rethrow inside the callback to surface the original error instead. Unlike `transaction()`, the managed units never retry; pass `retries` to `neode.transaction()` for transient-failure re-runs.
+
 Lower-level handles (if you want to drive the connection port yourself): `readTransaction(database?)` / `writeTransaction(database?)` return a `TransactionHandle` — a `Runner` (`run(statement, params?)`) plus `commit()` / `rollback()`.
 
 ### runAll() and TransactionError

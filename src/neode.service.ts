@@ -853,6 +853,12 @@ export class Neode implements INeode {
   the work throws. Inside an ambient transaction (NTS-156) the work joins
   it instead — same transaction, close endpoints deferred to the
   outermost unit.
+
+  The unit binds its transaction as the ambient scope for the callback
+  (NTS-642): facade methods called inside — `neode.cypher`, `neode.create`,
+  … — join the SAME transaction, on every backend. Before, they fell
+  through to autocommit: silently outside the unit on Bolt, and a deadlock
+  on the embedded Relate engine's single transaction slot. Never retries.
   */
   async inReadTransaction<T>(
     work: (tx: TransactionalService) => Promise<T>,
@@ -868,25 +874,18 @@ export class Neode implements INeode {
       return ambient.join(this.eventEmitter, work, this.observers)
     }
 
-    const tx = await this.openReadTransaction(database)
+    const resolved = database ?? this.database
 
-    try {
-      const result = await work(tx)
-
-      if (!tx.isSettled()) {
-        await tx.commit()
-      }
-
-      return result
-    } catch (error) {
-      // Already settled (the work committed explicitly, then threw): the
-      // commit stands — rethrow without touching the transaction
-      if (tx.isSettled()) {
-        throw error
-      }
-
-      return await rollbackAfterFailure(tx.getTransaction(), error)
-    }
+    return runAmbientTransaction(
+      async () => this.connection.beginTransaction('READ', resolved),
+      this.eventEmitter,
+      work,
+      resolved === undefined
+        ? { routing: 'READ', retries: 0 }
+        : { routing: 'READ', database: resolved, retries: 0 },
+      this.observers,
+      this.connection,
+    )
   }
 
   /**
@@ -895,6 +894,12 @@ export class Neode implements INeode {
   the work throws. Inside an ambient transaction (NTS-156) the work joins
   it instead — same transaction, close endpoints deferred to the
   outermost unit.
+
+  The unit binds its transaction as the ambient scope for the callback
+  (NTS-642): facade methods called inside — `neode.cypher`, `neode.create`,
+  … — join the SAME transaction, on every backend. Before, they fell
+  through to autocommit: silently outside the unit on Bolt, and a deadlock
+  on the embedded Relate engine's single transaction slot. Never retries.
   */
   async inWriteTransaction<T>(
     work: (tx: TransactionalService) => Promise<T>,
@@ -911,25 +916,18 @@ export class Neode implements INeode {
       return ambient.join(this.eventEmitter, work, this.observers)
     }
 
-    const tx = await this.openWriteTransaction(database)
+    const resolved = database ?? this.database
 
-    try {
-      const result = await work(tx)
-
-      if (!tx.isSettled()) {
-        await tx.commit()
-      }
-
-      return result
-    } catch (error) {
-      // Already settled (the work committed explicitly, then threw): the
-      // commit stands — rethrow without touching the transaction
-      if (tx.isSettled()) {
-        throw error
-      }
-
-      return await rollbackAfterFailure(tx.getTransaction(), error)
-    }
+    return runAmbientTransaction(
+      async () => this.connection.beginTransaction('WRITE', resolved),
+      this.eventEmitter,
+      work,
+      resolved === undefined
+        ? { routing: 'WRITE', retries: 0 }
+        : { routing: 'WRITE', database: resolved, retries: 0 },
+      this.observers,
+      this.connection,
+    )
   }
 
   /**

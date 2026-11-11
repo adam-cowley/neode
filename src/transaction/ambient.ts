@@ -8,9 +8,11 @@ Availability contract: this module imports `node:async_hooks`, so the
 ambient API needs a runtime with AsyncLocalStorage (Node.js; workerd's
 node:async_hooks compatibility also qualifies). On runtimes without it
 (some edge/serverless targets) keep using the explicit-handle API —
-`readTransaction()` / `writeTransaction()`,
-`openReadTransaction()` / `openWriteTransaction()` and the managed
-`inReadTransaction()` / `inWriteTransaction()` — which never touches ALS.
+`readTransaction()` / `writeTransaction()` and
+`openReadTransaction()` / `openWriteTransaction()`. The managed units
+`inReadTransaction()` / `inWriteTransaction()` also bind an ambient scope
+for their callback (NTS-642: facade methods inside join the unit) — on a
+runtime without AsyncLocalStorage, use the explicit-handle API instead.
 */
 import type { EventEmitter } from 'node:events'
 import type { ObserverRegistry } from '../observers.js'
@@ -171,6 +173,16 @@ export class AmbientTransactionScope {
         'The ambient transaction already finished (detached async work?). A call ran after the transaction() callback resolved — await every promise started inside the callback (no fire-and-forget work), or run that work in its own transaction.',
       )
     }
+  }
+
+  /**
+  The transaction must not commit: a joined statement FAILED on the driver
+  (the shared transaction may be rollback-only server-side) or an explicit
+  rollback was requested — even when the work resolved without rethrowing
+  (NTS-589: a swallowed failure must not commit half the work).
+  */
+  isPoisoned(): boolean {
+    return this.rollbackOnly || this.statementFailed
   }
 
   /**
@@ -391,16 +403,18 @@ export async function runAmbientTransaction<T>(
     scope.closed = true
 
     if (!tx.isSettled()) {
-      // The work resolved, but a joined call failed (or rolled back) and
-      // its error was handled inside the callback — the transaction must
-      // not commit
-      if (scope.rollbackOnly) {
+      // The work resolved, but a joined statement FAILED on the driver (or
+      // a nested unit / explicit rollback marked it rollback-only) and the
+      // error was handled inside the callback — the transaction must not
+      // commit. Refusing here rolls the poisoned transaction back cleanly
+      // instead of attempting a commit the server will refuse.
+      if (scope.isPoisoned()) {
         scope.effects.discard()
 
         return await rollbackAfterFailure(
           handle,
           new NeodeError(
-            'The transaction was marked rollback-only by a failed nested operation whose error was handled inside the callback — nothing was committed. Rethrow (or return a failure) inside the transaction callback to surface the original error.',
+            'The transaction was marked rollback-only by a failed operation whose error was handled inside the callback — nothing was committed. Rethrow (or return a failure) inside the transaction callback to surface the original error.',
           ),
         )
       }
