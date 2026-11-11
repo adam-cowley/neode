@@ -59,6 +59,9 @@ export { MAX_CASCADE_DEPTH } from './services/query/delete.service.js'
 // NTS-602 — delete()'s options type, named in the facade signature in the
 // API reference
 export type { DeleteOptions } from './services/query/delete.service.js'
+// NTS-648 — detachFrom()'s result type, named in the EntityMethods
+// interface in the API reference
+export type { DetachResult } from './services/query/detach.service.js'
 export type { ReplaceRelationshipOptions } from './services/query/replace-relationship.service.js'
 export type { CreateOptions } from './services/query/create.service.js'
 
