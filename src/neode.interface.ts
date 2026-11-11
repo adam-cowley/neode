@@ -73,7 +73,8 @@ export interface INeode {
   All nodes of the given constructor, optionally filtered/ordered/paged —
   the projection-aware read: models declaring read-model decorators
   (@RelatedOne/@RelationshipCount/…) come back hydrated with their
-  projected values (NTS-501)
+  projected values (NTS-501). The filter bag is typed against the model's
+  declared properties (NTS-646).
   */
   all<T>(
     constructor: new (...arguments_: never[]) => T,

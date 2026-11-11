@@ -57,6 +57,7 @@ import type {
   ReadOptions,
   WithSpec,
 } from './query/load-spec.js'
+import type { WhereFilter, WhereFilterLevel } from './query/where-filter.js'
 import { quote } from './query/quote.js'
 import type { Repository } from './repository/index.js'
 import { FactoryBuilder } from './services/factory.service.js'
@@ -1280,6 +1281,13 @@ export class Neode implements INeode {
     }
   }
 
+  async get<C extends Newable>(
+    constructor: C,
+    parameters: WhereFilter<C>,
+    limit?: number,
+    skip?: number,
+    databaseOrOptions?: string | { withoutFilters?: string[] | undefined },
+  ): Promise<InstanceType<C>[]>
   async get<T>(
     constructor: new (...arguments_: never[]) => T,
     parameters: Record<string, unknown>,
@@ -1332,12 +1340,17 @@ export class Neode implements INeode {
     }
   }
 
-  async getFirst<T>(
-    constructor: new (...arguments_: never[]) => T,
+  async getFirst<C extends Newable>(
+    constructor: C,
+    parameters: WhereFilter<C>,
+    database?: string,
+  ): Promise<InstanceType<C> | undefined>
+  async getFirst(
+    constructor: Newable,
     parameters: Record<string, unknown>,
     database?: string,
-  ): Promise<T | undefined> {
-    const records = await this.get<T>(constructor, parameters, 1, 0, database)
+  ): Promise<unknown> {
+    const records = await this.get(constructor, parameters, 1, 0, database)
 
     return records[0]
   }
@@ -1346,15 +1359,21 @@ export class Neode implements INeode {
   Find the first node matching a key / value pair (or a property map),
   neode's Model.first(): sugar over getFirst()
   */
-  async first<T>(
-    constructor: new (...arguments_: never[]) => T,
+  async first<C extends Newable>(
+    constructor: C,
+    key: string | WhereFilter<C>,
+    value?: unknown,
+    database?: string,
+  ): Promise<InstanceType<C> | undefined>
+  async first(
+    constructor: Newable,
     key: string | Record<string, unknown>,
     value?: unknown,
     database?: string,
-  ): Promise<T | undefined> {
+  ): Promise<unknown> {
     const parameters = typeof key === 'object' ? key : { [key]: value }
 
-    return this.getFirst<T>(constructor, parameters, database)
+    return this.getFirst(constructor, parameters, database)
   }
 
   async save<T>(entity: T, database?: string): Promise<T> {
@@ -2225,16 +2244,16 @@ export class Neode implements INeode {
   shape targets a database per call (NTS-644), winning over the
   setDatabase() default.
   */
-  async paginate<T>(
-    constructor: new (...arguments_: never[]) => T,
-    filter: Record<string, unknown>,
+  async paginate<C extends Newable>(
+    constructor: C,
+    filter: WhereFilter<C>,
     options: OffsetPaginateOptions & PerCallDatabaseOption,
-  ): Promise<Page<T>>
-  async paginate<T>(
-    constructor: new (...arguments_: never[]) => T,
-    filter: Record<string, unknown>,
+  ): Promise<Page<InstanceType<C>>>
+  async paginate<C extends Newable>(
+    constructor: C,
+    filter: WhereFilter<C>,
     options: CursorPaginateOptions & PerCallDatabaseOption,
-  ): Promise<CursorPage<T>>
+  ): Promise<CursorPage<InstanceType<C>>>
   async paginate<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown> = {},
@@ -2257,6 +2276,11 @@ export class Neode implements INeode {
   targets a database per call (NTS-644), winning over the setDatabase()
   default.
   */
+  async findManyAndCount<C extends Newable>(
+    constructor: C,
+    filter?: WhereFilter<C>,
+    options?: FindManyAndCountOptions & PerCallDatabaseOption,
+  ): Promise<ManyAndCount<InstanceType<C>>>
   async findManyAndCount<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown> = {},
@@ -2278,6 +2302,13 @@ export class Neode implements INeode {
   order; return false to stop early. Resolves to the number of items
   delivered.
   */
+  async chunk<C extends Newable>(
+    constructor: C,
+    filter: WhereFilter<C>,
+    size: number,
+    callback: (items: InstanceType<C>[]) => unknown,
+    options?: { orderBy?: string; withoutFilters?: string[] | undefined },
+  ): Promise<number>
   async chunk<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown>,
@@ -2303,6 +2334,11 @@ export class Neode implements INeode {
   out of the for-await loop stops the walk cleanly — each page is its
   own autocommit read, so no session is left open.
   */
+  lazy<C extends Newable>(
+    constructor: C,
+    filter?: WhereFilter<C>,
+    options?: StreamOptions,
+  ): AsyncGenerator<InstanceType<C>>
   async *lazy<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown> = {},
@@ -2339,7 +2375,7 @@ export class Neode implements INeode {
   */
   async all<C extends Newable, const WithSpecT extends QueryLoadSpec<C> = never>(
     constructor: C,
-    parameters?: Record<string, unknown>,
+    parameters?: WhereFilter<C>,
     order?: OrderSpec,
     limit?: number,
     skip?: number,
@@ -2348,7 +2384,7 @@ export class Neode implements INeode {
   ): Promise<LoadedEntity<InstanceType<C>, WithSpecT>[]>
   async all<T>(
     constructor: new (...arguments_: never[]) => T,
-    parameters?: Record<string, unknown>,
+    parameters?: WhereFilterLevel<T>,
     order?: OrderSpec,
     limit?: number,
     skip?: number,
@@ -2416,6 +2452,18 @@ export class Neode implements INeode {
   (neode's FindWithinDistance). The model's named read filters apply;
   `filters.withoutFilters` opts names out (NTS-574).
   */
+  async withinDistance<C extends Newable>(
+    constructor: C,
+    locationProperty: string,
+    point: unknown,
+    distance: number,
+    parameters?: WhereFilter<C>,
+    order?: OrderSpec,
+    limit?: number,
+    skip?: number,
+    database?: string,
+    filters?: { withoutFilters?: string[] | undefined },
+  ): Promise<InstanceType<C>[]>
   async withinDistance<T>(
     constructor: new (...arguments_: never[]) => T,
     locationProperty: string,

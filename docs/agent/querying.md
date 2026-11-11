@@ -67,7 +67,7 @@ _source: services/query/bulk.service.ts_
 
 ### `BulkService` (class)
 
-Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths — `fake` generators included (NTS-608), each row's run independently: unique + `fake` properties are NOT guaranteed distinct across rows (see prepareRows). Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the earlier chunks committed — bulk writes are not atomic across chunks. A failed chunk throws a `BulkChunkError` (NTS-649) that names the failing rows with per-row errors, found by a rolled-back per-row diagnostic pass: every row of the failed chunk (valid rows included) is unwritten, earlier chunks stay committed. Row preparation bounds its embedding-provider calls at MAX_PREPARE_CONCURRENCY in flight.
+Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths — `fake` generators included (NTS-608), each row's run independently: unique + `fake` properties are NOT guaranteed distinct across rows (see prepareRows). Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the earlier chunks committed — bulk writes are not atomic across chunks. A failed chunk throws a `BulkChunkError` (NTS-649) that names the failing rows with per-row errors, found by a rolled-back per-row diagnostic pass: every row of the failed chunk (valid rows included) is unwritten, earlier chunks stay committed. Row preparation bounds its embedding-provider calls at MAX_BULK_CONCURRENCY in flight.
 
 _source: services/query/bulk.service.ts_
 
@@ -129,6 +129,10 @@ _source: driver/types.ts_
 
 _source: services/query/delete.service.ts_
 
+### `DetachResult` (interface)
+
+_source: services/query/detach.service.ts_
+
 ### `Direction` (const)
 
 Direction of a relationship pattern. BOTH renders an undirected match pattern (`-[r:TYPE]-`), matching relationships of the type in either direction. Undirected is match-only: Neo4j cannot create a relationship without a direction, so the write paths (relate / create / save) reject BOTH with a descriptive error — set OUTGOING or INCOMING to write (NTS-483). Accepts the legacy case-insensitive 'IN' / 'OUT' / 'BOTH' spellings anywhere a direction is taken.
@@ -146,6 +150,18 @@ _source: common/events.ts_
 Leaf Cypher expression helpers. Statement structure lives in Builder (match / where / call / unwind …); these helpers only compose single expressions for RETURN / SET / WHERE positions, so repositories never assemble hand-written clause strings. Every value a caller supplies must be bound as a parameter (`$name`) — these helpers interpolate structure, never data.
 
 _source: query/expressions.ts_
+
+### `FilterOperand` (type)
+
+One filter entry: a bare value (equality — today's bag, byte-identical Cypher) or an operator object.
+
+_source: query/where-filter.ts_
+
+### `FilterOperators` (interface)
+
+The operator-object tier of a filter operand (NTS-646): every operator maps 1:1 onto a Builder method — eq/neq → where/whereNot, gt/gte/lt/lte → where(prop, op, value), in → whereIn, contains/startsWith/endsWith → whereContains/whereStartsWith/whereEndsWith, null → whereNull/whereNotNull. No `between` (compose { gte, lte }), no `nin` (no Builder counterpart), and no raw/alias-taking operators — those stay Builder-only. The string operators type to `never` on non-string values, so `{ age: { contains: 'x' } }` is a type error.
+
+_source: query/where-filter.ts_
 
 ### `GraphNode` (interface)
 
@@ -540,6 +556,18 @@ _source: driver/types.ts_
 Convert a single property value into its JSON friendly shape.
 
 _source: serialise.ts_
+
+### `WhereFilter` (type)
+
+A where filter checked against the model's declared properties (NTS-646), keyed by the model CONSTRUCTOR: equality values and operator objects type-check against the declared property keys, relationship keys take nested bags. Unknown keys — typos, method keys — are compile errors at the call site (object-literal excess-property checking); a `Record<string, unknown>` variable still passes (literals are the contract), and the runtime helper throws on unknown operator keys. `ts await neode.get(Person, { name: 'Adam', age: { gte: 18 } }) await neode.get(Person, { pets: { kind: { startsWith: 'ca' } } }) await neode.get(Person, { nme: 'Adam' }) // ← compile error `
+
+_source: query/where-filter.ts_
+
+### `WhereFilterLevel` (type)
+
+One level of a where filter, keyed off the entity's DECLARED FIELD types: property keys take bare values or operator objects, relationship keys take nested filter bags (recursing through FieldTarget, the same descent QueryLoadLevel uses). No phantom map required — a mis-filed key the fallback domain lets through is caught by the runtime consumption loop.
+
+_source: query/where-filter.ts_
 
 ### `WhereNull` (class)
 
