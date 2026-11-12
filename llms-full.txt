@@ -1025,6 +1025,12 @@ Set the process-wide DEFAULT for the parameter a named filter's `where` referenc
 
 _source: services/query/filters.ts_
 
+### `ShortestPathOptions` (interface)
+
+Options for Builder.shortestPath() (NTS-658)
+
+_source: query/builder.ts_
+
 ### `SyncEdgesOptions` (interface)
 
 Options for syncEdges (NTS-161): `properties` is applied to the edges NEWLY related by the sync — common edges are left untouched.

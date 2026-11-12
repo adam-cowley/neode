@@ -94,6 +94,7 @@ export {
   RawExpression,
 } from './query/index.js'
 export type { ComparisonOperator } from './query/index.js'
+export type { ShortestPathOptions } from './query/index.js'
 export type { INeode } from './neode.interface.js'
 
 // Merge outcome (NTS-630)

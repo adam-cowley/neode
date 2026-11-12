@@ -31,6 +31,7 @@ import Neode, {
   EntityRepository,
   EventType,
   Expression,
+  expr,
   InternalId,
   isTransientError,
   knn,
@@ -317,6 +318,16 @@ export function builderPredicates(): void {
   new Builder().match('n').whereNull('n.deletedAt') // WHERE n.deletedAt IS NULL
   new Builder().match('n').whereLabel('n', 'Completed') // WHERE n:Completed
   new Builder().match('n').orderByLabel('n', 'Completed', 'DESC') // ORDER BY n:Completed DESC
+}
+
+// Block: shortestPath — shortest-path patterns
+export function builderShortestPath(): void {
+  new Builder()
+    .match('a', 'Product', { productID: 1 })
+    .match('b', 'Product', { productID: 2 })
+    .shortestPath('p', 'a', 'b', { relationship: 'CONTAINS', degrees: '..2' })
+    .return(`[n IN ${expr.nodes('p')} | labels(n)[0]] AS kinds`)
+    .build()
 }
 
 // Block: transactions

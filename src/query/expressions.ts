@@ -27,6 +27,14 @@ const expressions = {
   all: (variable: string, list: string, predicate: string): string =>
     `all(${variable} IN ${list} WHERE ${predicate})`,
   /**
+  Path-variable reads (NTS-658): the nodes, relationships and relationship
+  types of a path bound with asPath() / shortestPath() — e.g.
+  `[n IN expr.nodes('p') | n.name]`
+  */
+  nodes: (path: string): string => `nodes(${path})`,
+  relationships: (path: string): string => `relationships(${path})`,
+  type: (expression: string): string => `type(${expression})`,
+  /**
   Pattern comprehension: `[(a)-[:REL]->(b) | b.prop]` — the pattern is
   composed from fragments, the projection is an expression
   */

@@ -1,5 +1,5 @@
 export { Builder } from './builder.js'
-export type { EntityMatchCriteria } from './builder.js'
+export type { EntityMatchCriteria, ShortestPathOptions } from './builder.js'
 export { BoundBuilder } from './bound-builder.js'
 export { LabelPredicate } from './label-predicate.js'
 export { Where } from './where.js'

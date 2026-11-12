@@ -1,5 +1,6 @@
 import type { Match } from './match.js'
 import type { Order } from './order.js'
+import type { PathPattern } from './path.js'
 import { Property } from './property.js'
 import { assertCount } from './quote.js'
 import type { Relationship } from './relationship.js'
@@ -8,7 +9,7 @@ export type SetClause = Property | string
 
 export class Statement {
   private readonly prefix: string = 'MATCH'
-  private readonly pattern: (Match | Relationship)[] = []
+  private readonly pattern: (Match | Relationship | PathPattern)[] = []
   private readonly whereClauses: string[] = []
   private readonly orderClauses: Order[] = []
   private readonly detachDeleteValues: string[] = []
@@ -29,7 +30,7 @@ export class Statement {
     this.prefix = prefix
   }
 
-  match(match: Match | Relationship): this {
+  match(match: Match | Relationship | PathPattern): this {
     this.pattern.push(match)
 
     return this
