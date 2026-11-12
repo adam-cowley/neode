@@ -297,6 +297,21 @@ export function resolveEnforceProperty(
     )
   }
 
+  // The claim SETs the far node's property, so the declaration is only
+  // coherent on a node-target relationship: an edge-entity target would
+  // validate the claim against the edge while it lands on the far node —
+  // riding no constraint at all (relationship entities hold no @Unique
+  // property the claim could use)
+  const declaredTarget = safeTargetSchema(relationship)
+
+  if (declaredTarget?.getType() === EntityType.RelationshipEntity) {
+    throw new NeodeError(
+      `Relationship "${relationship.getKey()}" declares enforce "${property}", but its target is a ` +
+        'relationship entity (edge) — the claim must ride a @Unique property on a NODE model. ' +
+        'Declare enforce on a relationship whose target is a node.',
+    )
+  }
+
   if (!(targetSchema instanceof EntitySchema)) {
     throw new NeodeError(
       `Relationship "${relationship.getKey()}" declares enforce "${property}" but has no ` +

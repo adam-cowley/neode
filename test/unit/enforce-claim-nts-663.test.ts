@@ -5,7 +5,17 @@
 //
 // Pure metamodel assertions — no database.
 import { describe, expect, it } from 'vitest'
-import { NodeEntity, OneToMany, OneToOne, String, Unique, Uuid } from '../../src/decorators'
+import {
+  EndNode,
+  NodeEntity,
+  OneToMany,
+  OneToOne,
+  RelationshipEntity,
+  StartNode,
+  String,
+  Unique,
+  Uuid,
+} from '../../src/decorators'
 import { Direction } from '../../src/query'
 import { getModel } from '../../src/meta'
 import { NeodeError } from '../../src/errors'
@@ -92,9 +102,40 @@ class N663NoPk {
   address: N663Address | undefined
 }
 
+// an edge entity cannot back the claim: the target is not a node model
+@RelationshipEntity()
+class N663Stay {
+  @Uuid({ primary: true })
+  id: string
+
+  @StartNode(() => N663Person)
+  occupant: N663Person
+
+  @EndNode(() => N663Address)
+  address: N663Address
+}
+
+@NodeEntity()
+class N663EdgePerson {
+  @Uuid({ primary: true })
+  id: string
+
+  @String({ unique: true })
+  name: string
+
+  @OneToOne({
+    type: 'N663_EDGE_ENFORCE',
+    target: () => N663Stay,
+    direction: Direction.OUTGOING,
+    enforce: 'currentOccupantId',
+  })
+  stay: N663Stay | undefined
+}
+
 const addressSchema = getModel(N663Address)
 const personSchema = getModel(N663Person)
 const noPkSchema = getModel(N663NoPk)
+const edgePersonSchema = getModel(N663EdgePerson)
 
 function instance<T>(constructor: new () => T, values: Record<string, unknown> = {}): T {
   const entity = new constructor()
@@ -148,6 +189,17 @@ describe('enforce declaration validation (NTS-663)', () => {
     expect(() => resolveEnforceClaim(relationship, personSchema, person, addressSchema)).toThrow(
       /no such property/,
     )
+  })
+
+  it('rejects a relationship-entity (edge) target — the claim must ride a node model', () => {
+    const relationship = edgePersonSchema.getRelationship('stay')
+    const person = instance(N663EdgePerson, { id: 'p-1' })
+
+    // the far-node schema is passed (relate() parity) — the DECLARED edge
+    // entity target is what makes the declaration incoherent
+    expect(() =>
+      resolveEnforceClaim(relationship, edgePersonSchema, person, addressSchema),
+    ).toThrow(/relationship entity/)
   })
 
   it('rejects a source entity carrying no primary-key value (implicit pk model)', () => {
