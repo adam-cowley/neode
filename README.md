@@ -109,6 +109,25 @@ That's the whole loop. Everything else the library does is in the matrix below.
 
 > **Model definitions are process-global.** Models registered through decorators, `defineModel()` or `neode.model()` / `with()` live in one shared registry, so every `Neode` instance in a process sees them. One set of models per process is the intended shape; run separate processes for separate schemas. A model name registers once: `defineModel()` throws a descriptive error on a second registration of the same name (the previous silent overwrite orphaned the first model's schema), and `defineModel(name, schema, { idempotent: true })` returns the existing registration unchanged — the form to use where the defining module is re-evaluated (Nest HMR, Vitest watch mode).
 
+## REST API from the model definitions
+
+`neode/express` mounts every registered node model as a REST API — the routes, validation, filtering and serialization are all generated from the definitions:
+
+```typescript
+import express from 'express'
+import { router } from 'neode/express'
+
+const app = express()
+
+app.use(express.json())
+app.use('/api', router(neode))
+app.listen(3000)
+```
+
+Per model: `GET /:model` (paginated list — `page`, `limit`, `order`, `sort`, plus equality filters on declared properties, so `GET /api/Person?age=30`), `GET /:model/:id` (primary key), `POST /:model` (create, 201), `PATCH /:model/:id` (update), `DELETE /:model/:id` (delete, 204). `GET /api` returns the ontology — a self-describing index of every mounted model. Errors map onto statuses: validation 422, unique conflicts and optimistic locks 409, domain errors 400.
+
+Writes go through exactly the same validated pipeline as the facade, and reads apply the model's named filters (soft delete, tenancy) — the router adds no bespoke checks. Options: `{ models: ['Person'] }` mounts a subset; `{ middleware: [...] }` mounts auth (or any pass-through hook) before every generated route. Writes trust whatever middleware is in front of the router — an unauthenticated mount is an open write API.
+
 ## Feature matrix
 
 | Area                  | What you get                                                                                                                                                                                                                                                                                     | Details                                                                  |
@@ -131,6 +150,7 @@ That's the whole loop. Everything else the library does is in the matrix below.
 | Querying              | Fluent `Builder` (all values parameterised), raw `neode.cypher()`, `hydrate` / `hydrateFirst` / `toCollection`, `toJson()` / `jsonSafe()` serialisation                                                                                                                                          | [Query builder](docs/api-reference.md#query-builder)                     |
 | Error taxonomy        | Typed `NeodeError` base, `ConstraintViolationError` (with parsed `label` / `property`), `TransientError` (retryable), `classifyError()` / `isTransientError()`                                                                                                                                   | [API reference](docs/api-reference.md)                                   |
 | Agent ontology        | `ontology()` / `ontologyMarkdown()` — emit the live graph schema for grounding Text2Cypher prompts or MCP resources                                                                                                                                                                              | [API reference](docs/api-reference.md)                                   |
+| REST API              | `neode/express` — `router(neode)` mounts list / get / create / update / delete for every model, generated from the definitions, with error→status mapping and a self-describing ontology index                                                                                                   | [REST API](#rest-api-from-the-model-definitions)                         |
 | Testing & ops         | `wipe()`, `testId()`, data factories (`neode.factory()`), `verifyConnectivity()` / `waitUntilReachable()`, `splitCypherStatements()` / `runCypherScript()`                                                                                                                                       | [API reference](docs/api-reference.md)                                   |
 
 ### Benchmarks
