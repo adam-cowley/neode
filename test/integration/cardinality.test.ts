@@ -547,6 +547,51 @@ class N663Person {
   address: N663Address | undefined
 }
 
+// refuse → undefined is the default; these two fixtures flip the policy
+@NodeEntity()
+class N663ThrowPerson {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @String({ unique: true })
+  name: string
+
+  @OneToOne({
+    type: 'ENFORCE_THROW_LIVES_AT',
+    target: () => N663Address,
+    direction: Direction.OUTGOING,
+    cardinality: 'one',
+    enforce: 'currentOccupantId',
+    onClaimed: 'throw',
+  })
+  address: N663Address | undefined
+}
+
+@NodeEntity()
+class N663DetachPerson {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @String({ unique: true })
+  name: string
+
+  @OneToOne({
+    type: 'ENFORCE_DETACH_LIVES_AT',
+    target: () => N663Address,
+    direction: Direction.OUTGOING,
+    cardinality: 'one',
+    enforce: 'currentOccupantId',
+    onClaimed: 'detach',
+  })
+  address: N663Address | undefined
+}
+
 const MapEnforceAddress = defineModel('Nts663MapAddress', {
   id: { type: 'uuid', primary: true },
   currentOccupantId: { type: 'string', unique: true },
@@ -627,6 +672,39 @@ describe('enforce: DB-claimed one-cardinality (NTS-663)', () => {
 
     expect(stolen).toBeUndefined()
     expect(await claimOf('1 Main St')).toBe(personA.id)
+  })
+
+  it('onClaimed: throw fails loudly naming the current claimant', async () => {
+    const personA = await saved(N663ThrowPerson, { name: 'A' })
+    const personB = await saved(N663ThrowPerson, { name: 'B' })
+    const address = await saved(N663Address, { line: '3 Throw St' })
+
+    await backend.neode.relate(N663ThrowPerson, personA, address, 'address')
+
+    const attempt = backend.neode.relate(N663ThrowPerson, personB, address, 'address')
+
+    await expect(attempt).rejects.toBeInstanceOf(NeodeError)
+    await expect(attempt).rejects.toThrow(/already claimed/)
+    expect(await claimOf('3 Throw St')).toBe(personA.id)
+  })
+
+  it('onClaimed: detach moves the claim and releases the other source', async () => {
+    const personA = await saved(N663DetachPerson, { name: 'A' })
+    const personB = await saved(N663DetachPerson, { name: 'B' })
+    const address = await saved(N663Address, { line: '4 Detach St' })
+
+    await backend.neode.relate(N663DetachPerson, personA, address, 'address')
+
+    // B takes the address — A's edge is detached in the same statement
+    await backend.neode.relate(N663DetachPerson, personB, address, 'address')
+
+    expect(await claimOf('4 Detach St')).toBe(personB.id)
+
+    const holders = await backend.neode.readCypher(
+      'MATCH (:N663DetachPerson)-[:ENFORCE_DETACH_LIVES_AT]->(a:N663Address { line: "4 Detach St" }) RETURN count(*) AS c',
+    )
+
+    expect(Number(holders.records[0].get('c'))).toBe(1)
   })
 
   it('a second address claiming the same person is rejected by the database', async () => {

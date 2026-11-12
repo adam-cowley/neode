@@ -1,4 +1,7 @@
-import type { RelationshipCardinality } from '../../meta/relationship-property-schema.js'
+import type {
+  ClaimConflictPolicy,
+  RelationshipCardinality,
+} from '../../meta/relationship-property-schema.js'
 import type { Newable } from '../../meta/newable.js'
 import { Direction } from '../../query/index.js'
 import { mergeRelationshipProperty } from '../../meta/index.js'
@@ -50,12 +53,19 @@ export function OneToMany(
         key. Requires cardinality 'one' / 'zeroOrOne'.
         */
         enforce?: string
+        /**
+        What relate() does when the target is already claimed by a different
+        source (NTS-663): 'refuse' (default), 'detach' (the claim moves) or
+        'throw'. Requires `enforce`.
+        */
+        onClaimed?: ClaimConflictPolicy
       },
   isEager?: boolean,
   description?: string,
   isCascade?: boolean,
   cardinality?: RelationshipCardinality,
   enforce?: string,
+  onClaimed?: ClaimConflictPolicy,
 ): (value: undefined, context: ClassFieldDecoratorContext) => void {
   return function (_value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = memberName(context)
@@ -69,6 +79,7 @@ export function OneToMany(
     const cascade = config ? config.cascade : isCascade
     const relationshipCardinality = config ? config.cardinality : cardinality
     const relationshipEnforce = config ? config.enforce : enforce
+    const relationshipOnClaimed = config ? config.onClaimed : onClaimed
 
     addRegistration(context.metadata, (constructor) => {
       // Merge Property Key
@@ -84,6 +95,7 @@ export function OneToMany(
         cascade,
         relationshipCardinality,
         relationshipEnforce,
+        relationshipOnClaimed,
       )
     })
   }

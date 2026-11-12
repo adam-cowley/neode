@@ -1,5 +1,5 @@
 import type { Newable } from '../meta/newable.js'
-import type { RelationshipCardinality } from '../meta/relationship-property-schema.js'
+import type { ClaimConflictPolicy, RelationshipCardinality } from '../meta/relationship-property-schema.js'
 import type { Direction } from '../query/index.js'
 
 export interface RelationshipConfig {
@@ -37,4 +37,12 @@ export interface RelationshipConfig {
   Requires cardinality `one` / `zeroOrOne`.
   */
   enforce?: string
+  /**
+  What relate() does when the target is already claimed by a different
+  source (NTS-663): 'refuse' (default) matches zero rows and resolves
+  undefined; 'detach' deletes the other claimant's edges in the same
+  statement so the claim moves; 'throw' raises NeodeError naming the
+  current claimant. Requires `enforce`.
+  */
+  onClaimed?: ClaimConflictPolicy
 }

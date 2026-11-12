@@ -13,6 +13,15 @@ Read paths are untouched: cardinality is a write-time guard.
 */
 export type RelationshipCardinality = 'one' | 'zeroOrOne' | 'many'
 
+/**
+What relate() does when the target of an `enforce` relationship is already
+claimed by a different source (NTS-663): `refuse` — the default — matches
+zero rows and resolves undefined; `detach` deletes the other claimant's
+edges in the same statement (the claim moves); `throw` raises NeodeError
+naming the current claimant.
+*/
+export type ClaimConflictPolicy = 'refuse' | 'detach' | 'throw'
+
 export class RelationshipPropertySchema {
   static fromPropertySchema(original: PropertySchema): RelationshipPropertySchema {
     const cloned = new RelationshipPropertySchema(original.getKey())
@@ -56,6 +65,12 @@ export class RelationshipPropertySchema {
   maintenance.
   */
   private enforce: string | undefined
+
+  /**
+  What relate() does when the target is already claimed by a different
+  source (NTS-663). Undefined — 'refuse' (the default).
+  */
+  private onClaimed: ClaimConflictPolicy | undefined
 
   /**
   Free-text explanation emitted by the agent ontology (NTS-445)
@@ -161,6 +176,17 @@ export class RelationshipPropertySchema {
   */
   getEnforce(): string | undefined {
     return this.enforce
+  }
+
+  setOnClaimed(onClaimed: ClaimConflictPolicy): void {
+    this.onClaimed = onClaimed
+  }
+
+  /**
+  The claim-conflict policy (NTS-663), 'refuse' when undeclared
+  */
+  getOnClaimed(): ClaimConflictPolicy {
+    return this.onClaimed ?? 'refuse'
   }
 
   setEager(isEager: boolean): void {

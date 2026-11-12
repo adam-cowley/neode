@@ -202,9 +202,10 @@ export async function hydrateWrittenNode<T>(
 NTS-663: one CALL subquery per enforce relationship of the deleted model,
 REMOVEing the claimed property from the reached targets. Detach deletes
 remove the edges but leave the targets standing — their enforce properties
-would keep naming a node that is about to disappear. Imports only `alias`,
-so surrounding statement frames are untouched; call it before the
-DETACH DELETE.
+would keep naming a node that is about to disappear. The aggregate RETURN
+always yields one row, so a source without edges keeps its outer row
+(an OPTIONAL MATCH would be the NTS-565-forbidden alternative). Imports
+only `alias`, so surrounding statement frames are untouched.
 */
 export function addEnforceClaimRemoval(
   builder: Builder,
@@ -221,10 +222,11 @@ export function addEnforceClaimRemoval(
     builder.call(
       (sub) =>
         sub
-          .optionalMatch(alias)
+          .match(alias)
           .relationship(relationship.getType(), relationship.getDirection(), 'claim_rel')
           .to('claim_target')
-          .remove(`claim_target.${quote(enforceProperty)}`),
+          .remove(`claim_target.${quote(enforceProperty)}`)
+          .return('count(*) AS claim_removed'),
       [alias],
     )
   }

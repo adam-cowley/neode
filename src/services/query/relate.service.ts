@@ -1,5 +1,6 @@
 import { Builder } from '../../query/index.js'
 import { quote } from '../../query/quote.js'
+import { Direction } from '../../query/direction.js'
 import type { GraphRelationship } from '../../driver/types.js'
 import { getModel } from '../../meta/index.js'
 import { EntitySchema, EntityType } from '../../meta/entity/entity-schema.js'
@@ -238,18 +239,33 @@ export class RelateService extends QueryService {
     builder.matchEntity(fromAlias, schema, fromMatch)
     builder.matchEntity(toAlias, targetSchema, toMatch)
 
-    // NTS-663: relate = claim. A target already claimed by a DIFFERENT
-    // source is refused in this same statement — the match loses its row
-    // and relate() resolves undefined — so a relate can never silently
-    // steal the target's enforce property. The claimant's own re-relate
-    // (same pk value) still matches.
+    // NTS-663: relate = claim. The onClaimed policy decides what happens
+    // when the target is already claimed by a different source.
     const claim = resolveEnforceClaim(relationship, schema, fromEntity, targetSchema)
 
     if (claim !== undefined) {
       const claimed = `${toAlias}.${quote(claim.property)}`
 
-      builder.whereRaw(`(${claimed} IS NULL OR ${claimed} = $enforce_claim)`)
-      builder.param('enforce_claim', claim.value)
+      if (relationship.getOnClaimed() === 'detach') {
+        // Steal: delete every other claimant's edges on this relationship
+        // in the same statement. Pattern comprehension + FOREACH — no
+        // OPTIONAL MATCH, and the row survives whether or not a previous
+        // claimant exists. The stored direction decides which end the
+        // other claimant sits on.
+        const stale =
+          relationship.getDirection() === Direction.INCOMING
+            ? `[(\`${toAlias}\`)${relationship.toString('stale_claim')}(other_claimant) WHERE elementId(other_claimant) <> elementId(${fromAlias}) | stale_claim]`
+            : `[(other_claimant)${relationship.toString('stale_claim')}(\`${toAlias}\`) WHERE elementId(other_claimant) <> elementId(${fromAlias}) | stale_claim]`
+
+        builder.forEach('stale_claim', stale, (sub) =>
+          sub.statement().delete('stale_claim'),
+        )
+      } else {
+        // refuse/throw: a target claimed by a DIFFERENT source loses its
+        // row — the claimant's own re-relate (same pk value) still matches
+        builder.whereRaw(`(${claimed} IS NULL OR ${claimed} = $enforce_claim)`)
+        builder.param('enforce_claim', claim.value)
+      }
     }
 
     if (isForceCreate) {
@@ -284,6 +300,36 @@ export class RelateService extends QueryService {
     const result = await this.runner.run(query, params)
 
     const related: unknown = result.records[0]?.get(relationshipAlias)
+
+    // 'throw': zero rows mean the target is missing (existing undefined
+    // contract) or claimed by another source — one cheap probe separates
+    // the two so the conflict fails loudly, naming the current claimant
+    if (
+      claim !== undefined &&
+      relationship.getOnClaimed() === 'throw' &&
+      (related === undefined || related === null || !isGraphRelationship(related))
+    ) {
+      const probe = new Builder()
+
+      probe.matchEntity(toAlias, targetSchema, toMatch)
+
+      probe.return(`${toAlias}.${quote(claim.property)} AS claim_value`)
+
+      const probeQuery = probe.build()
+
+      const probeResult = await this.runner.run(probeQuery.query, probeQuery.params)
+
+      const current: unknown = probeResult.records[0]?.get('claim_value')
+
+      if (current !== null && current !== undefined) {
+        throw new NeodeError(
+          `Cannot relate "${relationship.getKey()}" — the target is already claimed by ` +
+            `${JSON.stringify(current)}: its enforce property "${claim.property}" names ` +
+            'another source. Detach the existing claim first (syncEdges / replaceRelationship) ' +
+            "or declare onClaimed: 'detach' on the relationship.",
+        )
+      }
+    }
 
     return isGraphRelationship(related) ? related : undefined
   }

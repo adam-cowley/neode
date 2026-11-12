@@ -1,6 +1,9 @@
 import type { DefaultValue, TimestampFormat } from './property-schema.js'
 import type { FilterDefinition } from './entity/entity-schema.js'
-import type { RelationshipCardinality } from './relationship-property-schema.js'
+import type {
+  ClaimConflictPolicy,
+  RelationshipCardinality,
+} from './relationship-property-schema.js'
 
 /**
 neode-compatible property type names for map-based schema definitions.
@@ -358,6 +361,12 @@ export interface RelationshipDefinition {
   primary key. Requires cardinality 'one' / 'zeroOrOne'.
   */
   enforce?: string
+  /**
+  What relate() does when the target is already claimed by a different
+  source (NTS-663): 'refuse' (default), 'detach' (the claim moves) or
+  'throw'. Requires `enforce`.
+  */
+  onClaimed?: ClaimConflictPolicy
 }
 
 /**
