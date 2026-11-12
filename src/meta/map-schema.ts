@@ -288,6 +288,7 @@ function wireRelationshipModel(
     definition.description,
     definition.cascade,
     definition.cardinality,
+    definition.enforce,
   )
 
   // NTS-628: the declared `properties` key is the edge-property schema —

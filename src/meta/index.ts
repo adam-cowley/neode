@@ -297,6 +297,7 @@ export function mergeRelationshipProperty(
   description?: string,
   isCascade = false,
   cardinality?: RelationshipCardinality,
+  enforce?: string,
 ): RelationshipPropertySchema {
   const model = mergeModel(constructor)
 
@@ -316,6 +317,11 @@ export function mergeRelationshipProperty(
   // Write-time cardinality (NTS-161): undefined derives from the many flag
   if (cardinality !== undefined) {
     relationship.setCardinality(cardinality)
+  }
+
+  // DB-enforced inverse cardinality (NTS-663)
+  if (enforce !== undefined) {
+    relationship.setEnforce(enforce)
   }
 
   // Agent-facing relationship explanation (NTS-445)

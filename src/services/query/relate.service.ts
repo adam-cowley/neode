@@ -9,7 +9,11 @@ import type { RelationshipPropertySchema } from '../../meta/relationship-propert
 import { convertPropertyValue, matchCriteriaForEntity } from '../../utilities.js'
 import { QueryService } from './query.service.js'
 import { NeodeError } from '../../errors/index.js'
-import { assertCardinality, assertWritableDirection } from '../write-utilities.js'
+import {
+  assertCardinality,
+  assertWritableDirection,
+  resolveEnforceClaim,
+} from '../write-utilities.js'
 import { convertEdgeProperties } from '../relationship-values.js'
 import { constructorOf, isGraphRelationship } from '../type-guards.js'
 
@@ -234,6 +238,20 @@ export class RelateService extends QueryService {
     builder.matchEntity(fromAlias, schema, fromMatch)
     builder.matchEntity(toAlias, targetSchema, toMatch)
 
+    // NTS-663: relate = claim. A target already claimed by a DIFFERENT
+    // source is refused in this same statement — the match loses its row
+    // and relate() resolves undefined — so a relate can never silently
+    // steal the target's enforce property. The claimant's own re-relate
+    // (same pk value) still matches.
+    const claim = resolveEnforceClaim(relationship, schema, fromEntity, targetSchema)
+
+    if (claim !== undefined) {
+      const claimed = `${toAlias}.${quote(claim.property)}`
+
+      builder.whereRaw(`(${claimed} IS NULL OR ${claimed} = $enforce_claim)`)
+      builder.param('enforce_claim', claim.value)
+    }
+
     if (isForceCreate) {
       builder
         .create(fromAlias)
@@ -250,6 +268,13 @@ export class RelateService extends QueryService {
       // NTS-628: MERGE upserts the edge properties — applied whether the
       // MERGE created the edge or matched it (ON CREATE SET / ON MATCH SET)
       this.setProperties(builder, relationship, relationshipAlias, properties, true)
+    }
+
+    // NTS-663: an enforce relationship claims its target — SET the named
+    // unique property on the to-node to the source's primary-key value.
+    // Re-relating the same pair re-sets the same value (idempotent).
+    if (claim !== undefined) {
+      builder.set(`to.${quote(claim.property)}`, claim.value)
     }
 
     builder.return(relationshipAlias)
@@ -297,6 +322,15 @@ export class RelateService extends QueryService {
       .to(toAlias)
 
     this.setProperties(builder, relationship, relationshipAlias, properties)
+
+    // NTS-663: an enforce relationship claims its target — SET the named
+    // unique property on the to-node to the source's primary-key value.
+    // Re-relating the same pair re-sets the same value (idempotent).
+    const claim = resolveEnforceClaim(relationship, schema, fromEntity, targetSchema)
+
+    if (claim !== undefined) {
+      builder.set(`to.${quote(claim.property)}`, claim.value)
+    }
 
     builder.return(relationshipAlias)
 

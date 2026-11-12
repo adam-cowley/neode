@@ -352,6 +352,12 @@ export interface RelationshipDefinition {
   / 'node' declare one, 'relationships' / 'nodes' declare many.
   */
   cardinality?: RelationshipCardinality
+  /**
+  DB-enforced inverse cardinality (NTS-663): names a `@Unique` property on
+  the TARGET model that neode's write paths keep pointed at this node's
+  primary key. Requires cardinality 'one' / 'zeroOrOne'.
+  */
+  enforce?: string
 }
 
 /**

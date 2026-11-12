@@ -28,4 +28,13 @@ export interface RelationshipConfig {
   CardinalityViolationError. `many` is unrestricted.
   */
   cardinality?: RelationshipCardinality
+  /**
+  DB-enforced inverse cardinality (NTS-663): names a `@Unique` property on
+  the TARGET model that neode's write paths keep pointed at this node's
+  primary key. The target's uniqueness constraint (installed by
+  installSchema()) rejects a second node claiming the same target — a
+  one-to-one enforced by the database, not just the write-time guard.
+  Requires cardinality `one` / `zeroOrOne`.
+  */
+  enforce?: string
 }

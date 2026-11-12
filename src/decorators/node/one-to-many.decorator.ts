@@ -44,11 +44,18 @@ export function OneToMany(
         Write-time cardinality (NTS-161): 'many' (default), 'one' or 'zeroOrOne'
         */
         cardinality?: RelationshipCardinality
+        /**
+        DB-enforced inverse cardinality (NTS-663): a `@Unique` property on the
+        TARGET model that the write paths keep pointed at this node's primary
+        key. Requires cardinality 'one' / 'zeroOrOne'.
+        */
+        enforce?: string
       },
   isEager?: boolean,
   description?: string,
   isCascade?: boolean,
   cardinality?: RelationshipCardinality,
+  enforce?: string,
 ): (value: undefined, context: ClassFieldDecoratorContext) => void {
   return function (_value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = memberName(context)
@@ -61,6 +68,7 @@ export function OneToMany(
     const relationshipDescription = config ? config.description : description
     const cascade = config ? config.cascade : isCascade
     const relationshipCardinality = config ? config.cardinality : cardinality
+    const relationshipEnforce = config ? config.enforce : enforce
 
     addRegistration(context.metadata, (constructor) => {
       // Merge Property Key
@@ -75,6 +83,7 @@ export function OneToMany(
         relationshipDescription,
         cascade,
         relationshipCardinality,
+        relationshipEnforce,
       )
     })
   }

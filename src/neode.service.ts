@@ -100,7 +100,7 @@ import {
   type ReplaceRelationshipOptions,
   ReplaceRelationshipService,
 } from './services/query/replace-relationship.service.js'
-import { hydrateWrittenNode } from './services/write-utilities.js'
+import { addEnforceClaimRemoval, hydrateWrittenNode } from './services/write-utilities.js'
 import { type ParallelBody, type ParallelOptions, runParallel } from './transaction/parallel.js'
 import { rollbackAfterFailure } from './transaction/rollback.js'
 import {
@@ -2664,7 +2664,13 @@ export class Neode implements INeode {
       })
     }
 
-    const { query, params: parameters } = matchBuilder()
+    // NTS-663: release the enforce claims the deleted nodes hold before
+    // the edges go — the bulk statement bypasses DeleteService
+    const removalBuilder = matchBuilder()
+
+    addEnforceClaimRemoval(removalBuilder, schema, 'n')
+
+    const { query, params: parameters } = removalBuilder
       .detachDelete('n')
       .return('count(n) AS count')
       .build()

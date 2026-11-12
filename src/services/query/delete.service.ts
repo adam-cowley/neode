@@ -12,6 +12,7 @@ import { NeodeError } from '../../errors/neode-error.js'
 // eslint-disable-next-line unicorn/name-replacements -- `QueryParams` is the documented public API name (driver/types.ts), imported by name in the test suites
 import type { QueryParams } from '../../driver/types.js'
 import {
+  addEnforceClaimRemoval,
   stampExpression,
   timestampProperty,
   versionBump,
@@ -234,6 +235,12 @@ export class DeleteService extends QueryService {
         if (isAll && options.mode === 'detach') {
           // Delete the relationships to related nodes first, then the node
           // itself: related nodes survive (neode DeleteNode.js addDetachNode)
+
+          // NTS-663: release every enforce claim the deleted node holds
+          // before the edges go. Subqueries keep the row fan-out flat —
+          // the cascade frames' alias chains are untouched.
+          addEnforceClaimRemoval(builder, schema, THIS_NODE)
+
           for (const [index, relationship] of schema.getRelationships().entries()) {
             // A previous segment deleted its relationships — carry `this` over
             if (index > 0) {
@@ -251,11 +258,18 @@ export class DeleteService extends QueryService {
 
           builder.detachDelete(THIS_NODE)
         } else if (options?.cascade === false) {
+          addEnforceClaimRemoval(builder, schema, THIS_NODE)
+
           builder.detachDelete(THIS_NODE)
         } else {
           // Recursively match and delete related nodes, bounded by depth
           // (neode DeleteNode.js addCascadeDeleteNode) — 'annotated' selection
           // walks only the relationships declared `cascade: true`
+
+          // NTS-663: release the claims before the edges go — cascade
+          // frames match on the edges, so this runs first
+          addEnforceClaimRemoval(builder, schema, THIS_NODE)
+
           for (const relationship of schema.getRelationships()) {
             this.addCascadeDelete(
               builder,

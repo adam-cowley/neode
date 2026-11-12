@@ -199,6 +199,38 @@ export async function hydrateWrittenNode<T>(
 }
 
 /**
+NTS-663: one CALL subquery per enforce relationship of the deleted model,
+REMOVEing the claimed property from the reached targets. Detach deletes
+remove the edges but leave the targets standing — their enforce properties
+would keep naming a node that is about to disappear. Imports only `alias`,
+so surrounding statement frames are untouched; call it before the
+DETACH DELETE.
+*/
+export function addEnforceClaimRemoval(
+  builder: Builder,
+  schema: EntitySchema,
+  alias: string,
+): void {
+  for (const relationship of schema.getRelationships()) {
+    const enforceProperty = resolveEnforceProperty(relationship, safeTargetSchema(relationship))
+
+    if (enforceProperty === undefined) {
+      continue
+    }
+
+    builder.call(
+      (sub) =>
+        sub
+          .optionalMatch(alias)
+          .relationship(relationship.getType(), relationship.getDirection(), 'claim_rel')
+          .to('claim_target')
+          .remove(`claim_target.${quote(enforceProperty)}`),
+      [alias],
+    )
+  }
+}
+
+/**
 Write-path cardinality guard (NTS-161): a `one` / `zeroOrOne` relationship
 holds at most one edge per node — a write that would leave more throws
 CardinalityViolationError. `many` is unrestricted. `edgeCount` is the
@@ -214,6 +246,112 @@ export function assertCardinality(
   if ((cardinality === 'one' || cardinality === 'zeroOrOne') && edgeCount > 1) {
     throw new CardinalityViolationError(relationship.getKey(), cardinality, edgeCount)
   }
+}
+
+/**
+DB-enforced inverse cardinality (NTS-663): when a relationship declares
+`enforce`, the write paths keep the named `@Unique` property on the TARGET
+node pointed at the SOURCE node's primary-key value — "relate = claim".
+The target's uniqueness constraint then rejects a second node claiming the
+same target at the database level (raw Cypher included).
+*/
+export interface EnforceClaim {
+  property: string
+  value: unknown
+}
+
+/**
+Validate the `enforce` declaration against the target schema and name the
+claimed property — undefined when the relationship declares none. The
+target property must exist and be @Unique (installSchema() backs it with
+the constraint the enforcement rides on); `many` is rejected.
+*/
+export function resolveEnforceProperty(
+  relationship: RelationshipPropertySchema,
+  targetSchema: EntitySchema | undefined,
+): string | undefined {
+  const property = relationship.getEnforce()
+
+  if (property === undefined) {
+    return undefined
+  }
+
+  if (relationship.getCardinality() === 'many') {
+    throw new NeodeError(
+      `Relationship "${relationship.getKey()}" declares enforce "${property}" — ` +
+        'enforcement requires cardinality "one" or "zeroOrOne".',
+    )
+  }
+
+  if (!(targetSchema instanceof EntitySchema)) {
+    throw new NeodeError(
+      `Relationship "${relationship.getKey()}" declares enforce "${property}" but has no ` +
+        'resolvable target model — register it with @NodeEntity or defineModel() first.',
+    )
+  }
+
+  const targetProperty = targetSchema
+    .getProperties()
+    .find((candidate) => candidate.getKey() === property)
+
+  if (targetProperty === undefined) {
+    throw new NeodeError(
+      `Relationship "${relationship.getKey()}" declares enforce "${property}", but the target model ` +
+        `"${targetSchema.getLabels().join(':')}" has no such property. Declare it on the target ` +
+        'and mark it @Unique so the database rejects a second claim.',
+    )
+  }
+
+  if (!targetProperty.isUnique()) {
+    throw new NeodeError(
+      `Relationship "${relationship.getKey()}" declares enforce "${property}", but the property on ` +
+        `the target model "${targetSchema.getLabels().join(':')}" is not unique. Mark it @Unique — ` +
+        "the enforcement rides on the target model's uniqueness constraint.",
+    )
+  }
+
+  return property
+}
+
+/**
+The enforce claim of one relate/replace/sync write: the validated target
+property plus the value to claim it with (the SOURCE node's primary-key
+value). Throws when the source model has no primary key or the entity
+carries no value for it — the claim IS that value.
+*/
+export function resolveEnforceClaim(
+  relationship: RelationshipPropertySchema,
+  sourceSchema: EntitySchema,
+  sourceEntity: object,
+  targetSchema: EntitySchema | undefined,
+): EnforceClaim | undefined {
+  const property = resolveEnforceProperty(relationship, targetSchema)
+
+  if (property === undefined) {
+    return undefined
+  }
+
+  const primaryKey = sourceSchema.getPrimaryKey()
+
+  if (primaryKey === undefined) {
+    throw new NeodeError(
+      `Relationship "${relationship.getKey()}" declares enforce "${property}", but the source model ` +
+        `"${sourceSchema.getLabels().join(':')}" declares no primary key — the claim is the ` +
+        "source's primary-key value. Mark one property @Uuid({ primary: true }) (or @Primary).",
+    )
+  }
+
+  const value: unknown = Reflect.get(sourceEntity, primaryKey.getKey())
+
+  if (value === undefined || value === null) {
+    throw new NeodeError(
+      `Cannot enforce "${property}" for relationship "${relationship.getKey()}": the source node ` +
+        `carries no ${primaryKey.getKey()} value — save it first (the claim is the source's ` +
+        'primary-key value).',
+    )
+  }
+
+  return { property, value }
 }
 
 /**
@@ -855,12 +993,37 @@ async function createNode(
 
   // One CREATE clause per pk edge — each relates the just-created node to
   // the matched target, edge properties inline on the edge (NTS-628)
+  // NTS-663: a pk edge on an enforce relationship claims its target with
+  // the pk value the created node was written with
+  const pkKey = schema.getPrimaryKey()?.getKey()
+
   for (const target of pkTargets) {
     builder.create(THIS_NODE)
 
     builder
       .relationship(target.type, target.direction, target.relAlias, undefined, target.properties)
       .to(target.alias)
+
+    const enforceProperty = resolveEnforceProperty(
+      schema.getRelationship(target.relationshipKey),
+      target.targetSchema,
+    )
+
+    if (enforceProperty === undefined) {
+      continue
+    }
+
+    const claimValue = pkKey === undefined ? undefined : properties[pkKey]
+
+    if (claimValue === undefined || claimValue === null) {
+      throw new NeodeError(
+        `Cannot enforce "${enforceProperty}" for relationship "${target.relationshipKey}": ` +
+          `the created node has no ${String(pkKey)} value — the claim is the source's ` +
+          'primary-key value.',
+      )
+    }
+
+    builder.set(`${target.alias}.${quote(enforceProperty)}`, claimValue)
   }
 
   builder.return(THIS_NODE, `elementId(${THIS_NODE}) AS ${INTERNAL_ID}`)
@@ -936,17 +1099,38 @@ async function createRelationships(
 
       const inlineProperties = edgeProperties[key] ?? {}
 
+      // NTS-663: resolve the enforce claim once per relationship — the
+      // source model is THIS node's record
+      const claim = resolveEnforceClaim(relationship, schema, model, safeTargetSchema(relationship))
+
       await Promise.all(
         values
           // Primary-key values were related in the root statement (NTS-627) —
           // entity instances keep the recursive create walk
           .filter((target) => isRecord(target))
           .map(async (target) =>
-            createTarget(runner, thisId, relationship, target, depth, inlineProperties),
+            createTarget(runner, thisId, relationship, target, depth, inlineProperties, claim),
           ),
       )
     }),
   )
+}
+
+/**
+The relationship's declared target schema, or undefined when the target
+class is unresolvable (forward reference, unregistered model) — enforce
+resolution then reports the problem itself
+*/
+export function safeTargetSchema(
+  relationship: RelationshipPropertySchema,
+): EntitySchema | undefined {
+  try {
+    const target = relationship.getTarget()
+
+    return typeof target === 'function' ? getModel(target) : undefined
+  } catch {
+    return undefined
+  }
 }
 
 async function createTarget(
@@ -956,6 +1140,7 @@ async function createTarget(
   value: unknown,
   depth: number,
   edgeProperties: Record<string, unknown> = {},
+  claim?: EnforceClaim,
 ): Promise<void> {
   // Reject before creating anything: BOTH is match-only (NTS-483)
   assertWritableDirection(relationship)
@@ -1016,7 +1201,16 @@ async function createTarget(
       depth + 1,
     )
 
-    await relateNodes(runner, thisId, otherId, relationship, targetSchema, value, edgeProperties)
+    await relateNodes(
+      runner,
+      thisId,
+      otherId,
+      relationship,
+      targetSchema,
+      value,
+      edgeProperties,
+      claim,
+    )
 
     return
   }
@@ -1028,7 +1222,16 @@ async function createTarget(
     depth + 1,
   )
 
-  await relateNodes(runner, thisId, targetId, relationship, targetSchema, value, edgeProperties)
+  await relateNodes(
+    runner,
+    thisId,
+    targetId,
+    relationship,
+    targetSchema,
+    value,
+    edgeProperties,
+    claim,
+  )
 }
 
 /**
@@ -1045,6 +1248,7 @@ async function relateNodes(
   targetSchema: EntitySchema,
   entity: unknown,
   edgeProperties: Record<string, unknown> = {},
+  claim?: EnforceClaim,
 ): Promise<void> {
   assertWritableDirection(relationship)
 
@@ -1078,6 +1282,11 @@ async function relateNodes(
 
     builder.onCreateSet(`${relationshipAlias}.${quote(key)}`, value)
     builder.onMatchSet(`${relationshipAlias}.${quote(key)}`, value)
+  }
+
+  // NTS-663: an enforce relationship claims its target
+  if (claim !== undefined) {
+    builder.set(`to.${quote(claim.property)}`, claim.value)
   }
 
   const { query, params } = builder.build()

@@ -8,7 +8,7 @@ import { matchCriteriaForEntity } from '../../utilities.js'
 import { QueryService } from './query.service.js'
 import { NeodeError } from '../../errors/index.js'
 import { assertWritableDirection, validateEdgeProperties } from '../relationship-values.js'
-import { assertCardinality } from '../write-utilities.js'
+import { assertCardinality, resolveEnforceClaim } from '../write-utilities.js'
 import { isRecord } from '../type-guards.js'
 
 /**
@@ -103,6 +103,11 @@ export class ReplaceRelationshipService extends QueryService {
       return value
     })
 
+    // NTS-663: the replace re-claims the enforce property — REMOVE it from
+    // the detached targets and SET it on the new ones, in this one
+    // statement (the NTS-634 atomic swap, no stale-claim window)
+    const claim = resolveEnforceClaim(relationship, schema, entity, targetSchema)
+
     const builder = new Builder()
 
     // Guard-MATCH the owning node by its identity — no pre-read
@@ -110,11 +115,22 @@ export class ReplaceRelationshipService extends QueryService {
 
     // Delete-path binding (NTS-565 carve-out): the OPTIONAL MATCH keeps
     // the row alive when the relationship has no existing edges
-    builder
+    const oldEdge = builder
       .optionalMatch(THIS_NODE)
       .relationship(relationship.getType(), relationship.getDirection(), 'old_rel')
-      .toAnything()
-      .delete('old_rel')
+
+    if (claim === undefined) {
+      oldEdge.toAnything()
+    } else {
+      oldEdge.to('old_target')
+    }
+
+    oldEdge.delete('old_rel')
+
+    // REMOVE on a null old_target (no existing edges) is a no-op
+    if (claim !== undefined) {
+      builder.remove(`old_target.${quote(claim.property)}`)
+    }
 
     builder.with(THIS_NODE)
 
@@ -142,6 +158,12 @@ export class ReplaceRelationshipService extends QueryService {
       if (value !== undefined) {
         builder.set(`new_rel.${quote(key)}`, value)
       }
+    }
+
+    // NTS-663: claim the new target — SET is a no-op when the target did
+    // not match (its row is skipped)
+    if (claim !== undefined) {
+      builder.set(`target_node.${quote(claim.property)}`, claim.value)
     }
 
     const { query, params } = builder.build()

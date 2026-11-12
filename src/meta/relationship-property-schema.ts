@@ -49,6 +49,15 @@ export class RelationshipPropertySchema {
   private cardinality: RelationshipCardinality | undefined
 
   /**
+  Name of a `@Unique` property on the TARGET model that the write paths
+  keep pointed at this node's primary key (NTS-663): the target's
+  uniqueness constraint turns the inverse side of a one-cardinality
+  relationship into a database-level guarantee. Undefined — no claim
+  maintenance.
+  */
+  private enforce: string | undefined
+
+  /**
   Free-text explanation emitted by the agent ontology (NTS-445)
   */
   private description: string | undefined
@@ -140,6 +149,18 @@ export class RelationshipPropertySchema {
   */
   getCardinality(): RelationshipCardinality {
     return this.cardinality ?? (this.many ? 'many' : 'one')
+  }
+
+  setEnforce(enforce: string): void {
+    this.enforce = enforce
+  }
+
+  /**
+  The target property the write paths keep claimed (NTS-663), or undefined
+  when the relationship declares no enforcement property
+  */
+  getEnforce(): string | undefined {
+    return this.enforce
   }
 
   setEager(isEager: boolean): void {

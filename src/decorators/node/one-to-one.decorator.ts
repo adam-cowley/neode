@@ -27,6 +27,7 @@ export function OneToOne(
         config.description,
         config.cascade,
         config.cardinality,
+        config.enforce,
       )
     })
   }
