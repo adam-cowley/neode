@@ -39,6 +39,7 @@
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
+    "test:aura": "vitest run --project integration test/integration/aura-smoke.test.ts",
     "test:package": "vitest run --project package",
     "test:types": "npm run typecheck && vitest run --typecheck --project types",
     "test:watch": "vitest",

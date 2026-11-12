@@ -83,7 +83,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        neo4j: ["5-community", "latest"]
+        neo4j: ["5-community", "latest", "2026.10-community"]
     steps:
       - uses: actions/checkout@v4
 
