@@ -311,13 +311,38 @@ class Movie {
 target: Pet[];
 ```
 
-| Decorator                                        | Signature                                                                | Description                                                                                                                                                                |
-| ------------------------------------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@OneToOne(config)`                              | `{ type, direction, target?, eager? }` — `target` is `() => EntityClass` | Single relationship. Without `target`, the type is read from `design:type` (needs `reflect-metadata` + `emitDecoratorMetadata`; unavailable for self-referential classes). |
-| `@OneToMany(factory, type?, direction?, eager?)` | `factory: () => EntityClass`                                             | Many relationship (array). Defaults: `type: ''`, `direction: BOTH`.                                                                                                        |
-| `@NodeEntity`-level                              | —                                                                        | For self-referential relationships, register the property through the metamodel after the class is defined (or use the map API).                                           |
+| Decorator                                                                                                        | Signature                                                                                                                               | Description                                                                                                                                                                          |
+| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@OneToOne(config)`                                                                                              | `{ type, direction, target, eager?, cascade?, description?, cardinality?, enforce?, claimConflict? }` — `target` is `() => EntityClass` | Single relationship. `cardinality` defaults to `'one'`. `enforce` names a `@Unique` property on the target that the write paths keep pointed at this node's primary key (see below). |
+| `@OneToMany(factory, type?, direction?, eager?, cascade?, description?, cardinality?, enforce?, claimConflict?)` | Config form takes the same keys; `cardinality` defaults to `'many'`                                                                     | Many relationship (array). `cardinality: 'one' / 'zeroOrOne'` restricts it to a single edge.                                                                                         |
+| `@NodeEntity`-level                                                                                              | —                                                                                                                                       | For self-referential relationships, register the property through the metamodel after the class is defined (or use the map API).                                                     |
 
 `Direction` is the enum `INCOMING | OUTGOING | BOTH`; the legacy case-insensitive strings `'in' | 'out' | 'both'` (and `'IN' | 'OUT' | 'BOTH'`) are accepted anywhere a direction is taken — unknown values fall back to `BOTH`.
+
+#### Cardinality and claims
+
+`cardinality` is a write-time guard (NTS-161): a `'one'` / `'zeroOrOne'` relationship holds at most one edge per node — a second `relate()` throws `CardinalityViolationError`. Use `syncEdges()` (or `replaceRelationship()`) to swap the edge; both detach first.
+
+`enforce` turns the INVERSE side into a database-level guarantee (NTS-663). It names a `@Unique` property on the TARGET model, and every write path keeps it pointed at the source node's primary-key value — "relate = claim":
+
+```typescript
+@NodeEntity()
+class Person {
+  @Uuid({ primary: true })
+  id: string
+
+  @OneToOne({
+    type: 'LIVES_AT',
+    target: () => Address,
+    direction: 'out',
+    cardinality: 'one',
+    enforce: 'currentOccupantId', // @Unique property on Address
+  })
+  address: Address | undefined
+}
+```
+
+The target's uniqueness constraint (installed by `installSchema()`) then rejects a second node claiming the same target — raw Cypher included. `replaceRelationship()` / `syncEdges()` move the claim in one atomic statement; `delete()` releases it. `claimConflict` picks what `relate()` does when the target is already claimed by a different source: `'refuse'` (default — resolves `undefined`), `'detach'` (the other claimant's edges are deleted and the claim moves) or `'throw'`. The forward side (one target per source) stays an application-level guard: Neo4j has no edge-count constraint.
 
 ### Relationship entities
 

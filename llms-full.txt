@@ -955,6 +955,18 @@ ConnectionProvider over the embedded Relate engine (@relate/relate) — in-proce
 
 _source: driver/relate.ts_
 
+### `RelateManyResult` (interface)
+
+The relateMany() aggregate: edges MERGE-matched-or-created and the number of chunks written
+
+_source: services/query/bulk.service.ts_
+
+### `RelateManyRow` (interface)
+
+One row of relateMany(): the from- and to-node primary-key values plus optional edge properties
+
+_source: services/query/bulk.service.ts_
+
 ### `RelationshipEdgeRead` (interface)
 
 One result row of an edge-returning related() read (NTS-499): the hydrated related entity (`node`) alongside the traversed relationship itself (`edge`, the normalized GraphRelationship — type, elementId, endpoints and properties). The seed of the NTS-566 result-shape contract: flat, named, no wrapper classes.
@@ -1515,6 +1527,8 @@ so new fields (e.g. upcoming schema options) appear here automatically.
 | `eager` | `boolean` (optional) |  |
 | `cascade` | `boolean` (optional) | Per-relationship cascade: deleting a node also deletes the nodes reached through this relationship, recursively (each level applies its own annotations). Unannotated relationships survive unless the delete call opts in with `{ cascade: true }`. |
 | `cardinality` | `RelationshipCardinality` (optional) | Write-time cardinality (NTS-161): 'one' / 'zeroOrOne' allow at most one edge from a node — a second relate() throws CardinalityViolationError; 'many' is unrestricted. Undefined derives from the type: 'relationship' / 'node' declare one, 'relationships' / 'nodes' declare many. |
+| `enforce` | `string` (optional) | DB-enforced inverse cardinality (NTS-663): names a `@Unique` property on the TARGET model that neode's write paths keep pointed at this node's primary key. Requires cardinality 'one' / 'zeroOrOne'. |
+| `claimConflict` | `ClaimConflictPolicy` (optional) | What relate() does when the target is already claimed by a different source (NTS-663): 'refuse' (default), 'detach' (the claim moves) or 'throw'. Requires `enforce`. |
 
 ### SchemaDefinition
 
