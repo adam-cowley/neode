@@ -17,19 +17,22 @@ describe('Builder.shortestPath (NTS-658)', () => {
     expect(params).toEqual({})
   })
 
-  it('renders the shared-order leg: typed, exactly two traversals, both directions', () => {
+  it('renders the shared-order leg: typed, bounded at two traversals, both directions', () => {
+    // Neo4j rejects a minimum length other than 0 or 1 inside
+    // shortestPath, so the "shared order" bound is '..2' (up to 2 hops),
+    // not an exact '*2'
     const { query, params } = build((b) =>
       b
         .match('a', 'Product', { productID: 1 })
         .match('b', 'Product', { productID: 2 })
-        .shortestPath('p', 'a', 'b', { relationship: 'CONTAINS', degrees: 2 })
+        .shortestPath('p', 'a', 'b', { relationship: 'CONTAINS', degrees: '..2' })
         .return('p'),
     )
 
     expect(query).toBe(
       'MATCH (a:Product { productID: $a_productID })\n' +
         'MATCH (b:Product { productID: $b_productID })\n' +
-        'MATCH p = shortestPath((a)-[:`CONTAINS`*2]-(b))\n' +
+        'MATCH p = shortestPath((a)-[:`CONTAINS`*..2]-(b))\n' +
         'RETURN p',
     )
     expect(params).toEqual({ a_productID: 1, b_productID: 2 })
@@ -40,12 +43,12 @@ describe('Builder.shortestPath (NTS-658)', () => {
       b
         .match('a')
         .match('b')
-        .shortestPath('p', 'a', 'b', { relationship: 'SUPPLIED_BY', degrees: 2 })
+        .shortestPath('p', 'a', 'b', { relationship: 'SUPPLIED_BY', degrees: '..2' })
         .return('p'),
     )
 
     expect(query).toBe(
-      'MATCH (a)\nMATCH (b)\nMATCH p = shortestPath((a)-[:`SUPPLIED_BY`*2]-(b))\nRETURN p',
+      'MATCH (a)\nMATCH (b)\nMATCH p = shortestPath((a)-[:`SUPPLIED_BY`*..2]-(b))\nRETURN p',
     )
   })
 
@@ -55,6 +58,17 @@ describe('Builder.shortestPath (NTS-658)', () => {
     )
 
     expect(query).toBe('MATCH p = shortestPath((a)-[:`CONTAINS`]->(b))\nRETURN p')
+  })
+
+  it('rejects an exact traversal minimum — Neo4j: shortestPath supports min 0 or 1 only', () => {
+    const builder = new Builder()
+
+    expect(() => builder.shortestPath('p', 'a', 'b', { degrees: 2 })).toThrow(NeodeError)
+    expect(() => builder.shortestPath('p', 'a', 'b', { degrees: '2..4' })).toThrow(
+      /minimum length other than 0 or 1/,
+    )
+    // minimum 0 and 1 forms pass validation (rendered correctly)
+    expect(() => new Builder().shortestPath('p', 'a', 'b', { degrees: '1..2' })).not.toThrow()
   })
 
   it('renders multi-type and ranged degrees', () => {
@@ -86,7 +100,7 @@ describe('path-variable returns (NTS-658)', () => {
       b
         .match('a')
         .match('b')
-        .shortestPath('p', 'a', 'b', { relationship: 'CONTAINS', degrees: 2 })
+        .shortestPath('p', 'a', 'b', { relationship: 'CONTAINS', degrees: '..2' })
         .return(
           `[n IN ${expr.nodes('p')} | n.name] AS names`,
           `[r IN ${expr.relationships('p')} | ${expr.type('r')}] AS types`,
@@ -94,7 +108,7 @@ describe('path-variable returns (NTS-658)', () => {
     )
 
     expect(query).toBe(
-      'MATCH (a)\nMATCH (b)\nMATCH p = shortestPath((a)-[:`CONTAINS`*2]-(b))\n' +
+      'MATCH (a)\nMATCH (b)\nMATCH p = shortestPath((a)-[:`CONTAINS`*..2]-(b))\n' +
         'RETURN [n IN nodes(p) | n.name] AS names, [r IN relationships(p) | type(r)] AS types',
     )
   })

@@ -322,7 +322,7 @@ export function builderShortestPath(): void {
   new Builder()
     .match('a', 'Product', { productID: 1 })
     .match('b', 'Product', { productID: 2 })
-    .shortestPath('p', 'a', 'b', { relationship: 'CONTAINS', degrees: 2 })
+    .shortestPath('p', 'a', 'b', { relationship: 'CONTAINS', degrees: '..2' })
     .return(`[n IN ${expr.nodes('p')} | labels(n)[0]] AS kinds`)
     .build()
 }

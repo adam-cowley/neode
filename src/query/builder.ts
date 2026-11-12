@@ -8,7 +8,7 @@ import { Relationship } from './relationship.js'
 import { Statement } from './statement.js'
 import { Where, OPERATOR_EQUALS, assertComparisonOperator } from './where.js'
 import type { ComparisonOperator } from './where.js'
-import { quote, quoteReference, assertAlias } from './quote.js'
+import { quote, quoteReference, assertAlias, assertDegrees } from './quote.js'
 import { LabelPredicate } from './label-predicate.js'
 import { WhereBetween } from './where-between.js'
 import { WhereId } from './where-id.js'
@@ -62,7 +62,10 @@ export interface ShortestPathOptions {
   */
   direction?: string
   /**
-  Number of traversals (`2`, `'1..2'`, `'..3'`)
+  Number of traversals — Neo4j rejects a minimum length other than 0 or
+  1 inside shortestPath, so multi-hop bounds are `'..2'` / `'1..2'` forms
+  (an exact length like `2` throws naming the fix; pin an exact edge
+  chain with match()/relationship()/to()/asPath() instead)
   */
   degrees?: number | string
 }
@@ -514,11 +517,13 @@ export class Builder {
   shortest-path match over its own segment, bound to a path variable a
   RETURN can reference (`expr.nodes(variable)`, `expr.relationships(variable)`).
   `direction` defaults to BOTH — shortestPath's common form; `degrees`
-  bounds the traversal count (`2`, `'1..2'`, `'..3'`). The variable, from
-  and to arguments are plain variable names (validated like aliases —
-  structure, never data). A pinned multi-hop pattern (an exact chain of
-  typed edges, where a multi-type shortestPath could return a wrong-shaped
-  path) stays with match() / relationship() / to() / asPath().
+  bounds the traversal count — Neo4j rejects a minimum length other than
+  0 or 1 inside shortestPath, so bounded forms (`'..2'`, `'1..2'`) are the
+  multi-hop spellings and an exact length (`2`) throws naming the fix.
+  The variable, from and to arguments are plain variable names (validated
+  like aliases — structure, never data). A pinned multi-hop pattern (an
+  exact chain of typed edges, where a multi-type shortestPath could return
+  a wrong-shaped path) stays with match() / relationship() / to() / asPath().
   */
   shortestPath(
     variable: string,
@@ -534,11 +539,25 @@ export class Builder {
     assertAlias(from, 'shortestPath()')
     assertAlias(to, 'shortestPath()')
 
+    const degrees = options.degrees === undefined ? undefined : assertDegrees(options.degrees)
+
+    if (degrees !== undefined) {
+      const [minimum] = degrees.split('..', 1)
+
+      if (minimum !== '' && Number(minimum) > 1) {
+        throw new NeodeError(
+          `Invalid shortestPath degrees "${degrees}" — shortestPath does not support a ` +
+            'minimum length other than 0 or 1. Pass a bounded form such as "..2" or "1..2", ' +
+            'or pin an exact edge chain with match()/relationship()/to()/asPath().',
+        )
+      }
+    }
+
     const relationship = new Relationship(
       options.relationship,
       options.direction,
       undefined,
-      options.degrees,
+      degrees,
     )
 
     this.activeStatement.match(

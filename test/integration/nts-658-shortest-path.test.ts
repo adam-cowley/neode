@@ -56,7 +56,7 @@ describe('shortestPath / pinned path patterns (NTS-658) — integration', () => 
 
     const output = await backend.neode.read(
       matchProducts(new Builder())
-        .shortestPath('p', 'a', 'b', { relationship: 'CONTAINS', degrees: 2 })
+        .shortestPath('p', 'a', 'b', { relationship: 'CONTAINS', degrees: '..2' })
         .return(kinds, `[r IN ${expr.relationships('p')} | ${expr.type('r')}] AS types`),
     )
 

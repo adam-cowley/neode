@@ -707,16 +707,16 @@ Path variables read through `expr.nodes('p')`, `expr.relationships('p')` and `ex
 new Builder()
   .match('a', 'Product', { productID: 1 })
   .match('b', 'Product', { productID: 2 })
-  .shortestPath('p', 'a', 'b', { relationship: 'CONTAINS', degrees: 2 })
+  .shortestPath('p', 'a', 'b', { relationship: 'CONTAINS', degrees: '..2' })
   .return(`[n IN ${expr.nodes('p')} | labels(n)[0]] AS kinds`)
   .build()
 // MATCH (a:Product { productID: $a_productID })
 // MATCH (b:Product { productID: $b_productID })
-// MATCH p = shortestPath((a)-[:`CONTAINS`*2]-(b))
+// MATCH p = shortestPath((a)-[:`CONTAINS`*..2]-(b))
 // RETURN [n IN nodes(p) | labels(n)[0]] AS kinds
 ```
 
-Options: `relationship` (a type or list of types — multi-type `shortestPath` can return wrong-shaped paths, see below), `direction` (defaults to BOTH, the undirected `shortestPath` form) and `degrees` (`2`, `'1..2'`, `'..3'`). `variable`, `from` and `to` are plain variable names (validated like aliases); `from`/`to` are node variables bound by earlier matches — give them labels there when the pattern needs them.
+Options: `relationship` (a type or list of types — multi-type `shortestPath` can return wrong-shaped paths, see below), `direction` (defaults to BOTH, the undirected `shortestPath` form) and `degrees` (a traversal bound — Neo4j rejects a minimum length other than 0 or 1 inside `shortestPath`, so multi-hop bounds are the `'..2'` / `'1..2'` forms, and an exact length like `2` throws naming the fix). `variable`, `from` and `to` are plain variable names (validated like aliases); `from`/`to` are node variables bound by earlier matches — give them labels there when the pattern needs them.
 
 When a fixed shape is required — a multi-type `shortestPath` happily returns a shorter wrong-shaped path (a customer-less Product-Order-Product chain instead of one through the customer) — pin the exact edge chain with `match()` / `relationship()` / `to()` / `asPath('p')` instead; the path variable binds the whole segment pattern the same way.
 
