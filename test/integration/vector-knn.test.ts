@@ -4,7 +4,7 @@
 import { openBackend, TestBackend } from './support/backend'
 import { knn } from '../../src/services/query/knn.service'
 import { VectorIndexService, vectorIndexName } from '../../src/services/schema/vector.service'
-import { NodeEntity, InternalId, Float, Filter, Property, SoftDelete } from '../../src/decorators'
+import { NodeEntity, InternalId, Float, Filter, Property, SoftDelete, Vector } from '../../src/decorators'
 import { clearFilterParams, setFilterParams } from '../../src/index'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
@@ -15,6 +15,7 @@ class Doc {
   _id: string
 
   @Float({ array: true })
+  @Vector({ dimensions: 3 })
   emb: number[]
 }
 
@@ -34,6 +35,7 @@ class FilteredDoc {
   tenant: string
 
   @Float({ array: true })
+  @Vector({ dimensions: 3 })
   emb: number[]
 }
 
@@ -231,5 +233,46 @@ describe('vector kNN search', () => {
     // success is not asserted: dropping vector indexes is not supported
     // on every backend (e.g. Relate), which the result pattern reports
     // per statement instead of throwing
+  })
+
+  it('Repository#knn derives the index name from the model declaration', async () => {
+    if (!backend.capabilities.vector) {
+      return
+    }
+
+    const repository = backend.neode.getRepository(Doc)
+    const results = await repository.knn('emb', [1, 0.1, 0], 2)
+
+    expect(results).toHaveLength(2)
+    expect(results[0].entity).toBeInstanceOf(Doc)
+    expect(results[0].entity.emb).toEqual([0.9, 0.1, 0])
+    expect(results[0].score).toBeGreaterThanOrEqual(results[1].score)
+  })
+
+  it('Repository#knn applies the model named read filters', async () => {
+    if (!backend.capabilities.vector) {
+      return
+    }
+
+    const repository = backend.neode.getRepository(FilteredDoc)
+    const results = await repository.knn('emb', [1, 0, 0], 2)
+
+    // the two nearest neighbours are filtered out (soft-deleted, other
+    // tenant) — the same NTS-584 over-fetch the service-level knn does
+    expect(results.map((result) => result.entity.id)).toEqual(['live-1', 'live-2'])
+  })
+
+  it('Repository#knn rejects a property that is not declared @Vector', async () => {
+    const repository = backend.neode.getRepository(FilteredDoc)
+
+    await expect(repository.knn('tenant', [1, 0, 0], 2)).rejects.toThrow(
+      /not declared with @Vector/,
+    )
+  })
+
+  it('Repository#knn rejects an unknown property', async () => {
+    const repository = backend.neode.getRepository(Doc)
+
+    await expect(repository.knn('nope', [1, 0, 0], 2)).rejects.toThrow(/no property named/)
   })
 })

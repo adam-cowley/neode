@@ -51,6 +51,7 @@ import {
 import { UpdateService } from '../services/query/update.service.js'
 import { WithinDistanceService } from '../services/query/within-distance.service.js'
 import { search, type ScoredEntity } from '../services/query/search.service.js'
+import { knn, type KnnMode } from '../services/query/knn.service.js'
 import { globalObservers, type ObserverRegistry } from '../observers.js'
 import { EffectBuffer } from './effects.js'
 import { isConstructorOf, isRecord } from '../services/type-guards.js'
@@ -905,6 +906,19 @@ export class TransactionalService implements INeode {
     assertPublicWithoutFilters(filters?.withoutFilters)
 
     return search<T>(this.handle, constructor, indexName, query, limit, filters)
+  }
+
+  async knn<T>(
+    constructor: new (...arguments_: never[]) => T,
+    indexName: string,
+    vector: number[],
+    k: number,
+    mode?: KnnMode,
+    filters?: { withoutFilters?: string[] | undefined },
+  ): Promise<ScoredEntity<T>[]> {
+    assertPublicWithoutFilters(filters?.withoutFilters)
+
+    return knn<T>(this.handle, constructor, indexName, vector, k, mode, filters)
   }
 
   /**

@@ -10,6 +10,7 @@ import type { DeleteOptions } from './services/query/delete.service.js'
 import type { OrderSpec } from './services/query/get.service.js'
 import type { Builder } from './query/index.js'
 import type { ScoredEntity } from './services/query/search.service.js'
+import type { KnnMode } from './services/query/knn.service.js'
 import type { MergeResult } from './services/query/merge.service.js'
 import type { ReplaceRelationshipOptions } from './services/query/replace-relationship.service.js'
 
@@ -171,6 +172,14 @@ export interface INeode {
     limit?: number,
     filters?: { withoutFilters?: string[] | undefined },
     database?: string,
+  ): Promise<ScoredEntity<T>[]>
+  knn<T>(
+    constructor: new (...arguments_: never[]) => T,
+    indexName: string,
+    vector: number[],
+    k: number,
+    mode?: KnnMode,
+    filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]>
   cypher(
     query: string,
