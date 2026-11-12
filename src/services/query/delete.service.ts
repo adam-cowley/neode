@@ -158,6 +158,13 @@ export class DeleteService extends QueryService {
       .relationship(relationship.getType(), relationship.getDirection(), relationshipAlias)
       .to(nodeAlias, targetSchema instanceof EntitySchema ? targetSchema.getLabels() : false)
 
+    // NTS-663: the node about to be cascade-deleted may hold claims of its
+    // own — release them before its DETACH DELETE, at every depth (the
+    // deletion is recursive, so the stale-claim hazard is too)
+    if (targetSchema instanceof EntitySchema) {
+      addEnforceClaimRemoval(builder, targetSchema, nodeAlias)
+    }
+
     if (targetSchema instanceof EntitySchema) {
       for (const targetRelationship of targetSchema.getRelationships()) {
         this.addCascadeDelete(

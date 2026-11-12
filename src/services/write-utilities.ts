@@ -212,12 +212,24 @@ export function addEnforceClaimRemoval(
   schema: EntitySchema,
   alias: string,
 ): void {
+  // The subqueries' RETURN projects into the outer scope, so the aggregate
+  // column must be unique across the WHOLE statement — cascade frames add
+  // their own subqueries (a second `claim_removed` is a VariableAlreadyBound
+  // syntax error), hence the alias-qualified name
+  let index = 0
+
   for (const relationship of schema.getRelationships()) {
     const enforceProperty = resolveEnforceProperty(relationship, safeTargetSchema(relationship))
 
     if (enforceProperty === undefined) {
+      index += 1
+
       continue
     }
+
+    const column = `claim_removed_${alias}_${String(index)}`
+
+    index += 1
 
     builder.call(
       (sub) =>
@@ -226,7 +238,7 @@ export function addEnforceClaimRemoval(
           .relationship(relationship.getType(), relationship.getDirection(), 'claim_rel')
           .to('claim_target')
           .remove(`claim_target.${quote(enforceProperty)}`)
-          .return('count(*) AS claim_removed'),
+          .return(`count(*) AS ${column}`),
       [alias],
     )
   }
@@ -482,6 +494,24 @@ export async function createNodeAndRelationships(
     }
 
     validateEdgeProperties(schema.getRelationship(key), properties)
+  }
+
+  // NTS-663: stamp the primary key's resolved create value onto the model
+  // BEFORE anything runs — a generated @Uuid resolves per call, and the
+  // nested enforce claims (read later, in createRelationships) must see the
+  // SAME value createNode writes, not a second random draw
+  const primaryKey = schema.getPrimaryKey()
+
+  if (primaryKey !== undefined) {
+    const pkKey = primaryKey.getKey()
+
+    if (!Object.hasOwn(model, pkKey) || Reflect.get(model, pkKey) === undefined) {
+      const resolved = valueWithFake(model, primaryKey, schema)
+
+      if (resolved !== undefined && resolved !== null) {
+        Reflect.set(model, pkKey, resolved)
+      }
+    }
   }
 
   // NTS-627: primary-key values relate EXISTING targets in the root
