@@ -307,7 +307,7 @@ const output = await new Builder()
   .execute(neode.getConnection(), 'READ')
 ```
 
-The fluent surface you know carries over — `match()`, `optionalMatch()`, `where()` (and `whereId`, `whereRaw`, `whereBetween`, `whereNot`, `or`), `create()`, `merge()`, `set()`, `onCreateSet()`, `onMatchSet()`, `delete()`, `detachDelete()`, `remove()`, `return()`, `orderBy()`, `limit()`, `skip()`, `with()`, `relationship()` — plus new predicates (`whereIn`, `whereContains`, `whereStartsWith`, `whereEndsWith`, `whereNull`, `whereExists`, `whereLabel`, `whereGroup`). All values are passed as query parameters — the generated query contains only aliases.
+The fluent surface you know carries over — `match()`, `optionalMatch()`, `where()` (and `whereId`, `whereRaw`, `whereBetween`, `whereNot`, `or`), `create()`, `merge()`, `set()`, `onCreateSet()`, `onMatchSet()`, `delete()`, `detachDelete()`, `remove()`, `return()`, `orderBy()`, `limit()`, `skip()`, `with()`, `relationship()` — plus new predicates (`whereIn`, `whereContains`, `whereStartsWith`, `whereEndsWith`, `whereNull`, `whereExists`, `whereNotPattern`, `whereLabel`, `whereGroup`). All values are passed as query parameters — the generated query contains only aliases.
 
 What moved:
 

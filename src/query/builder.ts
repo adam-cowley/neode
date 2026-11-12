@@ -793,6 +793,19 @@ export class Builder {
   }
 
   /**
+  Negative pattern predicate (NTS-657): `WHERE NOT (alias)<-[:TYPE]-()` —
+  "node with no such relationship" as a pattern predicate. The supported
+  form for negative graph patterns: the OPTIONAL MATCH + IS NULL idiom
+  silently mis-filters on the embedded engine. No user values flow into
+  the pattern, so nothing needs parameterising.
+  */
+  whereNotPattern(alias: string, type: string, direction?: string): this {
+    const relationship = new Relationship(type, direction)
+
+    return this.whereRaw(`NOT (${alias})${relationship.toString()}()`)
+  }
+
+  /**
   `ANY(variable IN list WHERE predicate)` over a list expression
   (a property holding a list, or a literal list). The predicate is
   taken verbatim - inline literals or use whereRaw for parameters.

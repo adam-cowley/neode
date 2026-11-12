@@ -51,6 +51,13 @@ describe('Query builder predicates (live engine)', () => {
     expect(await run((b) => b.whereExists('(n)-[:KNOWS]->(:Person)'))).toEqual(['Adam'])
   })
 
+  it('whereNotPattern keeps only nodes with no matching relationship (NTS-657)', async () => {
+    // Adam KNOWS Ada: the negative pattern reads the edge as absent from
+    // each side — the orphan-detection semantic of the data-quality checks
+    expect(await run((b) => b.whereNotPattern('n', 'KNOWS', 'out'))).toEqual(['Ada'])
+    expect(await run((b) => b.whereNotPattern('n', 'KNOWS', 'in'))).toEqual(['Adam'])
+  })
+
   it('whereAny filters over a list property', async () => {
     expect(await run((b) => b.whereAny('t', 'n.tags', "t = 'admin'"))).toEqual(['Adam'])
   })

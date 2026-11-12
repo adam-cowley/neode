@@ -770,6 +770,37 @@ describe('QueryBuilder', () => {
     })
   })
 
+  describe('whereNotPattern', () => {
+    it('renders the negative pattern predicate (incoming)', () => {
+      const builder = new Builder()
+      const { query } = builder
+        .match('p', 'Product')
+        .whereNotPattern('p', 'CONTAINS', 'in')
+        .return('p')
+        .build()
+
+      expect(query).toBe('MATCH (p:Product)\nWHERE (NOT (p)<-[:`CONTAINS`]-())\nRETURN p')
+    })
+
+    it('renders outgoing and undirected negative patterns', () => {
+      const outgoing = new Builder()
+        .match('o', 'Order')
+        .whereNotPattern('o', 'CONTAINS', 'out')
+        .return('o')
+        .build()
+
+      expect(outgoing.query).toBe('MATCH (o:Order)\nWHERE (NOT (o)-[:`CONTAINS`]->())\nRETURN o')
+
+      const undirected = new Builder()
+        .match('n', 'Person')
+        .whereNotPattern('n', 'KNOWS')
+        .return('n')
+        .build()
+
+      expect(undirected.query).toBe('MATCH (n:Person)\nWHERE (NOT (n)-[:`KNOWS`]-())\nRETURN n')
+    })
+  })
+
   describe('whereLabel', () => {
     it('adds a label predicate', () => {
       const builder = new Builder()
