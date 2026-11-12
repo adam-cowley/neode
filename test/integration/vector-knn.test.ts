@@ -4,7 +4,15 @@
 import { openBackend, TestBackend } from './support/backend'
 import { knn } from '../../src/services/query/knn.service'
 import { VectorIndexService, vectorIndexName } from '../../src/services/schema/vector.service'
-import { NodeEntity, InternalId, Float, Filter, Property, SoftDelete, Vector } from '../../src/decorators'
+import {
+  NodeEntity,
+  InternalId,
+  Float,
+  Filter,
+  Property,
+  SoftDelete,
+  Vector,
+} from '../../src/decorators'
 import { clearFilterParams, setFilterParams } from '../../src/index'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
