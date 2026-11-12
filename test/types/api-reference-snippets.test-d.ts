@@ -20,6 +20,7 @@
  */
 import { describe, expectTypeOf, it } from 'vitest'
 import Neode, {
+  applySchemaDrift,
   Builder,
   Computed,
   ConstraintViolationError,
@@ -68,6 +69,8 @@ import type {
   QueryOutput,
   QueryParams,
   Runner,
+  SchemaDrift,
+  SchemaResult,
   TransactionHandle,
   WithMethods,
 } from 'neode'
@@ -387,6 +390,19 @@ export async function schemaSync(neode: Neode): Promise<unknown> {
   return results
 }
 
+// Block: schema drift — apply + verification in one call (NTS-659)
+export async function applySchemaDriftReport(
+  connection: RealConnectionProvider,
+  drift: SchemaDrift,
+): Promise<unknown> {
+  const report = await applySchemaDrift(connection, drift, {
+    dropStale: false,
+    returnDriftAfter: true, // NTS-659 — { statements, driftAfter }: one extra probe serves apply + verification
+  })
+
+  return report
+}
+
 // Block: soft delete
 export async function softDelete(neode: Neode): Promise<void> {
   const repo = neode.getRepository(Product)
@@ -649,5 +665,25 @@ describe('api-reference.md snippets', () => {
     }
 
     expectTypeOf(probe).returns.toEqualTypeOf<Promise<unknown>>()
+  })
+
+  it('applySchemaDrift returnDriftAfter returns statements + driftAfter (NTS-659)', () => {
+    async function probe(connection: RealConnectionProvider, drift: SchemaDrift) {
+      return applySchemaDrift(connection, drift, { returnDriftAfter: true })
+    }
+
+    // a valid (empty) drift: this runs at runtime too, where it applies
+    // nothing and returns []
+    const emptyDrift = {
+      constraints: { missing: [], stale: [], mismatched: [] },
+      indexes: { missing: [], stale: [], mismatched: [] },
+    } as SchemaDrift
+
+    expectTypeOf(probe).returns.toEqualTypeOf<
+      Promise<{ statements: SchemaResult[]; driftAfter: SchemaDrift }>
+    >()
+    expectTypeOf(applySchemaDrift({} as RealConnectionProvider, emptyDrift)).toEqualTypeOf<
+      Promise<SchemaResult[]>
+    >()
   })
 })

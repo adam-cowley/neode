@@ -456,6 +456,40 @@ describe('applySchemaDiff (NTS-450)', () => {
     },
   })
 
+  it('returns only the statements without returnDriftAfter (NTS-659 shape unchanged)', async () => {
+    const { connection, statements } = provider([], [])
+
+    const results = await applySchemaDrift(connection, drift(), { dropStale: false })
+
+    expect(Array.isArray(results)).toBe(true)
+    expect(results).toHaveLength(3)
+    expect(results.every((result) => result.success && result.action === 'CREATE')).toBe(true)
+    expect(statements).toEqual([
+      'CREATE CONSTRAINT person_email_unique IF NOT EXISTS FOR (n:`Person`) REQUIRE n.`email` IS UNIQUE',
+      'CREATE VECTOR INDEX movie_emb_vector IF NOT EXISTS FOR (n:`Movie`) ON (n.`emb`)',
+      'CREATE INDEX driftperson_city_region_index_6e8d6d7e IF NOT EXISTS FOR (n:`DriftPerson`) ON (n.`city`, n.`region`)',
+    ])
+  })
+
+  it('returns the post-apply drift with returnDriftAfter: true (NTS-659)', async () => {
+    const { connection } = provider([], [])
+
+    const report = await applySchemaDrift(connection, drift(), {
+      dropStale: false,
+      returnDriftAfter: true,
+    })
+
+    expect(report.statements).toHaveLength(3)
+    expect(report.statements.every((result) => result.success)).toBe(true)
+    // the re-probe ran a fresh inspection against the mock's empty
+    // database: every declared object of the registered models is
+    // missing again (e.g. the model-declared score index)
+    expect(report.driftAfter.indexes.missing.map((entry) => entry.name)).toContain(
+      'driftperson_score_index_d7e8455b',
+    )
+    expect(report.driftAfter.constraints.missing.length).toBeGreaterThan(0)
+  })
+
   it('applies only missing objects by default — stale and mismatched are left alone', async () => {
     const { connection, statements } = provider([], [])
 

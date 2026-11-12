@@ -142,7 +142,8 @@ await neode.installSchema()
 ### Schema management API
 
 - `ApplySchemaDiffOptions` (interface) — Options for applySchemaDrift.
-- `applySchemaDrift` (function) — Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive: on a shared database "stale" objects may belong to other applications — review the drift first). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450).
+- `applySchemaDrift` (function) — Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive: on a shared database "stale" objects may belong to other applications — review the drift first). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450). With `returnDriftAfter: true` (NTS-659) one extra inspection pass runs after the statements and the call returns `{ statements, driftAfter }` instead — the caller's verification probe, applied and reported in one round trip.
+- `ApplySchemaDriftReport` (interface) — NTS-659 — the result of applySchemaDrift with `returnDriftAfter: true`: the applied statements plus the drift of a single post-apply inspection pass, so one probe serves apply + verification
 - `formatSchemaDrift` (function) — Human-readable multi-line drift report, grouped by action (missing / stale / mismatched), one line per object plus its fix statement. Pure function — no database access (NTS-450).
 - `FulltextIndexDefinition` (interface) — A full-text index to keep installed on the database
 - `FulltextIndexService` (class) — Installs/drops the given full-text index definitions, following the same result-reporting pattern as SchemaService
