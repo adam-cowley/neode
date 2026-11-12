@@ -239,14 +239,14 @@ export class RelateService extends QueryService {
     builder.matchEntity(fromAlias, schema, fromMatch)
     builder.matchEntity(toAlias, targetSchema, toMatch)
 
-    // NTS-663: relate = claim. The onClaimed policy decides what happens
+    // NTS-663: relate = claim. The claimConflict policy decides what happens
     // when the target is already claimed by a different source.
     const claim = resolveEnforceClaim(relationship, schema, fromEntity, targetSchema)
 
     if (claim !== undefined) {
       const claimed = `${toAlias}.${quote(claim.property)}`
 
-      if (relationship.getOnClaimed() === 'detach') {
+      if (relationship.getClaimConflict() === 'detach') {
         // Steal: delete every other claimant's edges on this relationship
         // in the same statement. Pattern comprehension + FOREACH — no
         // OPTIONAL MATCH, and the row survives whether or not a previous
@@ -306,7 +306,7 @@ export class RelateService extends QueryService {
     // the two so the conflict fails loudly, naming the current claimant
     if (
       claim !== undefined &&
-      relationship.getOnClaimed() === 'throw' &&
+      relationship.getClaimConflict() === 'throw' &&
       (related === undefined || related === null || !isGraphRelationship(related))
     ) {
       const probe = new Builder()
@@ -326,7 +326,7 @@ export class RelateService extends QueryService {
           `Cannot relate "${relationship.getKey()}" — the target is already claimed by ` +
             `${JSON.stringify(current)}: its enforce property "${claim.property}" names ` +
             'another source. Detach the existing claim first (syncEdges / replaceRelationship) ' +
-            "or declare onClaimed: 'detach' on the relationship.",
+            "or declare claimConflict: 'detach' on the relationship.",
         )
       }
     }

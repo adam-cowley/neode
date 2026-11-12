@@ -70,7 +70,7 @@ export class RelationshipPropertySchema {
   What relate() does when the target is already claimed by a different
   source (NTS-663). Undefined — 'refuse' (the default).
   */
-  private onClaimed: ClaimConflictPolicy | undefined
+  private claimConflict: ClaimConflictPolicy | undefined
 
   /**
   Free-text explanation emitted by the agent ontology (NTS-445)
@@ -178,15 +178,15 @@ export class RelationshipPropertySchema {
     return this.enforce
   }
 
-  setOnClaimed(onClaimed: ClaimConflictPolicy): void {
-    this.onClaimed = onClaimed
+  setClaimConflict(claimConflict: ClaimConflictPolicy): void {
+    this.claimConflict = claimConflict
   }
 
   /**
   The claim-conflict policy (NTS-663), 'refuse' when undeclared
   */
-  getOnClaimed(): ClaimConflictPolicy {
-    return this.onClaimed ?? 'refuse'
+  getClaimConflict(): ClaimConflictPolicy {
+    return this.claimConflict ?? 'refuse'
   }
 
   setEager(isEager: boolean): void {

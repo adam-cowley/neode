@@ -565,7 +565,7 @@ class N663ThrowPerson {
     direction: Direction.OUTGOING,
     cardinality: 'one',
     enforce: 'currentOccupantId',
-    onClaimed: 'throw',
+    claimConflict: 'throw',
   })
   address: N663Address | undefined
 }
@@ -587,7 +587,7 @@ class N663DetachPerson {
     direction: Direction.OUTGOING,
     cardinality: 'one',
     enforce: 'currentOccupantId',
-    onClaimed: 'detach',
+    claimConflict: 'detach',
   })
   address: N663Address | undefined
 }
@@ -674,7 +674,7 @@ describe('enforce: DB-claimed one-cardinality (NTS-663)', () => {
     expect(await claimOf('1 Main St')).toBe(personA.id)
   })
 
-  it('onClaimed: throw fails loudly naming the current claimant', async () => {
+  it('claimConflict: throw fails loudly naming the current claimant', async () => {
     const personA = await saved(N663ThrowPerson, { name: 'A' })
     const personB = await saved(N663ThrowPerson, { name: 'B' })
     const address = await saved(N663Address, { line: '3 Throw St' })
@@ -688,7 +688,7 @@ describe('enforce: DB-claimed one-cardinality (NTS-663)', () => {
     expect(await claimOf('3 Throw St')).toBe(personA.id)
   })
 
-  it('onClaimed: detach moves the claim and releases the other source', async () => {
+  it('claimConflict: detach moves the claim and releases the other source', async () => {
     const personA = await saved(N663DetachPerson, { name: 'A' })
     const personB = await saved(N663DetachPerson, { name: 'B' })
     const address = await saved(N663Address, { line: '4 Detach St' })

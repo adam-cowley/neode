@@ -366,7 +366,7 @@ export interface RelationshipDefinition {
   source (NTS-663): 'refuse' (default), 'detach' (the claim moves) or
   'throw'. Requires `enforce`.
   */
-  onClaimed?: ClaimConflictPolicy
+  claimConflict?: ClaimConflictPolicy
 }
 
 /**

@@ -58,14 +58,14 @@ export function OneToMany(
         source (NTS-663): 'refuse' (default), 'detach' (the claim moves) or
         'throw'. Requires `enforce`.
         */
-        onClaimed?: ClaimConflictPolicy
+        claimConflict?: ClaimConflictPolicy
       },
   isEager?: boolean,
   description?: string,
   isCascade?: boolean,
   cardinality?: RelationshipCardinality,
   enforce?: string,
-  onClaimed?: ClaimConflictPolicy,
+  claimConflict?: ClaimConflictPolicy,
 ): (value: undefined, context: ClassFieldDecoratorContext) => void {
   return function (_value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = memberName(context)
@@ -79,7 +79,7 @@ export function OneToMany(
     const cascade = config ? config.cascade : isCascade
     const relationshipCardinality = config ? config.cardinality : cardinality
     const relationshipEnforce = config ? config.enforce : enforce
-    const relationshipOnClaimed = config ? config.onClaimed : onClaimed
+    const relationshipClaimConflict = config ? config.claimConflict : claimConflict
 
     addRegistration(context.metadata, (constructor) => {
       // Merge Property Key
@@ -95,7 +95,7 @@ export function OneToMany(
         cascade,
         relationshipCardinality,
         relationshipEnforce,
-        relationshipOnClaimed,
+        relationshipClaimConflict,
       )
     })
   }

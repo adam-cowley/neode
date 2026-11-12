@@ -44,5 +44,5 @@ export interface RelationshipConfig {
   statement so the claim moves; 'throw' raises NeodeError naming the
   current claimant. Requires `enforce`.
   */
-  onClaimed?: ClaimConflictPolicy
+  claimConflict?: ClaimConflictPolicy
 }

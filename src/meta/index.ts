@@ -299,7 +299,7 @@ export function mergeRelationshipProperty(
   isCascade = false,
   cardinality?: RelationshipCardinality,
   enforce?: string,
-  onClaimed?: ClaimConflictPolicy,
+  claimConflict?: ClaimConflictPolicy,
 ): RelationshipPropertySchema {
   const model = mergeModel(constructor)
 
@@ -327,8 +327,8 @@ export function mergeRelationshipProperty(
   }
 
   // Claim-conflict policy (NTS-663)
-  if (onClaimed !== undefined) {
-    relationship.setOnClaimed(onClaimed)
+  if (claimConflict !== undefined) {
+    relationship.setClaimConflict(claimConflict)
   }
 
   // Agent-facing relationship explanation (NTS-445)
