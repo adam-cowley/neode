@@ -1,13 +1,14 @@
 import { Match } from './match.js'
 import { NeodeError } from '../errors/index.js'
 import { Order } from './order.js'
+import { PathPattern } from './path.js'
 import { Property } from './property.js'
 import { RawExpression } from './expressions.js'
 import { Relationship } from './relationship.js'
 import { Statement } from './statement.js'
 import { Where, OPERATOR_EQUALS, assertComparisonOperator } from './where.js'
 import type { ComparisonOperator } from './where.js'
-import { quote, quoteReference } from './quote.js'
+import { quote, quoteReference, assertAlias } from './quote.js'
 import { LabelPredicate } from './label-predicate.js'
 import { WhereBetween } from './where-between.js'
 import { WhereId } from './where-id.js'
@@ -47,6 +48,24 @@ export interface EntityMatchCriteria {
 }
 
 export type BuilderParameters = Record<string, unknown>
+
+/**
+Options for Builder.shortestPath() (NTS-658)
+*/
+export interface ShortestPathOptions {
+  /**
+  Relationship type (or types) the path may traverse
+  */
+  relationship?: string | string[]
+  /**
+  Direction of the relationship pattern — defaults to BOTH (undirected)
+  */
+  direction?: string
+  /**
+  Number of traversals (`2`, `'1..2'`, `'..3'`)
+  */
+  degrees?: number | string
+}
 
 /**
 Scan compiled query text for `$name` parameter references (NTS-478).
@@ -485,6 +504,46 @@ export class Builder {
   `MATCH <variable> = <pattern>` on the segment's MATCH keyword (NTS-593)
   */
   asPath(variable: string): this {
+    this.activeStatement.asPath(variable)
+
+    return this
+  }
+
+  /**
+  `MATCH <variable> = shortestPath((from)-[:TYPE]-(to))` (NTS-658): a
+  shortest-path match over its own segment, bound to a path variable a
+  RETURN can reference (`expr.nodes(variable)`, `expr.relationships(variable)`).
+  `direction` defaults to BOTH — shortestPath's common form; `degrees`
+  bounds the traversal count (`2`, `'1..2'`, `'..3'`). The variable, from
+  and to arguments are plain variable names (validated like aliases —
+  structure, never data). A pinned multi-hop pattern (an exact chain of
+  typed edges, where a multi-type shortestPath could return a wrong-shaped
+  path) stays with match() / relationship() / to() / asPath().
+  */
+  shortestPath(
+    variable: string,
+    from: string,
+    to: string,
+    options: ShortestPathOptions = {},
+  ): this {
+    this.whereStatement('WHERE')
+    this.statement()
+    this.bridgeWriteToRead()
+
+    assertAlias(variable, 'shortestPath()')
+    assertAlias(from, 'shortestPath()')
+    assertAlias(to, 'shortestPath()')
+
+    const relationship = new Relationship(
+      options.relationship,
+      options.direction,
+      undefined,
+      options.degrees,
+    )
+
+    this.activeStatement.match(
+      new PathPattern(`shortestPath((${from})${relationship.toString()}(${to}))`),
+    )
     this.activeStatement.asPath(variable)
 
     return this
