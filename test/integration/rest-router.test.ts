@@ -29,6 +29,15 @@ class RestPerson {
   email!: string
 }
 
+@NodeEntity()
+class RestGauge {
+  @Property({ type: 'number', primary: true })
+  id!: number
+
+  @String()
+  name!: string
+}
+
 // Map-defined model: the router mounts the shared registry, whatever
 // API registered it
 defineModel('RestMapItem', {
@@ -204,6 +213,20 @@ describe('rest router', () => {
 
     const notMounted = await request(app).get('/api/RestMapItem')
     expect(notMounted.status).toBe(404)
+  })
+
+  it('matches numeric primary keys through the string path id', async () => {
+    const app = appFor(backend)
+
+    const created = await request(app).post('/api/RestGauge').send({ id: 7, name: 'gauge' })
+    expect(created.status).toBe(201)
+
+    const read = await request(app).get('/api/RestGauge/7')
+    expect(read.status).toBe(200)
+    expect(read.body.name).toBe('gauge')
+
+    const removed = await request(app).delete('/api/RestGauge/7')
+    expect(removed.status).toBe(204)
   })
 
   it('reports a unique-conflict as 409', async () => {

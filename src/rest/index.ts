@@ -226,6 +226,18 @@ export async function handleList(
 }
 
 /**
+The :id path segment is always a string, but primary keys are typed —
+`/Supplier/9999` must match the number 9999. Convert through the
+primary property's declared type; keys without a declared primary pass
+through (find() raises its own descriptive error for those models).
+*/
+function findValue(schema: EntitySchema | undefined, id: string): string | number {
+  const primary = schema?.getPrimaryKey()
+
+  return primary === undefined ? id : coerceNumeric(primary.getType(), id)
+}
+
+/**
 `GET /:model/:id` — find(model, id) on the primary key
 */
 export async function handleGet(
@@ -233,7 +245,9 @@ export async function handleGet(
   constructor: Newable,
   id: string,
 ): Promise<RestResponse> {
-  return found(await neode.find(constructor, id))
+  const value = findValue(getModel(constructor), id)
+
+  return found(await neode.find(constructor, value))
 }
 
 /**
@@ -258,7 +272,8 @@ export async function handleUpdate(
   id: string,
   body: unknown,
 ): Promise<RestResponse> {
-  const entity = await neode.find(constructor, id)
+  const schema = getModel(constructor)
+  const entity = await neode.find(constructor, findValue(schema, id))
 
   if (!isRecord(entity)) {
     return notFound()
@@ -266,7 +281,7 @@ export async function handleUpdate(
 
   await neode.update(entity, asRecord(body, 'update'))
 
-  return found(await neode.find(constructor, id))
+  return found(await neode.find(constructor, findValue(schema, id)))
 }
 
 /**
@@ -277,7 +292,9 @@ export async function handleDelete(
   constructor: Newable,
   id: string,
 ): Promise<RestResponse> {
-  const entity = await neode.find(constructor, id)
+  const schema = getModel(constructor)
+  const value = findValue(schema, id)
+  const entity = await neode.find(constructor, value)
 
   if (!isRecord(entity)) {
     return notFound()
