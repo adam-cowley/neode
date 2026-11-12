@@ -191,6 +191,8 @@ export type {
   BulkChunk,
   BulkOptions,
   BulkRowFailure,
+  RelateManyResult,
+  RelateManyRow,
   RowPropertiesResult,
   RowToPropertiesOptions,
 } from './services/query/bulk.service.js'
