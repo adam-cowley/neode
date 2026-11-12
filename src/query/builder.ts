@@ -5,8 +5,9 @@ import { Property } from './property.js'
 import { RawExpression } from './expressions.js'
 import { Relationship } from './relationship.js'
 import { Statement } from './statement.js'
-import { Where, OPERATOR_EQUALS } from './where.js'
-import { quote } from './quote.js'
+import { Where, OPERATOR_EQUALS, assertComparisonOperator } from './where.js'
+import type { ComparisonOperator } from './where.js'
+import { quote, quoteReference } from './quote.js'
 import { LabelPredicate } from './label-predicate.js'
 import { WhereBetween } from './where-between.js'
 import { WhereId } from './where-id.js'
@@ -666,6 +667,28 @@ export class Builder {
   }
 
   /**
+  Property-to-property comparison (NTS-656): both sides are references —
+  an alias or `alias.property` — comparing two variables, which where()
+  cannot express (every where() value binds as a parameter). Reference
+  sides render as quoted identifiers, never parameters; the operator is
+  validated against the same set the Where clause renders. Composes with
+  or() / whereGroup() like any where clause.
+  */
+  whereProps(left: string, operator: ComparisonOperator, right: string): this {
+    assertComparisonOperator(operator)
+
+    this.activeWhereClause.append(
+      new Where(
+        quoteReference(left, 'whereProps()'),
+        operator,
+        quoteReference(right, 'whereProps()'),
+      ),
+    )
+
+    return this
+  }
+
+  /**
   Query on element ID
   */
   whereId(alias: string, value: string | number): this {
@@ -736,6 +759,16 @@ export class Builder {
     this.activeWhereClause.append(new Where(property, 'IN', `$${variable}`))
 
     return this
+  }
+
+  /**
+  Membership test against a reference list (NTS-656): `property IN listRef`,
+  where `listRef` is an alias holding a collected list — the reference-side
+  counterpart of whereIn (whose values bind as a parameter). Both sides
+  render as quoted identifiers.
+  */
+  whereInRefs(property: string, listReference: string): this {
+    return this.whereProps(property, 'IN', listReference)
   }
 
   /**

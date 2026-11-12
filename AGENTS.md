@@ -178,6 +178,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `caseExpr` (function) — CASE expression: `CASE WHEN c1 THEN t1 [WHEN …] [ELSE fallback] END`. Conditions and results are Cypher expressions composed by the caller.
 - `clearFilterParams` (function) — Clear every filter param (test hygiene — the store is global).
 - `Collection` (class) — An iterable wrapper over an array of entities (parity with neode's Collection): reads like an array, serialises through toJson().
+- `ComparisonOperator` (type) — The operator parameter of whereProps(): one of the ref-to-ref comparison operators (the set the Where clause renders over two references).
 - `ConnectionOptions` (interface) — Options a Neode instance accepts alongside its ConnectionProvider.
 - `ConnectionProvider` (interface) — The connection port implemented by every backend.
 - `CreateOptions` (interface) — Eager relationship creation on the write path (NTS-615): `relate` maps a relationship KEY (or type) on the written model to the saved target entity — or array of targets — to relate it to, inside the same managed transaction as the write. Edges are MERGE-based, so a retried write stays idempotent (the same guarantee relate() gives).
@@ -309,7 +310,7 @@ const name = testId('person') // unique per-run ids, safe for parallel suites
 
 ### Error taxonomy
 
-- `CardinalityViolationError` (class) — Raised when a write would give a relationship more edges than its declared cardinality allows (NTS-161): relating a second edge onto a `one` / `zeroOrOne` relationship — through relate(), a multi-target save, or syncEdges — names the relationship, the violated cardinality and the fix. Detach the existing edge first (or use syncEdges, which detaches for you), or change the declaration to `many`.
+- `CardinalityViolationError` (class) — Raised when a write would give a relationship more edges than its declared cardinality allows (NTS-161): relating a second edge onto a `one` / `zeroOrOne` relationship — through relate(), a multi-target save, syncEdges or replaceRelationship — names the relationship, the violated cardinality and the fix. Detach the existing edge first (or use syncEdges, which detaches for you), or change the declaration to `many`.
 - `classifyError` (function) — Map a raw driver/engine error to the typed taxonomy (NTS-129): constraint violations → ConstraintViolationError, transient codes and retryable-flagged failures → TransientError. Everything else — unknown shapes and already-typed errors — passes through untouched.
 - `ConstraintViolationError` (class) — A unique-constraint violation, raised on `merge()`/`create()` flows that race an existing node. `label`/`property` are parsed from the database message when it names them (Neo4j does; the embedded Relate engine only names the constraint), and stay undefined otherwise.
 - `isTransientError` (function) — Type guard for classified transient errors.
