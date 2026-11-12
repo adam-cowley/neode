@@ -399,6 +399,18 @@ ConnectionProvider over the embedded Relate engine (@relate/relate) — in-proce
 
 _source: driver/relate.ts_
 
+### `RelateManyResult` (interface)
+
+The relateMany() aggregate: edges MERGE-matched-or-created and the number of chunks written
+
+_source: services/query/bulk.service.ts_
+
+### `RelateManyRow` (interface)
+
+One row of relateMany(): the from- and to-node primary-key values plus optional edge properties
+
+_source: services/query/bulk.service.ts_
+
 ### `RelationshipEdgeRead` (interface)
 
 One result row of an edge-returning related() read (NTS-499): the hydrated related entity (`node`) alongside the traversed relationship itself (`edge`, the normalized GraphRelationship — type, elementId, endpoints and properties). The seed of the NTS-566 result-shape contract: flat, named, no wrapper classes.
