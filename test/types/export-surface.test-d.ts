@@ -8,6 +8,7 @@ import { describe, expectTypeOf, it } from 'vitest'
 import type {
   AccessMode,
   ApplySchemaDiffOptions,
+  ApplySchemaDriftReport,
   BatchStatementError,
   BulkChunk,
   BulkOptions,
@@ -259,6 +260,7 @@ describe('public export surface (NTS-600)', () => {
       [
         AccessMode,
         ApplySchemaDiffOptions,
+        ApplySchemaDriftReport,
         BatchStatementError,
         BulkChunk<unknown>,
         BulkOptions,

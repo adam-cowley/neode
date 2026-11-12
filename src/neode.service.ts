@@ -118,6 +118,7 @@ import { UpdateService } from './services/query/update.service.js'
 import { WithinDistanceService } from './services/query/within-distance.service.js'
 import {
   type ApplySchemaDiffOptions,
+  type ApplySchemaDriftReport,
   applySchemaDrift,
   formatSchemaDrift,
   type SchemaDrift,
@@ -2091,12 +2092,22 @@ export class Neode implements INeode {
   destructive: they are installed on the connected database, which on a
   shared one may belong to other applications). Reports each statement like installSchema (NTS-450).
   A `database` option applies against that database per call (NTS-645),
-  winning over the setDatabase() default.
+  winning over the setDatabase() default. `returnDriftAfter: true`
+  (NTS-659) runs one post-apply inspection pass and returns
+  `{ statements, driftAfter }` — one probe serves apply + verification.
   */
   async applySchemaDiff(
     diff: SchemaDrift,
+    options: ApplySchemaDiffOptions & PerCallDatabaseOption & { returnDriftAfter: true },
+  ): Promise<ApplySchemaDriftReport>
+  async applySchemaDiff(
+    diff: SchemaDrift,
+    options?: ApplySchemaDiffOptions & PerCallDatabaseOption,
+  ): Promise<SchemaResult[]>
+  async applySchemaDiff(
+    diff: SchemaDrift,
     options: ApplySchemaDiffOptions & PerCallDatabaseOption = {},
-  ): Promise<SchemaResult[]> {
+  ): Promise<SchemaResult[] | ApplySchemaDriftReport> {
     return applySchemaDrift(this.connectionOn(options.database), diff, options)
   }
 

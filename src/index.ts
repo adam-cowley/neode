@@ -249,6 +249,7 @@ export type {
   SchemaDriftGroup,
   SchemaDriftEntry,
   ApplySchemaDiffOptions,
+  ApplySchemaDriftReport,
 } from './services/schema/drift.service.js'
 
 // Agent ontology (NTS-445)

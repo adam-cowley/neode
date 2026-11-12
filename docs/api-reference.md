@@ -845,8 +845,15 @@ console.log(formatSchemaDrift(drift)) // human-readable, grouped by missing / st
 await applySchemaDrift(connection, drift, { dropStale?: boolean }) // idempotent apply (IF NOT EXISTS)
 ```
 
+```typescript
+const report = await applySchemaDrift(connection, drift, {
+  dropStale: false,
+  returnDriftAfter: true, // NTS-659: { statements, driftAfter } — one extra probe serves apply + verification
+})
+```
+
 - `schemaDrift` — declared-vs-installed inspection of constraints and every index kind (range/text/fulltext/vector), one `SchemaDriftEntry` per object carrying the CREATE/DROP statement that would resolve it. `SchemaDriftGroup` groups one family by action; `ApplySchemaDiffOptions.dropStale` also drops installed-but-undeclared objects (destructive, off by default).
-- `applySchemaDrift` — apply the missing objects idempotently; mismatched objects are never auto-applied; stale objects only dropped with `dropStale: true`. Each statement is reported with a `SchemaResult`.
+- `applySchemaDrift` — apply the missing objects idempotently; mismatched objects are never auto-applied; stale objects only dropped with `dropStale: true`. Each statement is reported with a `SchemaResult`. With `returnDriftAfter: true` (NTS-659) it runs one post-apply inspection pass and returns `{ statements, driftAfter }` — `driftAfter` is a fresh `schemaDrift()` over the same `InspectOptions` (the `fulltext` / `vector` / `graphTypeConstraints` you pass flow through to the re-probe), so the verification report comes from the same call that applied the fixes. Without the flag the return stays `SchemaResult[]`.
 - The facade mirrors these as `neode.inspectSchema(options?)`, `neode.schemaDiff(options?)`, `neode.formatSchemaDiff(diff)` and `neode.applySchemaDiff(diff, options?)` — they pass the instance's connection and declared index definitions for you. All of them (and `installSchema()` / `dropSchema()`) accept a `database` option that scopes the statements to that database per call (NTS-645).
 
 ## Soft delete
