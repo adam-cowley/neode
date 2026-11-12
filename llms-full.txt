@@ -1457,7 +1457,7 @@ so new fields (e.g. upcoming schema options) appear here automatically.
 | `default` | `DefaultValue` (optional) |  |
 | `primary` | `boolean` (optional) |  |
 | `fulltext` | `boolean` (optional) | Include in the model's full-text search index (NTS-436). |
-| `unique` | `boolean | string[]` (optional) | boolean: single-property unique constraint. string[]: composite unique covering exactly the listed properties (NTS-140) — declared on one property, the array is the full composite. |
+| `unique` | `boolean | string[]` (optional) | boolean: single-property unique constraint. string[]: composite unique covering exactly the listed properties (NTS-140) — declared on one property, the array is the full composite. Neo4j limits: uniqueness constraints are single-property — node key constraints are the Enterprise composite analogue (NTS-650). |
 | `onCreateSet` | `boolean` (optional) |  |
 | `onMatchSet` | `boolean` (optional) |  |
 | `alwaysSet` | `boolean` (optional) |  |
@@ -1469,7 +1469,7 @@ so new fields (e.g. upcoming schema options) appear here automatically.
 | `hidden` | `boolean` (optional) |  |
 | `protected` | `boolean` (optional) |  |
 | `readonly` | `boolean` (optional) |  |
-| `index` | `boolean | string[]` (optional) | boolean: single-property index. string[]: composite index covering exactly the listed properties (NTS-140). |
+| `index` | `boolean | string[]` (optional) | boolean: single-property index. string[]: composite index covering exactly the listed properties (NTS-140): one range index over all N properties, created by `installSchema()` and drift-covered by `schemaDrift()` / `applySchemaDrift()` (NTS-650). |
 | `exists` | `boolean` (optional) |  |
 | `typed` | `boolean` (optional) | Opt in to a property-type constraint generated from the declared type (NTS-141): `REQUIRE n.prop IS :: STRING`. |
 | `vector` | `VectorConfig` (optional) | Declare a vector index over the property (NTS-447): created by `installSchema()` with the deterministic `vectorIndexName()` naming and dropped by `dropSchema()`. |

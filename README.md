@@ -103,6 +103,8 @@ await neode.dropSchema() // reverses installSchema() exactly
 
 `exists` constraints need Neo4j Enterprise — set `NEO4J_ENTERPRISE=true` or call `neode.setEnterprise(true)`.
 
+`unique` and `index` also take a property list: `@Property({ type: 'string', index: ['city', 'region'] })` declares one composite range index over N properties (the array is the full composite, declared on one of its properties), and `installSchema()` / `dropSchema()` / `schemaDrift()` / `applySchemaDrift()` treat it like every other declaration. Two Neo4j limits: uniqueness constraints are single-property — for a composite pair, node key constraints are the Enterprise composite analogue — while composite range indexes have no such restriction.
+
 That's the whole loop. Everything else the library does is in the matrix below.
 
 > **Model definitions are process-global.** Models registered through decorators, `defineModel()` or `neode.model()` / `with()` live in one shared registry, so every `Neode` instance in a process sees them. One set of models per process is the intended shape; run separate processes for separate schemas. A model name registers once: `defineModel()` throws a descriptive error on a second registration of the same name (the previous silent overwrite orphaned the first model's schema), and `defineModel(name, schema, { idempotent: true })` returns the existing registration unchanged — the form to use where the defining module is re-evaluated (Nest HMR, Vitest watch mode).

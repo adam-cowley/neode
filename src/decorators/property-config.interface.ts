@@ -30,6 +30,8 @@ export interface PropertyConfig {
   boolean: single-property unique constraint.
   string[]: composite unique covering exactly the listed properties
   (NTS-140) — declared on one property, the array is the full composite.
+  Neo4j limits: uniqueness constraints are single-property — node key
+  constraints are the Enterprise composite analogue (NTS-650).
   */
   unique?: boolean | string[]
   onCreateSet?: boolean
@@ -66,7 +68,10 @@ export interface PropertyConfig {
   readonly?: boolean
   /**
   boolean: single-property index.
-  string[]: composite index covering exactly the listed properties (NTS-140).
+  string[]: composite index covering exactly the listed properties
+  (NTS-140): one range index over all N properties, created by
+  `installSchema()` and drift-covered by `schemaDrift()` /
+  `applySchemaDrift()` (NTS-650).
   */
   index?: boolean | string[]
   exists?: boolean
