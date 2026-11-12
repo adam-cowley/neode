@@ -1,4 +1,5 @@
 import { mergeRelationshipProperty } from '../../meta/index.js'
+import { toDirection } from '../../query/index.js'
 import type { RelationshipConfig } from '../relationship-config.interface.js'
 import { addRegistration, memberName } from '../registrations.js'
 
@@ -21,12 +22,14 @@ export function OneToOne(
         propertyKey,
         config.type,
         config.target(),
-        config.direction,
+        toDirection(config.direction),
         false,
         config.eager,
         config.description,
         config.cascade,
         config.cardinality,
+        config.enforce,
+        config.claimConflict,
       )
     })
   }

@@ -19,6 +19,7 @@ import { getModel } from '../../src/meta'
 import { ValidationError } from '../../src/validation'
 import { NeodeError } from '../../src/errors'
 import { BulkService, BulkChunkError } from '../../src/services/query/bulk.service'
+import { BulkService } from '../../src/services/query/bulk.service'
 import { PaginateService } from '../../src/services/query/paginate.service'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --

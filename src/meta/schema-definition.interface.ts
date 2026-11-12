@@ -1,6 +1,9 @@
 import type { DefaultValue, TimestampFormat } from './property-schema.js'
 import type { FilterDefinition } from './entity/entity-schema.js'
-import type { RelationshipCardinality } from './relationship-property-schema.js'
+import type {
+  ClaimConflictPolicy,
+  RelationshipCardinality,
+} from './relationship-property-schema.js'
 
 /**
 neode-compatible property type names for map-based schema definitions.
@@ -357,6 +360,18 @@ export interface RelationshipDefinition {
   / 'node' declare one, 'relationships' / 'nodes' declare many.
   */
   cardinality?: RelationshipCardinality
+  /**
+  DB-enforced inverse cardinality (NTS-663): names a `@Unique` property on
+  the TARGET model that neode's write paths keep pointed at this node's
+  primary key. Requires cardinality 'one' / 'zeroOrOne'.
+  */
+  enforce?: string
+  /**
+  What relate() does when the target is already claimed by a different
+  source (NTS-663): 'refuse' (default), 'detach' (the claim moves) or
+  'throw'. Requires `enforce`.
+  */
+  claimConflict?: ClaimConflictPolicy
 }
 
 /**

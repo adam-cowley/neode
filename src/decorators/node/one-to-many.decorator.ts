@@ -1,6 +1,9 @@
-import type { RelationshipCardinality } from '../../meta/relationship-property-schema.js'
+import type {
+  ClaimConflictPolicy,
+  RelationshipCardinality,
+} from '../../meta/relationship-property-schema.js'
 import type { Newable } from '../../meta/newable.js'
-import { Direction } from '../../query/index.js'
+import { Direction, toDirection } from '../../query/index.js'
 import { mergeRelationshipProperty } from '../../meta/index.js'
 import { addRegistration, memberName } from '../registrations.js'
 
@@ -44,11 +47,25 @@ export function OneToMany(
         Write-time cardinality (NTS-161): 'many' (default), 'one' or 'zeroOrOne'
         */
         cardinality?: RelationshipCardinality
+        /**
+        DB-enforced inverse cardinality (NTS-663): a `@Unique` property on the
+        TARGET model that the write paths keep pointed at this node's primary
+        key. Requires cardinality 'one' / 'zeroOrOne'.
+        */
+        enforce?: string
+        /**
+        What relate() does when the target is already claimed by a different
+        source (NTS-663): 'refuse' (default), 'detach' (the claim moves) or
+        'throw'. Requires `enforce`.
+        */
+        claimConflict?: ClaimConflictPolicy
       },
   isEager?: boolean,
   description?: string,
   isCascade?: boolean,
   cardinality?: RelationshipCardinality,
+  enforce?: string,
+  claimConflict?: ClaimConflictPolicy,
 ): (value: undefined, context: ClassFieldDecoratorContext) => void {
   return function (_value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = memberName(context)
@@ -56,11 +73,15 @@ export function OneToMany(
     const config = typeof directionOrConfig === 'object' ? directionOrConfig : undefined
     const positionalDirection =
       typeof directionOrConfig === 'string' ? directionOrConfig : undefined
-    const direction: Direction | undefined = config ? config.direction : positionalDirection
+    const direction: Direction | undefined = config
+      ? toDirection(config.direction)
+      : positionalDirection
     const eager = config ? config.eager : isEager
     const relationshipDescription = config ? config.description : description
     const cascade = config ? config.cascade : isCascade
     const relationshipCardinality = config ? config.cardinality : cardinality
+    const relationshipEnforce = config ? config.enforce : enforce
+    const relationshipClaimConflict = config ? config.claimConflict : claimConflict
 
     addRegistration(context.metadata, (constructor) => {
       // Merge Property Key
@@ -75,6 +96,8 @@ export function OneToMany(
         relationshipDescription,
         cascade,
         relationshipCardinality,
+        relationshipEnforce,
+        relationshipClaimConflict,
       )
     })
   }

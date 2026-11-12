@@ -21,11 +21,13 @@ import {
   assertCardinality,
   assertWritableDirection,
   modelPropertyValues,
+  resolveEnforceClaim,
   setPropertyExpression,
   setRelationshipEntityProperties,
   timestampProperty,
   versionProperty,
   MAX_SAVE_DEPTH,
+  type EnforceClaim,
 } from '../write-utilities.js'
 import { quote } from '../../query/quote.js'
 import { validate } from '../../validation/index.js'
@@ -197,6 +199,7 @@ export class MergeService extends QueryService {
     relationship: RelationshipPropertySchema,
     targetSchema: EntitySchema,
     entity: unknown,
+    claim?: EnforceClaim,
   ): Promise<unknown> {
     assertWritableDirection(relationship)
 
@@ -223,6 +226,11 @@ export class MergeService extends QueryService {
       setRelationshipEntityProperties(builder, thisRelationship, targetSchema, entity)
     }
 
+    // NTS-663: an enforce relationship claims its target
+    if (claim !== undefined) {
+      builder.set(`to.${quote(claim.property)}`, claim.value)
+    }
+
     const { query, params } = builder.build()
 
     return this.runner.run(query, params)
@@ -239,6 +247,7 @@ export class MergeService extends QueryService {
     relationship: RelationshipPropertySchema,
     targetSchema: EntitySchema,
     value: unknown,
+    claim?: EnforceClaim,
   ): Promise<void> {
     const primaryKey = assertPkTarget(relationship, targetSchema, value)
 
@@ -251,6 +260,11 @@ export class MergeService extends QueryService {
       .merge('from')
       .relationship(relationship.getType(), relationship.getDirection(), 'rel')
       .to('to')
+
+    // NTS-663: an enforce relationship claims its target
+    if (claim !== undefined) {
+      builder.set(`to.${quote(claim.property)}`, claim.value)
+    }
 
     builder.return('to')
 
@@ -587,6 +601,9 @@ export class MergeService extends QueryService {
 
         const targetSchema = getModel(targetEntity)
 
+        // NTS-663: the merged source claims its targets
+        const claim = resolveEnforceClaim(relationship, schema, model, targetSchema)
+
         if (targetSchema.getType() === EntityType.RelationshipEntity) {
           return Promise.all(
             values.map(async (element) => {
@@ -622,7 +639,14 @@ export class MergeService extends QueryService {
                 depth: depth + 1,
               })
 
-              await this.relateNodes(thisId, saved.elementId, relationship, targetSchema, element)
+              await this.relateNodes(
+                thisId,
+                saved.elementId,
+                relationship,
+                targetSchema,
+                element,
+                claim,
+              )
             }),
           )
         }
@@ -632,7 +656,7 @@ export class MergeService extends QueryService {
             // NTS-627: a primary-key value relates an EXISTING node in one
             // MERGE statement — entity instances keep the nested save walk
             if (!isRecord(element)) {
-              await this.relateExisting(thisId, relationship, targetSchema, element)
+              await this.relateExisting(thisId, relationship, targetSchema, element, claim)
 
               return
             }
@@ -645,7 +669,14 @@ export class MergeService extends QueryService {
             })
 
             // Relate the two nodes together
-            await this.relateNodes(thisId, saved.elementId, relationship, targetSchema, element)
+            await this.relateNodes(
+              thisId,
+              saved.elementId,
+              relationship,
+              targetSchema,
+              element,
+              claim,
+            )
           }),
         )
       }),

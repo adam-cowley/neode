@@ -1,27 +1,21 @@
 import { Builder } from '../../query/index.js'
 import { quote } from '../../query/quote.js'
+import { Direction } from '../../query/direction.js'
 import type { GraphRelationship } from '../../driver/types.js'
 import { getModel } from '../../meta/index.js'
 import { EntitySchema, EntityType } from '../../meta/entity/entity-schema.js'
 import type { Newable } from '../../meta/newable.js'
-import { PropertyType } from '../../meta/property-schema.js'
 import type { RelationshipPropertySchema } from '../../meta/relationship-property-schema.js'
 import { convertPropertyValue, matchCriteriaForEntity } from '../../utilities.js'
 import { QueryService } from './query.service.js'
 import { NeodeError } from '../../errors/index.js'
-import { assertCardinality, assertWritableDirection } from '../write-utilities.js'
-import { convertEdgeProperties } from '../relationship-values.js'
+import {
+  assertCardinality,
+  assertWritableDirection,
+  resolveEnforceClaim,
+} from '../write-utilities.js'
+import { convertEdgeProperties, INTERNAL_PROPERTY_TYPES } from '../relationship-values.js'
 import { constructorOf, isGraphRelationship } from '../type-guards.js'
-
-/**
-Property types describing relationship internals, never set on the edge
-*/
-const INTERNAL_PROPERTY_TYPES = new Set<PropertyType>([
-  PropertyType.INTERNAL_ID,
-  PropertyType.START_NODE,
-  PropertyType.END_NODE,
-  PropertyType.OTHER_NODE,
-])
 
 /**
 The cardinality guard's aliases (NTS-161): the other-end node and the
@@ -234,6 +228,33 @@ export class RelateService extends QueryService {
     builder.matchEntity(fromAlias, schema, fromMatch)
     builder.matchEntity(toAlias, targetSchema, toMatch)
 
+    // NTS-663: relate = claim. The claimConflict policy decides what happens
+    // when the target is already claimed by a different source.
+    const claim = resolveEnforceClaim(relationship, schema, fromEntity, targetSchema)
+
+    if (claim !== undefined) {
+      const claimed = `${toAlias}.${quote(claim.property)}`
+
+      if (relationship.getClaimConflict() === 'detach') {
+        // Steal: delete every other claimant's edges on this relationship
+        // in the same statement. Pattern comprehension + FOREACH — no
+        // OPTIONAL MATCH, and the row survives whether or not a previous
+        // claimant exists. The stored direction decides which end the
+        // other claimant sits on.
+        const stale =
+          relationship.getDirection() === Direction.INCOMING
+            ? `[(\`${toAlias}\`)${relationship.toString('stale_claim')}(other_claimant) WHERE elementId(other_claimant) <> elementId(${fromAlias}) | stale_claim]`
+            : `[(other_claimant)${relationship.toString('stale_claim')}(\`${toAlias}\`) WHERE elementId(other_claimant) <> elementId(${fromAlias}) | stale_claim]`
+
+        builder.forEach('stale_claim', stale, (sub) => sub.statement().delete('stale_claim'))
+      } else {
+        // refuse/throw: a target claimed by a DIFFERENT source loses its
+        // row — the claimant's own re-relate (same pk value) still matches
+        builder.whereRaw(`(${claimed} IS NULL OR ${claimed} = $enforce_claim)`)
+        builder.param('enforce_claim', claim.value)
+      }
+    }
+
     if (isForceCreate) {
       builder
         .create(fromAlias)
@@ -252,6 +273,13 @@ export class RelateService extends QueryService {
       this.setProperties(builder, relationship, relationshipAlias, properties, true)
     }
 
+    // NTS-663: an enforce relationship claims its target — SET the named
+    // unique property on the to-node to the source's primary-key value.
+    // Re-relating the same pair re-sets the same value (idempotent).
+    if (claim !== undefined) {
+      builder.set(`to.${quote(claim.property)}`, claim.value)
+    }
+
     builder.return(relationshipAlias)
 
     const { query, params } = builder.build()
@@ -259,6 +287,36 @@ export class RelateService extends QueryService {
     const result = await this.runner.run(query, params)
 
     const related: unknown = result.records[0]?.get(relationshipAlias)
+
+    // 'throw': zero rows mean the target is missing (existing undefined
+    // contract) or claimed by another source — one cheap probe separates
+    // the two so the conflict fails loudly, naming the current claimant
+    if (
+      claim !== undefined &&
+      relationship.getClaimConflict() === 'throw' &&
+      (related === undefined || related === null || !isGraphRelationship(related))
+    ) {
+      const probe = new Builder()
+
+      probe.matchEntity(toAlias, targetSchema, toMatch)
+
+      probe.return(`${toAlias}.${quote(claim.property)} AS claim_value`)
+
+      const probeQuery = probe.build()
+
+      const probeResult = await this.runner.run(probeQuery.query, probeQuery.params)
+
+      const current: unknown = probeResult.records[0]?.get('claim_value')
+
+      if (current !== null && current !== undefined) {
+        throw new NeodeError(
+          `Cannot relate "${relationship.getKey()}" — the target is already claimed by ` +
+            `${JSON.stringify(current)}: its enforce property "${claim.property}" names ` +
+            'another source. Detach the existing claim first (syncEdges / replaceRelationship) ' +
+            "or declare claimConflict: 'detach' on the relationship.",
+        )
+      }
+    }
 
     return isGraphRelationship(related) ? related : undefined
   }
@@ -297,6 +355,15 @@ export class RelateService extends QueryService {
       .to(toAlias)
 
     this.setProperties(builder, relationship, relationshipAlias, properties)
+
+    // NTS-663: an enforce relationship claims its target — SET the named
+    // unique property on the to-node to the source's primary-key value.
+    // Re-relating the same pair re-sets the same value (idempotent).
+    const claim = resolveEnforceClaim(relationship, schema, fromEntity, targetSchema)
+
+    if (claim !== undefined) {
+      builder.set(`to.${quote(claim.property)}`, claim.value)
+    }
 
     builder.return(relationshipAlias)
 

@@ -13,7 +13,7 @@ import { isRecord } from './type-guards.js'
 /**
 Property types describing relationship internals, never set on the edge
 */
-const INTERNAL_PROPERTY_TYPES = new Set<PropertyType>([
+export const INTERNAL_PROPERTY_TYPES = new Set<PropertyType>([
   PropertyType.INTERNAL_ID,
   PropertyType.START_NODE,
   PropertyType.END_NODE,

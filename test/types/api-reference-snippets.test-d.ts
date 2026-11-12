@@ -39,6 +39,7 @@ import Neode, {
   NodeEntity,
   ontology,
   ontologyMarkdown,
+  OneToOne,
   Primary,
   Property,
   RelatedMany,
@@ -101,6 +102,33 @@ export class Person {
 
   @Property({ type: 'number' })
   age!: number
+}
+
+@NodeEntity()
+export class Address {
+  @Property({ type: 'string' })
+  street!: string
+}
+
+// NTS-663 — the @OneToOne enforce snippet from docs/api-reference.md,
+// type-checked here so the doc cannot rot (NTS-648)
+@NodeEntity()
+export class PersonWithEnforcedAddress {
+  @Uuid({ primary: true })
+  id: string
+
+  @OneToOne({
+    type: 'LIVES_AT',
+    target: () => Address,
+    direction: 'out',
+    cardinality: 'one',
+    enforce: 'currentOccupantId', // @Unique property on Address
+  })
+  address: Address | undefined
+
+  constructor() {
+    this.id = '11111111-1111-4111-8111-111111111111'
+  }
 }
 
 @NodeEntity()
