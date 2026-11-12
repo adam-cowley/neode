@@ -11,7 +11,13 @@ import { NeodeError } from '../../src/errors/index.js'
 import { ConstraintViolationError } from '../../src/errors/constraint-violation.js'
 import { OptimisticLockError } from '../../src/errors/optimistic-lock.js'
 import { ValidationError } from '../../src/validation/validation-error.js'
-import { errorBody, listFilter, restModelNames, statusFor } from '../../src/rest/index.js'
+import {
+  errorBody,
+  handleOntology,
+  listFilter,
+  restModelNames,
+  statusFor,
+} from '../../src/rest/index.js'
 
 @NodeEntity()
 class RestUnitPerson {
@@ -77,6 +83,16 @@ describe('listFilter', () => {
     expect(listFilter(schema, { age: '30' })).toEqual({ age: 30 })
     expect(listFilter(schema, { age: 'thirty' })).toEqual({ age: 'thirty' })
     expect(listFilter(schema, { name: '30' })).toEqual({ name: '30' })
+  })
+})
+
+describe('handleOntology', () => {
+  it('indexes only the mounted models', () => {
+    const body = handleOntology(['RestUnitPerson']).body as {
+      entities: { name: string }[]
+    }
+
+    expect(body.entities.map((entity) => entity.name)).toEqual(['RestUnitPerson'])
   })
 })
 

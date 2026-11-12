@@ -189,13 +189,15 @@ export function router(neode: Neode, options: ExpressRouterOptions = {}): Router
     rest.use(...options.middleware)
   }
 
+  const names = restModelNames(options.models)
+
   // The ontology never throws and always carries a body — respond()
   // would only add an await of an already-resolved value
   rest.get('/', (_request, response) => {
-    response.status(200).json(handleOntology().body)
+    response.status(200).json(handleOntology(names).body)
   })
 
-  for (const name of restModelNames(options.models)) {
+  for (const name of names) {
     rest.get(`/${name}`, collectionRoute(neode, name, 'list'))
 
     rest.post(`/${name}`, collectionRoute(neode, name, 'create'))

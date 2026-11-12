@@ -46,6 +46,13 @@ A decimal number as a query string would render it
 const NUMERIC_PATTERN = /^-?\d+(\.\d+)?$/
 
 /**
+The largest page size the list endpoint serves — a query-string limit
+is untrusted input, and an unbounded one pulls the whole label into a
+single response
+*/
+const MAX_LIMIT = 100
+
+/**
 The HTTP status an error maps to
 */
 export function statusFor(error: unknown): number {
@@ -202,12 +209,14 @@ export async function handleList(
   const schema = getModel(constructor)
 
   const page = query['page'] === undefined ? 1 : Number(query['page'])
-  const limit = query['limit'] === undefined ? 25 : Number(query['limit'])
+  const requested = query['limit'] === undefined ? 25 : Number(query['limit'])
+  const limit = Number.isNaN(requested) ? 25 : Math.min(requested, MAX_LIMIT)
   const order =
     query['order'] === undefined
       ? undefined
       : {
-          [String(query['order'])]: query['sort'] === 'DESC' ? ('DESC' as const) : ('ASC' as const),
+          [String(query['order'])]:
+            String(query['sort']).toUpperCase() === 'DESC' ? ('DESC' as const) : ('ASC' as const),
         }
 
   // page is always resolved: paginate() selects its mode by the presence
@@ -215,7 +224,7 @@ export async function handleList(
   // the list endpoint does not offer
   const result = await neode.paginate(constructor, listFilter(schema, query), {
     page: Number.isNaN(page) ? 1 : page,
-    limit: Number.isNaN(limit) ? 25 : limit,
+    limit,
     ...(order !== undefined && { order }),
   })
 
@@ -306,11 +315,18 @@ export async function handleDelete(
 }
 
 /**
-`GET /` — the ontology over every registered model: the self-describing
-index of what the router mounts
+`GET /` — the ontology filtered down to the models the router actually
+mounts: the self-describing index of this router (the full registry
+would advertise routes that 404)
 */
-export function handleOntology(): RestResponse {
-  return { status: 200, body: ontology() }
+export function handleOntology(mounted: string[]): RestResponse {
+  const names = new Set(mounted)
+  const body = ontology()
+
+  return {
+    status: 200,
+    body: { ...body, entities: body.entities.filter((entity) => names.has(entity.name)) },
+  }
 }
 
 function asRecord(body: unknown, verb: string): Record<string, unknown> {

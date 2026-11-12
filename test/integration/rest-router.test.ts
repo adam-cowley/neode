@@ -152,6 +152,13 @@ describe('rest router', () => {
     const ordered = await request(app).get('/api/RestPerson?order=age&sort=DESC')
     expect(ordered.body.items[0].name).toBe('Bea')
 
+    // lowercase sorts the same way — not the opposite direction
+    const lowercase = await request(app).get('/api/RestPerson?order=age&sort=desc')
+    expect(lowercase.body.items[0].name).toBe('Bea')
+
+    const capped = await request(app).get('/api/RestPerson?limit=100000')
+    expect(capped.body.limit).toBe(100)
+
     const paged = await request(app).get('/api/RestPerson?page=2&limit=1')
     expect(paged.body.items).toHaveLength(1)
     expect(paged.body.totalPages).toBe(2)
