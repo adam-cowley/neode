@@ -11,6 +11,7 @@ export {
   ConstraintViolationError,
   RelationNotLoadedError,
   OptimisticLockError,
+  GuardViolationError,
   TransientError,
   classifyError,
   isTransientError,

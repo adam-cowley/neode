@@ -37,6 +37,12 @@ A unique-constraint violation, raised on `merge()`/`create()` flows that race an
 
 _source: errors/constraint-violation.ts_
 
+### `GuardViolationError` (class)
+
+Raised when a guarded increment (NTS-655) matched zero rows: the `min` floor passed to `Repository#increment` renders as a `WITH … WHERE` terminal in the decrement's own statement, and a post-write value below the floor filters the statement's only row out. A missing entity matches zero rows too — the two cases cannot be told apart inside one statement. The throw is what rolls the write back: run guarded increments inside a managed write transaction (`inWriteTransaction` / ambient transaction). The stable `name` lets retry helpers exclude it from transient-retry classification.
+
+_source: errors/guard-violation.ts_
+
 ### `isTransientError` (function)
 
 Type guard for classified transient errors.

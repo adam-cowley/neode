@@ -135,6 +135,7 @@ describe('public export surface (NTS-600)', () => {
       | 'Filter'
       | 'Float'
       | 'FulltextIndexService'
+      | 'GuardViolationError'
       | 'Hidden'
       | 'Index'
       | 'InternalId'

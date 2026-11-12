@@ -1,6 +1,6 @@
 import { THIS_NODE } from '../constants.js'
 import type { QueryOutput } from '../driver/types.js'
-import { NeodeError, unknownPropertyError } from '../errors/index.js'
+import { NeodeError, GuardViolationError, unknownPropertyError } from '../errors/index.js'
 import type { EntitySchema } from '../meta/entity/entity-schema.js'
 import { getModel } from '../meta/index.js'
 import type { Newable } from '../meta/newable.js'
@@ -720,12 +720,27 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   The property must be a declared numeric property of the schema: its name
   is interpolated into the Cypher (property names cannot be parameters),
   so the declaration check is the injection guard.
+
+  With `min` (NTS-655) the statement carries a guard terminal —
+  `WITH this WHERE this.prop >= $min` — so the floor is checked in the
+  same statement, under the write lock: a post-write value below the
+  floor (inclusive — exactly `min` passes) filters the statement's only
+  row out, and the zero-row result throws `GuardViolationError` instead
+  of returning a value. The throw rolls a managed write transaction
+  (inWriteTransaction / ambient transaction) back — the write lock makes
+  the check-and-decrement atomic, so no interleaving writer can slip
+  between them; under autocommit the SET itself still commits, so wrap
+  guarded decrements in a transaction. The floor works for both signs of
+  `by` (on a positive increment it is a no-op: the value only grows).
+  `min` takes precedence over `ifExists`: a zero-row result always
+  throws, because a missing entity matches zero rows too and the two
+  cases cannot be told apart inside one statement.
   */
   async increment(
     target: Entity | string | number,
     property: keyof Entity & string,
     by = 1,
-    options: { ifExists?: boolean } = {},
+    options: { ifExists?: boolean; min?: number } = {},
   ): Promise<number> {
     const declared = this.schema
       .getProperties()
@@ -749,6 +764,13 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
 
     if (typeof by !== 'number' || !Number.isFinite(by)) {
       throw new TypeError('Cannot increment: step must be a finite number')
+    }
+
+    if (
+      options.min !== undefined &&
+      (typeof options.min !== 'number' || !Number.isFinite(options.min))
+    ) {
+      throw new TypeError('Cannot increment: min must be a finite number')
     }
 
     // The property name is schema-validated and quoted (names cannot be
@@ -799,6 +821,16 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       builder.setExpr(`${THIS_NODE}.${quote(derivedKey)}`, cypher)
     }
 
+    // NTS-655: the min floor renders as a WITH … WHERE terminal in the
+    // decrement's own statement, under the write lock — a post-write
+    // value below the floor filters the statement's only row out and the
+    // zero-rows check below throws. The value is bound as a parameter.
+    if (options.min !== undefined) {
+      builder.with(THIS_NODE)
+      builder.param('min', options.min)
+      builder.whereRaw(`${THIS_NODE}.${key} >= $min`)
+    }
+
     const shouldRecomputeFromCounter = this.schema.getProperties().some((property) => {
       const derived = property.getDerived()
 
@@ -822,6 +854,13 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     const firstRecord = output.records[0]
 
     if (firstRecord === undefined) {
+      // The guard cannot tell a violated floor from a missing entity —
+      // both match zero rows — so a set min always throws (fail-closed,
+      // taking precedence over ifExists)
+      if (options.min !== undefined) {
+        throw new GuardViolationError(this.getLabels().join(':') || 'entity', property, options.min)
+      }
+
       if (options.ifExists === true) {
         return 0
       }
