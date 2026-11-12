@@ -258,8 +258,8 @@ All of these are understood by `@Property` (and by the sugar decorators, which a
 | `type`            | Property type name (see table above).                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `array`           | Store as an array.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `primary`         | Primary key — the MERGE key for `save()`.                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `unique`          | Unique constraint (created by `installSchema()`); unique values are always SET on merge.                                                                                                                                                                                                                                                                                                                                                                |
-| `index`           | Index (created by `installSchema()`).                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `unique`          | Unique constraint (created by `installSchema()`); unique values are always SET on merge. The array form (`unique: ['a', 'b']`) declares a composite unique over exactly the listed properties (NTS-140) — Neo4j's uniqueness constraints are single-property, so the composite analogue is the node key constraint (Enterprise).                                                                                                                        |
+| `index`           | Index (created by `installSchema()`). The array form (`index: ['a', 'b']`) declares one composite range index over exactly the listed properties (NTS-140/650).                                                                                                                                                                                                                                                                                         |
 | `required`        | Required property — existence constraint in Enterprise mode.                                                                                                                                                                                                                                                                                                                                                                                            |
 | `exists`          | Property existence constraint (Enterprise only).                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `default`         | Value or `(model, schema) => value`, resolved on create.                                                                                                                                                                                                                                                                                                                                                                                                |
@@ -290,17 +290,17 @@ Each applies the matching config option to the property it decorates:
 @NodeEntity()
 class Movie {
   @InternalId()
-  _id: string
+  _id!: string
 
   @Uuid({ primary: true })
-  id: string
+  id!: string
 
   @Property({ type: 'string', unique: true })
-  title: string
+  title!: string
 
   @Property({ type: 'datetime' })
   @Default(() => new Date().toISOString())
-  createdAt: string
+  createdAt!: string
 }
 ```
 
@@ -326,13 +326,13 @@ For relationships modelled as their own entity (with start/end nodes and edge pr
 ```typescript
 @RelationshipEntity()
 class Rating {
-  @InternalId() _id: string
+  @InternalId() _id!: string
 
-  @StartNode(() => User) user: User
-  @EndNode(() => Movie) movie: Movie
+  @StartNode(() => User) user!: User
+  @EndNode(() => Movie) movie!: Movie
 
   @Property({ type: 'number' })
-  score: number
+  score!: number
 }
 ```
 
@@ -345,28 +345,34 @@ These declare values projected into the read query — one RETURN projection per
 ```typescript
 @NodeEntity()
 class Learner {
-  @InternalId() _id: string
+  @InternalId() _id!: string
+
+  @Property({ type: 'string' })
+  firstName!: string
+
+  @Property({ type: 'string' })
+  lastName!: string
 
   @RelatedOne({ type: 'IN_COURSE', direction: 'out', target: () => Course, fields: ['title'] })
   course?: Pick<Course, 'title'> // nested read-only DTO
 
   @RelatedMany({ type: 'COMPLETED_LESSON', target: () => Lesson, fields: ['slug'] })
-  completedLessons: string[] // single field → scalar array
+  completedLessons!: string[] // single field → scalar array
 
   @RelationshipCount({ type: 'COMPLETED_LESSON', direction: 'out' })
-  completedCount: number // inline COUNT { } subquery
+  completedCount!: number // inline COUNT { } subquery
 
   @RelationshipExists({ type: 'NEXT_LESSON', direction: 'out' })
-  hasNextLesson: boolean // inline EXISTS { } boolean
+  hasNextLesson!: boolean // inline EXISTS { } boolean
 
   @LabelPresent('OptionalLesson')
-  isOptional: boolean // true when the node has the label
+  isOptional!: boolean // true when the node has the label
 
   @Expression('size((this)-[:KNOWS]->())')
-  friendCount: number // raw Cypher, `this` = the root node
+  friendCount!: number // raw Cypher, `this` = the root node
 
-  @Computed((entity) => `${entity.firstName} ${entity.lastName}`)
-  fullName: string // computed in TypeScript after hydration
+  @Computed((entity) => `${(entity as Learner).firstName} ${(entity as Learner).lastName}`)
+  fullName!: string // computed in TypeScript after hydration
 }
 ```
 
@@ -434,10 +440,12 @@ Rules are plain keys in the property config, using neode's rule names, mapped on
 Validation runs automatically on every write path (`save`, `create`, `update`). Failures throw a validation error whose `details` array carries one `{ path, message }` entry per failing check (and `.input` holds the rejected values):
 
 ```typescript
+import { ValidationError } from 'neode'
+
 try {
   await neode.save(Object.assign(new User(), { email: 'nope' }))
 } catch (e) {
-  e.details // [{ path: ['email'], message: '"email" must be a valid email', … }]
+  if (e instanceof ValidationError) e.details // [{ path: ['email'], message: '"email" must be a valid email', … }]
 }
 ```
 
@@ -465,15 +473,15 @@ neode.model('Person', {
 
 Registration functions:
 
-| Function                                     | Description                                                                                         |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `neode.model(name, schema?)`                 | Define a model, or look up a previously defined one (throws when unknown).                          |
-| `neode.with({ Name: schema, … })`            | Define many at once. Chainable.                                                                     |
-| `neode.withDirectory(path)`                  | Register each module's default export in a directory as a model named after the file (`.js`/`.ts`). |
-| `neode.extend(name, as, schema?)`            | Clone a model under a new name, adding the new name as an extra label, merging the schema on top.   |
-| `defineModel(name, schema)`                  | Standalone registry version of `model(name, schema)` — no instance needed.                          |
-| `extendModel(name, as, schema?)`             | Standalone version of `extend`.                                                                     |
-| `getModelByName(name)` / `getModelsByName()` | Look up registered map models.                                                                      |
+| Function                                     | Description                                                                                                                                                                                                                              |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `neode.model(name, schema?)`                 | Define a model, or look up a previously defined one (throws when unknown).                                                                                                                                                               |
+| `neode.with({ Name: schema, … })`            | Define many at once. Chainable.                                                                                                                                                                                                          |
+| `neode.withDirectory(path)`                  | Register each module's default export in a directory as a model named after the file (`.js`/`.ts`).                                                                                                                                      |
+| `neode.extend(name, as, schema?)`            | Clone a model under a new name, adding the new name as an extra label, merging the schema on top.                                                                                                                                        |
+| `defineModel(name, schema, options?)`        | Standalone registry version of `model(name, schema)` — no instance needed. A second registration of the same name throws; `{ idempotent: true }` returns the existing model instead (module re-evaluation: Nest HMR, Vitest watch mode). |
+| `extendModel(name, as, schema?)`             | Standalone version of `extend`.                                                                                                                                                                                                          |
+| `getModelByName(name)` / `getModelsByName()` | Look up registered map models.                                                                                                                                                                                                           |
 
 `mergeRelationshipProperty(constructor, key, type, target, direction, isMany, isEager?, description?)` registers a relationship property through the metamodel directly — the tooling-level escape hatch for relationships that decorators can't express (e.g. self-referential classes on legacy setups).
 
@@ -651,14 +659,14 @@ A **stored derived property** is computed on the write path from other propertie
 
 ```typescript
 class Order {
-  @Property({ type: 'datetime' }) orderDate: string
+  @Property({ type: 'datetime' }) orderDate!: string
   @Property({ type: 'datetime' }) shippedDate?: string
 
   // TypeScript-side: runs against the entity's property record
   @Property({ type: 'duration' })
   @Derived({
     from: ['orderDate', 'shippedDate'],
-    compute: (o) => durationBetween(String(o.orderDate), String(o.shippedDate)),
+    compute: (o) => durationBetween(String(o['orderDate']), String(o['shippedDate'])),
   })
   timeToShip?: unknown
 
@@ -688,6 +696,29 @@ Map API: `derived: { from, compute | cypher }` on the property definition.
 ### `expr` / `caseExpr` — Cypher expression helpers
 
 `expr` is a map of single-expression helpers for RETURN / SET / WHERE positions (`expr.coalesce('a', 'b')`, `expr.count()`, `expr.exists(pattern)`, `expr.datetime()`, `expr.any(v, list, predicate)`, `expr.listComprehension(pattern, projection)`, …). `caseExpr(pairs, fallback?)` builds `CASE WHEN … THEN … [ELSE …] END`. They compose structure only — every value stays a bound parameter.
+
+Path variables read through `expr.nodes('p')`, `expr.relationships('p')` and `expr.type('r')` (NTS-658) — e.g. `[n IN expr.nodes('p') | n.name]`.
+
+### `shortestPath()` — shortest-path patterns (NTS-658)
+
+`builder.shortestPath(variable, from, to, options?)` opens its own `MATCH` segment rendering `MATCH p = shortestPath((from)-[:TYPE]-(to))`, bound to a path variable a RETURN can project:
+
+```typescript
+new Builder()
+  .match('a', 'Product', { productID: 1 })
+  .match('b', 'Product', { productID: 2 })
+  .shortestPath('p', 'a', 'b', { relationship: 'CONTAINS', degrees: '..2' })
+  .return(`[n IN ${expr.nodes('p')} | labels(n)[0]] AS kinds`)
+  .build()
+// MATCH (a:Product { productID: $a_productID })
+// MATCH (b:Product { productID: $b_productID })
+// MATCH p = shortestPath((a)-[:`CONTAINS`*..2]-(b))
+// RETURN [n IN nodes(p) | labels(n)[0]] AS kinds
+```
+
+Options: `relationship` (a type or list of types — multi-type `shortestPath` can return wrong-shaped paths, see below), `direction` (defaults to BOTH, the undirected `shortestPath` form) and `degrees` (a traversal bound — Neo4j rejects a minimum length other than 0 or 1 inside `shortestPath`, so multi-hop bounds are the `'..2'` / `'1..2'` forms, and an exact length like `2` throws naming the fix). `variable`, `from` and `to` are plain variable names (validated like aliases); `from`/`to` are node variables bound by earlier matches — give them labels there when the pattern needs them.
+
+When a fixed shape is required — a multi-type `shortestPath` happily returns a shorter wrong-shaped path (a customer-less Product-Order-Product chain instead of one through the customer) — pin the exact edge chain with `match()` / `relationship()` / `to()` / `asPath('p')` instead; the path variable binds the whole segment pattern the same way.
 
 ### Predicates: `WhereNull`, `LabelPredicate`
 
@@ -770,21 +801,21 @@ await people.count({ age: 30 })
 
 `Repository<Entity>` methods:
 
-| Method          | Signature                                                             | Description                                                                                                                                                                                                                                   |
-| --------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `find`          | `(id) => Promise<Entity \| undefined>`                                | By primary key.                                                                                                                                                                                                                               |
-| `findBy`        | `(params?) => Promise<Entity \| undefined>`                           | First match.                                                                                                                                                                                                                                  |
-| `findAll`       | `(params?, options?: { order?, limit?, skip? }) => Promise<Entity[]>` | `order` takes the same `OrderSpec` forms as `all()`.                                                                                                                                                                                          |
-| `where`         | `(params?) => Promise<Entity[]>`                                      | Alias of `findAll(params)`.                                                                                                                                                                                                                   |
-| `count`         | `(params?) => Promise<number>`                                        |                                                                                                                                                                                                                                               |
-| `save`          | `(object) => Promise<Entity>`                                         | MERGE on primary key.                                                                                                                                                                                                                         |
-| `saveAll`       | `(objects) => Promise<Entity[]>`                                      | One save (one write transaction) at a time.                                                                                                                                                                                                   |
-| `patch`         | `(entity, properties) => Promise<Entity>`                             | Apply a patch, then persist via save. Named `patch` so domain interfaces declaring their own `update(id, input)` can be implemented by subclasses (NTS-454/458/459).                                                                          |
-| `delete`        | `(entityOrId, { ifExists?, ...deleteOptions }) => Promise<void>`      | By instance or primary key value. Throws on a missing ID; `{ ifExists: true }` silently no-ops (NTS-457). Cascade options forward to the delete service — annotations decide by default, `{ cascade: true }` / `{ cascade: false }` override. |
-| `increment`     | `(entityOrId, property, by?, { ifExists? }) => Promise<number>`       | Atomic `SET n.prop = coalesce(n.prop, 0) + by` (NTS-435). Returns the new value, or 0 when missing with `ifExists` (NTS-455).                                                                                                                 |
-| `countBy`       | `(property, params?) => Promise<Record<string, number>>`              | Grouped counts over one declared property (NTS-453).                                                                                                                                                                                          |
-| `deleteAll`     | `(params?) => Promise<number>`                                        | One bulk `DETACH DELETE` of every match; returns the count. No cascade, no per-node events.                                                                                                                                                   |
-| `getPrimaryKey` | `() => PropertySchema`                                                |                                                                                                                                                                                                                                               |
+| Method          | Signature                                                             | Description                                                                                                                                                                                                                                                                                                                                                      |
+| --------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `find`          | `(id) => Promise<Entity \| undefined>`                                | By primary key.                                                                                                                                                                                                                                                                                                                                                  |
+| `findBy`        | `(params?) => Promise<Entity \| undefined>`                           | First match.                                                                                                                                                                                                                                                                                                                                                     |
+| `findAll`       | `(params?, options?: { order?, limit?, skip? }) => Promise<Entity[]>` | `order` takes the same `OrderSpec` forms as `all()`.                                                                                                                                                                                                                                                                                                             |
+| `where`         | `(params?) => Promise<Entity[]>`                                      | Alias of `findAll(params)`.                                                                                                                                                                                                                                                                                                                                      |
+| `count`         | `(params?) => Promise<number>`                                        |                                                                                                                                                                                                                                                                                                                                                                  |
+| `save`          | `(object) => Promise<Entity>`                                         | MERGE on primary key.                                                                                                                                                                                                                                                                                                                                            |
+| `saveAll`       | `(objects) => Promise<Entity[]>`                                      | One save (one write transaction) at a time.                                                                                                                                                                                                                                                                                                                      |
+| `patch`         | `(entity, properties) => Promise<Entity>`                             | Apply a patch, then persist via save. Named `patch` so domain interfaces declaring their own `update(id, input)` can be implemented by subclasses (NTS-454/458/459).                                                                                                                                                                                             |
+| `delete`        | `(entityOrId, { ifExists?, ...deleteOptions }) => Promise<void>`      | By instance or primary key value. Throws on a missing ID; `{ ifExists: true }` silently no-ops (NTS-457). Cascade options forward to the delete service — annotations decide by default, `{ cascade: true }` / `{ cascade: false }` override.                                                                                                                    |
+| `increment`     | `(entityOrId, property, by?, { ifExists?, min? }) => Promise<number>` | Atomic `SET n.prop = coalesce(n.prop, 0) + by` (NTS-435). Returns the new value, or 0 when missing with `ifExists` (NTS-455). With `min` (NTS-655) the floor is checked in the same statement, under the write lock — a post-write value below it throws `GuardViolationError` (the throw rolls a managed `inWriteTransaction` unit back; exactly `min` passes). |
+| `countBy`       | `(property, params?) => Promise<Record<string, number>>`              | Grouped counts over one declared property (NTS-453).                                                                                                                                                                                                                                                                                                             |
+| `deleteAll`     | `(params?) => Promise<number>`                                        | One bulk `DETACH DELETE` of every match; returns the count. No cascade, no per-node events.                                                                                                                                                                                                                                                                      |
+| `getPrimaryKey` | `() => PropertySchema`                                                |                                                                                                                                                                                                                                                                                                                                                                  |
 
 ### Custom repositories
 
@@ -814,7 +845,11 @@ const results = await neode.installSchema()
 await neode.dropSchema()
 ```
 
+Every schema-management method — `installSchema()`, `dropSchema()`, `inspectSchema()`, `schemaDiff()` and `applySchemaDiff()` — accepts a `{ database }` option that targets a non-default database for that one call, winning over `setDatabase()` (NTS-645): `await neode.installSchema({ database: 'analytics' })`.
+
 Property-existence constraints (`REQUIRE n.prop IS NOT NULL`) and property-type constraints are Enterprise-only — the edition is detected from the connection (`CALL dbms.components()`) and the statements are skipped on Community.
+
+Composite declarations take the property list on one of the composite's properties (NTS-650): `index: ['city', 'region']` installs one range index over all N properties, and `unique: ['a', 'b']` is the unique analogue, deduped by deterministic name when more than one property of the group declares it. Neo4j limits: uniqueness constraints are single-property (node key constraints are the Enterprise composite analogue); composite range indexes have no such restriction. `schemaDrift()` and `applySchemaDrift()` cover composite objects like every other declaration.
 
 ## Schema inspection & drift
 
@@ -833,9 +868,16 @@ console.log(formatSchemaDrift(drift)) // human-readable, grouped by missing / st
 await applySchemaDrift(connection, drift, { dropStale?: boolean }) // idempotent apply (IF NOT EXISTS)
 ```
 
+```typescript
+const report = await applySchemaDrift(connection, drift, {
+  dropStale: false,
+  returnDriftAfter: true, // NTS-659: { statements, driftAfter } — one extra probe serves apply + verification
+})
+```
+
 - `schemaDrift` — declared-vs-installed inspection of constraints and every index kind (range/text/fulltext/vector), one `SchemaDriftEntry` per object carrying the CREATE/DROP statement that would resolve it. `SchemaDriftGroup` groups one family by action; `ApplySchemaDiffOptions.dropStale` also drops installed-but-undeclared objects (destructive, off by default).
-- `applySchemaDrift` — apply the missing objects idempotently; mismatched objects are never auto-applied; stale objects only dropped with `dropStale: true`. Each statement is reported with a `SchemaResult`.
-- The facade mirrors these as `neode.inspectSchema(options?)`, `neode.schemaDiff(options?)`, `neode.formatSchemaDiff(diff)` and `neode.applySchemaDiff(diff, options?)` — they pass the instance's connection and declared index definitions for you.
+- `applySchemaDrift` — apply the missing objects idempotently; mismatched objects are never auto-applied; stale objects only dropped with `dropStale: true`. Each statement is reported with a `SchemaResult`. With `returnDriftAfter: true` (NTS-659) it runs one post-apply inspection pass and returns `{ statements, driftAfter }` — `driftAfter` is a fresh `schemaDrift()` over the same `InspectOptions` (the `fulltext` / `vector` / `graphTypeConstraints` you pass flow through to the re-probe), so the verification report comes from the same call that applied the fixes. Without the flag the return stays `SchemaResult[]`.
+- The facade mirrors these as `neode.inspectSchema(options?)`, `neode.schemaDiff(options?)`, `neode.formatSchemaDiff(diff)` and `neode.applySchemaDiff(diff, options?)` — they pass the instance's connection and declared index definitions for you. All of them (and `installSchema()` / `dropSchema()`) accept a `database` option that scopes the statements to that database per call (NTS-645).
 
 ## Soft delete
 
@@ -869,11 +911,13 @@ await repo.delete('p1', { force: true }) // real DETACH DELETE
 ```typescript
 const off = neode.observe(Product, {
   beforeSave: (entity) => {
-    entity.slug ??= slugify(entity.name)
+    const product = entity as Product // hooks receive the entity loosely typed
+    product.slug ??= slugify(product.name)
   }, // create path: receives the properties record
   afterSave: (entity, { isNew }) => audit.log(isNew ? 'created' : 'updated', entity),
   beforeDelete: (entity) => {
-    if (entity.protected) throw new Error('protected')
+    const product = entity as Product
+    if (product.protected) throw new Error('protected')
   },
   afterDelete: (entity) => audit.log('deleted', entity),
 })
@@ -892,14 +936,16 @@ const off = neode.observe(Product, {
 `neode.traverse(Model)` (NTS-512) — typed multi-hop reads through the Builder, one hydrated row per matched path:
 
 ```typescript
+import { Direction } from 'neode'
+
 const rows = await neode
   .traverse(Product)
   .where({ productID: 1 }) // declared-property filters on the start node
-  .hop('SUPPLIED_BY', 'out', Supplier) // class or lazy thunk
-  .hop('COVERS', 'in', Territory, { degrees: '1..2' }) // variable-length hop
+  .hop('SUPPLIED_BY', Direction.OUTGOING, Supplier) // class or lazy thunk
+  .hop('COVERS', Direction.INCOMING, Territory, '1..2') // variable-length hop
   .run()
 
-rows[0].nodes // [Product, Supplier, Territory] — hydrated entities
+rows[0]?.nodes // [Product, Supplier, Territory] — hydrated entities
 ```
 
 - Each node is hydrated with the registered model whose labels match the node (most specific wins); unmatched nodes come back as raw driver nodes.
@@ -911,12 +957,14 @@ rows[0].nodes // [Product, Supplier, Territory] — hydrated entities
 The same builder runs as an aggregate read — the co-purchase shape ("entities reached through shared origins, ranked by how many origins they share, excluding the ones already connected to the start"):
 
 ```typescript
+import { Direction } from 'neode'
+
 const rows = await neode
   .traverse(Order)
   .where({ orderID })
-  .hop('CONTAINS', 'out', Product) //  t1: this order's products
-  .hop('CONTAINS', 'in', Order) //    t2: other orders…
-  .hop('CONTAINS', 'out', Product) // t3: …and what they contain
+  .hop('CONTAINS', Direction.OUTGOING, Product) //  t1: this order's products
+  .hop('CONTAINS', Direction.INCOMING, Order) //    t2: other orders…
+  .hop('CONTAINS', Direction.OUTGOING, Product) // t3: …and what they contain
   .exclude('t0', 'CONTAINS', 't3') // not already in THIS order
   .groupBy('t3')
   .countDistinct('t2', 'times')
@@ -937,8 +985,13 @@ The database-agnostic port every backend implements:
 
 ```typescript
 interface ConnectionProvider {
-  run(statement, parameters?, mode?: 'READ' | 'WRITE', database?): Promise<QueryOutput>
-  beginTransaction(mode?, database?): Promise<TransactionHandle>
+  run(
+    statement: string,
+    parameters?: QueryParams,
+    mode?: AccessMode,
+    database?: string,
+  ): Promise<QueryOutput>
+  beginTransaction(mode?: AccessMode, database?: string): Promise<TransactionHandle>
   edition(): Promise<'enterprise' | 'community' | 'unknown'>
   close(): Promise<void>
 }
@@ -1053,10 +1106,12 @@ Two scopes, one rule: **repositories take `INeode`** (the minimal interface — 
 Hydrated entities get active-record methods on their prototype (wired once per class at first hydration):
 
 ```typescript
+import type { DeleteOptions, DetachResult, GraphRelationship } from 'neode'
+
 interface EntityMethods {
   save(): Promise<this> // MERGE, re-hydrate
   update(properties?: Record<string, unknown>): Promise<this> // `+=`, re-hydrate
-  delete(options?: { cascade?; mode?; depth?; soft? } | string): Promise<this>
+  delete(options?: DeleteOptions | string): Promise<this>
   // With { soft: 'Archived' } the label is SET instead and the refreshed
   // entity is returned; otherwise the node is deleted and the (detached)
   // instance is returned.
@@ -1065,10 +1120,10 @@ interface EntityMethods {
   relateTo(
     other: object,
     relationshipKey: string,
-    properties?,
-    shouldForceCreate?,
+    properties?: Record<string, unknown>,
+    shouldForceCreate?: boolean,
   ): Promise<GraphRelationship | undefined>
-  detachFrom<To extends object>(other: To, relationshipKey: string): Promise<{ from; to }>
+  detachFrom<To extends object>(other: To, relationshipKey: string): Promise<DetachResult<this, To>>
   toJson(): Record<string, unknown>
 }
 ```
@@ -1185,7 +1240,12 @@ Declarative read models composed into a single RETURN projection per read — on
 When a projection reads a field subset, pass `target()` and derive the annotation with `Pick`:
 
 ```typescript
-@RelatedOne({ type: 'PLACED_BY', direction: 'out', target: () => Customer, fields: ['customerID', 'companyName', 'country'] })
+@RelatedOne({
+  type: 'PLACED_BY',
+  direction: 'out',
+  target: () => Customer,
+  fields: ['customerID', 'companyName', 'country'],
+})
 customer?: Pick<Customer, 'customerID' | 'companyName' | 'country'>
 ```
 
@@ -1221,6 +1281,8 @@ await new PaginateService(neode.getConnection()).paginate(Person, schema, filter
 - `PaginateService.paginate(constructor, schema, filter, options)` — offset mode (`{ page?, limit, order? }`) returns `Page<T>` = `{ items, total, page, limit, totalPages }` over two autocommit reads; keyset mode (`{ limit, orderBy?, after?, before? }`) walks a temporal property (default `createdAt`) and returns `CursorPage<T>` = `{ items, nextCursor, hasMore }`. Cursors are opaque composites, so rows sharing a property value are never skipped between pages.
 
 Both return `BulkChunk<T>` = `{ count, entities }` per chunk. Prefer the facade wrappers (`neode.createMany`, `neode.mergeMany`, `neode.paginate`) — they resolve the schema for you.
+
+**When a chunk fails (NTS-649):** the chunk's transaction rolls back — every row of the failed chunk is unwritten, valid rows included, while earlier chunks stay committed (bulk writes are not atomic across chunks). The thrown `BulkChunkError` reports the per-row fate: `chunkIndex` and `failedRows` — each failing row's index in the full input with its own error, found by re-running the chunk's rows one transaction per row with every diagnostic transaction rolled back (nothing the diagnosis touches commits). Rows that only fail together (e.g. duplicate unique values within a chunk) report an empty `failedRows` with the reason in the message — fix the failing rows and re-run the import from the first uncommitted chunk.
 
 ### Batch import: files and streams into the bulk APIs
 

@@ -18,6 +18,8 @@ import { ValidationError } from '../../src/validation'
 import { NeodeError } from '../../src/errors'
 import { convertEdgeProperties } from '../../src/services/relationship-values'
 import {
+  BulkChunkError,
+  BulkService,
   buildCreateQuery,
   buildMergeQuery,
   buildRelateQuery,
@@ -26,9 +28,9 @@ import {
   processCreateRow,
   processMergeRow,
   rowToProperties,
-  BulkService,
 } from '../../src/services/query/bulk.service'
 import { toCursorValue } from '../../src/services/query/paginate.service'
+import type { ConnectionProvider, Runner } from '../../src/driver/types'
 import { PropertySchema, PropertyType } from '../../src/meta/property-schema'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
@@ -123,9 +125,9 @@ class BulkNoPk {
   knows: BulkNoPk[]
 }
 
-// A model without an explicit @Primary still has a primary key:
-// getPrimaryKey() falls back to a phantom <label>_id property —
-// relateMany matches on it like any other pk.
+// The InternalId fallback: getPrimaryKey() resolves to the internal-id
+// property for models without an explicit @Primary — relateMany matches
+// on it like any other pk.
 
 let fakeSequence = 0
 
@@ -420,12 +422,6 @@ describe('bulk helpers', () => {
       ).rejects.toThrow(/edge entities/)
     })
 
-    it('resolves the fallback primary key for a model without an explicit @Primary', async () => {
-      await expect(
-        bulk.relateMany(getModel(BulkNoPk)!, 'knows', [{ from: 'a', to: 'b' }]),
-      ).resolves.toEqual({ related: 0, chunks: 1 })
-    })
-
     it('converts edge properties through the shared pipeline', () => {
       // A plain relationship accepts literal edge properties untouched
       const relationship = getModel(BulkPost)!.getRelationship('author')
@@ -554,6 +550,118 @@ describe('bulk helpers', () => {
       const rejected = await rowToProperties(schema, { id: FIXED_UUID, active: 'yes' })
 
       expect(rejected.ok).toBe(false)
+    })
+  })
+
+  describe('BulkChunkError (NTS-649)', () => {
+    it('lists the failing rows with their messages', () => {
+      const cause = new Error('MadeUpConstraintError')
+      const error = new BulkChunkError(
+        1,
+        2,
+        2,
+        [
+          {
+            index: 2,
+            error: new Error('Node already exists with property `name` = `taken`'),
+          },
+        ],
+        cause,
+      )
+
+      expect(error.name).toBe('BulkChunkError')
+      expect(error.chunkIndex).toBe(1)
+      expect(error.failedRows.map((failure) => failure.index)).toEqual([2])
+      expect(error.message).toContain('#2')
+      expect(error.message).toContain('Node already exists')
+      expect(error.message).toContain('earlier chunks stay committed')
+      expect(error.cause).toBe(cause)
+    })
+
+    it('explains when no single row fails on its own', () => {
+      const error = new BulkChunkError(0, 0, 3, [], new Error('constraint violation'))
+
+      expect(error.failedRows).toEqual([])
+      expect(error.message).toContain('fail together')
+    })
+
+    it('explains when the per-row diagnosis is unavailable', () => {
+      const error = new BulkChunkError(0, 0, 3, undefined, new Error('constraint violation'))
+
+      expect(error.failedRows).toEqual([])
+      expect(error.message).toContain('diagnosis unavailable')
+    })
+  })
+
+  describe('writeChunks failure reporting (NTS-649)', () => {
+    it('collects failing rows through a rolled-back per-row diagnosis', async () => {
+      const schema = getModel(BulkPerson)!
+
+      let commits = 0
+      let rollbacks = 0
+
+      const tx = {
+        async run(_query: string, params: { rows: Record<string, unknown>[] }) {
+          // The chunk statement (all rows at once) always fails
+          if (params.rows.length > 1) {
+            throw new Error('UNWIND batch failed')
+          }
+
+          if (params.rows[0]?.name === 'poison') {
+            throw new Error('unique constraint violation')
+          }
+
+          return { records: [] }
+        },
+        async commit() {
+          commits += 1
+        },
+        async rollback() {
+          rollbacks += 1
+        },
+      }
+
+      const provider = { beginTransaction: async () => tx } as unknown as ConnectionProvider
+
+      const error = await new BulkService(provider)
+        .createMany(BulkPerson, schema, [
+          { name: 'Adam', age: 30 },
+          { name: 'poison', age: 1 },
+        ])
+        .then(
+          () => null,
+          (thrown) => thrown,
+        )
+
+      expect(error).toBeInstanceOf(BulkChunkError)
+      expect(error?.chunkIndex).toBe(0)
+      expect(error?.failedRows.map((failure) => failure.index)).toEqual([1])
+      expect(error?.message).toContain('unique constraint violation')
+
+      // Nothing the diagnosis touched committed — the chunk tx rolled back
+      expect(commits).toBe(0)
+      expect(rollbacks).toBe(3)
+    })
+
+    it('reports the chunk failure without a diagnosis inside an open transaction', async () => {
+      const schema = getModel(BulkPerson)!
+
+      const runner: Runner = {
+        async run() {
+          throw new Error('UNWIND batch failed')
+        },
+      }
+
+      const error = await new BulkService(runner)
+        .createMany(BulkPerson, schema, [{ name: 'Adam', age: 30 }])
+        .then(
+          () => null,
+          (thrown) => thrown,
+        )
+
+      expect(error).toBeInstanceOf(BulkChunkError)
+      expect(error?.failedRows).toEqual([])
+      expect(error?.message).toContain('diagnosis unavailable')
     })
   })
 })

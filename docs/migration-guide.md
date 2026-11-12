@@ -307,7 +307,7 @@ const output = await new Builder()
   .execute(neode.getConnection(), 'READ')
 ```
 
-The fluent surface you know carries over — `match()`, `optionalMatch()`, `where()` (and `whereId`, `whereRaw`, `whereBetween`, `whereNot`, `or`), `create()`, `merge()`, `set()`, `onCreateSet()`, `onMatchSet()`, `delete()`, `detachDelete()`, `remove()`, `return()`, `orderBy()`, `limit()`, `skip()`, `with()`, `relationship()` — plus new predicates (`whereIn`, `whereContains`, `whereStartsWith`, `whereEndsWith`, `whereNull`, `whereExists`, `whereLabel`, `whereGroup`). All values are passed as query parameters — the generated query contains only aliases.
+The fluent surface you know carries over — `match()`, `optionalMatch()`, `where()` (and `whereId`, `whereRaw`, `whereBetween`, `whereNot`, `or`), `create()`, `merge()`, `set()`, `onCreateSet()`, `onMatchSet()`, `delete()`, `detachDelete()`, `remove()`, `return()`, `orderBy()`, `limit()`, `skip()`, `with()`, `relationship()` — plus new predicates (`whereIn`, `whereContains`, `whereStartsWith`, `whereEndsWith`, `whereNull`, `whereExists`, `whereNotPattern`, `whereLabel`, `whereGroup`). All values are passed as query parameters — the generated query contains only aliases.
 
 What moved:
 
@@ -488,7 +488,7 @@ Method notes for neode users:
 
 - **`patch(entity, properties)`**, not `update` — `update()` on the facade and on entity instances keeps neode's `+=` semantics, but the repository method is named `patch` so subclasses can define their own `update(id, input)`.
 - **`delete(entityOrId, { ifExists: true })`** — accepts an entity instance or a primary key value; the default throws when the id is missing, `ifExists` silently no-ops.
-- **`increment(entityOrId, property, by?, { ifExists? })`** — one server-side `SET n.prop = coalesce(n.prop, 0) + by`, safe under concurrency; returns the new value.
+- **`increment(entityOrId, property, by?, { ifExists?, min? })`** — one server-side `SET n.prop = coalesce(n.prop, 0) + by`, safe under concurrency; returns the new value. `min` (NTS-655) checks a floor in the same statement, under the write lock — a post-write value below it throws `GuardViolationError` (run guarded decrements inside a managed transaction so the violation rolls back).
 - **`countBy(property, params?)`** — grouped counts over one declared property.
 - `find(id)`, `findBy(params)`, `findAll(params, { order, limit, skip })`, `where(params)`, `count(params)`, `save(entity)`, `saveAll(entities)` round out the surface.
 

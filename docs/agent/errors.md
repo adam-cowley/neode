@@ -21,7 +21,7 @@ Typed error taxonomy and driver-error classification. House rule (NTS-442): ever
 
 ### `CardinalityViolationError` (class)
 
-Raised when a write would give a relationship more edges than its declared cardinality allows (NTS-161): relating a second edge onto a `one` / `zeroOrOne` relationship — through relate(), a multi-target save, or syncEdges — names the relationship, the violated cardinality and the fix. Detach the existing edge first (or use syncEdges, which detaches for you), or change the declaration to `many`.
+Raised when a write would give a relationship more edges than its declared cardinality allows (NTS-161): relating a second edge onto a `one` / `zeroOrOne` relationship — through relate(), a multi-target save, syncEdges or replaceRelationship — names the relationship, the violated cardinality and the fix. Detach the existing edge first (or use syncEdges, which detaches for you), or change the declaration to `many`.
 
 _source: errors/cardinality-violation.ts_
 
@@ -36,6 +36,12 @@ _source: errors/classify.ts_
 A unique-constraint violation, raised on `merge()`/`create()` flows that race an existing node. `label`/`property` are parsed from the database message when it names them (Neo4j does; the embedded Relate engine only names the constraint), and stay undefined otherwise.
 
 _source: errors/constraint-violation.ts_
+
+### `GuardViolationError` (class)
+
+Raised when a guarded increment (NTS-655) matched zero rows: the `min` floor passed to `Repository#increment` renders as a `WITH … WHERE` terminal in the decrement's own statement, and a post-write value below the floor filters the statement's only row out. A missing entity matches zero rows too — the two cases cannot be told apart inside one statement. The throw is what rolls the write back: run guarded increments inside a managed write transaction (`inWriteTransaction` / ambient transaction). The stable `name` lets retry helpers exclude it from transient-retry classification.
+
+_source: errors/guard-violation.ts_
 
 ### `isTransientError` (function)
 

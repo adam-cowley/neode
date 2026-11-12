@@ -8,9 +8,11 @@ import { describe, expectTypeOf, it } from 'vitest'
 import type {
   AccessMode,
   ApplySchemaDiffOptions,
+  ApplySchemaDriftReport,
   BatchStatementError,
   BulkChunk,
   BulkOptions,
+  BulkRowFailure,
   ComputedDefinition,
   ConnectionOptions,
   ConnectionProvider,
@@ -19,10 +21,13 @@ import type {
   CursorPaginateOptions,
   CypherOptions,
   DeleteOptions,
+  DetachResult,
   EntityMethods,
   EntityOntology,
   ExpressionDefinition,
   FactoryWithSpec,
+  FilterOperand,
+  FilterOperators,
   FulltextIndexDefinition,
   GraphNode,
   GraphRelationship,
@@ -93,6 +98,8 @@ import type {
   VectorConfig,
   VectorIndexDefinition,
   WaitUntilReachableOptions,
+  WhereFilter,
+  WhereFilterLevel,
   WipeReport,
   WipeTarget,
   WithMethods,
@@ -107,6 +114,7 @@ describe('public export surface (NTS-600)', () => {
       | 'Boolean'
       | 'BoundBuilder'
       | 'Builder'
+      | 'BulkChunkError'
       | 'BulkService'
       | 'CardinalityViolationError'
       | 'Collection'
@@ -128,6 +136,7 @@ describe('public export surface (NTS-600)', () => {
       | 'Filter'
       | 'Float'
       | 'FulltextIndexService'
+      | 'GuardViolationError'
       | 'Hidden'
       | 'Index'
       | 'InternalId'
@@ -251,9 +260,11 @@ describe('public export surface (NTS-600)', () => {
       [
         AccessMode,
         ApplySchemaDiffOptions,
+        ApplySchemaDriftReport,
         BatchStatementError,
         BulkChunk<unknown>,
         BulkOptions,
+        BulkRowFailure,
         ComputedDefinition,
         ConnectionOptions,
         ConnectionProvider,
@@ -262,10 +273,13 @@ describe('public export surface (NTS-600)', () => {
         CursorPaginateOptions,
         CypherOptions,
         DeleteOptions,
+        DetachResult<unknown, unknown>,
         EntityMethods,
         EntityOntology,
         ExpressionDefinition,
         FactoryWithSpec,
+        FilterOperand<unknown, never>,
+        FilterOperators<unknown>,
         FulltextIndexDefinition,
         GraphNode,
         GraphRelationship,
@@ -336,6 +350,8 @@ describe('public export surface (NTS-600)', () => {
         VectorConfig,
         VectorIndexDefinition,
         WaitUntilReachableOptions,
+        WhereFilter<new (...arguments_: never[]) => unknown>,
+        WhereFilterLevel<unknown>,
         WipeReport,
         WipeTarget,
         WithMethods<unknown>,

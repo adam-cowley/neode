@@ -68,6 +68,82 @@ export interface BulkChunk<T> {
   entities: T[]
 }
 
+const ERROR_BULK_CHUNK_FAILED = 'ERROR_BULK_CHUNK_FAILED'
+
+/**
+One failing row of a failed chunk (NTS-649): the row's zero-based index
+in the FULL input (not the chunk) and the error the row raised when
+re-run on its own
+*/
+export interface BulkRowFailure {
+  index: number
+  error: unknown
+}
+
+function rowErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/**
+Thrown by createMany() / mergeMany() when a chunk's UNWIND fails (NTS-649).
+The chunk's transaction rolled back: every row of the chunk is unwritten,
+valid rows included, while earlier chunks stay committed. `failedRows`
+names each failing row (its index in the full input) with its own error,
+found by re-running the chunk's rows one transaction per row with every
+diagnostic transaction rolled back — nothing the diagnosis touches
+commits. Rows that only fail together (e.g. duplicate unique values
+within the chunk), or a bulk write inside an open transaction scope (a
+rolled-back diagnosis is impossible there), report an empty `failedRows`
+with the reason in the message.
+*/
+export class BulkChunkError extends NeodeError {
+  /**
+  Zero-based index of the failed chunk
+  */
+  readonly chunkIndex: number
+
+  /**
+  The failing rows — empty when no single row fails on its own or the
+  per-row diagnosis was unavailable (the message says which)
+  */
+  readonly failedRows: BulkRowFailure[]
+
+  constructor(
+    chunkIndex: number,
+    firstRow: number,
+    rowCount: number,
+    failedRows: BulkRowFailure[] | undefined,
+    cause: unknown,
+  ) {
+    let detail: string
+
+    if (failedRows === undefined) {
+      detail =
+        'per-row diagnosis unavailable — the bulk write ran inside an open transaction scope (a rolled-back diagnosis is impossible there), or the diagnosis pass itself failed'
+    } else if (failedRows.length === 0) {
+      detail =
+        'no single row fails on its own — the rows fail together (e.g. duplicate unique values within the chunk)'
+    } else {
+      detail = `failing rows: ${failedRows
+        .map((failure) => `#${String(failure.index)} (${rowErrorMessage(failure.error)})`)
+        .join(', ')} — remove or fix them and re-run the import`
+    }
+
+    super(
+      `${ERROR_BULK_CHUNK_FAILED}: chunk ${String(chunkIndex)} ` +
+        `(rows ${String(firstRow)}-${String(firstRow + rowCount - 1)}) failed and rolled back — ` +
+        'every row of the chunk is unwritten (valid rows included), ' +
+        `earlier chunks stay committed. ${detail}`,
+      { cause },
+    )
+
+    this.name = 'BulkChunkError'
+
+    this.chunkIndex = chunkIndex
+    this.failedRows = failedRows ?? []
+  }
+}
+
 /**
 One row of relateMany(): the from- and to-node primary-key values plus
 optional edge properties
@@ -497,17 +573,13 @@ Rows run through a bounded-concurrency pass (NTS-597): an embedding
 provider is a remote service, and one call per row all at once would
 overwhelm it.
 */
-const MAX_PREPARE_CONCURRENCY = 8
+const MAX_BULK_CONCURRENCY = 8
 
 /**
-Map over items with at most `limit` tasks in flight, preserving item
-order in the results.
+Map over items with at most MAX_BULK_CONCURRENCY tasks in flight,
+preserving item order in the results.
 */
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  task: (item: T) => Promise<R>,
-): Promise<R[]> {
+async function mapWithConcurrency<T, R>(items: T[], task: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = []
 
   let next = 0
@@ -526,7 +598,7 @@ async function mapWithConcurrency<T, R>(
     }
   }
 
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  await Promise.all(Array.from({ length: Math.min(MAX_BULK_CONCURRENCY, items.length) }, worker))
 
   return results
 }
@@ -537,7 +609,7 @@ export async function prepareRows(
 ): Promise<{ rows: Record<string, unknown>[]; derivedSets: string[] }> {
   const derivedKeys = new Map<string, string>()
 
-  const prepared = await mapWithConcurrency(rows, MAX_PREPARE_CONCURRENCY, async (row) => {
+  const prepared = await mapWithConcurrency(rows, async (row) => {
     const copy = { ...row }
 
     // Resolve `fake` generators first (NTS-608), the single-create order:
@@ -684,9 +756,12 @@ generators included (NTS-608), each row's run independently: unique +
 prepareRows).
 
 Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the
-earlier chunks committed — bulk writes are not atomic across chunks. Row
-preparation bounds its embedding-provider calls at MAX_PREPARE_CONCURRENCY
-in flight.
+earlier chunks committed — bulk writes are not atomic across chunks. A
+failed chunk throws a `BulkChunkError` (NTS-649) that names the failing
+rows with per-row errors, found by a rolled-back per-row diagnostic pass:
+every row of the failed chunk (valid rows included) is unwritten, earlier
+chunks stay committed. Row preparation bounds its embedding-provider
+calls at MAX_BULK_CONCURRENCY in flight.
 */
 export class BulkService extends QueryService {
   private async writeChunks<T>(
@@ -699,18 +774,109 @@ export class BulkService extends QueryService {
 
     const chunks: BulkChunk<T>[] = []
 
+    let firstRow = 0
+
     for (const rows of chunk(rowMaps, chunkSize)) {
-      const output = await inWriteTransaction(this.runner, options.database, async (tx) =>
-        tx.run(query, { rows }),
-      )
+      let output: QueryOutput
+
+      try {
+        output = await inWriteTransaction(this.runner, options.database, async (tx) =>
+          tx.run(query, { rows }),
+        )
+      } catch (error) {
+        // NTS-649: name the failing rows before the error escapes — the
+        // chunk itself stays rolled back (no commit-semantics change)
+        throw await this.chunkError(chunks.length, firstRow, rows, query, options.database, error)
+      }
 
       chunks.push({
         count: rows.length,
         entities: hydrate<T>(constructor, output, THIS_NODE),
       })
+
+      firstRow += rows.length
     }
 
     return chunks
+  }
+
+  /**
+  The NTS-649 error for a failed chunk: the failing rows are named by a
+  diagnostic pass — one transaction per row, every diagnostic transaction
+  rolled back — where the runner can open one
+  */
+  private async chunkError(
+    chunkIndex: number,
+    firstRow: number,
+    rows: Record<string, unknown>[],
+    query: string,
+    database: string | undefined,
+    cause: unknown,
+  ): Promise<BulkChunkError> {
+    return new BulkChunkError(
+      chunkIndex,
+      firstRow,
+      rows.length,
+      await this.diagnoseRows(rows, query, database, firstRow),
+      cause,
+    )
+  }
+
+  /**
+  Re-run each of the failed chunk's rows on its own — one WRITE transaction
+  per row, every diagnostic transaction rolled back (NTS-649): the valid
+  rows' fate stays "rolled back with the chunk", nothing the diagnosis
+  touches commits. Returns undefined when the diagnosis cannot run: the
+  runner is an open transaction scope (its writes could not be rolled
+  back), or the diagnosis itself failed
+  */
+  private async diagnoseRows(
+    rows: Record<string, unknown>[],
+    query: string,
+    database: string | undefined,
+    firstRow: number,
+  ): Promise<BulkRowFailure[] | undefined> {
+    if (!isConnectionProvider(this.runner)) {
+      return undefined
+    }
+
+    const runner: ConnectionProvider = this.runner
+
+    try {
+      const outcomes = await mapWithConcurrency(rows, async (row) => {
+        const tx = await runner.beginTransaction('WRITE', database)
+
+        try {
+          await tx.run(query, { rows: [row] })
+
+          await tx.rollback()
+
+          return
+        } catch (error) {
+          // A failed statement usually kills the transaction server-side;
+          // the rollback is a formality and must not mask the row's error
+          try {
+            await tx.rollback()
+          } catch {
+            // the row's own error is what the caller sees
+          }
+
+          return error
+        }
+      })
+
+      const failures: BulkRowFailure[] = []
+
+      for (const [index, error] of outcomes.entries()) {
+        if (error !== undefined) {
+          failures.push({ index: firstRow + index, error })
+        }
+      }
+
+      return failures
+    } catch {
+      return undefined
+    }
   }
 
   /**

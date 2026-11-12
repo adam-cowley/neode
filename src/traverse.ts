@@ -88,8 +88,8 @@ nodes. An open-ended range (`*1..`) is capped at MAX_TRAVERSE_DEPTH;
 
 ```ts
 const rows = await neode.traverse(Product)
-  .hop('SUPPLIED_BY', 'out', Supplier)
-  .hop('COVERS', 'in', Territory, { degrees: '1..2' })
+  .hop('SUPPLIED_BY', Direction.OUTGOING, Supplier)
+  .hop('COVERS', Direction.INCOMING, Territory, '1..2')
   .run()
 
 rows[0].nodes // [Product, Supplier, Territory] hydrated

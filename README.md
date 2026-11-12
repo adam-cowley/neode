@@ -103,9 +103,11 @@ await neode.dropSchema() // reverses installSchema() exactly
 
 `exists` constraints need Neo4j Enterprise — set `NEO4J_ENTERPRISE=true` or call `neode.setEnterprise(true)`.
 
+`unique` and `index` also take a property list: `@Property({ type: 'string', index: ['city', 'region'] })` declares one composite range index over N properties (the array is the full composite, declared on one of its properties), and `installSchema()` / `dropSchema()` / `schemaDrift()` / `applySchemaDrift()` treat it like every other declaration. Two Neo4j limits: uniqueness constraints are single-property — for a composite pair, node key constraints are the Enterprise composite analogue — while composite range indexes have no such restriction.
+
 That's the whole loop. Everything else the library does is in the matrix below.
 
-> **Model definitions are process-global.** Models registered through decorators, `defineModel()` or `neode.model()` / `with()` live in one shared registry, so every `Neode` instance in a process sees them. One set of models per process is the intended shape; run separate processes for separate schemas.
+> **Model definitions are process-global.** Models registered through decorators, `defineModel()` or `neode.model()` / `with()` live in one shared registry, so every `Neode` instance in a process sees them. One set of models per process is the intended shape; run separate processes for separate schemas. A model name registers once: `defineModel()` throws a descriptive error on a second registration of the same name (the previous silent overwrite orphaned the first model's schema), and `defineModel(name, schema, { idempotent: true })` returns the existing registration unchanged — the form to use where the defining module is re-evaluated (Nest HMR, Vitest watch mode).
 
 ## Feature matrix
 
@@ -125,11 +127,38 @@ That's the whole loop. Everything else the library does is in the matrix below.
 | Full-text search      | `search()` over a full-text index, `toFulltextQuery()` to escape user input — hydrated entities with relevance scores                                                                                                                                                                            | [kNN & full-text search](#knn--full-text-search)                         |
 | Vector search         | `@Vector({ dimensions })` on a property + `knn()` k-nearest-neighbour search (Cypher 25 `SEARCH` clause with a procedure fallback)                                                                                                                                                               | [kNN & full-text search](#knn--full-text-search)                         |
 | Pagination            | Offset mode `{ page, limit, order? }` and cursor/keyset mode `{ limit, orderBy, after?/before? }` on a temporal property, both via `neode.paginate()`                                                                                                                                            | [The Neode facade](docs/api-reference.md#the-neode-facade)               |
-| Bulk writes           | `createMany()` / `mergeMany()` — chunked `UNWIND` writes, one managed transaction per chunk, rows validated like single creates; `rowToProperties()` maps CSV/JSON rows for batch import                                                                                                         | [Bulk writes](docs/api-reference.md#bulk-writes--pagination)             |
+| Bulk writes           | `createMany()` / `mergeMany()` — chunked `UNWIND` writes, one managed transaction per chunk, rows validated like single creates; a failed chunk rolls back whole (valid rows included) and reports failing row indexes; `rowToProperties()` maps CSV/JSON rows for batch import                  | [Bulk writes](docs/api-reference.md#bulk-writes--pagination)             |
 | Querying              | Fluent `Builder` (all values parameterised), raw `neode.cypher()`, `hydrate` / `hydrateFirst` / `toCollection`, `toJson()` / `jsonSafe()` serialisation                                                                                                                                          | [Query builder](docs/api-reference.md#query-builder)                     |
 | Error taxonomy        | Typed `NeodeError` base, `ConstraintViolationError` (with parsed `label` / `property`), `TransientError` (retryable), `classifyError()` / `isTransientError()`                                                                                                                                   | [API reference](docs/api-reference.md)                                   |
 | Agent ontology        | `ontology()` / `ontologyMarkdown()` — emit the live graph schema for grounding Text2Cypher prompts or MCP resources                                                                                                                                                                              | [API reference](docs/api-reference.md)                                   |
 | Testing & ops         | `wipe()`, `testId()`, data factories (`neode.factory()`), `verifyConnectivity()` / `waitUntilReachable()`, `splitCypherStatements()` / `runCypherScript()`                                                                                                                                       | [API reference](docs/api-reference.md)                                   |
+
+### Benchmarks
+
+Vitest benches live in [`bench/`](bench/) — read/hydration/validation throughput and, in
+[`bench/write-bolt.bench.ts`](bench/write-bolt.bench.ts), the neode write path (`create()` / `createMany()` /
+`merge()` / `mergeMany()`) against raw Cypher over the neo4j-driver (Bolt) path at 300 / 3,000 / 30,000 rows,
+recording wall-clock and statements per write. They run manually against a local Neo4j testcontainer (needs Docker)
+and are not part of the default test gate:
+
+```sh
+./node_modules/.bin/vitest bench --project unit bench/write-bolt.bench.ts
+```
+
+Dated runs are recorded in [`bench/results/`](bench/results/) — e.g.
+[2026-11-11-write.md](bench/results/2026-11-11-write.md) for the write-path numbers (headline: batched
+`UNWIND` writes are 8–35x faster than per-row writes and within ~3x of the raw single-statement ceiling;
+statements per write, not OGM pipeline time, is what separates the strategies).
+
+### Testing against Aura
+
+`test/integration/aura-smoke.test.ts` provisions a real, ephemeral AuraDB instance through the Aura API, smokes schema / bulk-write / read / pagination against it, and destroys it in teardown — nothing outlives the run. Opt in with Aura API client credentials (Aura console → Account settings → Client credentials):
+
+```sh
+AURA_CLIENT_ID=… AURA_CLIENT_SECRET=… AURA_PROJECT_ID=… pnpm test:aura
+```
+
+The credentials are read from the environment, never logged; `AURA_ORGANIZATION_ID` is optional (discovered when omitted). CI runs the same smoke on demand via the manual `aura` workflow (set the `AURA_CLIENT_ID` / `AURA_CLIENT_SECRET` / `AURA_PROJECT_ID` repo secrets).
 
 ### kNN & full-text search
 
