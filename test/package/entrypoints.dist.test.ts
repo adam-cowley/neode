@@ -68,6 +68,22 @@ describe('built dist: entry point shape', () => {
   })
 })
 
+describe('built dist: neode/express subpath', () => {
+  it('exposes the router factory in the ESM build', async () => {
+    const expressEntry = await import('../../dist/express/index.mjs')
+
+    expect(typeof expressEntry.router).toBe('function')
+  })
+
+  it('exposes the router factory in the CJS build', () => {
+    const expressEntry = require('../../dist/express/index.cjs') as {
+      router: unknown
+    }
+
+    expect(typeof expressEntry.router).toBe('function')
+  })
+})
+
 describe('built dist: neode-generate bin', () => {
   for (const extension of ['mjs', 'cjs']) {
     it(`prints usage and exits 1 without arguments (${extension})`, () => {
