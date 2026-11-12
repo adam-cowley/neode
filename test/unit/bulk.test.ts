@@ -123,9 +123,9 @@ class BulkNoPk {
   knows: BulkNoPk[]
 }
 
-// The InternalId fallback: getPrimaryKey() resolves to the internal-id
-// property for models without an explicit @Primary — relateMany matches
-// on it like any other pk.
+// A model without an explicit @Primary still has a primary key:
+// getPrimaryKey() falls back to a phantom <label>_id property —
+// relateMany matches on it like any other pk.
 
 let fakeSequence = 0
 
@@ -418,6 +418,12 @@ describe('bulk helpers', () => {
       await expect(
         bulk.relateMany(getModel(BulkEdgeOwner)!, 'ownership', [{ from: 'p1', to: 'p1' }]),
       ).rejects.toThrow(/edge entities/)
+    })
+
+    it('resolves the fallback primary key for a model without an explicit @Primary', async () => {
+      await expect(
+        bulk.relateMany(getModel(BulkNoPk)!, 'knows', [{ from: 'a', to: 'b' }]),
+      ).resolves.toEqual({ related: 0, chunks: 1 })
     })
 
     it('converts edge properties through the shared pipeline', () => {

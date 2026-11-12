@@ -4,24 +4,13 @@ import type { GraphRelationship } from '../../driver/types.js'
 import { getModel } from '../../meta/index.js'
 import { EntitySchema, EntityType } from '../../meta/entity/entity-schema.js'
 import type { Newable } from '../../meta/newable.js'
-import { PropertyType } from '../../meta/property-schema.js'
 import type { RelationshipPropertySchema } from '../../meta/relationship-property-schema.js'
 import { convertPropertyValue, matchCriteriaForEntity } from '../../utilities.js'
 import { QueryService } from './query.service.js'
 import { NeodeError } from '../../errors/index.js'
 import { assertCardinality, assertWritableDirection } from '../write-utilities.js'
-import { convertEdgeProperties } from '../relationship-values.js'
+import { convertEdgeProperties, INTERNAL_PROPERTY_TYPES } from '../relationship-values.js'
 import { constructorOf, isGraphRelationship } from '../type-guards.js'
-
-/**
-Property types describing relationship internals, never set on the edge
-*/
-const INTERNAL_PROPERTY_TYPES = new Set<PropertyType>([
-  PropertyType.INTERNAL_ID,
-  PropertyType.START_NODE,
-  PropertyType.END_NODE,
-  PropertyType.OTHER_NODE,
-])
 
 /**
 The cardinality guard's aliases (NTS-161): the other-end node and the
