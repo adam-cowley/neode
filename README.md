@@ -148,6 +148,16 @@ Dated runs are recorded in [`bench/results/`](bench/results/) — e.g.
 `UNWIND` writes are 8–35x faster than per-row writes and within ~3x of the raw single-statement ceiling;
 statements per write, not OGM pipeline time, is what separates the strategies).
 
+### Testing against Aura
+
+`test/integration/aura-smoke.test.ts` provisions a real, ephemeral AuraDB instance through the Aura API, smokes schema / bulk-write / read / pagination against it, and destroys it in teardown — nothing outlives the run. Opt in with Aura API client credentials (Aura console → Account settings → Client credentials):
+
+```sh
+AURA_CLIENT_ID=… AURA_CLIENT_SECRET=… AURA_PROJECT_ID=… pnpm test:aura
+```
+
+The credentials are read from the environment, never logged; `AURA_ORGANIZATION_ID` is optional (discovered when omitted). CI runs the same smoke on demand via the manual `aura` workflow (set the `AURA_CLIENT_ID` / `AURA_CLIENT_SECRET` / `AURA_PROJECT_ID` repo secrets).
+
 ### kNN & full-text search
 
 ```typescript

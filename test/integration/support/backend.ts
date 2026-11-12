@@ -243,14 +243,15 @@ async function openRelateBackend(): Promise<TestBackend> {
   }
 }
 
-async function openBoltBackend(name: string): Promise<TestBackend> {
+async function openBoltBackend(name: string, config?: BoltBackendConfig): Promise<TestBackend> {
   const neo4j = require('neo4j-driver')
 
   const uri =
-    process.env.NEO4J_URI ||
-    `${process.env.NEO4J_PROTOCOL || 'bolt'}://${process.env.NEO4J_HOST || 'localhost'}:${process.env.NEO4J_PORT || '7687'}`
-  const username = process.env.NEO4J_USERNAME
-  const password = process.env.NEO4J_PASSWORD
+    config?.uri ??
+    (process.env.NEO4J_URI ||
+      `${process.env.NEO4J_PROTOCOL || 'bolt'}://${process.env.NEO4J_HOST || 'localhost'}:${process.env.NEO4J_PORT || '7687'}`)
+  const username = config?.username ?? process.env.NEO4J_USERNAME
+  const password = config?.password ?? process.env.NEO4J_PASSWORD
 
   if (!username || !password) {
     throw new Error(
@@ -264,7 +265,7 @@ async function openBoltBackend(name: string): Promise<TestBackend> {
   // Fail fast if the server is unreachable
   await driver.getServerInfo()
 
-  const database = process.env.NEO4J_DATABASE || 'neo4j'
+  const database = config?.database ?? (process.env.NEO4J_DATABASE || 'neo4j')
   const connection = new Neo4jConnectionProvider(driver, database)
   const neode = new Neode(connection)
 
@@ -282,7 +283,19 @@ async function openBoltBackend(name: string): Promise<TestBackend> {
   }
 }
 
-export async function openBackend(): Promise<TestBackend> {
+/**
+ * Explicit backend config for callers that hold their connection values in
+ * code (e.g. the Aura smoke — its provisioned credentials must never be
+ * staged through the environment). Omitted fields fall back to the env vars.
+ */
+export interface BoltBackendConfig {
+  uri: string
+  username: string
+  password: string
+  database: string
+}
+
+export async function openBackend(config?: BoltBackendConfig): Promise<TestBackend> {
   const backend = process.env.OGM_TEST_BACKEND || 'relate'
 
   switch (backend) {
@@ -292,7 +305,7 @@ export async function openBackend(): Promise<TestBackend> {
     case 'neo4j':
     case 'container':
     case 'memgraph':
-      return openBoltBackend(backend)
+      return openBoltBackend(backend, config)
 
     default:
       throw new Error(
