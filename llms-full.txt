@@ -611,6 +611,12 @@ An iterable wrapper over an array of entities (parity with neode's Collection): 
 
 _source: collection.ts_
 
+### `ComparisonOperator` (type)
+
+The operator parameter of whereProps(): one of the ref-to-ref comparison operators (the set the Where clause renders over two references).
+
+_source: query/where.ts_
+
 ### `ConnectionOptions` (interface)
 
 Options a Neode instance accepts alongside its ConnectionProvider.

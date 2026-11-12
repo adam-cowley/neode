@@ -180,6 +180,7 @@ const output = await neode.cypher('MATCH (p:Person) RETURN p LIMIT 10')
 - `caseExpr` (function) — CASE expression: `CASE WHEN c1 THEN t1 [WHEN …] [ELSE fallback] END`. Conditions and results are Cypher expressions composed by the caller.
 - `clearFilterParams` (function) — Clear every filter param (test hygiene — the store is global).
 - `Collection` (class) — An iterable wrapper over an array of entities (parity with neode's Collection): reads like an array, serialises through toJson().
+- `ComparisonOperator` (type) — The operator parameter of whereProps(): one of the ref-to-ref comparison operators (the set the Where clause renders over two references).
 - `ConnectionOptions` (interface) — Options a Neode instance accepts alongside its ConnectionProvider.
 - `ConnectionProvider` (interface) — The connection port implemented by every backend.
 - `CreateOptions` (interface) — Eager relationship creation on the write path (NTS-615): `relate` maps a relationship KEY (or type) on the written model to the saved target entity — or array of targets — to relate it to, inside the same managed transaction as the write. Edges are MERGE-based, so a retried write stays idempotent (the same guarantee relate() gives).
