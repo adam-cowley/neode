@@ -38,6 +38,26 @@ export function quoteLabel(label: string): string {
 }
 
 /**
+`alias` or `alias.property` reference for a ref-to-ref predicate (NTS-656):
+every dot-segment must be a non-empty identifier and is quoted only when
+not plain (safeKey) — plain aliases keep their readable rendering while
+hostile text (`a; DETACH DELETE x`) is escaped into a single identifier,
+injection-safe.
+*/
+export function quoteReference(reference: string, where: string): string {
+  const segments = reference.split('.')
+
+  if (segments.includes('')) {
+    throw new NeodeError(
+      `Invalid reference ${JSON.stringify(reference)} in ${where} — expected an alias or ` +
+        'alias.property made of plain identifiers. Pass e.g. "other" or "p.unitsInStock".',
+    )
+  }
+
+  return segments.map((segment) => safeKey(segment)).join('.')
+}
+
+/**
 Split a colon-joined label string (`'A:B'`) into its labels. A colon inside
 a backtick-quoted identifier is not a separator (`` `A:B` `` is one label).
 */

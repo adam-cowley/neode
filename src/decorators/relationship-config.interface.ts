@@ -5,6 +5,8 @@ import type {
 } from '../meta/relationship-property-schema.js'
 import type { Direction } from '../query/index.js'
 
+type RelationshipDirection = Direction | 'in' | 'out' | 'both'
+
 export interface RelationshipConfig {
   type: string
   /**
@@ -12,7 +14,7 @@ export interface RelationshipConfig {
   decorators have no design:type reflection to infer it.
   */
   target: () => Newable
-  direction: Direction
+  direction: RelationshipDirection
   eager?: boolean
   /**
   Per-relationship cascade: deleting a node also deletes the nodes reached

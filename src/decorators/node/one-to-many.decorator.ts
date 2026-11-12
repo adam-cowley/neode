@@ -3,7 +3,7 @@ import type {
   RelationshipCardinality,
 } from '../../meta/relationship-property-schema.js'
 import type { Newable } from '../../meta/newable.js'
-import { Direction } from '../../query/index.js'
+import { Direction, toDirection } from '../../query/index.js'
 import { mergeRelationshipProperty } from '../../meta/index.js'
 import { addRegistration, memberName } from '../registrations.js'
 
@@ -73,7 +73,9 @@ export function OneToMany(
     const config = typeof directionOrConfig === 'object' ? directionOrConfig : undefined
     const positionalDirection =
       typeof directionOrConfig === 'string' ? directionOrConfig : undefined
-    const direction: Direction | undefined = config ? config.direction : positionalDirection
+    const direction: Direction | undefined = config
+      ? toDirection(config.direction)
+      : positionalDirection
     const eager = config ? config.eager : isEager
     const relationshipDescription = config ? config.description : description
     const cascade = config ? config.cascade : isCascade

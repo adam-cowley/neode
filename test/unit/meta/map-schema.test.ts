@@ -235,6 +235,33 @@ describe('map-schema', () => {
       expect(instance.constructor).toBe(Person)
       expect(getModel(instance.constructor as never)).toBeDefined()
     })
+
+    it('rejects a second registration of the same model name (NTS-652)', () => {
+      defineModel('DuplicateNamePerson', { name: 'string' })
+
+      // The registry is process-global: a second registration used to
+      // silently orphan the first model's schema (last-wins name index)
+      expect(() => defineModel('DuplicateNamePerson', { name: 'string', age: 'number' })).toThrow(
+        new RegExp(
+          'A model named "DuplicateNamePerson" is already registered.*\\{ idempotent: true \\}',
+        ),
+      )
+    })
+
+    it('re-registration with idempotent: true returns the existing model unchanged (NTS-652)', () => {
+      const First = defineModel('IdempotentPerson', { name: 'string' })
+
+      const Second = defineModel(
+        'IdempotentPerson',
+        { name: 'string', age: 'number' },
+        { idempotent: true },
+      )
+
+      expect(Second).toBe(First)
+      expect(getModelByName('IdempotentPerson')).toBe(First)
+      // The existing definition wins — the re-run schema never merges in
+      expect(getModel(Second).hasProperty('age')).toBe(false)
+    })
   })
 
   describe('getModelByName / getModelsByName', () => {

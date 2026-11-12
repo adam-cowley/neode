@@ -7,6 +7,7 @@ import { convertPropertyValue } from '../../utilities.js'
 import { isPoint } from 'neo4j-driver'
 import { propertyReference } from '../../query/quote.js'
 import { QueryService } from './query.service.js'
+import { applyFilterBag } from './filter-bag.js'
 import { applyOrder, type OrderSpec } from './get.service.js'
 import { applyReadFilters, type ReadFilterOptions } from './filters.js'
 
@@ -88,13 +89,7 @@ export class WithinDistanceService extends QueryService {
     // NTS-574 — the model's named read filters (soft delete, tenant, …)
     applyReadFilters(builder, schema, filters)
 
-    for (const property of schema.getProperties()) {
-      const key = property.getKey()
-
-      if (Object.hasOwn(parameters, key)) {
-        builder.where(`${THIS_NODE}.${key}`, parameters[key])
-      }
-    }
+    applyFilterBag(builder, schema, parameters)
 
     const location = schema
       .getProperties()

@@ -1,12 +1,14 @@
 import { Match } from './match.js'
 import { NeodeError } from '../errors/index.js'
 import { Order } from './order.js'
+import { PathPattern } from './path.js'
 import { Property } from './property.js'
 import { RawExpression } from './expressions.js'
 import { Relationship } from './relationship.js'
 import { Statement } from './statement.js'
-import { Where, OPERATOR_EQUALS } from './where.js'
-import { quote } from './quote.js'
+import { Where, OPERATOR_EQUALS, assertComparisonOperator } from './where.js'
+import type { ComparisonOperator } from './where.js'
+import { quote, quoteReference, assertAlias, assertDegrees } from './quote.js'
 import { LabelPredicate } from './label-predicate.js'
 import { WhereBetween } from './where-between.js'
 import { WhereId } from './where-id.js'
@@ -46,6 +48,27 @@ export interface EntityMatchCriteria {
 }
 
 export type BuilderParameters = Record<string, unknown>
+
+/**
+Options for Builder.shortestPath() (NTS-658)
+*/
+export interface ShortestPathOptions {
+  /**
+  Relationship type (or types) the path may traverse
+  */
+  relationship?: string | string[]
+  /**
+  Direction of the relationship pattern — defaults to BOTH (undirected)
+  */
+  direction?: string
+  /**
+  Number of traversals — Neo4j rejects a minimum length other than 0 or
+  1 inside shortestPath, so multi-hop bounds are `'..2'` / `'1..2'` forms
+  (an exact length like `2` throws naming the fix; pin an exact edge
+  chain with match()/relationship()/to()/asPath() instead)
+  */
+  degrees?: number | string
+}
 
 /**
 Scan compiled query text for `$name` parameter references (NTS-478).
@@ -490,6 +513,62 @@ export class Builder {
   }
 
   /**
+  `MATCH <variable> = shortestPath((from)-[:TYPE]-(to))` (NTS-658): a
+  shortest-path match over its own segment, bound to a path variable a
+  RETURN can reference (`expr.nodes(variable)`, `expr.relationships(variable)`).
+  `direction` defaults to BOTH — shortestPath's common form; `degrees`
+  bounds the traversal count — Neo4j rejects a minimum length other than
+  0 or 1 inside shortestPath, so bounded forms (`'..2'`, `'1..2'`) are the
+  multi-hop spellings and an exact length (`2`) throws naming the fix.
+  The variable, from and to arguments are plain variable names (validated
+  like aliases — structure, never data). A pinned multi-hop pattern (an
+  exact chain of typed edges, where a multi-type shortestPath could return
+  a wrong-shaped path) stays with match() / relationship() / to() / asPath().
+  */
+  shortestPath(
+    variable: string,
+    from: string,
+    to: string,
+    options: ShortestPathOptions = {},
+  ): this {
+    this.whereStatement('WHERE')
+    this.statement()
+    this.bridgeWriteToRead()
+
+    assertAlias(variable, 'shortestPath()')
+    assertAlias(from, 'shortestPath()')
+    assertAlias(to, 'shortestPath()')
+
+    const degrees = options.degrees === undefined ? undefined : assertDegrees(options.degrees)
+
+    if (degrees !== undefined) {
+      const [minimum] = degrees.split('..', 1)
+
+      if (minimum !== '' && Number(minimum) > 1) {
+        throw new NeodeError(
+          `Invalid shortestPath degrees "${degrees}" — shortestPath does not support a ` +
+            'minimum length other than 0 or 1. Pass a bounded form such as "..2" or "1..2", ' +
+            'or pin an exact edge chain with match()/relationship()/to()/asPath().',
+        )
+      }
+    }
+
+    const relationship = new Relationship(
+      options.relationship,
+      options.direction,
+      undefined,
+      degrees,
+    )
+
+    this.activeStatement.match(
+      new PathPattern(`shortestPath((${from})${relationship.toString()}(${to}))`),
+    )
+    this.activeStatement.asPath(variable)
+
+    return this
+  }
+
+  /**
   Add an optional match to the query
   */
   optionalMatch(alias?: string, labels?: string | string[] | false): this {
@@ -666,6 +745,28 @@ export class Builder {
   }
 
   /**
+  Property-to-property comparison (NTS-656): both sides are references —
+  an alias or `alias.property` — comparing two variables, which where()
+  cannot express (every where() value binds as a parameter). Reference
+  sides render as quoted identifiers, never parameters; the operator is
+  validated against the same set the Where clause renders. Composes with
+  or() / whereGroup() like any where clause.
+  */
+  whereProps(left: string, operator: ComparisonOperator, right: string): this {
+    assertComparisonOperator(operator)
+
+    this.activeWhereClause.append(
+      new Where(
+        quoteReference(left, 'whereProps()'),
+        operator,
+        quoteReference(right, 'whereProps()'),
+      ),
+    )
+
+    return this
+  }
+
+  /**
   Query on element ID
   */
   whereId(alias: string, value: string | number): this {
@@ -739,6 +840,16 @@ export class Builder {
   }
 
   /**
+  Membership test against a reference list (NTS-656): `property IN listRef`,
+  where `listRef` is an alias holding a collected list — the reference-side
+  counterpart of whereIn (whose values bind as a parameter). Both sides
+  render as quoted identifiers.
+  */
+  whereInRefs(property: string, listReference: string): this {
+    return this.whereProps(property, 'IN', listReference)
+  }
+
+  /**
   Substring test: `property CONTAINS $param`
   */
   whereContains(property: string, value: string): this {
@@ -790,6 +901,19 @@ export class Builder {
   */
   whereExists(pattern: string): this {
     return this.whereRaw(`EXISTS { ${pattern} }`)
+  }
+
+  /**
+  Negative pattern predicate (NTS-657): `WHERE NOT (alias)<-[:TYPE]-()` —
+  "node with no such relationship" as a pattern predicate. The supported
+  form for negative graph patterns: the OPTIONAL MATCH + IS NULL idiom
+  silently mis-filters on the embedded engine. No user values flow into
+  the pattern, so nothing needs parameterising.
+  */
+  whereNotPattern(alias: string, type: string, direction?: string): this {
+    const relationship = new Relationship(type, direction)
+
+    return this.whereRaw(`NOT (${alias})${relationship.toString()}()`)
   }
 
   /**

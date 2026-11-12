@@ -11,6 +11,7 @@ export {
   ConstraintViolationError,
   RelationNotLoadedError,
   OptimisticLockError,
+  GuardViolationError,
   TransientError,
   classifyError,
   isTransientError,
@@ -59,6 +60,9 @@ export { MAX_CASCADE_DEPTH } from './services/query/delete.service.js'
 // NTS-602 — delete()'s options type, named in the facade signature in the
 // API reference
 export type { DeleteOptions } from './services/query/delete.service.js'
+// NTS-648 — detachFrom()'s result type, named in the EntityMethods
+// interface in the API reference
+export type { DetachResult } from './services/query/detach.service.js'
 export type { ReplaceRelationshipOptions } from './services/query/replace-relationship.service.js'
 export type { CreateOptions } from './services/query/create.service.js'
 
@@ -89,6 +93,8 @@ export {
   caseExpr,
   RawExpression,
 } from './query/index.js'
+export type { ComparisonOperator } from './query/index.js'
+export type { ShortestPathOptions } from './query/index.js'
 export type { INeode } from './neode.interface.js'
 
 // Merge outcome (NTS-630)
@@ -146,6 +152,13 @@ export type {
 // .withRelationship()` edge rows and the with-spec-narrowed read returns
 export type { RelationshipEdgeRead } from './services/query/load-relation.service.js'
 export type { LoadedEntity } from './query/load-spec.js'
+// NTS-646 — the typed where-filter bag keyed to the model's declared properties
+export type {
+  WhereFilter,
+  WhereFilterLevel,
+  FilterOperators,
+  FilterOperand,
+} from './query/where-filter.js'
 
 // Full-text + vector search (NTS-123/127)
 export { search } from './services/query/search.service.js'
@@ -173,10 +186,11 @@ export type {
 export type { SchemaResult } from './services/schema/schema-objects.js'
 
 // Bulk writes + pagination (NTS-125/126)
-export { BulkService, rowToProperties } from './services/query/bulk.service.js'
+export { BulkChunkError, BulkService, rowToProperties } from './services/query/bulk.service.js'
 export type {
   BulkChunk,
   BulkOptions,
+  BulkRowFailure,
   RelateManyResult,
   RelateManyRow,
   RowPropertiesResult,
@@ -238,6 +252,7 @@ export type {
   SchemaDriftGroup,
   SchemaDriftEntry,
   ApplySchemaDiffOptions,
+  ApplySchemaDriftReport,
 } from './services/schema/drift.service.js'
 
 // Agent ontology (NTS-445)

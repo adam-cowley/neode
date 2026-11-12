@@ -18,6 +18,7 @@ import { Direction } from '../../src/query'
 import { getModel } from '../../src/meta'
 import { ValidationError } from '../../src/validation'
 import { NeodeError } from '../../src/errors'
+import { BulkService, BulkChunkError } from '../../src/services/query/bulk.service'
 import { BulkService } from '../../src/services/query/bulk.service'
 import { PaginateService } from '../../src/services/query/paginate.service'
 
@@ -132,6 +133,23 @@ class BulkPost {
 
   @OneToMany(() => BulkPerson, 'WROTE', Direction.OUTGOING)
   author: BulkPerson[]
+}
+
+// NTS-649: the poison-row fixture — `code` carries a server-side unique
+// constraint installed (and dropped) by the failure-reporting describe below
+@NodeEntity()
+class BulkUniqueRow {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @Property({ type: 'string', unique: true })
+  code: string
+
+  @Property({ type: 'string' })
+  name: string
 }
 
 // ---------------------------------------------------------------------------
@@ -427,6 +445,119 @@ describe('relateMany', () => {
     await expect(
       bulk.relateMany(getModel(BulkPost)!, 'notDeclared', [{ from: 'a', to: 'b' }]),
     ).rejects.toThrow(NeodeError)
+  })
+})
+
+// ---- NTS-649: a failed chunk names its failing rows; its valid rows roll back with it ----
+
+describe('bulk chunk failure reporting (NTS-649)', () => {
+  let backend: TestBackend
+  let bulk: BulkService
+
+  const schema = () => getModel(BulkUniqueRow)!
+
+  beforeAll(async () => {
+    backend = await openBackend()
+    bulk = new BulkService(backend.connection)
+
+    if (backend.capabilities.constraints) {
+      await backend.connection.run(
+        'CREATE CONSTRAINT bulk_nts649_code IF NOT EXISTS FOR (n:BulkUniqueRow) REQUIRE n.code IS UNIQUE',
+      )
+    }
+  })
+
+  afterEach(async () => {
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    if (backend.capabilities.constraints) {
+      try {
+        await backend.connection.run('DROP CONSTRAINT bulk_nts649_code IF EXISTS')
+      } catch {
+        // not all backends support dropping constraints
+      }
+    }
+
+    await backend.close()
+  })
+
+  it('reports the failing row of a mid-import chunk and rolls the chunk back', async () => {
+    if (!backend.capabilities.constraints) {
+      return
+    }
+
+    // The poison target: a node the batch's third row collides with
+    await backend.connection.run(
+      "CREATE (:BulkUniqueRow { code: 'taken-1', name: 'pre-existing' })",
+    )
+
+    const error = await bulk
+      .createMany(
+        BulkUniqueRow,
+        schema(),
+        [
+          { code: 'row-0', name: 'Ok 0' },
+          { code: 'row-1', name: 'Ok 1' },
+          { code: 'taken-1', name: 'Poison' },
+          { code: 'row-3', name: 'Ok 3' },
+        ],
+        { chunkSize: 2 },
+      )
+      .then(
+        () => null,
+        (thrown) => thrown,
+      )
+
+    expect(error).toBeInstanceOf(BulkChunkError)
+    expect(error?.chunkIndex).toBe(1)
+    expect(error?.failedRows.map((failure) => failure.index)).toEqual([2])
+    expect(error?.message).toContain('earlier chunks stay committed')
+
+    // Fate: the first chunk committed; the failed chunk's valid row
+    // (index 3) rolled back with it, and the pre-existing node survives
+    const stored = await backend.neode.readCypher(
+      'MATCH (n:BulkUniqueRow) RETURN n.code AS code ORDER BY n.code',
+    )
+
+    expect(stored.records.map((record) => record.get('code'))).toEqual([
+      'row-0',
+      'row-1',
+      'taken-1',
+    ])
+  })
+
+  it('reports every failing row of a chunk together', async () => {
+    if (!backend.capabilities.constraints) {
+      return
+    }
+
+    await backend.connection.run(
+      "UNWIND $targets AS target CREATE (:BulkUniqueRow { code: target, name: 'pre-existing' })",
+      { targets: ['taken-1', 'taken-2'] },
+    )
+
+    const error = await bulk
+      .createMany(
+        BulkUniqueRow,
+        schema(),
+        [
+          { code: 'row-0', name: 'Ok 0' },
+          { code: 'taken-1', name: 'Poison 1' },
+          { code: 'row-2', name: 'Ok 2' },
+          { code: 'taken-2', name: 'Poison 2' },
+        ],
+        { chunkSize: 4 },
+      )
+      .then(
+        () => null,
+        (thrown) => thrown,
+      )
+
+    expect(error).toBeInstanceOf(BulkChunkError)
+    expect(error?.chunkIndex).toBe(0)
+    expect(error?.failedRows.map((failure) => failure.index)).toEqual([1, 3])
   })
 })
 

@@ -33,10 +33,16 @@ destructive-guards precedent): a call with no filters deletes EVERY node
 carrying the model's labels, so it is refused unless confirmed with
 `all: true` — a filtered call proceeds as the fast bulk wipe.
 */
-export function assertDeleteAllScope(parameters: Record<string, unknown>, labels: string[]): void {
-  const filters = Object.keys(parameters).filter((key) => key !== 'all')
+export function assertDeleteAllScope(parameters: object, labels: string[]): void {
+  // Entries avoid a record cast — the typed WhereFilter bags (NTS-646) are
+  // not index-signatured, so the guard reads key/value pairs instead
+  const entries = Object.entries(parameters)
 
-  if (filters.length === 0 && parameters['all'] !== true) {
+  const filters = entries.filter(([key]) => key !== 'all')
+
+  const hasAllConfirmation = entries.find(([key]) => key === 'all')?.[1] === true
+
+  if (!hasAllConfirmation && filters.length === 0) {
     throw new NeodeError(
       `deleteAll() refused on ${labels.join(':') || 'model'} — with no filters it deletes ` +
         'every node carrying the model’s labels, including nodes your filters would ' +

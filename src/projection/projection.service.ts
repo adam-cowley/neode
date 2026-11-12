@@ -12,6 +12,7 @@ import { loadSpecCalls, projectionNode } from './projection.js'
 import { shapeProjectionRows } from '../services/query/shape.js'
 import { requireLimit } from '../services/query/limits.js'
 import { applyReadFilters, type ReadFilterOptions } from '../services/query/filters.js'
+import { applyFilterOperators, isFilterMap } from '../services/query/filter-bag.js'
 
 /**
 True for the related-projection kinds that support nested filters / sort
@@ -21,20 +22,6 @@ function isRelatedProjection(property: PropertySchema): boolean {
     property.getType() === PropertyType.RELATED_ONE ||
     property.getType() === PropertyType.RELATED_MANY
   )
-}
-
-/**
-A nested filter value: a plain map of related-property filters
-*/
-function isFilterMap(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return false
-  }
-
-  const prototype: unknown = Object.getPrototypeOf(value)
-
-  // Plain maps only — Date, driver temporals etc. stay own-property values
-  return prototype === Object.prototype || prototype === null
 }
 
 /**
@@ -80,12 +67,14 @@ function bindTraversal(
 
 /**
 The property map: own properties filter as property equality (GetService
-parity, unknown keys ignored); object values on @RelatedOne / @RelatedMany
-keys filter on the related node's properties via a bound traversal, and an
-object value on any other property kind is a clear error. A nested filter
-renders as `WHERE EXISTS { … }` over the traversal (NTS-574): the target's
-read filters apply inside it and a @RelatedMany with several matching
-related nodes never duplicates the root row.
+parity, unknown keys ignored) or through the operator tier (NTS-646);
+object values on @RelatedOne / @RelatedMany keys filter on the related
+node's properties via a bound traversal — flat equality or operator
+objects — and an object value on any other property kind is an operator
+object too. A nested filter renders as `WHERE EXISTS { … }` over the
+traversal (NTS-574): the target's read filters apply inside it and a
+@RelatedMany with several matching related nodes never duplicates the
+root row.
 */
 function applyFilters(
   builder: Builder,
@@ -109,9 +98,10 @@ function applyFilters(
     }
 
     if (!isRelatedProjection(property)) {
-      throw new NeodeError(
-        `Cannot apply a nested filter on '${key}': only @RelatedOne and @RelatedMany properties support nested filters`,
-      )
+      // A plain property's operator object — the NTS-646 tier
+      applyFilterOperators(builder, THIS_NODE, key, value)
+
+      continue
     }
 
     const alias = filterAlias(key)
@@ -121,7 +111,11 @@ function applyFilters(
         bindTraversal(sub, property, alias, filters)
 
         for (const [field, fieldValue] of Object.entries(value)) {
-          sub.where(propertyReference(alias, field), fieldValue)
+          if (isFilterMap(fieldValue)) {
+            applyFilterOperators(sub, alias, field, fieldValue)
+          } else {
+            sub.where(propertyReference(alias, field), fieldValue)
+          }
         }
 
         return sub
