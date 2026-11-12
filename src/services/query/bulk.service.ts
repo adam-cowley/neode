@@ -2,7 +2,9 @@ import type { ConnectionProvider, QueryOutput, Runner } from '../../driver/types
 import { rollbackAfterFailure } from '../../transaction/rollback.js'
 import { THIS_NODE } from '../../constants.js'
 import { hydrate } from '../../hydrate.js'
-import type { EntitySchema } from '../../meta/entity/entity-schema.js'
+import { getModel } from '../../meta/index.js'
+import { EntitySchema, EntityType } from '../../meta/entity/entity-schema.js'
+import type { RelationshipPropertySchema } from '../../meta/relationship-property-schema.js'
 import {
   PropertyType,
   isProjectedProperty,
@@ -20,10 +22,12 @@ import {
   stampExpression,
   versionProperty,
 } from '../write-utilities.js'
+import { assertWritableDirection, convertEdgeProperties } from '../relationship-values.js'
+import { Direction } from '../../query/direction.js'
 import { validate } from '../../validation/index.js'
 import { ValidationError, type ValidationDetail } from '../../validation/validation-error.js'
 import { NeodeError } from '../../errors/index.js'
-import { quoteLabels } from '../../query/quote.js'
+import { quoteLabels, safeKey } from '../../query/quote.js'
 import { QueryService } from './query.service.js'
 import { getMergeFields } from './merge.service.js'
 
@@ -62,6 +66,25 @@ created/merged entities, in row order
 export interface BulkChunk<T> {
   count: number
   entities: T[]
+}
+
+/**
+One row of relateMany(): the from- and to-node primary-key values plus
+optional edge properties
+*/
+export interface RelateManyRow {
+  from: unknown
+  to: unknown
+  properties?: Record<string, unknown>
+}
+
+/**
+The relateMany() aggregate: edges MERGE-matched-or-created and the
+number of chunks written
+*/
+export interface RelateManyResult {
+  related: number
+  chunks: number
 }
 
 /**
@@ -291,6 +314,55 @@ export function buildCreateQuery(
     // property assignments (NTS-569)
     ...(derivedSets.length > 0 ? [`SET ${derivedSets.join(', ')}`] : []),
     `RETURN ${THIS_NODE}`,
+  ].join('\n')
+}
+
+/**
+UNWIND $rows AS row
+MATCH (from:`Jobpost` { id: row.from })
+MATCH (to:`Technology` { id: row.to })
+MERGE (from)-[rel:`REQUIRES`]->(to)
+ON CREATE SET rel = coalesce(row.properties, {})
+ON MATCH SET rel += coalesce(row.properties, {})
+RETURN count(rel) AS related
+
+An INCOMING declaration renders the MERGE pattern reversed
+(`MERGE (from)<-[rel:`T`]-(to)`). Edge properties ride the row map and
+apply whether the MERGE created the edge or matched it (NTS-628 at map
+granularity — the map form of relate()'s ON CREATE/ON MATCH SET).
+*/
+export function buildRelateQuery(
+  fromLabels: string[],
+  toLabels: string[],
+  type: string,
+  direction: Direction,
+  fromPk: string,
+  toPk: string,
+): string {
+  if (direction === Direction.BOTH) {
+    throw new NeodeError(
+      'relateMany cannot merge an undirected relationship — Neo4j has no undirected ' +
+        'relationships (NTS-483). Declare the relationship OUTGOING or INCOMING.',
+    )
+  }
+
+  const typePattern = quoteLabels([type])
+  // The endpoints are already MATCH-bound: the MERGE only creates the
+  // edge, and the embedded engine rejects re-declaring labels on bound
+  // variables (VariableAlreadyBound) — bare aliases for both endpoints.
+  const edge =
+    direction === Direction.INCOMING
+      ? `(from)<-[rel:${typePattern}]-(to)`
+      : `(from)-[rel:${typePattern}]->(to)`
+
+  return [
+    'UNWIND $rows AS row',
+    `MATCH (from${labelPattern(fromLabels)} { ${safeKey(fromPk)}: row.from })`,
+    `MATCH (to${labelPattern(toLabels)} { ${safeKey(toPk)}: row.to })`,
+    `MERGE ${edge}`,
+    'ON CREATE SET rel = coalesce(row.properties, {})',
+    'ON MATCH SET rel += coalesce(row.properties, {})',
+    'RETURN count(rel) AS related',
   ].join('\n')
 }
 
@@ -732,5 +804,112 @@ export class BulkService extends QueryService {
     }))
 
     return this.writeChunks<T>(constructor, rowMaps, query, options)
+  }
+
+  /**
+  Bulk MERGE of relationships (NTS-637): one UNWIND statement per chunk
+  matches both endpoints by primary key and MERGEs the edge — re-running
+  the same rows never duplicates edges (relate()'s idempotency, per
+  pair). Edge properties apply whether the MERGE created or matched
+  (relate()'s ON CREATE SET / ON MATCH SET at map granularity).
+
+  Rows name the endpoints by PRIMARY-KEY VALUE, not entity instance —
+  the ingest shape (JobStash dumps, CSV imports, seeders). The
+  relationship is the from-model's DECLARED relationship key; the
+  to-model is that relationship's declared target. Restricted
+  cardinalities (`one` / `zeroOrOne`) are rejected: bulk cannot run
+  relate()'s per-row cardinality guard. Rows whose endpoints do not
+  match are skipped without error — the returned `related` count is how
+  a caller detects them (rows.length - related).
+  */
+  async relateMany(
+    schema: EntitySchema,
+    key: string,
+    rows: RelateManyRow[],
+    options: BulkOptions = {},
+  ): Promise<RelateManyResult> {
+    if (rows.length === 0) {
+      return { related: 0, chunks: 0 }
+    }
+
+    let relationship: RelationshipPropertySchema
+
+    try {
+      relationship = schema.getRelationship(key)
+    } catch (error) {
+      throw new NeodeError(
+        `relateMany needs a declared relationship to merge. ${String(error instanceof Error ? error.message : error)}`,
+      )
+    }
+
+    assertWritableDirection(relationship)
+
+    if (relationship.getCardinality() !== 'many') {
+      throw new NeodeError(
+        `relateMany only supports "many" relationships: relationship "${key}" on ` +
+          `"${schema.getLabels().join(':')}" declares "${relationship.getCardinality()}". ` +
+          'Use relate() per pair, or relax the cardinality.',
+      )
+    }
+
+    const targetConstructor = relationship.getTarget()
+    const targetSchema =
+      typeof targetConstructor === 'function' ? getModel(targetConstructor) : undefined
+
+    if (
+      !(targetSchema instanceof EntitySchema) ||
+      targetSchema.getType() === EntityType.RelationshipEntity
+    ) {
+      throw new NeodeError(
+        `relateMany couldn't resolve a node target for relationship "${key}" on ` +
+          `"${schema.getLabels().join(':')}" — relationship-entity targets (edge entities) are ` +
+          'not supported in bulk. Use relate() per pair for edge entities.',
+      )
+    }
+
+    const fromPk = schema.getPrimaryKey()?.getKey()
+    const toPk = targetSchema.getPrimaryKey()?.getKey()
+
+    if (fromPk === undefined || toPk === undefined) {
+      throw new NeodeError(
+        `relateMany matches endpoints by primary key: model "${schema.getLabels().join(':')}" or its ` +
+          `target "${targetSchema.getLabels().join(':')}" declares no primary key. Add @Primary/@Uuid.`,
+      )
+    }
+
+    // Edge properties convert + validate exactly like relate() (NTS-509):
+    // conversion first, rules on the stored values. Checked per row up
+    // front, so one bad row fails the call before any statement runs.
+    const rowMaps = rows.map((row) => ({
+      from: row.from,
+      to: row.to,
+      properties:
+        row.properties === undefined ? {} : convertEdgeProperties(relationship, row.properties),
+    }))
+
+    const query = buildRelateQuery(
+      schema.getLabels(),
+      targetSchema.getLabels(),
+      relationship.getType(),
+      relationship.getDirection(),
+      fromPk,
+      toPk,
+    )
+
+    const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE
+
+    let related = 0
+    let chunks = 0
+
+    for (const chunkRows of chunk(rowMaps, chunkSize)) {
+      const output = await inWriteTransaction(this.runner, options.database, async (tx) =>
+        tx.run(query, { rows: chunkRows }),
+      )
+
+      related += Number(output.records[0]?.get('related') ?? 0)
+      chunks += 1
+    }
+
+    return { related, chunks }
   }
 }

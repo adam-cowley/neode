@@ -177,6 +177,8 @@ export { BulkService, rowToProperties } from './services/query/bulk.service.js'
 export type {
   BulkChunk,
   BulkOptions,
+  RelateManyResult,
+  RelateManyRow,
   RowPropertiesResult,
   RowToPropertiesOptions,
 } from './services/query/bulk.service.js'

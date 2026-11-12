@@ -5,20 +5,28 @@ import {
   Number,
   InternalId,
   OneToMany,
+  OneToOne,
   Property,
   Boolean,
+  RelationshipEntity,
+  StartNode,
+  EndNode,
 } from '../../src/decorators'
 import { Direction } from '../../src/query'
 import { getModel } from '../../src/meta'
 import { ValidationError } from '../../src/validation'
+import { NeodeError } from '../../src/errors'
+import { convertEdgeProperties } from '../../src/services/relationship-values'
 import {
   buildCreateQuery,
   buildMergeQuery,
+  buildRelateQuery,
   chunk,
   prepareRows,
   processCreateRow,
   processMergeRow,
   rowToProperties,
+  BulkService,
 } from '../../src/services/query/bulk.service'
 import { toCursorValue } from '../../src/services/query/paginate.service'
 import { PropertySchema, PropertyType } from '../../src/meta/property-schema'
@@ -69,6 +77,55 @@ class BulkPost {
   @OneToMany(() => BulkPerson, 'WROTE', Direction.OUTGOING)
   author: BulkPerson
 }
+
+@NodeEntity()
+class BulkOneAuthor {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @OneToOne({ target: () => BulkPerson, type: 'WROTE', direction: Direction.OUTGOING })
+  author: BulkPerson
+}
+
+@RelationshipEntity()
+class BulkOwnership {
+  @Uuid({ primary: true })
+  id: string
+
+  @StartNode(() => BulkPerson)
+  owner: BulkPerson
+
+  @EndNode(() => BulkPost)
+  post: BulkPost
+}
+
+@NodeEntity()
+class BulkEdgeOwner {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @OneToMany(() => BulkOwnership, 'OWNS', Direction.OUTGOING)
+  ownership: BulkOwnership[]
+}
+
+@NodeEntity()
+class BulkNoPk {
+  @InternalId()
+  _id: string
+
+  @OneToMany(() => BulkNoPk, 'KNOWS', Direction.OUTGOING)
+  knows: BulkNoPk[]
+}
+
+// The InternalId fallback: getPrimaryKey() resolves to the internal-id
+// property for models without an explicit @Primary — relateMany matches
+// on it like any other pk.
 
 let fakeSequence = 0
 
@@ -283,6 +340,90 @@ describe('bulk helpers', () => {
       expect(query).toContain('MERGE (this:BulkAccount { id: row.id, name: row.name })')
       expect(query).toContain('SET this += row')
       expect(query).toContain('RETURN this')
+    })
+
+    it('builds the relateMany statement: MATCH both pks, MERGE the edge, upsert props', () => {
+      const query = buildRelateQuery(
+        ['BulkPost'],
+        ['BulkPerson'],
+        'WROTE',
+        Direction.OUTGOING,
+        'id',
+        'id',
+      )
+
+      expect(query).toContain('UNWIND $rows AS row')
+      expect(query).toContain('MATCH (from:BulkPost { id: row.from })')
+      expect(query).toContain('MATCH (to:BulkPerson { id: row.to })')
+      // Endpoints are MATCH-bound — the MERGE is the edge only (the
+      // embedded engine rejects label re-declarations on bound variables)
+      expect(query).toContain('MERGE (from)-[rel:WROTE]->(to)')
+      expect(query).toContain('ON CREATE SET rel = coalesce(row.properties, {})')
+      expect(query).toContain('ON MATCH SET rel += coalesce(row.properties, {})')
+      expect(query).toContain('RETURN count(rel) AS related')
+    })
+
+    it('renders an INCOMING declaration with the reversed MERGE pattern', () => {
+      const query = buildRelateQuery(
+        ['BulkPost'],
+        ['BulkPerson'],
+        'WROTE',
+        Direction.INCOMING,
+        'id',
+        'id',
+      )
+
+      expect(query).toContain('MERGE (from)<-[rel:WROTE]-(to)')
+    })
+
+    it('escapes hostile labels and types', () => {
+      const query = buildRelateQuery(
+        ['Post` DETACH DELETE x'],
+        ['Person'],
+        'W` ROTE',
+        Direction.OUTGOING,
+        'id',
+        'id',
+      )
+
+      expect(query).toContain('MATCH (from:`Post`` DETACH DELETE x` {')
+      expect(query).toContain('[rel:`W`` ROTE`]')
+    })
+
+    it('rejects an undirected (BOTH) declaration', () => {
+      expect(() =>
+        buildRelateQuery(['BulkPost'], ['BulkPerson'], 'WROTE', Direction.BOTH, 'id', 'id'),
+      ).toThrow(NeodeError)
+    })
+  })
+
+  describe('relateMany validation (before any statement runs)', () => {
+    const bulk = new BulkService({
+      run: async () => ({ records: [], summary: undefined }),
+    } as never)
+
+    it('rejects a relationship key the model does not declare', async () => {
+      await expect(
+        bulk.relateMany(getModel(BulkPost)!, 'notDeclared', [{ from: 'p1', to: 'p1' }]),
+      ).rejects.toThrow(NeodeError)
+    })
+
+    it('rejects restricted cardinalities (one / zeroOrOne)', async () => {
+      await expect(
+        bulk.relateMany(getModel(BulkOneAuthor)!, 'author', [{ from: 'p1', to: 'p1' }]),
+      ).rejects.toThrow(/only supports "many" relationships/)
+    })
+
+    it('rejects edge-entity (relationship entity) targets', async () => {
+      await expect(
+        bulk.relateMany(getModel(BulkEdgeOwner)!, 'ownership', [{ from: 'p1', to: 'p1' }]),
+      ).rejects.toThrow(/edge entities/)
+    })
+
+    it('converts edge properties through the shared pipeline', () => {
+      // A plain relationship accepts literal edge properties untouched
+      const relationship = getModel(BulkPost)!.getRelationship('author')
+      expect(convertEdgeProperties(relationship, { weight: 2 })).toEqual({ weight: 2 })
     })
   })
 

@@ -5,13 +5,12 @@ import { getModel } from '../../meta/index.js'
 import { EntitySchema, EntityType } from '../../meta/entity/entity-schema.js'
 import type { Newable } from '../../meta/newable.js'
 import { PropertyType } from '../../meta/property-schema.js'
-import { validate } from '../../validation/index.js'
 import type { RelationshipPropertySchema } from '../../meta/relationship-property-schema.js'
 import { convertPropertyValue, matchCriteriaForEntity } from '../../utilities.js'
 import { QueryService } from './query.service.js'
 import { NeodeError } from '../../errors/index.js'
 import { assertCardinality, assertWritableDirection } from '../write-utilities.js'
-import { validateEdgeProperties } from '../relationship-values.js'
+import { convertEdgeProperties } from '../relationship-values.js'
 import { constructorOf, isGraphRelationship } from '../type-guards.js'
 
 /**
@@ -126,48 +125,15 @@ export class RelateService extends QueryService {
   }
 
   /**
-  Edge-entity properties are writes like any other: convert to the stored
-  form, then validate THAT (node-write order: conversion first, rules on
-  stored values — NTS-509). Declared map-API edge-property schemas (NTS-628)
-  are validated too.
+  Edge-entity properties are writes like any other (NTS-509). The
+  conversion + validation itself lives in convertEdgeProperties
+  (relationship-values.ts) so the bulk paths share it.
   */
   private assertEdgeProperties(
     relationship: RelationshipPropertySchema,
     properties: Record<string, unknown>,
   ): void {
-    // NTS-628: the relationship's declared `properties` schema names the
-    // allowed edge properties and their types
-    validateEdgeProperties(relationship, properties)
-
-    // The edge schema is the relationship's DECLARED target; the to-node
-    // is the far endpoint.
-    const edgeTarget = relationship.getTarget()
-    const edgeSchema = typeof edgeTarget === 'function' ? getModel(edgeTarget) : undefined
-
-    if (
-      !(edgeSchema instanceof EntitySchema) ||
-      edgeSchema.getType() !== EntityType.RelationshipEntity
-    ) {
-      return
-    }
-
-    const converted: Record<string, unknown> = {}
-
-    for (const [key, value] of Object.entries(properties)) {
-      if (value === undefined) {
-        continue
-      }
-
-      const property = edgeSchema.getProperties().find((candidate) => candidate.getKey() === key)
-
-      if (property !== undefined && INTERNAL_PROPERTY_TYPES.has(property.getType())) {
-        continue
-      }
-
-      converted[key] = property === undefined ? value : convertPropertyValue(value, property)
-    }
-
-    validate(converted, edgeSchema)
+    convertEdgeProperties(relationship, properties)
   }
 
   /**

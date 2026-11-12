@@ -64,6 +64,8 @@ import { assertPublicWithoutFilters, WITHOUT_ALL_FILTERS } from './services/quer
 import {
   type BulkChunk,
   type BulkOptions,
+  type RelateManyResult,
+  type RelateManyRow,
   BulkService,
   type RowPropertiesResult,
   type RowToPropertiesOptions,
@@ -2168,6 +2170,28 @@ export class Neode implements INeode {
     })
 
     return chunks
+  }
+
+  /**
+  Bulk MERGE of relationships (NTS-637): rows name the from- and to-nodes
+  by primary-key value, one UNWIND statement per chunk matches both
+  endpoints and MERGEs the edge — re-running the same rows never
+  duplicates an edge (relate()'s idempotency, per pair). The relationship
+  is the from-model's DECLARED relationship key; the to-model is its
+  declared target; restricted cardinalities and edge-entity (relationship
+  entity) targets are rejected — use relate() for those.
+  */
+  async relateMany(
+    constructor: new (...arguments_: never[]) => unknown,
+    key: string,
+    rows: RelateManyRow[] = [],
+    options: BulkOptions = {},
+    database?: string,
+  ): Promise<RelateManyResult> {
+    return new BulkService(this.getRunner()).relateMany(this.getSchema(constructor), key, rows, {
+      ...options,
+      database,
+    })
   }
 
   /**
