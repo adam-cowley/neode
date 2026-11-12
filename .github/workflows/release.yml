@@ -1,8 +1,8 @@
 name: Release
 
 # Runs only when a v* tag is pushed — nothing releases on branch pushes or
-# PRs. Version bumps come from the changesets "Version Packages" PR (or
-# `pnpm changeset version` locally); push the matching tag to release it.
+# PRs. Version bumps are manual: run `pnpm changeset version`, commit the
+# result, then push the matching tag to release it.
 on:
   push:
     tags: ["v*"]
