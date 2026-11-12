@@ -639,7 +639,14 @@ export class MergeService extends QueryService {
                 depth: depth + 1,
               })
 
-              await this.relateNodes(thisId, saved.elementId, relationship, targetSchema, element, claim)
+              await this.relateNodes(
+                thisId,
+                saved.elementId,
+                relationship,
+                targetSchema,
+                element,
+                claim,
+              )
             }),
           )
         }
@@ -662,7 +669,14 @@ export class MergeService extends QueryService {
             })
 
             // Relate the two nodes together
-            await this.relateNodes(thisId, saved.elementId, relationship, targetSchema, element, claim)
+            await this.relateNodes(
+              thisId,
+              saved.elementId,
+              relationship,
+              targetSchema,
+              element,
+              claim,
+            )
           }),
         )
       }),

@@ -8,7 +8,10 @@ import type {
   RelationshipPropertySchema,
 } from './relationship-property-schema.js'
 
-export type { ClaimConflictPolicy, RelationshipCardinality } from './relationship-property-schema.js'
+export type {
+  ClaimConflictPolicy,
+  RelationshipCardinality,
+} from './relationship-property-schema.js'
 
 import { EntitySchema, EntityType } from './entity/entity-schema.js'
 import type { PropertyConfig } from '../decorators/property-config.interface.js'

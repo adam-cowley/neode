@@ -257,9 +257,7 @@ export class RelateService extends QueryService {
             ? `[(\`${toAlias}\`)${relationship.toString('stale_claim')}(other_claimant) WHERE elementId(other_claimant) <> elementId(${fromAlias}) | stale_claim]`
             : `[(other_claimant)${relationship.toString('stale_claim')}(\`${toAlias}\`) WHERE elementId(other_claimant) <> elementId(${fromAlias}) | stale_claim]`
 
-        builder.forEach('stale_claim', stale, (sub) =>
-          sub.statement().delete('stale_claim'),
-        )
+        builder.forEach('stale_claim', stale, (sub) => sub.statement().delete('stale_claim'))
       } else {
         // refuse/throw: a target claimed by a DIFFERENT source loses its
         // row — the claimant's own re-relate (same pk value) still matches

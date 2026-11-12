@@ -1,5 +1,8 @@
 import type { Newable } from '../meta/newable.js'
-import type { ClaimConflictPolicy, RelationshipCardinality } from '../meta/relationship-property-schema.js'
+import type {
+  ClaimConflictPolicy,
+  RelationshipCardinality,
+} from '../meta/relationship-property-schema.js'
 import type { Direction } from '../query/index.js'
 
 export interface RelationshipConfig {

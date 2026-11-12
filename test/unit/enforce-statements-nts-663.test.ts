@@ -216,7 +216,12 @@ class ScriptedRunner {
       // Default: the CREATE read-back (elementId per created node) and
       // empty otherwise
       return {
-        records: [{ get: (name: string) => (name === INTERNAL_ID ? `elem-${this.queries.length}` : undefined) }],
+        records: [
+          {
+            get: (name: string) =>
+              name === INTERNAL_ID ? `elem-${this.queries.length}` : undefined,
+          },
+        ],
       } as unknown as QueryOutput
     }
   }
@@ -289,7 +294,9 @@ describe('enforce statements — relate() (NTS-663)', () => {
 
     const statement = runner.query(1)
 
-    expect(statement).toContain('FOREACH (stale_claim IN [(other_claimant)-[stale_claim:U1_DETACH_NEXT]->(`to`)')
+    expect(statement).toContain(
+      'FOREACH (stale_claim IN [(other_claimant)-[stale_claim:U1_DETACH_NEXT]->(`to`)',
+    )
     expect(statement).toContain('DELETE stale_claim')
     expect(statement).toContain('SET to.`holderId`')
     expect(statement).not.toContain('OPTIONAL MATCH')
