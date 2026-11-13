@@ -94,7 +94,7 @@ describe('validation wired into the write paths', () => {
 
     await expect(promise).rejects.toThrow(ValidationError)
     await expect(promise).rejects.toMatchObject({
-      details: [expect.objectContaining({ path: ['email'] })],
+      issues: [expect.objectContaining({ path: ['email'], rule: 'email' })],
     })
   })
 
