@@ -108,9 +108,11 @@ jobs:
           OGM_TEST_BACKEND: container
           NEO4J_IMAGE: neo4j:${{ matrix.neo4j }}
 
-  # Fails the build when a user-visible change has no changeset
+  # Fails the build when a user-visible change has no changeset.
+  # The Version PR consumes every changeset, so "no changesets found" is
+  # its normal state — skip it on the release branch (changesets bot).
   changeset-status:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
