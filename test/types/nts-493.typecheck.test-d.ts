@@ -23,7 +23,7 @@ import {
   ValidationError,
   defineModel,
   type SchemaDefinition,
-  type ValidationDetail,
+  type ValidationIssue,
 } from '../../src/index.js'
 
 @NodeEntity()
@@ -43,7 +43,7 @@ describe('NTS-493: error classes are exported from the package root', () => {
       })
     } catch (error: unknown) {
       if (error instanceof ValidationError) {
-        expectTypeOf(error.details).toEqualTypeOf<ValidationDetail[]>()
+        expectTypeOf(error.issues).toEqualTypeOf<ValidationIssue[]>()
       }
 
       if (error instanceof TransactionError) {

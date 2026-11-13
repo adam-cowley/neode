@@ -1,43 +1,38 @@
 /**
 Validation error — port of neode's ValidationError.
 
-Shape: a `details` array with one entry per failed check (Joi detail shape:
-message, path, type), and the original `input` object. Unlike neode's
-single-throw-per-check Joi call, all issues are collected (zod's
-non-abortive checks ≙ Joi's abortEarly: false).
+Shape: an `issues` array with one entry per failed check — neode's own
+shape (path, rule, message; NTS-676: the rules are named in neode's
+vocabulary, Zod stays an implementation detail) — and the original
+`input` object. All issues are collected (≙ Joi's abortEarly: false).
 */
 export const ERROR_VALIDATION = 'ERROR_VALIDATION'
 
 /**
-One failed check, shaped like a Joi detail
+One failed check: `rule` is the neode rule name — `required`, `type` or
+`format` for the base checks, otherwise the config rule that failed
+(`email`, `min`, `valid`, …)
 */
-export interface ValidationDetail {
+export interface ValidationIssue {
   message: string
   path: (string | number)[]
-  type: string
+  rule: string
 }
 
 export class ValidationError extends Error {
-  readonly details: ValidationDetail[]
+  readonly issues: ValidationIssue[]
   readonly input: Record<string, unknown>
 
-  /**
-  The underlying zod error, for consumers that want the full issue list
-  */
-  readonly zodError: unknown
-
-  constructor(details: ValidationDetail[], input: Record<string, unknown>, zodError?: unknown) {
+  constructor(issues: ValidationIssue[], input: Record<string, unknown>) {
     const keys = [
-      ...new Set(details.map((detail) => detail.path[0]).filter((key) => key !== undefined)),
+      ...new Set(issues.map((issue) => issue.path[0]).filter((key) => key !== undefined)),
     ]
 
     // NTS-446: the message carries every failing property with its rule
     // and reason — not just the names — so an agent can fix all of them
-    // in one pass. The structured list stays in `details`.
-    const rendered = details
-      .map(
-        (detail) => `"${String(detail.path[0] ?? '<root>')}" (${detail.type}): ${detail.message}`,
-      )
+    // in one pass. The structured list stays in `issues`.
+    const rendered = issues
+      .map((issue) => `"${String(issue.path[0] ?? '<root>')}" (${issue.rule}): ${issue.message}`)
       .join('; ')
 
     super(
@@ -48,8 +43,7 @@ export class ValidationError extends Error {
     )
 
     this.name = 'ValidationError'
-    this.details = details
+    this.issues = issues
     this.input = input
-    this.zodError = zodError
   }
 }

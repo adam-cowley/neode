@@ -483,7 +483,7 @@ _source: driver/rows.ts_
 
 ### `rowToProperties` (function)
 
-Map one source row to the property map createMany() / mergeMany() take — the batch-import row pipeline, non-throwing. Renames apply first, then the single-create order (fake -> embeddings -> derived -> transforms, NTS-608/ 449/569), then conversion through the schema BEFORE validation: file sources deliver strings (every CSV cell is one), and a numeric string must not fail its type rule. Unset properties resolve defaults and fakes exactly like create(). Returns `{ ok: false, errors }` instead of throwing — a ValidationError carries every failing check; a value its type cannot absorb (nested relationship values, `age: "x"`) becomes one synthetic detail. The `properties` of an ok result feed createMany()/mergeMany() directly: already-converted driver values pass through those pipelines unchanged.
+Map one source row to the property map createMany() / mergeMany() take — the batch-import row pipeline, non-throwing. Renames apply first, then the single-create order (fake -> embeddings -> derived -> transforms, NTS-608/ 449/569), then conversion through the schema BEFORE validation: file sources deliver strings (every CSV cell is one), and a numeric string must not fail its type rule. Unset properties resolve defaults and fakes exactly like create(). Returns `{ ok: false, errors }` instead of throwing — a ValidationError carries every failing check; a value its type cannot absorb (nested relationship values, `age: "x"`) becomes one synthetic issue. The `properties` of an ok result feed createMany()/mergeMany() directly: already-converted driver values pass through those pipelines unchanged.
 
 _source: services/query/bulk.service.ts_
 

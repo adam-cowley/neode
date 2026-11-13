@@ -203,6 +203,7 @@ function decimalPlaces(value: number): number {
 
 function numberRefine(
   schema: z.ZodType,
+  rule: string,
   message: string,
   isMatch: (value: number) => boolean,
 ): z.ZodType {
@@ -212,12 +213,15 @@ function numberRefine(
 
       return number_ !== null && isMatch(number_)
     },
-    { message },
+    // NTS-676: the failing neode rule travels in params so validate() can
+    // name it without touching Zod's own issue codes
+    { message, params: { rule } },
   )
 }
 
 function stringRefine(
   schema: z.ZodType,
+  rule: string,
   message: string,
   isMatch: (value: string) => boolean,
 ): z.ZodType {
@@ -227,7 +231,7 @@ function stringRefine(
 
       return string_ !== null && isMatch(string_)
     },
-    { message },
+    { message, params: { rule } },
   )
 }
 
@@ -253,6 +257,7 @@ function applyBooleanRule(
 
       return numberRefine(
         schema,
+        rule,
         `"${key}" must be a ${isPositive ? 'positive' : 'negative'} number`,
         (value) => (isPositive ? value > 0 : value < 0),
       )
@@ -265,6 +270,7 @@ function applyBooleanRule(
 
       return numberRefine(
         schema,
+        rule,
         `"${key}" must be a valid port`,
         (value) => Number.isSafeInteger(value) && value >= 0 && value <= 65_535,
       )
@@ -275,7 +281,7 @@ function applyBooleanRule(
         failUnsupported(rule, key)
       }
 
-      return numberRefine(schema, `"${key}" must be an integer`, (value) =>
+      return numberRefine(schema, rule, `"${key}" must be an integer`, (value) =>
         Number.isSafeInteger(value),
       )
     }
@@ -288,7 +294,7 @@ function applyBooleanRule(
 
       return schema.refine(
         (value) => ISO_DATE.safeParse(value).success || ISO_DATETIME.safeParse(value).success,
-        { message: `"${key}" must be in ISO 8601 format` },
+        { message: `"${key}" must be in ISO 8601 format`, params: { rule } },
       )
     }
 
@@ -299,6 +305,7 @@ function applyBooleanRule(
 
       return schema.refine((value) => IS_CREDIT_CARD.safeParse(value).success, {
         message: `"${key}" must be a valid credit card number`,
+        params: { rule },
       })
     }
 
@@ -307,8 +314,11 @@ function applyBooleanRule(
         failUnsupported(rule, key)
       }
 
-      return stringRefine(schema, `"${key}" must only contain alpha-numeric characters`, (value) =>
-        /^[a-zA-Z0-9]+$/.test(value),
+      return stringRefine(
+        schema,
+        rule,
+        `"${key}" must only contain alpha-numeric characters`,
+        (value) => /^[a-zA-Z0-9]+$/.test(value),
       )
     }
 
@@ -319,6 +329,7 @@ function applyBooleanRule(
 
       return stringRefine(
         schema,
+        rule,
         `"${key}" must only contain alpha-numeric and underscore characters`,
         (value) => /^[a-zA-Z0-9_]+$/.test(value),
       )
@@ -329,7 +340,7 @@ function applyBooleanRule(
         failUnsupported(rule, key)
       }
 
-      return stringRefine(schema, `"${key}" must be a valid hostname`, (value) =>
+      return stringRefine(schema, rule, `"${key}" must be a valid hostname`, (value) =>
         HOSTNAME_PATTERN.test(value),
       )
     }
@@ -360,6 +371,7 @@ function applyBooleanRule(
 
       return schema.refine((value) => value === isExpected, {
         message: `"${key}" must be ${String(isExpected)}`,
+        params: { rule },
       })
     }
 
@@ -396,7 +408,10 @@ function applyBooleanRule(
     }
 
     case 'forbidden': {
-      return schema.refine(() => false, { message: `"${key}" is not allowed` })
+      return schema.refine(() => false, {
+        message: `"${key}" is not allowed`,
+        params: { rule },
+      })
     }
 
     // Presence rules are carried by the metamodel (PropertySchema) and
@@ -432,19 +447,21 @@ function applyStringFormat(
     case 'email': {
       return schema.refine((value) => IS_EMAIL.safeParse(value).success, {
         message: `"${key}" must be a valid email`,
+        params: { rule },
       })
     }
 
     case 'uri': {
       return schema.refine((value) => IS_URL.safeParse(value).success, {
         message: `"${key}" must be a valid uri`,
+        params: { rule },
       })
     }
 
     case 'ip': {
       return schema.refine(
         (value) => IS_IPV4.safeParse(value).success || IS_IPV6.safeParse(value).success,
-        { message: `"${key}" must be a valid ip address` },
+        { message: `"${key}" must be a valid ip address`, params: { rule } },
       )
     }
 
@@ -454,7 +471,7 @@ function applyStringFormat(
           ? /^[A-Za-z0-9+/]+(={0,2})?$/
           : /^[A-Za-z0-9+/]+={0,2}$/
 
-      return stringRefine(schema, `"${key}" must be a valid base64 string`, (value) =>
+      return stringRefine(schema, rule, `"${key}" must be a valid base64 string`, (value) =>
         pattern.test(value),
       )
     }
@@ -463,11 +480,16 @@ function applyStringFormat(
       const isAllowPrefix = options['prefix'] === true
       const isByteAligned = options['byteAligned'] === true
 
-      return stringRefine(schema, `"${key}" must only contain hexadecimal characters`, (value) => {
-        const body = isAllowPrefix ? value.replace(/^0x/i, '') : value
+      return stringRefine(
+        schema,
+        rule,
+        `"${key}" must only contain hexadecimal characters`,
+        (value) => {
+          const body = isAllowPrefix ? value.replace(/^0x/i, '') : value
 
-        return /^[0-9a-f]+$/i.test(body) && (!isByteAligned || body.length % 2 === 0)
-      })
+          return /^[0-9a-f]+$/i.test(body) && (!isByteAligned || body.length % 2 === 0)
+        },
+      )
     }
 
     case 'normalize': {
@@ -507,6 +529,7 @@ function applyGenericRule(
       if (kind === 'number') {
         return numberRefine(
           schema,
+          rule,
           isMin
             ? `"${key}" must be greater than or equal to ${String(limit)}`
             : `"${key}" must be less than or equal to ${String(limit)}`,
@@ -528,6 +551,7 @@ function applyGenericRule(
 
       return stringRefine(
         schema,
+        rule,
         isMin
           ? `"${key}" length must be at least ${String(limit)} characters long`
           : `"${key}" length must be less than or equal to ${String(limit)} characters long`,
@@ -542,6 +566,7 @@ function applyGenericRule(
 
       return stringRefine(
         schema,
+        rule,
         `"${key}" length must be ${String(options)} characters long`,
         (value) => value.length === options,
       )
@@ -554,6 +579,7 @@ function applyGenericRule(
 
       return numberRefine(
         schema,
+        rule,
         `"${key}" must have no more than ${String(options)} decimal places`,
         (value) => decimalPlaces(value) <= options,
       )
@@ -566,6 +592,7 @@ function applyGenericRule(
 
       return numberRefine(
         schema,
+        rule,
         `"${key}" must be a multiple of ${String(options)}`,
         (value) => value % options === 0,
       )
@@ -590,6 +617,7 @@ function applyGenericRule(
 
       return stringRefine(
         schema,
+        rule,
         `"${key}" fails to match the ${patternName} pattern`,
         (value) => pattern.test(value) !== isInvert,
       )
@@ -636,7 +664,10 @@ function applyGenericRule(
             ? valueDate.getTime() <= boundary.getTime()
             : valueDate.getTime() >= boundary.getTime()
         },
-        { message: `"${key}" must be ${isBefore ? 'before' : 'after'} the expected boundary` },
+        {
+          message: `"${key}" must be ${isBefore ? 'before' : 'after'} the expected boundary`,
+          params: { rule },
+        },
       )
     }
 
@@ -650,6 +681,7 @@ function applyGenericRule(
 
       return schema.refine((value) => version.safeParse(value).success, {
         message: `"${key}" must be a valid GUID`,
+        params: { rule },
       })
     }
 
@@ -676,7 +708,7 @@ function applyGenericRule(
 
       return schema.refine(
         (value) => values.some((expected) => doesMatch(value, expected, state.insensitive)),
-        { message: `"${key}" must be one of ${JSON.stringify(values)}` },
+        { message: `"${key}" must be one of ${JSON.stringify(values)}`, params: { rule } },
       )
     }
 
@@ -685,7 +717,7 @@ function applyGenericRule(
 
       return schema.refine(
         (value) => values.every((expected) => !doesMatch(value, expected, state.insensitive)),
-        { message: `"${key}" contains an invalid value` },
+        { message: `"${key}" contains an invalid value`, params: { rule } },
       )
     }
 
@@ -798,6 +830,28 @@ function baseSchemaFor(property: PropertySchema): { schema: z.ZodType; kind: Rul
 }
 
 /**
+One engine validation issue, declared structurally — NTS-676: the Zod
+types stay inside the implementation, out of the built type surface.
+validate() maps these onto neode's own ValidationIssue shape.
+*/
+export interface SchemaIssue {
+  code: string
+  message: string
+  path: PropertyKey[]
+  params?: unknown
+}
+
+/**
+The piece of the engine schema validate() / relationship-values consume —
+the Zod schema satisfies this structurally.
+*/
+export interface PropertyCheck {
+  safeParse(
+    value: unknown,
+  ): { success: true; data: unknown } | { success: false; error: { issues: SchemaIssue[] } }
+}
+
+/**
 Build the Zod schema for one property: its PropertyType base schema plus
 the neode-style rule options (`{ min: 2, max: 50, email: true }`, keys in
 neode's rule names). Unknown rules, or rules the base type does not
@@ -810,7 +864,7 @@ builds configless schemas until rule storage lands.
 export function buildPropertySchema(
   property: PropertySchema,
   config: Record<string, unknown> = {},
-): z.ZodType {
+): PropertyCheck {
   const { schema: base, kind } = baseSchemaFor(property)
   const context: BuildContext = { key: property.getKey(), kind, config }
   const state: BuildState = { insensitive: false, allowValues: [], truncated: false }

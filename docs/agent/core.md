@@ -69,16 +69,16 @@ _source: traverse.ts_
 
 ### `validate` (function)
 
-Validate an object against an entity schema. Runs the Zod schema for every registered property (type base + rules), collecting all issues — like Joi's abortEarly: false — and throwing a ValidationError when anything fails. Unknown keys are always allowed (allowUnknown): only registered properties are validated. undefined is skipped unless the property is required; null behaves the same (a required property fails with `"<key>" is required`, an optional property passes).
+Validate an object against an entity schema. Runs the Zod schema for every registered property (type base + rules), collecting all issues — like Joi's abortEarly: false — and throwing a ValidationError when anything fails. Issues are reported in neode's own shape (path, rule, message — NTS-676), never Zod's. Unknown keys are always allowed (allowUnknown): only registered properties are validated. undefined is skipped unless the property is required; null behaves the same (a required property fails with `"<key>" is required`, an optional property passes).
 
 _source: validation/index.ts_
 
-### `ValidationDetail` (interface)
-
-One failed check, shaped like a Joi detail
+### `ValidationError` (class)
 
 _source: validation/validation-error.ts_
 
-### `ValidationError` (class)
+### `ValidationIssue` (interface)
+
+One failed check: `rule` is the neode rule name — `required`, `type` or `format` for the base checks, otherwise the config rule that failed (`email`, `min`, `valid`, …)
 
 _source: validation/validation-error.ts_

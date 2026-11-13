@@ -56,11 +56,11 @@ describe('errorBody', () => {
     })
   })
 
-  it('carries the validation details', () => {
+  it('carries the validation issues', () => {
     const body = errorBody(validationError)
 
     expect(body.error).toBe('ValidationError')
-    expect(body.details).toHaveLength(1)
+    expect(body.issues).toHaveLength(1)
   })
 })
 
