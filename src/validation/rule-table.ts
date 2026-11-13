@@ -846,7 +846,9 @@ The piece of the engine schema validate() / relationship-values consume —
 the Zod schema satisfies this structurally.
 */
 export interface PropertyCheck {
-  safeParse(value: unknown): { success: true; data: unknown } | { success: false; error: { issues: SchemaIssue[] } }
+  safeParse(
+    value: unknown,
+  ): { success: true; data: unknown } | { success: false; error: { issues: SchemaIssue[] } }
 }
 
 /**
