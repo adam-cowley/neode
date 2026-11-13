@@ -8,6 +8,26 @@ Coming from [neode](https://github.com/adam-cowley/neode) 0.4.9? Your existing m
 
 > **1.0 alpha.** This branch is the `1.0.0-alpha.0` prerelease line. Install it with the `next` dist-tag — `npm install neode` still gives you 0.4.9 until 1.0 goes stable.
 
+## What 1.0 guarantees
+
+The 1.0 semver contract covers three things:
+
+- the **public exports of the package root** — everything you import from `'neode'` (the authoritative list is `src/index.ts`),
+- the **typed error taxonomy** — `NeodeError` and its subclasses,
+- the **documented result shapes** of every read path — [docs/decisions/0003-result-shapes.md](docs/decisions/0003-result-shapes.md).
+
+Generated Cypher text and error-message wording are **not** semver-protected — they may change in any release. Match on error classes, not messages.
+
+## Limitations
+
+Known gaps a 1.0 user will hit — documented, not surprising:
+
+- **The embedded Relate engine executes `DELETE` inside an explicit transaction incorrectly** (upstream engine bug — [docs/RELEASE.md](docs/RELEASE.md) §7). Run deletes outside an explicit transaction, or on a Bolt backend.
+- **Multi-database requires Neo4j Enterprise.** `setDatabase()` / per-call `database` arguments work where the server allows it; Community and the embedded engine serve a single database.
+- **Bulk writes are not atomic across chunks.** `createMany()` / `mergeMany()` commit one managed transaction per chunk (default 1000 rows), so a failure partway through leaves earlier chunks committed — [bulk writes](docs/api-reference.md#bulk-writes--pagination).
+- **Filtered kNN post-filters the index's top-k.** Named filters apply after the vector search, so a highly selective filter can return fewer than `k` rows even though neode over-fetches round over round until `k` rows survive or the round cap gives up — [kNN & full-text search](#knn--full-text-search).
+- **Raw Cypher expressions on the embedded engine.** Relate rejects pattern syntax (e.g. `size((this)-[:R]->())`) inside `@Expression` RETURN projections, and SET-side `RawExpression` values are verified only on neo4j-driver backends — [read-model projection decorators](docs/api-reference.md#read-model-projection-decorators).
+
 ## Quickstart
 
 Four steps: install, connect, define a model, round-trip.
@@ -142,7 +162,7 @@ const vectorHits = await knn(runner, 'Person', 'person_plot_vector', vector, 5)
 const textHits = await search(runner, 'Person', 'person_plot', toFulltextQuery(query))
 ```
 
-Indexes are declared on the model — `@Vector({ dimensions: 1536 })` for vectors (installed by `installSchema()`), `fulltext: true` on a property or `installFulltextIndexes(definitions)` for full-text. One caveat: vector search takes its top `k` neighbours _before_ filtering, so a filtered kNN can return fewer than `k` rows — over-fetch with a larger `k` and post-filter in your code.
+Indexes are declared on the model — `@Vector({ dimensions: 1536 })` for vectors (installed by `installSchema()`), `fulltext: true` on a property or `installFulltextIndexes(definitions)` for full-text. One caveat: filters are a post-filter over the index's top-k, so a filtered kNN can return fewer than `k` rows — see [Limitations](#limitations).
 
 ## Docs
 
