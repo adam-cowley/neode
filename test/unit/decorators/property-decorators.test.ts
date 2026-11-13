@@ -19,7 +19,6 @@ import {
   Hidden,
   Protected,
   Readonly,
-  String,
   Uuid,
 } from '../../../src/decorators'
 import { getModel } from '../../../src/meta'
@@ -254,7 +253,7 @@ describe('Property Decorators (NTS-12)', () => {
       @Property({ type: 'float' })
       indexFirst: number
 
-      @String()
+      @Property({ type: 'string' })
       @Index()
       stringThenIndex: string
     }
@@ -283,7 +282,7 @@ describe('Property Decorators (NTS-12)', () => {
       expect(property.isIndex()).toEqual(true)
     })
 
-    it('should keep @String working with option decorators', () => {
+    it('should keep the string type when stacked with option decorators', () => {
       const property = getModel(StackedProperties).getProperty('stringThenIndex')
 
       expect(property.getType()).toEqual(PropertyType.STRING)

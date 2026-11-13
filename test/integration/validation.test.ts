@@ -1,4 +1,4 @@
-import { NodeEntity, Uuid, String, InternalId } from '../../src/decorators'
+import { NodeEntity, Uuid, Property, InternalId } from '../../src/decorators'
 import { getModel } from '../../src/meta'
 import { defineModel } from '../../src/meta/map-schema'
 import { validate } from '../../src/validation'
@@ -21,10 +21,10 @@ class ValidatedPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
-  @String({ email: true })
+  @Property({ type: 'string', email: true })
   email: string
 
   static create(name: string, email: string): ValidatedPerson {

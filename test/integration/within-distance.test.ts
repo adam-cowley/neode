@@ -3,7 +3,7 @@
 // when this file's service imports are evaluated first.
 import { openBackend, TestBackend } from './support/backend'
 import neo4j from 'neo4j-driver'
-import { NodeEntity, Uuid, String, InternalId, Point } from '../../src/decorators'
+import { NodeEntity, Uuid, Property, InternalId, Point } from '../../src/decorators'
 import { getModel } from '../../src/meta'
 import { WithinDistanceService } from '../../src/services/query/within-distance.service'
 import { OrderSpec } from '../../src/services/query/get.service'
@@ -18,7 +18,7 @@ class Place {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
   @Point()

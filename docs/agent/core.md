@@ -37,12 +37,6 @@ Maximum depth of an open-ended variable-length hop (`*1..`) — the read-side co
 
 _source: traverse.ts_
 
-### `setDeprecationWarnings` (function)
-
-Enable or disable the deprecation warnings (NTS-599). On by default — pass `false` to silence them (e.g. in test output or CLIs that define deprecated-decorator models); pass `true` to turn them back on. An API whose warning was suppressed while silenced still warns once after re-enabling — silence never consumes the warn-once slot.
-
-_source: deprecate.ts_
-
 ### `setStrictRelationAccess` (function)
 
 Enable or disable strict relation access. Off by default: neode-style code relies on reading an unloaded relationship as `undefined` — flip it on once every relationship you read is in the load spec (or eager).

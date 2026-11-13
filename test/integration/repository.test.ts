@@ -1,5 +1,5 @@
 import { Repository } from '../../src/repository'
-import { NodeEntity, InternalId, Uuid, String, Number } from '../../src/decorators'
+import { NodeEntity, InternalId, Uuid, Property, Number } from '../../src/decorators'
 import { openBackend, TestBackend } from './support/backend'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
@@ -12,7 +12,7 @@ class Movie {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   title: string
 
   @Number()

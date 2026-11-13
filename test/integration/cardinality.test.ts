@@ -5,7 +5,7 @@
 // NTS-483 assertWritableDirection precedent) and syncEdges is an
 // explicit edge-write API (Eloquent `sync` precedent).
 import { openBackend, TestBackend } from './support/backend'
-import { InternalId, NodeEntity, OneToMany, OneToOne, String, Uuid } from '../../src/decorators'
+import { InternalId, NodeEntity, OneToMany, OneToOne, Property, Uuid } from '../../src/decorators'
 import { Direction } from '../../src/query'
 import { defineModel } from '../../src/meta/map-schema'
 import type { Newable } from '../../src/meta/newable'
@@ -24,7 +24,7 @@ class Role {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   static create(name: string): Role {
@@ -43,7 +43,7 @@ class Subscriber {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   // 'one' derived from the OneToOne declaration — no explicit cardinality

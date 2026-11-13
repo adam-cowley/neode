@@ -8,7 +8,7 @@ import {
   Property,
   Repository,
   SoftDelete,
-  String as StringProperty,
+  Property as StringProperty,
   testId,
 } from '../../src/index'
 import { openBackend, TestBackend } from './support/backend'

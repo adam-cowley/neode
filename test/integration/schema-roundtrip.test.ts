@@ -1,4 +1,4 @@
-import { NodeEntity, Uuid, String, InternalId } from '../../src/decorators'
+import { NodeEntity, Uuid, Property, InternalId } from '../../src/decorators'
 import { getModel } from '../../src/meta'
 import { ConstraintType } from '../../src/services/schema/schema.service'
 import { openBackend, TestBackend } from './support/backend'
@@ -15,13 +15,13 @@ class RoundtripPerson {
   @Uuid({ primary: true })
   id!: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   email!: string
 
-  @String({ index: true })
+  @Property({ type: 'string', index: true })
   city!: string
 
-  @String({ exists: true })
+  @Property({ type: 'string', exists: true })
   title!: string
 }
 

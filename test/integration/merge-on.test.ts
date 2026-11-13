@@ -1,4 +1,4 @@
-import { NodeEntity, Uuid, String, Number, InternalId } from '../../src/decorators'
+import { NodeEntity, Uuid, Property, Number, InternalId } from '../../src/decorators'
 import { getModel } from '../../src/meta'
 import { getMergeFields } from '../../src/services/query/merge.service'
 import { openBackend, TestBackend } from './support/backend'
@@ -13,10 +13,10 @@ class Account {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
-  @String()
+  @Property({ type: 'string' })
   email: string
 
   @Number()
@@ -43,7 +43,7 @@ class Tag {
   @InternalId()
   _id: string
 
-  @String({ index: true })
+  @Property({ type: 'string', index: true })
   slug: string
 
   static create(slug: string): Tag {

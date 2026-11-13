@@ -3,7 +3,6 @@ import {
   NodeEntity,
   Uuid,
   Version,
-  String,
   Number,
   InternalId,
   DateTime,
@@ -32,7 +31,7 @@ class BulkPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String({ min: 2 })
+  @Property({ type: 'string', min: 2 })
   name: string
 
   @Number()
@@ -113,7 +112,7 @@ class BulkAccount {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @Number()
@@ -128,7 +127,7 @@ class BulkPost {
   @Uuid({ primary: true })
   id: string
 
-  @String({ min: 2 })
+  @Property({ type: 'string', min: 2 })
   title: string
 
   @OneToMany(() => BulkPerson, 'WROTE', Direction.OUTGOING)

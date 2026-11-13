@@ -3,7 +3,7 @@ import {
   NodeEntity,
   InternalId,
   Uuid,
-  String,
+  Property,
   Date,
   DateTime,
   LocalTime,
@@ -29,10 +29,10 @@ class Person {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
-  @String({ hidden: true })
+  @Property({ type: 'string', hidden: true })
   secret: string
 
   @Date()
@@ -79,7 +79,7 @@ mergeModel(GrabBag).setLabels(['GrabBag'])
 
 @NodeEntity()
 class NoInternalId {
-  @String()
+  @Property({ type: 'string' })
   name: string
 }
 

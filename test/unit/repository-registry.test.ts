@@ -4,7 +4,7 @@ import {
   NodeEntity,
   InternalId,
   Uuid,
-  String,
+  Property,
   Number,
   EntityRepository,
 } from '../../src/decorators'
@@ -22,7 +22,7 @@ class Person {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
   @Number()
@@ -44,7 +44,7 @@ class Movie {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   title: string
 }
 

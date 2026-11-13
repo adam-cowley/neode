@@ -8,7 +8,6 @@ import {
   OneToMany,
   Property,
   RelationshipEntity,
-  String,
   Uuid,
 } from '../../src/decorators'
 import { Direction } from '../../src/query'
@@ -33,7 +32,7 @@ class Pet {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   static create(name: string): Pet {
@@ -64,7 +63,7 @@ class Person {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToMany(() => Pet, 'OWNS', Direction.OUTGOING)

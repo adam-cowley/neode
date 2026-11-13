@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Neode } from '../../src/neode.service'
-import { NodeEntity, Uuid, String } from '../../src/decorators'
+import { NodeEntity, Uuid, Property } from '../../src/decorators'
 import {
   AccessMode,
   ConnectionProvider,
@@ -17,7 +17,7 @@ class Leak {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 }
 
@@ -100,7 +100,7 @@ describe('failed statements roll their transaction back (no leaked transactions)
       @Uuid({ primary: true })
       id: string
 
-      @String({ min: 100 })
+      @Property({ type: 'string', min: 100 })
       name: string
     }
 
