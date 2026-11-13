@@ -2,7 +2,7 @@
 
 neode is a Neo4j OGM for Node.js designed to take care of the CRUD boilerplate involved with setting up a graph database project. Just install, define your models and go.
 
-It runs against any Cypher-compatible engine: **Neo4j** (Community, Enterprise, Aura) and **Memgraph** over Bolt, or the embedded [Relate](https://github.com/relateapp/relate) engine in-process.
+It runs against any Cypher-compatible engine: **Neo4j** (Community, Enterprise, Aura) over Bolt, or the embedded [Relate](https://github.com/relateapp/relate) engine in-process. Memgraph speaks Bolt and connects, but its Cypher does not yet parse the library's core read paths (sorted subquery loads, keyset pagination), so it is not a supported target.
 
 Coming from [neode](https://github.com/adam-cowley/neode) 0.4.9? Your existing map-based schemas keep working — read the [migration guide](docs/migration-guide.md).
 

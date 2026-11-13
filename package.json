@@ -71,7 +71,6 @@
     "graph",
     "cypher",
     "orm",
-    "memgraph",
     "decorators"
   ],
   "author": "Adam Cowley",
