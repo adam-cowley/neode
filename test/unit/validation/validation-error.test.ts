@@ -41,11 +41,11 @@ describe('validate', () => {
       } catch (error) {
         const validationError = error as ValidationError
 
-        expect(validationError.details).toHaveLength(1)
-        expect(validationError.details[0]).toEqual({
+        expect(validationError.issues).toHaveLength(1)
+        expect(validationError.issues[0]).toEqual({
           message: '"name" is required',
           path: ['name'],
-          type: 'any.required',
+          rule: 'required',
         })
       }
     })
@@ -66,7 +66,7 @@ describe('validate', () => {
         validate({ name: null }, required)
         throw new Error('should have thrown')
       } catch (error) {
-        expect((error as ValidationError).details[0].message).toEqual('"name" is required')
+        expect((error as ValidationError).issues[0].message).toEqual('"name" is required')
       }
     })
 
@@ -77,13 +77,13 @@ describe('validate', () => {
         validate({ name: '' }, schema)
         throw new Error('should have thrown')
       } catch (error) {
-        expect((error as ValidationError).details[0].message).toEqual('"name" is required')
+        expect((error as ValidationError).issues[0].message).toEqual('"name" is required')
       }
     })
   })
 
   describe('issue collection', () => {
-    it('should collect one detail per invalid property (abortEarly: false)', () => {
+    it('should collect one issue per invalid property (abortEarly: false)', () => {
       const schema = schemaWith((model) => {
         addProperty(model, 'name', PropertyType.STRING)
         addProperty(model, 'age', PropertyType.INTEGER)
@@ -94,23 +94,37 @@ describe('validate', () => {
         throw new Error('should have thrown')
       } catch (error) {
         expect(error).toBeInstanceOf(ValidationError)
-        expect((error as ValidationError).details).toHaveLength(2)
+        expect((error as ValidationError).issues).toHaveLength(2)
       }
     })
 
-    it('should expose message, path and type on each detail', () => {
+    it('should expose message, path and rule on each issue — the neode-owned shape (NTS-676)', () => {
       const schema = schemaWith((model) => addProperty(model, 'name', PropertyType.STRING))
 
       try {
         validate({ name: 5 }, schema)
         throw new Error('should have thrown')
       } catch (error) {
-        const [detail] = (error as ValidationError).details
+        const [issue] = (error as ValidationError).issues
 
-        expect(detail.path).toEqual(['name'])
-        expect(detail.type).toEqual('invalid_type')
-        expect(typeof detail.message).toEqual('string')
-        expect(detail.message.length).toBeGreaterThan(0)
+        expect(issue.path).toEqual(['name'])
+        expect(issue.rule).toEqual('type')
+        expect(typeof issue.message).toEqual('string')
+        expect(issue.message.length).toBeGreaterThan(0)
+      }
+    })
+
+    it('should name the failing neode rule, not the Zod issue code (NTS-676)', () => {
+      const schema = schemaWith((model) => addProperty(model, 'email', PropertyType.STRING))
+      schema.getProperty('email').setRules({ email: true })
+
+      try {
+        validate({ email: 'not-an-email' }, schema)
+        throw new Error('should have thrown')
+      } catch (error) {
+        const [issue] = (error as ValidationError).issues
+
+        expect(issue.rule).toEqual('email')
       }
     })
 
@@ -247,9 +261,9 @@ describe('validate', () => {
         validate({ names: ['ab', 5] }, schema)
         throw new Error('should have thrown')
       } catch (error) {
-        const [detail] = (error as ValidationError).details
+        const [issue] = (error as ValidationError).issues
 
-        expect(detail.path).toEqual(['names', '1'])
+        expect(issue.path).toEqual(['names', '1'])
       }
     })
   })

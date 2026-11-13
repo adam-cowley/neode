@@ -514,9 +514,9 @@ describe('bulk helpers', () => {
       if (!result.ok) {
         expect(result.errors.length).toBeGreaterThanOrEqual(2)
 
-        for (const detail of result.errors) {
-          expect(detail.message).toBeTruthy()
-          expect(detail.type).toBeTruthy()
+        for (const issue of result.errors) {
+          expect(issue.message).toBeTruthy()
+          expect(issue.rule).toBeTruthy()
         }
       }
     })

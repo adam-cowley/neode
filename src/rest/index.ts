@@ -79,7 +79,7 @@ export function errorBody(error: unknown): Record<string, unknown> {
   const message = error instanceof Error ? error.message : String(error)
 
   return error instanceof ValidationError
-    ? { error: name, message, details: error.details }
+    ? { error: name, message, issues: error.issues }
     : { error: name, message }
 }
 
@@ -336,7 +336,7 @@ function asRecord(body: unknown, verb: string): Record<string, unknown> {
 
   if (!isRecord(body)) {
     throw new ValidationError(
-      [{ message: `Expected a JSON object to ${verb}`, path: [], type: 'object.base' }],
+      [{ message: `Expected a JSON object to ${verb}`, path: [], rule: 'type' }],
       {},
     )
   }

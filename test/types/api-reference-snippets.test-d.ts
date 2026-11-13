@@ -301,12 +301,12 @@ export class PlacedOrder {
 
 // --- Snippet wrappers -----------------------------------------------------
 
-// Block: validation errors carry a details array
+// Block: validation errors carry a neode-owned issues array (NTS-676)
 export async function validationErrorDetails(neode: Neode): Promise<void> {
   try {
     await neode.save(Object.assign(new User(), { email: 'nope' }))
   } catch (e) {
-    if (e instanceof ValidationError) e.details
+    if (e instanceof ValidationError) e.issues
   }
 }
 
@@ -623,7 +623,7 @@ export async function rowPipeline(neode: Neode, record: Record<string, unknown>)
   if (result.ok) {
     batch.push(result.properties)
   } else {
-    rejected.push({ line, errors: result.errors }) // ValidationDetail[]: message / path / type per check
+    rejected.push({ line, errors: result.errors }) // ValidationIssue[]: message / path / rule per check
   }
 
   return [batch, rejected]

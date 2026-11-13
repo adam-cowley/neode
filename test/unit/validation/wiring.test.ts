@@ -81,7 +81,7 @@ describe('validate() reading rules from the metamodel', () => {
     try {
       validate({ email: 'adam@example.com' }, schema)
     } catch (error) {
-      expect((error as ValidationError).details).toEqual([
+      expect((error as ValidationError).issues).toEqual([
         expect.objectContaining({ message: '"name" is required', path: ['name'] }),
       ])
     }

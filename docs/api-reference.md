@@ -462,7 +462,7 @@ Rules are plain keys in the property config, using neode's rule names, mapped on
 
 **Temporals** (`date`, `time`, `datetime`, `localtime`, `localdatetime`) — `before` / `after` with a `Date`, date string or `'now'`.
 
-Validation runs automatically on every write path (`save`, `create`, `update`). Failures throw a validation error whose `details` array carries one `{ path, message }` entry per failing check (and `.input` holds the rejected values):
+Validation runs automatically on every write path (`save`, `create`, `update`). Failures throw a validation error whose `issues` array carries one neode-owned `{ path, rule, message }` entry per failing check — `rule` names the check in neode's vocabulary (`required`, `type`, `format`, or the failing config rule such as `email` or `min`) — and `.input` holds the rejected values:
 
 ```typescript
 import { ValidationError } from 'neode'
@@ -470,7 +470,7 @@ import { ValidationError } from 'neode'
 try {
   await neode.save(Object.assign(new User(), { email: 'nope' }))
 } catch (e) {
-  if (e instanceof ValidationError) e.details // [{ path: ['email'], message: '"email" must be a valid email', … }]
+  if (e instanceof ValidationError) e.issues // [{ path: ['email'], rule: 'email', message: '"email" must be a valid email', … }]
 }
 ```
 
@@ -1336,7 +1336,7 @@ const result = await neode.rowToProperties(Product, record, { map: { product_nam
 if (result.ok) {
   batch.push(result.properties)
 } else {
-  rejected.push({ line, errors: result.errors }) // ValidationDetail[]: message / path / type per check
+  rejected.push({ line, errors: result.errors }) // ValidationIssue[]: message / path / rule per check
 }
 ```
 

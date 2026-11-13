@@ -17,7 +17,9 @@ export {
   isTransientError,
 } from './errors/index.js'
 export { ValidationError } from './validation/validation-error.js'
-export type { ValidationDetail } from './validation/validation-error.js'
+// NTS-676 — neode-owned validation issue shape (path, rule, message); the
+// Zod-typed detail shape and the never-populated `zodError` field are gone
+export type { ValidationIssue } from './validation/validation-error.js'
 // NTS-601 — plain-payload validation against a model schema, the
 // plain-object companion to the documented write path
 export { validate } from './validation/index.js'

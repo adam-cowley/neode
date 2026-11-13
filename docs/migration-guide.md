@@ -364,7 +364,7 @@ The same keys are accepted in map-based definitions (`neode.model('Person', { em
 
 The complete rule list is in the [API reference](api-reference.md#validation-rules) — `min`, `max`, `length`, `regex`, `email`, `ip`, `uri`, `alphanum`, `allow`, `valid`, `invalid`, `positive`, `precision`, `before`/`after`, `lowercase`/`uppercase`, `truncate`, … Unknown rule names throw neode's familiar `Not sure how to validate <rule> on <key>`.
 
-Validation runs automatically on every write path (`save`, `create`, `update`) and throws a `ValidationError` — the port of neode's error, with the same `.details` / `.input` shape:
+Validation runs automatically on every write path (`save`, `create`, `update`) and throws a `ValidationError` — the port of neode's error, with neode's own `.issues` / `.input` shape:
 
 ```typescript
 import { ValidationError } from 'neode'
@@ -373,8 +373,8 @@ try {
   await neode.create(Person, { name: 'A', email: 'not-an-email' })
 } catch (error) {
   if (error instanceof ValidationError) {
-    // error.details — one { path, message, type } entry per failed check
-    // error.input   — the object that failed
+    // error.issues — one { path, rule, message } entry per failed check
+    // error.input  — the object that failed
     console.warn(error.message)
   }
 }

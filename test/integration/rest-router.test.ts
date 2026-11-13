@@ -102,7 +102,7 @@ describe('rest router', () => {
 
     expect(response.status).toBe(422)
     expect(response.body.error).toBe('ValidationError')
-    expect(response.body.details.length).toBeGreaterThan(0)
+    expect(response.body.issues.length).toBeGreaterThan(0)
   })
 
   it('reads one entity by primary key', async () => {

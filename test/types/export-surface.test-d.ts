@@ -94,7 +94,7 @@ import type {
   TransformConfig,
   TransformedQueryOutput,
   TraversalRow,
-  ValidationDetail,
+  ValidationIssue,
   VectorConfig,
   VectorIndexDefinition,
   WaitUntilReachableOptions,
@@ -104,7 +104,13 @@ import type {
   WipeTarget,
   WithMethods,
 } from '../../src/index.js'
-import { getModel, requireRelateClient, validate, vectorIndexName } from '../../src/index.js'
+import {
+  getModel,
+  requireRelateClient,
+  validate,
+  ValidationError,
+  vectorIndexName,
+} from '../../src/index.js'
 
 type Root = typeof import('../../src/index.js')
 
@@ -346,7 +352,7 @@ describe('public export surface (NTS-600)', () => {
         TransformConfig,
         TransformedQueryOutput,
         TraversalRow,
-        ValidationDetail,
+        ValidationIssue,
         VectorConfig,
         VectorIndexDefinition,
         WaitUntilReachableOptions,
@@ -386,5 +392,20 @@ describe('public export surface (NTS-600)', () => {
     expectTypeOf<SchemaResult['statement']>().toEqualTypeOf<string>()
     expectTypeOf<SchemaResult['success']>().toEqualTypeOf<boolean>()
     expectTypeOf<DeleteOptions['mode']>().toEqualTypeOf<'delete' | 'detach' | undefined>()
+  })
+
+  it('exposes the neode-owned validation shape — no Zod on the surface (NTS-676)', () => {
+    // ValidationError.issues is neode's own shape: path, rule, message —
+    // the rules are named in neode's vocabulary (required / type / format
+    // / the failing config rule), never Zod's issue codes
+    expectTypeOf<ValidationError['issues']>().toEqualTypeOf<ValidationIssue[]>()
+    expectTypeOf<ValidationIssue>().toEqualTypeOf<{
+      message: string
+      path: (string | number)[]
+      rule: string
+    }>()
+    // the never-populated Zod-typed `zodError` field is removed
+    // @ts-expect-error NTS-676 — removed: Zod stays an implementation detail
+    expectTypeOf<ValidationError['zodError']>().toBeUnknown()
   })
 })

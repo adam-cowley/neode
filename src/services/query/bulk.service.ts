@@ -25,7 +25,7 @@ import {
 import { assertWritableDirection, convertEdgeProperties } from '../relationship-values.js'
 import { Direction } from '../../query/direction.js'
 import { validate } from '../../validation/index.js'
-import { ValidationError, type ValidationDetail } from '../../validation/validation-error.js'
+import { ValidationError, type ValidationIssue } from '../../validation/validation-error.js'
 import { NeodeError } from '../../errors/index.js'
 import { quoteLabels, safeKey } from '../../query/quote.js'
 import { QueryService } from './query.service.js'
@@ -649,7 +649,7 @@ through the model's write pipeline
 */
 export type RowPropertiesResult =
   | { ok: true; properties: Record<string, unknown> }
-  | { ok: false; errors: ValidationDetail[] }
+  | { ok: false; errors: ValidationIssue[] }
 
 export interface RowToPropertiesOptions {
   /**
@@ -670,7 +670,7 @@ exactly like create().
 
 Returns `{ ok: false, errors }` instead of throwing — a ValidationError
 carries every failing check; a value its type cannot absorb (nested
-relationship values, `age: "x"`) becomes one synthetic detail. The
+relationship values, `age: "x"`) becomes one synthetic issue. The
 `properties` of an ok result feed createMany()/mergeMany() directly:
 already-converted driver values pass through those pipelines unchanged.
 */
@@ -704,7 +704,7 @@ export async function rowToProperties(
     return { ok: true, properties: processCreateRow(prepared, schema) }
   } catch (error) {
     if (error instanceof ValidationError) {
-      return { ok: false, errors: error.details }
+      return { ok: false, errors: error.issues }
     }
 
     return {
@@ -713,7 +713,7 @@ export async function rowToProperties(
         {
           message: error instanceof Error ? error.message : String(error),
           path: [],
-          type: 'NeodeError',
+          rule: 'NeodeError',
         },
       ],
     }

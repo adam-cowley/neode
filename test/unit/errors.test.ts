@@ -500,11 +500,11 @@ describe('validation reports every failing property with rule and reason (NTS-44
     }
 
     // every failing property, with property name + rule + message
-    expect(caught?.message).toContain('"name" (any.required): "name" is required')
-    expect(caught?.message).toContain('"email" (any.required): "email" is required')
+    expect(caught?.message).toContain('"name" (required): "name" is required')
+    expect(caught?.message).toContain('"email" (required): "email" is required')
     expect(caught?.message).toContain('"age"')
     expect(caught?.message).toContain('Validation failed on')
-    expect(caught?.details.length).toBeGreaterThanOrEqual(3)
+    expect(caught?.issues.length).toBeGreaterThanOrEqual(3)
   })
 })
 
