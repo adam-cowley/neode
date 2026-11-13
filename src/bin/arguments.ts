@@ -1,5 +1,5 @@
 /*
-Parse the neode-generate CLI arguments (unit tested). Environment
+Parse the `neode generate` CLI arguments (unit tested). Environment
 fallbacks match the library's NEO4J_URI / NEO4J_USERNAME / NEO4J_PASSWORD
 spellings.
 */
@@ -20,7 +20,7 @@ export interface ParsedGenerateArguments {
 }
 
 const USAGE = [
-  'Usage: neode-generate --uri bolt://localhost:7687 --username neo4j --password secret',
+  'Usage: neode generate --uri bolt://localhost:7687 --username neo4j --password secret',
   '                      [--database neo4j] [--sample 100] [--labels Person,Movie] [--out dir]',
   '',
   'Generates neode model definitions (decorated classes + map schemas) from the',

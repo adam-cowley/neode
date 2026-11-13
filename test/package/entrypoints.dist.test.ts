@@ -84,17 +84,42 @@ describe('built dist: neode/express subpath', () => {
   })
 })
 
-describe('built dist: neode-generate bin', () => {
+describe('built dist: neode bin', () => {
   for (const extension of ['mjs', 'cjs']) {
-    it(`prints usage and exits 1 without arguments (${extension})`, () => {
+    it(`prints top-level usage and exits 1 without arguments (${extension})`, () => {
       const result = spawnSync(
         process.execPath,
-        [path.join(distDirectory, `bin/neode-generate.${extension}`)],
+        [path.join(distDirectory, `bin/neode.${extension}`)],
+        {
+          encoding: 'utf8',
+        },
+      )
+
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain('Usage: neode')
+    })
+
+    it(`prints the generate usage and exits 1 when generate has no arguments (${extension})`, () => {
+      const result = spawnSync(
+        process.execPath,
+        [path.join(distDirectory, `bin/neode.${extension}`), 'generate'],
         { encoding: 'utf8' },
       )
 
       expect(result.status).toBe(1)
-      expect(result.stderr).toContain('Usage: neode-generate')
+      expect(result.stderr).toContain('Usage: neode generate')
+    })
+
+    it(`rejects unknown commands (${extension})`, () => {
+      const result = spawnSync(
+        process.execPath,
+        [path.join(distDirectory, `bin/neode.${extension}`), 'bogus'],
+        { encoding: 'utf8' },
+      )
+
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain('Unknown command: bogus')
+      expect(result.stderr).toContain('Usage: neode')
     })
   }
 })

@@ -39,7 +39,7 @@
   ],
   "sideEffects": false,
   "bin": {
-    "neode-generate": "./dist/bin/neode-generate.mjs"
+    "neode": "./dist/bin/neode.mjs"
   },
   "scripts": {
     "build": "tsdown",
