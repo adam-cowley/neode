@@ -1,6 +1,9 @@
 /**
 Cypher script runner (NTS-134) — split a .cypher file into statements
 (comment- and string-aware) and execute them sequentially.
+
+Trusted-input only: the script's contents ARE Cypher by definition and run
+verbatim — never pass user-supplied text here.
 */
 
 import type { QueryOutput, Runner } from '../driver/types.js'

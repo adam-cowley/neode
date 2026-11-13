@@ -275,3 +275,79 @@ describe('TraverseBuilder', () => {
     ).resolves.toEqual([])
   })
 })
+
+describe('NTS-675 — 1.0 security review hardening', () => {
+  it('safeKey is idempotent: a fully quoted segment passes through, a hostile one with backticks is quoted', () => {
+    expect(propertyReference('n', QUOTED_KEY)).toBe(`n.${QUOTED_KEY}`)
+    expect(propertyReference('n', 'x`: 1 //')).toBe('n.`x``: 1 //`')
+  })
+
+  it('escapes a hostile where() property key (equality and operator forms)', () => {
+    for (const built of [
+      new Builder().match('n', 'N').where(HOSTILE_KEY, 1).build(),
+      new Builder().match('n', 'N').where(HOSTILE_KEY, '>', 1).build(),
+      new Builder()
+        .match('n', 'N')
+        .where({ [HOSTILE_KEY]: 1 })
+        .build(),
+      new Builder().match('n', 'N').whereNull(HOSTILE_KEY).build(),
+      new Builder().match('n', 'N').whereNotNull(HOSTILE_KEY).build(),
+      new Builder().match('n', 'N').whereIn(HOSTILE_KEY, [1]).build(),
+      new Builder().match('n', 'N').whereContains(HOSTILE_KEY, 'x').build(),
+    ]) {
+      expect(built.query).toContain(QUOTED_KEY)
+      expect(built.query).not.toContain('name} DETACH DELETE x // =')
+    }
+  })
+
+  it('rejects a hostile where() operator (whereRaw is the escape hatch)', () => {
+    const hostile = '> 0 AND n.name =~ "x" //'
+
+    expect(() => new Builder().match('n', 'N').where('n.age', hostile, 1)).toThrow(NeodeError)
+
+    // every documented operator still accepted, any case
+    for (const operator of ['=', '<>', '<', '<=', '>', '>=', 'in', 'contains', '=~']) {
+      expect(() => new Builder().match('n', 'N').where('n.age', operator, 1)).not.toThrow()
+    }
+  })
+
+  it('escapes a hostile whereBetween reference and rejects hostile whereId / asPath / pattern aliases', () => {
+    expect(new Builder().match('n', 'N').whereBetween(HOSTILE_KEY, 1, 2).build().query).toContain(
+      QUOTED_KEY,
+    )
+
+    for (const build of [
+      () => new Builder().match('n', 'N').whereId(HOSTILE_KEY, 'x'),
+      () => new Builder().match('n', 'N').asPath(HOSTILE_KEY),
+      () => new Builder().match(HOSTILE_KEY, 'N'),
+      () => new Builder().optionalMatch(HOSTILE_KEY, 'N'),
+      () => new Builder().create(HOSTILE_KEY, 'N'),
+      () => new Builder().merge(HOSTILE_KEY, 'N'),
+      () => new Builder().match('a').relationship('R', 'out', HOSTILE_KEY),
+      () => new Builder().match('a').to(HOSTILE_KEY, 'B'),
+    ]) {
+      expect(build).toThrow(NeodeError)
+    }
+  })
+
+  it('rejects a hostile set() operator and quotes a hostile SET key carrying backticks', () => {
+    expect(() =>
+      new Builder().match('n', 'N').set('n.name', 'x', '= 1 DETACH DELETE n //'),
+    ).toThrow(NeodeError)
+
+    for (const build of [
+      () => new Builder().match('n', 'N').set('n.age', 30, '+='),
+      () => new Builder().match('n', 'N').onCreateSet('n.age', 30, '-='),
+      () => new Builder().match('n', 'N').onMatchSet('n.age', 30, '='),
+    ]) {
+      expect(build).not.toThrow()
+    }
+
+    // the SET path (Property.toString) quotes a backtick-bearing key —
+    // previously it passed through verbatim
+    const { query } = new Builder().match('n', 'N').set('n.x`: 1 //', 5).build()
+
+    expect(query).toContain('n.`x``: 1 //` = $set_0')
+    expect(query).not.toContain('x`: 1 // =')
+  })
+})

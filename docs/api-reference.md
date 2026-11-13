@@ -661,6 +661,14 @@ neode.factory(model: string | Newable): FactoryBuilder
 
 `Builder` is the fluent Cypher builder the facade uses internally, importable directly when you need statements the facade does not express. Every user value is parameterised — the generated query contains only aliases.
 
+### Trust boundary — safe for user input vs trusted-only (NTS-675)
+
+**Safe for user input:** every _value_ (filters, properties, full-text query strings, vectors — all bound as parameters), and every _identifier_: labels, relationship types, property keys, order directions, limits/skips and traversal degrees are backtick-escaped or validated (`safeKey` / `quote` / `assertDirection` / `assertCount` — idempotent on already-quoted input). `toFulltextQuery()` sanitises free text into a safe Lucene query.
+
+**Trusted-input only** — these render verbatim into the statement and must never receive user-supplied text: `RawExpression` property values (and `@Expression` projections, and `@Derived`'s `cypher` — bind the values they reference via `param()` and reference them as `$name`), `expr()` / `caseExpr()` fragments, `whereRaw()`, `whereExists()`, `whereAny()`, `return()`, `unwind()`, `setExpr()` / `onCreateSetExpr()` / `onMatchSetExpr()`, `callProcedure()`, `remove()`, `delete()` / `detachDelete()`, and the _field_ term of `orderBy()` (it may be any expression, so it cannot be escaped — model-read services escape user order keys via `orderTerms()` before reaching it). Aliases and path variables must be plain identifiers (asserted, since they cannot be escaped without changing meaning). `runCypherScript()` / `splitCypherStatements()` run a script's contents verbatim — a `.cypher` file is trusted by definition.
+
+Destructive and filter-disabling surfaces stay behind explicit opt-in: `wipe()` requires `{ confirm: true }` and a local database, and `withoutFilters: ['*']` is rejected on every public read (NTS-610) — user input can never switch off tenancy or soft delete, including through the `neode/express` router (query keys map onto declared-property filters as parameters; unknown keys are dropped; `order`/`sort` travel as OrderSpec data through the escaping renderer).
+
 ### `create()` / `merge()` — extra labels on nodes
 
 Both take `(alias, labels, properties)`. `labels` is a single label, an **array of labels** (a multi-label node), or `false` for no label:

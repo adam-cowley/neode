@@ -164,6 +164,26 @@ describe('rest router', () => {
     expect(paged.body.totalPages).toBe(2)
   })
 
+  it('treats a hostile query string as data, never as Cypher or options (NTS-675)', async () => {
+    const app = appFor(backend)
+
+    await request(app).post('/api/RestPerson').send({ name: 'Adam', age: 30 })
+
+    // Unknown filter keys dropped, the order key quoted downstream,
+    // withoutFilters never reaches the read options
+    const hostile = await request(app).get(
+      '/api/RestPerson?order=name} DETACH DELETE x //&hacker=DROP ALL&withoutFilters=*',
+    )
+
+    expect(hostile.status).toBe(200)
+    expect(hostile.body.total).toBe(1)
+
+    // a negative page fails closed (400), it does not reach the database
+    const negative = await request(app).get('/api/RestPerson?page=-1&limit=1')
+
+    expect(negative.status).toBe(400)
+  })
+
   it('updates through PATCH', async () => {
     const app = appFor(backend)
 

@@ -669,3 +669,49 @@ for (const person of people) {
 // one with-spec read: the orders render inside the same statement
 const people = await neode.getRepository(Person).findAll({}, { with: { orders: true } })
 ```
+
+## Trust boundary — what is safe for user input
+
+Every VALUE a query carries binds as a parameter: filters, properties,
+full-text query strings, vectors — user input is safe there. Identifiers
+(labels, relationship types, property keys, order directions, limits,
+skips, degrees) cannot be bound: the library backtick-escapes or validates
+them, so schema-declared and semi-trusted strings are safe too
+(`safeKey` / `quote` / `assertDirection` / `assertCount`, all
+idempotent on already-quoted input).
+
+Raw-expression channels render VERBATIM into the statement and are
+TRUSTED-INPUT ONLY — never pass user-supplied text:
+
+- `RawExpression` property values, `@Expression` projections and the
+  `cypher` option of `@Derived` — the expression must never interpolate
+  data; bind values it references via `param(name, value)` and reference
+  them as `$name`.
+- `expr()` / `caseExpr()` compose single expressions from fragments —
+  same rule for every fragment.
+- `whereRaw()`, `whereExists(pattern)`, `whereAny()`, `return()`,
+  `unwind()`, `setExpr()` / `onCreateSetExpr()` / `onMatchSetExpr()`,
+  `callProcedure()`, `call` / `forEach` sub-builders, `remove()`,
+  `delete()` / `detachDelete()` and `orderBy()` FIELD terms (the field
+  may be any expression, so it cannot be escaped — the model-read services
+  escape user order keys via `orderTerms()` before reaching it).
+- Aliases and path variables must be plain identifiers
+  (`match` / `create` / `merge` / `to` / `relationship` /
+  `asPath` / `whereId` assert this — they cannot be escaped without
+  changing meaning).
+- `runCypherScript()` / `splitCypherStatements()` — the script IS
+  Cypher by definition; a .cypher file on disk is trusted input.
+- Schema DDL (`createUniqueConstraint` and friends) — labels, properties
+  and index names come from the model definitions; the SchemaService
+  composers backtick-quote them, the Builder DDL composes them unquoted.
+
+Model-defined named filters (`@Filter where`) and `setFilterParams`
+values are developer-declared; filter VALUES bind as parameters, and
+`withoutFilters: ['*']` is rejected on every public read (NTS-610) — a
+user-supplied string can never switch off tenancy or soft delete. The
+`neode/express` router is a write-open surface (mount auth in front of
+it) but an injection-closed one: query keys map onto DECLARED property
+filters as parameters, unknown keys are dropped, `order` / `sort`
+travel as OrderSpec data through the escaping order renderer, and nothing
+on a request can reach `withoutFilters`, `wipe()` or any destructive
+call.
