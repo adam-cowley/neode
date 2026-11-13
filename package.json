@@ -1,6 +1,6 @@
 {
   "name": "neode",
-  "version": "1.0.0-next.1",
+  "version": "1.0.0-next.2",
   "description": "Decorator-based Object Graph Mapper for Neo4j and Cypher-compatible graph databases",
   "type": "module",
   "main": "./dist/index.cjs",
