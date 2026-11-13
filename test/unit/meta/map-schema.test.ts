@@ -1,8 +1,10 @@
 import { mkdtempSync, writeFileSync } from 'fs'
+import { createRequire } from 'module'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
-import { getModel } from '../../../src/meta'
+import { getModel, mergeModel } from '../../../src/meta'
+import type { Newable } from '../../../src/meta/newable'
 import {
   defineModel,
   extendModel,
@@ -13,6 +15,7 @@ import { PropertyType } from '../../../src/meta/property-schema'
 import { Direction } from '../../../src/query'
 import { Neode } from '../../../src/neode.service'
 import { NeodeError } from '../../../src/errors'
+import { NodeEntity, Property } from '../../../src/decorators'
 
 // The registry is global per module graph: use unique names per test
 describe('map-schema', () => {
@@ -375,6 +378,63 @@ describe('map-schema', () => {
       const Person = neode.model('DirPerson')
 
       expect(getModel(Person).getProperty('name').getType()).toEqual(PropertyType.STRING)
+    })
+
+    it('withDirectory() refuses a class default export instead of re-registering a self-registering model (NTS-665)', () => {
+      const directory = mkdtempSync(join(tmpdir(), 'ogm-models-'))
+
+      // What a decorated default export looks like to the scan: a class,
+      // not a schema definition — the class self-registers on import
+      writeFileSync(join(directory, 'person.js'), 'module.exports = class ScanRefusedPerson {};')
+
+      const neode = new Neode({} as never)
+
+      expect(() => neode.withDirectory(directory)).toThrow(NeodeError)
+      expect(() => neode.withDirectory(directory)).toThrow(
+        /withDirectory\(\) registers map-schema modules only/,
+      )
+
+      // Nothing was registered under the file name — no double registration
+      expect(() => neode.model('person')).toThrow(NeodeError)
+    })
+
+    it('a decorated model self-registers under its class name while withDirectory() loads map modules beside it (NTS-665)', () => {
+      @NodeEntity()
+      class Nts665ScannedPerson {
+        @Property({ type: 'string' })
+        name!: string
+      }
+
+      const directory = mkdtempSync(join(tmpdir(), 'ogm-models-'))
+      writeFileSync(join(directory, 'nts665movie.js'), "module.exports = { title: 'string' };")
+
+      const neode = new Neode({} as never).withDirectory(directory)
+
+      // The scan loaded the map module under the file name
+      expect(getModel(neode.model('nts665movie')).getProperty('title').getType()).toEqual(
+        PropertyType.STRING,
+      )
+      // …and the decorated class is registered constructor-keyed beside it
+      expect(getModel(Nts665ScannedPerson).getLabels()).toEqual(['Nts665ScannedPerson'])
+    })
+
+    it('withDirectory() skips a module whose class default export already self-registered on import (NTS-665)', () => {
+      const directory = mkdtempSync(join(tmpdir(), 'ogm-models-'))
+
+      // What a decorated default export looks like to the scan: a class.
+      // Requiring the module IS the import side effect — emulated by
+      // merging the required constructor (what @NodeEntity does) first.
+      writeFileSync(join(directory, 'person.js'), 'module.exports = class Nts665PreRegistered {};')
+
+      const requireModule = createRequire(import.meta.url)
+      mergeModel(requireModule(join(directory, 'person.js')) as Newable)
+
+      const neode = new Neode({} as never)
+
+      // The side-effect registration wins: the scan skips the file, no
+      // double registration, no error
+      expect(() => neode.withDirectory(directory)).not.toThrow()
+      expect(() => neode.model('person')).toThrow(NeodeError)
     })
 
     it('extends models through extend()', () => {

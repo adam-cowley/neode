@@ -2641,6 +2641,21 @@ export class Neode implements INeode {
           : loaded
 
       if (!isSchemaDefinition(candidate)) {
+        // NTS-665: a class default export self-registers on import when it
+        // carries decorators (or is a defineModel virtual class) — decorators
+        // are the house default, so that side-effect registration wins and
+        // the scan skips the file rather than re-registering the constructor
+        // under the file name. An unregistered class is still a mistake.
+        if (typeof candidate === 'function') {
+          if (getModel(candidate) instanceof EntitySchema) {
+            continue
+          }
+
+          throw new NeodeError(
+            `Cannot register model "${name}" from ${file}: the module default-exports a class, and withDirectory() registers map-schema modules only. A decorated class self-registers on import — import it explicitly instead of scanning it, or default-export a plain schema definition from the file.`,
+          )
+        }
+
         throw new TypeError(
           `Cannot register model "${name}" from ${file}: the module did not export a schema definition`,
         )
