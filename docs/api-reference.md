@@ -1107,15 +1107,41 @@ Three rules the hard way teaches:
 
 What differs when running tests on the embedded engine (`OGM_TEST_BACKEND=relate`, zero setup) vs a real Neo4j:
 
-| Capability                                       | Embedded Relate                       | Real Neo4j 5/2025               |
-| ------------------------------------------------ | ------------------------------------- | ------------------------------- |
-| Constraints, range/fulltext/vector indexes       | ✅                                    | ✅                              |
-| `COUNT { }` / `EXISTS { }` subquery projections  | ✅                                    | ✅                              |
-| Pattern comprehensions in RETURN (`@RelatedOne`) | ✅                                    | ✅                              |
-| Vector writes via plain `SET n.prop = $list`     | ✅                                    | ✅                              |
-| `db.create.setNodeVectorProperty` procedure      | ❌                                    | ✅ (the library never needs it) |
-| Empty-string query parameters                    | ❌ rejected — write absent properties | ✅                              |
-| Property-existence constraints, multi-database   | ❌ (Enterprise features)              | Enterprise                      |
+| Capability                                                  | Embedded Relate                                            | Real Neo4j 5/2025               |
+| ----------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------- |
+| Constraints, range/fulltext/vector indexes                  | ✅                                                         | ✅                              |
+| `COUNT { }` / `EXISTS { }` subquery projections             | ✅                                                         | ✅                              |
+| Pattern comprehensions in RETURN (`@RelatedOne`)            | ✅                                                         | ✅                              |
+| Vector writes via plain `SET n.prop = $list`                | ✅                                                         | ✅                              |
+| `db.create.setNodeVectorProperty` procedure                 | ❌                                                         | ✅ (the library never needs it) |
+| Empty-string query parameters                               | ❌ rejected — write absent properties                      | ✅                              |
+| Node-to-node identity comparison (`a <> b`)                 | ❌ rejected — compare `elementId(a) <> elementId(b)`       | ✅                              |
+| `MERGE (a:L)` re-declaring labels on a MATCH-bound endpoint | ❌ rejected (`VariableAlreadyBound`) — render bare aliases | ✅                              |
+| Property-existence constraints, multi-database              | ❌ (Enterprise features)                                   | Enterprise                      |
+
+### Relationship writes — portability caveats
+
+Caveats consumers hit when hand-writing Builder statements around relationship
+writes. relate() itself already follows every one of these; they bite when you
+compose your own MATCH … MERGE statements.
+
+1. **Node identity comparison: compare `elementId`s, never nodes.** `WHERE fr1 <> fr2` is Cypher-spec
+   legal (identity comparison) but not implemented on every Cypher-compatible backend — the embedded
+   Relate engine rejects it. The portable form is a plain scalar comparison: `WHERE elementId(fr1) <> elementId(fr2)`.
+   relate()'s cardinality guard already does exactly this.
+2. **MERGE on MATCH-bound endpoints: render bare aliases.** In the relate-path statement shape
+   `MATCH (a:L { pk: … }) … MERGE (a)-[r:T]->(b)`, do not re-declare labels or properties on the bound
+   endpoints inside the MERGE pattern. The embedded engine rejects `MERGE (a:L)-[r:T]->(b:L)` after
+   `MATCH (a:L …)` with `VariableAlreadyBound`; real Neo4j accepts it (labels become no-op predicates
+   on bound vars). relateMany() renders `MERGE (a)-[r:T]->(b)` — bare aliases — for exactly this reason.
+3. **UNWIND row maps: never bind `undefined`.** The embedded engine fails an UNWIND row whose map value
+   is `undefined`. Bulk row preparation must coerce absent values to `null` or drop the key — the same
+   rule as empty-string parameters above (the OGM's own write paths skip `undefined` keys).
+4. **relate() semantics, restated.** MERGE-based relate() is idempotent PER PAIR: re-relating the same
+   two nodes never duplicates the edge. But `one` / `zeroOrOne` cardinality counts TOTAL edges per node —
+   per-pair idempotency cannot enforce it (hence the cardinality guard and its check-then-write race note).
+   Bulk writes (relateMany()) cannot run the per-row cardinality guard at all — restricted cardinalities
+   are rejected up-front — and edge-entity (relationship-entity) targets are out of scope for bulk relate.
 
 ### App structure that scales
 
