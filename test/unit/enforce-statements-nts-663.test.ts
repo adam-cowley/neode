@@ -5,7 +5,7 @@
 // FOREACH comprehension, the throw probe, the delete-path CALL subqueries,
 // and the nested-create walk four levels deep.
 import { describe, expect, it } from 'vitest'
-import { InternalId, NodeEntity, OneToOne, String, Uuid } from '../../src/decorators'
+import { InternalId, NodeEntity, OneToOne, Property, Uuid } from '../../src/decorators'
 import { Direction } from '../../src/query'
 import { getModel } from '../../src/meta'
 import type { Newable } from '../../src/meta/newable'
@@ -26,7 +26,7 @@ class U1Leaf {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   holderId: string | undefined
 }
 
@@ -40,7 +40,7 @@ class U1Level3 {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   holderId: string | undefined
 
   @OneToOne({
@@ -61,7 +61,7 @@ class U1Level2 {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   holderId: string | undefined
 
   @OneToOne({
@@ -82,7 +82,7 @@ class U1Level1 {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   holderId: string | undefined
 
   @OneToOne({
@@ -103,7 +103,7 @@ class U1Level0 {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   holderId: string | undefined
 
   @OneToOne({
@@ -125,7 +125,7 @@ class U1DetachLevel1 {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   holderId: string | undefined
 
   @OneToOne({
@@ -147,7 +147,7 @@ class U1ThrowLevel0 {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   holderId: string | undefined
 
   @OneToOne({
@@ -170,7 +170,7 @@ class U1IncomingTarget {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   holderId: string | undefined
 
   @OneToOne({

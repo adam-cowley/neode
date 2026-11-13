@@ -38,7 +38,6 @@ import Neode, {
   Primary,
   Uuid,
   Property,
-  String,
   Number,
   Boolean,
   Float,

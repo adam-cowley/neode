@@ -6,7 +6,7 @@ import {
   InternalId,
   NodeEntity,
   Number as NumberProperty,
-  String,
+  Property,
   UpdatedAt,
   Uuid,
   Version,
@@ -24,7 +24,7 @@ class StockItem {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
   @NumberProperty()

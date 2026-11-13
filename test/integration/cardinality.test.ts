@@ -519,10 +519,10 @@ class N663Address {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   line: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   currentOccupantId: string | undefined
 }
 
@@ -534,7 +534,7 @@ class N663Person {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToOne({
@@ -556,7 +556,7 @@ class N663ThrowPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToOne({
@@ -578,7 +578,7 @@ class N663DetachPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToOne({

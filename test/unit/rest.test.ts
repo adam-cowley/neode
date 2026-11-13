@@ -5,7 +5,7 @@ database is covered in test/integration/rest-router.test.ts.
 */
 import { describe, expect, it } from 'vitest'
 
-import { NodeEntity, String, Number, Property } from '../../src/decorators'
+import { NodeEntity, Number, Property } from '../../src/decorators'
 import { getModel } from '../../src/meta/index.js'
 import { NeodeError } from '../../src/errors/index.js'
 import { ConstraintViolationError } from '../../src/errors/constraint-violation.js'
@@ -25,7 +25,7 @@ class RestUnitPerson {
   @Property({ type: 'uuid', primary: true })
   id!: string
 
-  @String()
+  @Property({ type: 'string' })
   name!: string
 
   @Number()
