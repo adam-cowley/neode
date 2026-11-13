@@ -78,12 +78,19 @@ jobs:
   # Real Neo4j servers via Testcontainers, over the supported server line.
   # Relate (embedded) needs its FFI client built locally (cargo build -p
   # relate-ffi) — it is exercised by local runs, not CI.
+  #
+  # The 1.0 release gate (NTS-671): the 5.x line plus a PINNED current
+  # community tag. No floating "latest" — bump the pin deliberately.
+  # Memgraph is deliberately NOT here: over Bolt it rejects core emitted
+  # reads (ORDER BY after a CALL subquery — keyset pagination, chunk, lazy,
+  # sorted nested loads), so the "memgraph" claim is dropped rather than
+  # gated on a vacuous matrix (NTS-671).
   integration:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        neo4j: ["5-community", "latest", "2026.10-community"]
+        neo4j: ["5-community", "2026.10.2-community"]
     steps:
       - uses: actions/checkout@v4
 
