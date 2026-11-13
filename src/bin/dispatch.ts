@@ -6,17 +6,22 @@ thin bootstrap over runNeode(); tests import dispatch.ts directly.
 */
 import { usageText } from './arguments.js'
 import { runGenerate } from './commands/generate.js'
+import { runSkills, skillsUsageText } from './commands/skills.js'
 
-const COMMANDS: Record<string, { run: (argv: string[]) => Promise<number>; usage: () => string }> =
-  {
-    generate: { run: runGenerate, usage: usageText },
-  }
+const COMMANDS: Record<
+  string,
+  { run: (argv: string[]) => number | Promise<number>; usage: () => string }
+> = {
+  generate: { run: runGenerate, usage: usageText },
+  skills: { run: runSkills, usage: skillsUsageText },
+}
 
 const TOP_LEVEL_USAGE = [
   'Usage: neode <command> [arguments]',
   '',
   'Commands:',
   '  generate   Generate neode model definitions from a live Neo4j database',
+  '  skills     Install the agent skills shipped with the package',
   '',
   "Run 'neode help <command>' for a command's arguments.",
 ].join('\n')

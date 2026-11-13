@@ -5,7 +5,7 @@
  * not src — and exercise the entry points that differ between formats.
  */
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -120,6 +120,38 @@ describe('built dist: neode bin', () => {
       expect(result.status).toBe(1)
       expect(result.stderr).toContain('Unknown command: bogus')
       expect(result.stderr).toContain('Usage: neode')
+    })
+
+    it(`lists the shipped skills (${extension})`, () => {
+      const result = spawnSync(
+        process.execPath,
+        [path.join(distDirectory, `bin/neode.${extension}`), 'skills', 'list'],
+        { encoding: 'utf8' },
+      )
+
+      expect(result.status).toBe(0)
+      expect(result.stdout).toContain('Available: neode, neode-audit, neode-model')
+    })
+
+    it(`installs a skill into --target (${extension})`, () => {
+      const target = mkdtempSync(path.join(tmpdir(), 'neode-bin-skills-'))
+      const result = spawnSync(
+        process.execPath,
+        [
+          path.join(distDirectory, `bin/neode.${extension}`),
+          'skills',
+          'add',
+          'neode-model',
+          '--target',
+          target,
+        ],
+        { encoding: 'utf8' },
+      )
+
+      expect(result.status).toBe(0)
+      expect(existsSync(path.join(target, 'neode-model', 'SKILL.md'))).toBe(true)
+
+      rmSync(target, { recursive: true, force: true })
     })
   }
 })
