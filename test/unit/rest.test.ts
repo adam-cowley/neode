@@ -13,6 +13,7 @@ import { OptimisticLockError } from '../../src/errors/optimistic-lock.js'
 import { ValidationError } from '../../src/validation/validation-error.js'
 import {
   errorBody,
+  handleList,
   handleOntology,
   listFilter,
   restModelNames,
@@ -108,5 +109,69 @@ describe('restModelNames', () => {
   it('names the registered models when a subset name is unknown', () => {
     expect(() => restModelNames(['NotAModel'])).toThrow(NeodeError)
     expect(() => restModelNames(['NotAModel'])).toThrow(/RestUnitPerson/)
+  })
+})
+
+describe('handleList — query string to filter/order mapping (NTS-675)', () => {
+  const schema = getModel(RestUnitPerson)
+
+  type Captured = {
+    filter: Record<string, unknown>
+    options: Record<string, unknown>
+  }
+
+  const list = async (query: Record<string, string>): Promise<Captured> => {
+    const captured: Captured = { filter: {}, options: {} }
+
+    const neode = {
+      paginate: (
+        _constructor: unknown,
+        filter: Record<string, unknown>,
+        options: Record<string, unknown>,
+      ) => {
+        captured.filter = filter
+        captured.options = options
+
+        return Promise.resolve({ items: [], total: 0, page: 1, limit: 25, totalPages: 0 })
+      },
+    }
+
+    await handleList(neode as never, RestUnitPerson, query)
+
+    return captured
+  }
+
+  it('maps query keys onto the filter bag and never passes read options', async () => {
+    const { filter, options } = await list({
+      name: 'Adam',
+      age: '30',
+      // hostile / reserved keys: unknown ones are dropped as filters, and
+      // nothing on the query string can reach the options bag (read
+      // filters, withoutFilters included) — listFilter only mirrors
+      // DECLARED property keys into the filter
+      hacker: 'DROP ALL',
+      withoutFilters: '*',
+    })
+
+    expect(filter).toEqual({ name: 'Adam', age: 30 })
+    expect(Object.hasOwn(options, 'withoutFilters')).toBe(false)
+  })
+
+  it('maps order/sort onto an OrderSpec (quoted downstream) and clamps limit', async () => {
+    const hostile = 'name} DETACH DELETE x //'
+    const captured = await list({ order: hostile, sort: 'desc', limit: '100000' })
+
+    // the hostile key travels as DATA (an OrderSpec key, which orderTerms
+    // backtick-quotes — see the identifier-injection suite), never
+    // interpolated into a statement here
+    expect(captured.options['order']).toEqual({ [hostile]: 'DESC' })
+    expect(captured.options['limit']).toBe(100)
+  })
+
+  it('defaults sort to ASC and a broken page to 1', async () => {
+    const captured = await list({ order: 'name', sort: 'NOT A DIRECTION', page: 'not-a-number' })
+
+    expect(captured.options['order']).toEqual({ name: 'ASC' })
+    expect(captured.options['page']).toBe(1)
   })
 })

@@ -12,7 +12,7 @@ export class RelationshipService extends QueryService {
     builder.match().relationship(undefined, undefined, REL).toAnything()
 
     if (typeof match === 'string') {
-      builder.where(`elementId(${REL})`, match)
+      builder.whereId(REL, match)
     } else {
       for (const [key, value] of Object.entries(match)) {
         builder.where(`${REL}.${key}`, value)

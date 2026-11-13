@@ -56,4 +56,24 @@ describe('identifier injection (NTS-573)', () => {
     await expect(items.findAll({}, { order: 'name} DETACH DELETE x //' })).resolves.toHaveLength(1)
     expect(await items.findAll()).toHaveLength(1)
   })
+
+  it('quotes a hostile where() key into a nonexistent property (NTS-675)', async () => {
+    await items.upsert({ sku: 'a', name: 'A' })
+
+    const { Builder } = await import('../../src/query')
+
+    // Quoted: the hostile key becomes a quoted identifier — on every
+    // engine an undefined variable reference, so the statement fails
+    // closed (never executes) and the row survives
+    const built = new Builder()
+      .match('n', 'InjectionItem')
+      .where('name} DETACH DELETE x //', 'payload')
+      .where('n.name', 'A')
+      .return('n')
+      .build()
+
+    expect(built.query).toContain('`name} DETACH DELETE x //` =')
+    await expect(backend.connection.run(built.query, built.params)).rejects.toThrow()
+    expect(await items.findAll()).toHaveLength(1)
+  })
 })

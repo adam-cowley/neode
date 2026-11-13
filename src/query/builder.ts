@@ -8,7 +8,14 @@ import { Relationship } from './relationship.js'
 import { Statement } from './statement.js'
 import { Where, OPERATOR_EQUALS, assertComparisonOperator } from './where.js'
 import type { ComparisonOperator } from './where.js'
-import { quote, quoteReference, assertAlias, assertDegrees } from './quote.js'
+import {
+  quote,
+  quoteReference,
+  assertAlias,
+  assertDegrees,
+  assertSetOperator,
+  assertWhereOperator,
+} from './quote.js'
 import { LabelPredicate } from './label-predicate.js'
 import { WhereBetween } from './where-between.js'
 import { WhereId } from './where-id.js'
@@ -289,7 +296,9 @@ export class Builder {
   private whereStringOperator(property: string, value: string, operator: string): this {
     const variable = this.addParameter(property, value)
 
-    this.activeWhereClause.append(new Where(property, operator, `$${variable}`))
+    this.activeWhereClause.append(
+      new Where(quoteReference(property, 'where()'), operator, `$${variable}`),
+    )
 
     return this
   }
@@ -497,6 +506,13 @@ export class Builder {
     this.statement()
     this.bridgeWriteToRead()
 
+    // NTS-675 — aliases render verbatim into the pattern (they cannot be
+    // escaped without changing meaning), so every pattern method asserts
+    // its alias is a plain identifier
+    if (alias !== undefined && alias !== '') {
+      assertAlias(alias, 'match()')
+    }
+
     this.activeStatement.match(new Match(alias, labels, this.convertPropertyMap(alias, properties)))
 
     return this
@@ -507,7 +523,7 @@ export class Builder {
   `MATCH <variable> = <pattern>` on the segment's MATCH keyword (NTS-593)
   */
   asPath(variable: string): this {
-    this.activeStatement.asPath(variable)
+    this.activeStatement.asPath(assertAlias(variable, 'asPath()'))
 
     return this
   }
@@ -575,6 +591,10 @@ export class Builder {
     this.whereStatement('WHERE')
     this.statement('OPTIONAL MATCH')
     this.bridgeWriteToRead()
+
+    if (alias !== undefined && alias !== '') {
+      assertAlias(alias, 'optionalMatch()')
+    }
 
     this.activeStatement.match(new Match(alias, labels))
 
@@ -672,6 +692,12 @@ export class Builder {
   - `where({ name: 'Adam' })` - object map
   - `where([['name', 'Adam'], ['age', '>', 30]])` - array of clauses
   - `where('n.name =~ ".*"')` - raw string
+
+  The property is an identifier — it backtick-escapes like every other
+  identifier (plain `n.name` references keep their readable rendering,
+  NTS-675). The operator validates against the known set (comparison,
+  membership, string, regex); use whereRaw() for anything else. Values
+  always bind as parameters.
   */
   where(...arguments_: unknown[]): this {
     const first = arguments_[0]
@@ -723,11 +749,16 @@ export class Builder {
         )
       }
 
+      // NTS-675 — the property is an identifier rendered into the
+      // predicate (never bindable), so it escapes like every other
+      // identifier; plain `n.name`-style references keep their rendering
+      const property = quoteReference(first, 'where()')
+
       if (arguments_.length === 2) {
         // Two arguments: property / value equality
         const variable = this.addParameter(first, arguments_[1])
 
-        this.activeWhereClause.append(new Where(first, OPERATOR_EQUALS, `$${variable}`))
+        this.activeWhereClause.append(new Where(property, OPERATOR_EQUALS, `$${variable}`))
       } else {
         const operator = arguments_[1]
 
@@ -737,7 +768,11 @@ export class Builder {
 
         const variable = this.addParameter(first, arguments_[2])
 
-        this.activeWhereClause.append(new Where(first, operator, `$${variable}`))
+        // NTS-675 — the operator renders into the predicate too: validate
+        // it against the known set (whereRaw() is the escape hatch)
+        this.activeWhereClause.append(
+          new Where(property, assertWhereOperator(operator), `$${variable}`),
+        )
       }
     }
 
@@ -772,13 +807,15 @@ export class Builder {
   whereId(alias: string, value: string | number): this {
     const variable = this.addParameter(`${alias}_id`, value)
 
-    this.activeWhereClause.append(new WhereId(alias, variable))
+    this.activeWhereClause.append(new WhereId(assertAlias(alias, 'whereId()'), variable))
 
     return this
   }
 
   /**
-  Add a raw where clause
+  Add a raw where clause. Trusted-input only: the clause renders verbatim
+  into the statement — never pass user-supplied text here; bind values as
+  parameters (`param(name, value)`) and reference them as `$name`.
   */
   whereRaw(clause: string): this {
     this.activeWhereClause.append(new WhereRaw(clause))
@@ -808,7 +845,9 @@ export class Builder {
     const floorVariable = this.addParameter(`${alias}_floor`, floor)
     const ceilingVariable = this.addParameter(`${alias}_ceiling`, ceiling)
 
-    this.activeWhereClause.append(new WhereBetween(alias, floorVariable, ceilingVariable))
+    this.activeWhereClause.append(
+      new WhereBetween(quoteReference(alias, 'whereBetween()'), floorVariable, ceilingVariable),
+    )
 
     return this
   }
@@ -834,7 +873,9 @@ export class Builder {
   whereIn(property: string, values: unknown[]): this {
     const variable = this.addParameter(property, values)
 
-    this.activeWhereClause.append(new Where(property, 'IN', `$${variable}`))
+    this.activeWhereClause.append(
+      new Where(quoteReference(property, 'whereIn()'), 'IN', `$${variable}`),
+    )
 
     return this
   }
@@ -874,7 +915,7 @@ export class Builder {
   `property IS NULL`
   */
   whereNull(property: string): this {
-    this.activeWhereClause.append(new WhereNull(property))
+    this.activeWhereClause.append(new WhereNull(quoteReference(property, 'whereNull()')))
 
     return this
   }
@@ -980,6 +1021,8 @@ export class Builder {
     this.afterWriteClause = true
     this.afterDeleteClause = false
 
+    assertAlias(alias, 'create()')
+
     this.activeStatement.match(new Match(alias, labels, this.convertPropertyMap(alias, properties)))
 
     return this
@@ -996,6 +1039,8 @@ export class Builder {
     this.statement('MERGE')
     this.afterWriteClause = true
     this.afterDeleteClause = false
+
+    assertAlias(alias, 'merge()')
 
     this.activeStatement.match(new Match(alias, labels, this.convertPropertyMap(alias, properties)))
 
@@ -1027,7 +1072,9 @@ export class Builder {
         this.params[alias] = value
         this.parameterCount++
 
-        this.activeStatement.set(property, alias, operator)
+        // NTS-675 — the operator renders into the SET clause: validate it
+        // (setExpr() is the escape hatch for anything else)
+        this.activeStatement.set(property, alias, assertSetOperator(operator))
       }
     }
 
@@ -1051,7 +1098,7 @@ export class Builder {
       this.params[alias] = value
       this.parameterCount++
 
-      this.activeStatement.onCreateSet(property, alias, operator)
+      this.activeStatement.onCreateSet(property, alias, assertSetOperator(operator))
     }
 
     return this
@@ -1074,7 +1121,7 @@ export class Builder {
       this.params[alias] = value
       this.parameterCount++
 
-      this.activeStatement.onMatchSet(property, alias, operator)
+      this.activeStatement.onMatchSet(property, alias, assertSetOperator(operator))
     }
 
     return this
@@ -1161,6 +1208,13 @@ export class Builder {
   - `orderBy({ 'n.name': 'DESC' })`
   - `orderBy({ field: 'n.name', order: 'DESC' })`
   - `orderBy([{ field: 'n.name', order: 'ASC' }, { field: 'n.other', order: 'DESC' }])`
+
+  The direction validates against ASC / DESC (NTS-675). The field is a raw
+  ORDER BY term — it may be any expression (`n.name`, `elementId(n)`,
+  `n:Label`), so it cannot be escaped without changing meaning: trusted
+  input only. The model-read services escape user-supplied order keys via
+  orderTerms() before they reach this; a Builder-level caller passing user
+  input must quote it itself (propertyReference()).
   */
   orderBy(...arguments_: unknown[]): this {
     this.addOrder(
@@ -1227,6 +1281,10 @@ export class Builder {
     degrees?: number | string,
     properties?: BuilderParameters,
   ): this {
+    if (alias !== undefined && alias !== '') {
+      assertAlias(alias, 'relationship()')
+    }
+
     this.activeStatement.match(
       new Relationship(type, direction, alias, degrees, this.convertPropertyMap(alias, properties)),
     )
@@ -1511,6 +1569,8 @@ export class Builder {
   Complete a relationship with a target node pattern
   */
   to(alias: string, labels?: string | string[] | false, properties?: BuilderParameters): this {
+    assertAlias(alias, 'to()')
+
     this.activeStatement.match(new Match(alias, labels, this.convertPropertyMap(alias, properties)))
 
     return this
