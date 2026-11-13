@@ -85,7 +85,6 @@ Rules while writing:
 - Fields with no initializer need `!` (`name!: string`) — the OGM assigns them.
 - Relationship decorators take the target explicitly (`() => Post`) — there is no design:type reflection.
 - Relationship keys are field keys, not Cypher types: `relate(from, to, 'posts')` targets the `:WROTE` type.
-- Prefer `@Property({ type: 'string' })` over the deprecated `@String` (it shadows the global type).
 - After writing the model, remind the user: run `installSchema()` once so constraints and indexes are created, and check the repo's own rules (`AGENTS.md` — tests required for every change).
 
 ## Step 4 — Verify and hand back

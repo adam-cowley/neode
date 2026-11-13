@@ -3,7 +3,7 @@ import {
   NodeEntity,
   Primary,
   RelationshipEntity,
-  String,
+  Property,
   Uuid,
   StartNode,
   EndNode,
@@ -28,13 +28,13 @@ describe('Decorators', () => {
     @Uuid({ unique: true })
     uuid: string
 
-    @String({ unique: true })
+    @Property({ type: 'string', unique: true })
     unique: string
 
-    @String()
+    @Property({ type: 'string' })
     string: string
 
-    @String({ array: true })
+    @Property({ type: 'string', array: true })
     stringArray: string
 
     @OneToOne({
@@ -122,7 +122,7 @@ describe('Decorators', () => {
       })
     })
 
-    describe('@String', () => {
+    describe('@Property string', () => {
       it('should register a string', () => {
         const property = getModel(SomeNodeEntity).getProperty('string')
 

@@ -2,7 +2,7 @@
 // before anything below is evaluated
 import { openBackend, TestBackend } from './support/backend'
 import { EventType, QueryExecutedEvent } from '../../src/common/events'
-import { InternalId, NodeEntity, String, Uuid } from '../../src/decorators'
+import { InternalId, NodeEntity, Property, Uuid } from '../../src/decorators'
 
 @NodeEntity()
 class EventPerson {
@@ -12,7 +12,7 @@ class EventPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
   static create(name: string): EventPerson {

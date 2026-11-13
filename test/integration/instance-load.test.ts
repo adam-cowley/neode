@@ -1,15 +1,7 @@
 import { openBackend, TestBackend } from './support/backend'
 import { setDefaultNeode } from '../../src/entity-methods'
 import type { WithMethods } from '../../src/entity-methods'
-import {
-  InternalId,
-  NodeEntity,
-  OneToMany,
-  OneToOne,
-  Property,
-  String,
-  Uuid,
-} from '../../src/decorators'
+import { InternalId, NodeEntity, OneToMany, OneToOne, Property, Uuid } from '../../src/decorators'
 import { Direction } from '../../src/query'
 import { NeodeError, RelationNotLoadedError } from '../../src/errors'
 import { setStrictRelationAccess } from '../../src/strict-relation-access'
@@ -38,7 +30,7 @@ class LoyaltyCard {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   code: string
 }
 
@@ -52,7 +44,7 @@ class Customer {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToMany(() => Order, 'PLACED', Direction.OUTGOING)

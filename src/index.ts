@@ -52,8 +52,6 @@ export type { EntityMethods, WithMethods } from './entity-methods.js'
 
 // Strict relation access (NTS-155)
 export { setStrictRelationAccess } from './strict-relation-access.js'
-// Deprecation warnings opt-out (NTS-599)
-export { setDeprecationWarnings } from './deprecate.js'
 export { TraverseBuilder, MAX_TRAVERSE_DEPTH, type Hop, type TraversalRow } from './traverse.js'
 
 // Delete-path cascade depth cap (NTS-595) — the write-side counterpart of

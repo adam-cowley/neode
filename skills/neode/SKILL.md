@@ -88,7 +88,6 @@ await neode.inWriteTransaction(async (tx) => {
 ## Common mistakes
 
 - Relationship keys are not relationship types: `relate(from, to, 'pets')` takes the declared field key; the Cypher pattern uses the TYPE (`:OWNS`). The projection decorators take types.
-- `@String` is deprecated — it shadows the global `String` type and logs a runtime warning. Use `@Property({ type: 'string' })`.
 - Errors name the fix: on `OptimisticLockError` reload the entity and retry; on `RelationNotLoadedError` add the named key to the `with` load spec.
 - Pass user text through `toFulltextQuery()` before `search()` — parameter binding stops Cypher injection, not Lucene parse errors.
 - Standard TC39 decorators only — never `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`.

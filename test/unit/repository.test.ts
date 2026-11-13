@@ -8,7 +8,7 @@ import {
   NodeEntity,
   InternalId,
   Uuid,
-  String,
+  Property,
   Number as NumberProperty,
 } from '../../src/decorators'
 import { fulltextIndexName } from '../../src/services/schema/fulltext.service'
@@ -23,7 +23,7 @@ class Movie {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   title: string
 
   @NumberProperty()
@@ -39,7 +39,7 @@ class Loose {
   @InternalId()
   _id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 }
 
@@ -665,13 +665,13 @@ describe('Repository', () => {
       @Uuid({ primary: true })
       id: string
 
-      @String()
+      @Property({ type: 'string' })
       title: string
 
-      @String({ fulltext: true })
+      @Property({ type: 'string', fulltext: true })
       plot: string
 
-      @String({ fulltext: true })
+      @Property({ type: 'string', fulltext: true })
       summary: string
 
       static build(values: Record<string, unknown>): Searchable {

@@ -5,7 +5,7 @@ import { openBackend, TestBackend } from './support/backend'
 import { setDefaultNeode } from '../../src/entity-methods'
 import { EventType, QueryExecutedEvent } from '../../src/common/events'
 import { Direction } from '../../src/query'
-import { InternalId, NodeEntity, OneToMany, String, Uuid, Version } from '../../src/decorators'
+import { InternalId, NodeEntity, OneToMany, Property, Uuid, Version } from '../../src/decorators'
 import { OptimisticLockError } from '../../src/errors'
 
 // ---- Fixtures (per-file: decorator registry is global per module) -----------
@@ -18,7 +18,7 @@ class LockedDoc {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   title: string
 
   @Version()
@@ -33,7 +33,7 @@ class LockedAuthor {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
   @Version()
@@ -51,7 +51,7 @@ class LockedBook {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   title: string
 
   @Version()

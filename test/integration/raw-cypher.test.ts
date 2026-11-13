@@ -1,7 +1,7 @@
 // The backend import loads neode.service first, resolving the module cycles
 // before anything below is evaluated
 import { openBackend, TestBackend } from './support/backend'
-import { InternalId, NodeEntity, String, Uuid } from '../../src/decorators'
+import { InternalId, NodeEntity, Property, Uuid } from '../../src/decorators'
 import { Neode } from '../../src/neode.service'
 
 @NodeEntity()
@@ -12,7 +12,7 @@ class RawPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
   static create(name: string): RawPerson {

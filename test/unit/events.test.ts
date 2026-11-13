@@ -1,7 +1,7 @@
 import { vi } from 'vitest'
 import { Neode } from '../../src/neode.service'
 import { EventType } from '../../src/common/events'
-import { NodeEntity, InternalId, Uuid, String, OneToMany } from '../../src/decorators'
+import { NodeEntity, InternalId, Uuid, Property, OneToMany } from '../../src/decorators'
 import { Direction } from '../../src/query'
 import {
   AccessMode,
@@ -23,7 +23,7 @@ class Movie {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   title: string
 
   @OneToMany(() => Movie, 'ACTED_IN', Direction.OUTGOING)

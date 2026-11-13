@@ -1,4 +1,4 @@
-import { NodeEntity, String, Uuid } from '../../../src/decorators'
+import { NodeEntity, Property, Uuid } from '../../../src/decorators'
 import { getModel } from '../../../src/meta'
 import { PropertySchema } from '../../../src/meta/property-schema'
 
@@ -139,25 +139,25 @@ describe('PropertySchema', () => {
   describe('decorator config round trip', () => {
     @NodeEntity()
     class OptionEntity {
-      @String({ required: true })
+      @Property({ type: 'string', required: true })
       requiredField: string
 
-      @String({ hidden: true })
+      @Property({ type: 'string', hidden: true })
       hiddenField: string
 
-      @String({ protected: true })
+      @Property({ type: 'string', protected: true })
       protectedField: string
 
       @Uuid({ readonly: true })
       readonlyField: string
 
-      @String({ index: true })
+      @Property({ type: 'string', index: true })
       indexField: string
 
-      @String({ exists: true })
+      @Property({ type: 'string', exists: true })
       existsField: string
 
-      @String({ required: false })
+      @Property({ type: 'string', required: false })
       explicitFalseField: string
     }
 

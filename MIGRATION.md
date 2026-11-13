@@ -65,6 +65,9 @@ npm i neo4j-driver@^6
 
 ## 5. Smaller behavior changes
 
+- **`@String` is removed (NTS-670).** Use `@Property({ type: 'string' })` —
+  the deprecated decorator shadowed the global `String` type. `setDeprecationWarnings()`
+  went with it: with `@String` gone there are no deprecated surfaces left to warn about.
 - **Schema DDL names changed — ONE-TIME RENAME CHURN (NTS-598).** Generated
   constraint/index names now carry a deterministic hash suffix
   (`person_email_unique_b37312eb`) that makes them injective: `User` and

@@ -38,7 +38,6 @@ import Neode, {
   Primary,
   Uuid,
   Property,
-  String,
   Number,
   Boolean,
   Float,
@@ -236,7 +235,6 @@ Every property must declare a type — either through `@Property({ type })` or a
 | Decorator                                                     | Type name   | Notes                                                                                                                           |
 | ------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `@Property(config?)`                                          | —           | The general form: `@Property({ type: 'string', index: true })`. **Preferred** — the sugar decorators below shadow global types. |
-| `@String(config?)`                                            | `string`    | **Deprecated** (shadows the global `String`) — use `@Property({ type: 'string' })`.                                             |
 | `@Number(config?)`                                            | `number`    |                                                                                                                                 |
 | `@Int(config?)`                                               | —           | _not provided_ — use `@Property({ type: 'int' })`                                                                               |
 | `@Float(config?)`                                             | `float`     |                                                                                                                                 |
