@@ -15,7 +15,9 @@ import { requireLimit } from '../services/query/limits.js'
 import { assertDeleteAllScope } from '../services/query/delete.service.js'
 import type { DeleteOptions } from '../services/query/delete.service.js'
 import type { ScoredEntity } from '../services/query/search.service.js'
+import type { KnnMode } from '../services/query/knn.service.js'
 import { fulltextIndexName } from '../services/schema/fulltext.service.js'
+import { vectorIndexName } from '../services/schema/vector.service.js'
 import { isGraphNode, isRecord } from '../services/type-guards.js'
 import {
   stampExpression,
@@ -944,6 +946,51 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     const indexName = fulltextIndexName({ label, properties: fields })
 
     return this.neode.search(this.entity, indexName, query, options.limit)
+  }
+
+  /**
+  k-nearest-neighbour search over the vector index `installSchema()`
+  created for this model's declared `@Vector` property — the kNN
+  counterpart of search(): the index name is derived from the model
+  declaration, so the caller passes just the property key and the query
+  vector. Hydrated entities with their similarity score, best match
+  first.
+  */
+  async knn(
+    property: string,
+    vector: number[],
+    k: number,
+    mode?: KnnMode,
+  ): Promise<ScoredEntity<Entity>[]> {
+    const label = this.getLabels()[0]
+
+    if (label === undefined) {
+      throw new NeodeError(
+        `Cannot run a kNN search on ${this.getLabels().join(':')}: the model has no labels`,
+      )
+    }
+
+    const schemaProperty = this.schema
+      .getProperties()
+      .find((candidate) => candidate.getKey() === property)
+
+    if (schemaProperty === undefined) {
+      throw new NeodeError(
+        `Cannot run a kNN search on ${label}: no property named "${property}" — declare it, or pass a property the model declares`,
+      )
+    }
+
+    const vectorConfig = schemaProperty.getVector()
+
+    if (vectorConfig === undefined) {
+      throw new NeodeError(
+        `Cannot run a kNN search on ${label}.${property} — the property is not declared with @Vector. Declare @Vector on it, or use neode.knn(entity, indexName, …) with an explicit index name`,
+      )
+    }
+
+    const indexName = vectorIndexName({ label, property, ...vectorConfig })
+
+    return this.neode.knn(this.entity, indexName, vector, k, mode)
   }
 
   /**
