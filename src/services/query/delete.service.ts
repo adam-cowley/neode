@@ -8,11 +8,49 @@ import type { EntitySchema as EntitySchemaType } from '../../meta/entity/entity-
 import type { RelationshipPropertySchema } from '../../meta/relationship-property-schema.js'
 import { QueryService } from './query.service.js'
 import { isRecord } from '../type-guards.js'
+import { NeodeError } from '../../errors/neode-error.js'
+// eslint-disable-next-line unicorn/name-replacements -- `QueryParams` is the documented public API name (driver/types.ts), imported by name in the test suites
+import type { QueryParams } from '../../driver/types.js'
+import {
+  addEnforceClaimRemoval,
+  stampExpression,
+  timestampProperty,
+  versionBump,
+  versionProperty,
+} from '../write-utilities.js'
 
 /**
-Maximum cascade deletion depth (neode DeleteNode.js parity)
+Maximum depth of the self-referential cascade walk — the delete-path
+counterpart of MAX_TRAVERSE_DEPTH (traverse) and MAX_CREATE_DEPTH
+(services/write-utilities). Overridable per call with the `depth` option
+of {@link DeleteOptions} (NTS-595).
 */
 export const MAX_CASCADE_DEPTH = 10
+
+/**
+Guard for the bulk deleteAll paths (NTS-595, following the NTS-578
+destructive-guards precedent): a call with no filters deletes EVERY node
+carrying the model's labels, so it is refused unless confirmed with
+`all: true` — a filtered call proceeds as the fast bulk wipe.
+*/
+export function assertDeleteAllScope(parameters: object, labels: string[]): void {
+  // Entries avoid a record cast — the typed WhereFilter bags (NTS-646) are
+  // not index-signatured, so the guard reads key/value pairs instead
+  const entries = Object.entries(parameters)
+
+  const filters = entries.filter(([key]) => key !== 'all')
+
+  const hasAllConfirmation = entries.find(([key]) => key === 'all')?.[1] === true
+
+  if (!hasAllConfirmation && filters.length === 0) {
+    throw new NeodeError(
+      `deleteAll() refused on ${labels.join(':') || 'model'} — with no filters it deletes ` +
+        'every node carrying the model’s labels, including nodes your filters would ' +
+        'have hidden. Pass at least one filter to delete a subset, or { all: true } to ' +
+        'confirm the wipe.',
+    )
+  }
+}
 
 export interface DeleteOptions {
   /**
@@ -44,22 +82,51 @@ export interface DeleteOptions {
   (labels-as-state lifecycle). Cascade options are ignored.
   */
   soft?: string
+
+  /**
+  NTS-634 guard predicates: tenant/ownership filters the delete must
+  respect, applied to the statement's guard MATCH. A Cypher fragment over
+  the node variable `this` (the @Expression convention) with its values
+  bound as parameters — a fragment wins over a typed property map because
+  guards like `-[:IN_TENANT]->(:Tenant { id: $tenant })` are patterns,
+  which a property map cannot express. Rendered through whereRaw, like the
+  update path's version guard.
+  */
+  where?: {
+    /**
+    Cypher predicate over the node variable `this`
+    */
+    fragment: string
+    /**
+    Values for the `$name` references in the fragment
+    */
+    params?: QueryParams
+  }
+
+  /**
+  NTS-634: zero matched rows resolve silently instead of throwing the
+  missing-entity error
+  */
+  ifExists?: boolean
 }
 
 export class DeleteService extends QueryService {
   /**
-  Carry-over state while one delete() statement is being built: the node
-  aliases bound so far and whether the previous clause was a DELETE.
-  Cypher requires `WITH` between DELETE and the next MATCH — the carried
-  aliases keep every still-referenced binding in scope (42N24).
+  Carry-over state while one delete() statement is being built: whether
+  the previous clause was a DELETE. Cypher requires `WITH` between DELETE
+  and the next MATCH — each new cascade frame re-states only the alias
+  chain its remaining clauses reference, with DISTINCT so the rows
+  sibling frames already fanned out do not cross-multiply (NTS-595).
   */
-  private buildContext = { bound: [THIS_NODE] as string[], deleted: false }
+  private buildContext = { deleted: false }
 
   /**
   Add an optional match of a related node plus its own cascades, then
   delete it. `depth` is the number of relationship hops from the root.
   `selection` decides which relationships cascade: 'all' ignores the
   annotations, 'annotated' follows only `cascade: true` declarations.
+  `scope` is the alias chain from the root to `fromAlias` — exactly the
+  bindings the remaining frames still reference.
   */
   private addCascadeDelete(
     builder: Builder,
@@ -68,6 +135,7 @@ export class DeleteService extends QueryService {
     depth: number,
     maxDepth: number,
     selection: 'all' | 'annotated',
+    scope: string[],
   ): void {
     if (depth > maxDepth) {
       return
@@ -84,11 +152,11 @@ export class DeleteService extends QueryService {
 
     const targetSchema = typeof target === 'function' ? getModel(target) : undefined
 
-    // A sibling cascade segment deleted before this MATCH — carry the
-    // bindings over (this frame's patterns and the pending deletes of
-    // enclosing frames reference them)
+    // The previous frame deleted its matches — re-state this frame's
+    // alias chain (DISTINCT collapses the rows the previous frame fanned
+    // out, so sibling subtrees never cross-multiply)
     if (this.buildContext.deleted) {
-      builder.with(...this.buildContext.bound)
+      builder.withDistinct(...scope)
     }
 
     builder
@@ -96,8 +164,12 @@ export class DeleteService extends QueryService {
       .relationship(relationship.getType(), relationship.getDirection(), relationshipAlias)
       .to(nodeAlias, targetSchema instanceof EntitySchema ? targetSchema.getLabels() : false)
 
-    this.buildContext.bound.push(nodeAlias)
-    this.buildContext.deleted = false
+    // NTS-663: the node about to be cascade-deleted may hold claims of its
+    // own — release them before its DETACH DELETE, at every depth (the
+    // deletion is recursive, so the stale-claim hazard is too)
+    if (targetSchema instanceof EntitySchema) {
+      addEnforceClaimRemoval(builder, targetSchema, nodeAlias)
+    }
 
     if (targetSchema instanceof EntitySchema) {
       for (const targetRelationship of targetSchema.getRelationships()) {
@@ -108,6 +180,7 @@ export class DeleteService extends QueryService {
           depth + 1,
           maxDepth,
           selection,
+          [...scope, nodeAlias],
         )
       }
     }
@@ -131,7 +204,7 @@ export class DeleteService extends QueryService {
     const builder = new Builder()
 
     // Reset the per-query build state: service instances are reused
-    this.buildContext = { bound: [THIS_NODE], deleted: false }
+    this.buildContext = { deleted: false }
 
     // Match by the entity's identity: elementId when known, else the
     // primary key — with a clear error when neither is available
@@ -140,82 +213,152 @@ export class DeleteService extends QueryService {
 
     builder.matchEntity(THIS_NODE, schema, criteria)
 
+    // NTS-634 guard predicates (tenant/ownership filters a delete must
+    // respect): a raw Cypher fragment over the node variable `this`, its
+    // values bound as parameters — rendered like the update path's
+    // version guard
+    if (options?.where !== undefined) {
+      const guardParameters = Object.entries(options.where.params ?? {})
+
+      for (const [name, value] of guardParameters) {
+        builder.param(name, value)
+      }
+
+      builder.whereRaw(options.where.fragment)
+    }
+
     // Declarative soft delete (NTS-510): SET the label + stamp instead of
-    // deleting the node, unless the caller forces a hard delete
+    // deleting the node, unless the caller forces a hard delete. The
+    // match is gated on the label NOT being there yet: the label is what
+    // hides the node from reads, so an already soft-deleted node matches
+    // zero rows and a repeat delete is a no-op (deletedAt never re-stamped)
     const soft = schema.getSoftDelete()
 
-    if (soft !== undefined && options?.force !== true) {
+    if (soft === undefined || options?.force === true) {
+      // Soft delete: SET the label instead of deleting the node
+      const softLabel = options?.soft
+
+      if (softLabel === undefined || softLabel === '') {
+        // Which relationships cascade: an explicit `{ cascade: true }` (or a
+        // detach mode) takes everything, `{ cascade: false }` nothing, and
+        // without options the schema's per-relationship annotations decide
+        const isAll = options?.cascade === true || options?.mode !== undefined
+        const selection: 'all' | 'annotated' = isAll ? 'all' : 'annotated'
+
+        if (isAll && options.mode === 'detach') {
+          // Delete the relationships to related nodes first, then the node
+          // itself: related nodes survive (neode DeleteNode.js addDetachNode)
+
+          // NTS-663: release every enforce claim the deleted node holds
+          // before the edges go. Subqueries keep the row fan-out flat —
+          // the cascade frames' alias chains are untouched.
+          addEnforceClaimRemoval(builder, schema, THIS_NODE)
+
+          for (const [index, relationship] of schema.getRelationships().entries()) {
+            // A previous segment deleted its relationships — carry `this` over
+            if (index > 0) {
+              builder.withDistinct(THIS_NODE)
+            }
+
+            const relationshipAlias = `${THIS_NODE}_${relationship.getKey()}_rel`
+
+            builder
+              .optionalMatch(THIS_NODE)
+              .relationship(relationship.getType(), relationship.getDirection(), relationshipAlias)
+              .toAnything()
+              .delete(relationshipAlias)
+          }
+
+          builder.detachDelete(THIS_NODE)
+        } else if (options?.cascade === false) {
+          addEnforceClaimRemoval(builder, schema, THIS_NODE)
+
+          builder.detachDelete(THIS_NODE)
+        } else {
+          // Recursively match and delete related nodes, bounded by depth
+          // (neode DeleteNode.js addCascadeDeleteNode) — 'annotated' selection
+          // walks only the relationships declared `cascade: true`
+
+          // NTS-663: release the claims before the edges go — cascade
+          // frames match on the edges, so this runs first
+          addEnforceClaimRemoval(builder, schema, THIS_NODE)
+
+          for (const relationship of schema.getRelationships()) {
+            this.addCascadeDelete(
+              builder,
+              THIS_NODE,
+              relationship,
+              1,
+              options?.depth ?? MAX_CASCADE_DEPTH,
+              selection,
+              [THIS_NODE],
+            )
+          }
+
+          builder.detachDelete(THIS_NODE)
+        }
+      } else {
+        builder.set(`${THIS_NODE}:${quote(softLabel)}`, undefined)
+      }
+    } else {
+      builder.whereLabel(THIS_NODE, soft.label, true)
+
       builder
         .set(`${THIS_NODE}:${quote(soft.label)}`, undefined)
         .setExpr(`${THIS_NODE}.\`deletedAt\``, 'datetime()')
 
-      const { query, params } = builder.build()
+      // NTS-604: a soft delete is a write like every other — stamp
+      // updatedAt and bump the version, so a guarded update hydrated
+      // before it no longer matches. The label gate above keeps a repeat
+      // soft delete a no-op (NTS-595): zero rows match, nothing re-stamped.
+      const updatedAt = timestampProperty(schema, 'updatedAt')
 
-      await this.runner.run(query, params)
-
-      return
-    }
-
-    // Soft delete: SET the label instead of deleting the node
-    const softLabel = options?.soft
-
-    if (softLabel !== undefined && softLabel !== '') {
-      builder.set(`${THIS_NODE}:${quote(softLabel)}`, undefined)
-
-      const { query, params } = builder.build()
-
-      await this.runner.run(query, params)
-
-      return
-    }
-
-    // Which relationships cascade: an explicit `{ cascade: true }` (or a
-    // detach mode) takes everything, `{ cascade: false }` nothing, and
-    // without options the schema's per-relationship annotations decide
-    const isAll = options?.cascade === true || options?.mode !== undefined
-    const selection: 'all' | 'annotated' = isAll ? 'all' : 'annotated'
-
-    if (isAll && options.mode === 'detach') {
-      // Delete the relationships to related nodes first, then the node
-      // itself: related nodes survive (neode DeleteNode.js addDetachNode)
-      for (const [index, relationship] of schema.getRelationships().entries()) {
-        // A previous segment deleted its relationships — carry `this` over
-        if (index > 0) {
-          builder.with(...this.buildContext.bound)
-        }
-
-        const relationshipAlias = `${THIS_NODE}_${relationship.getKey()}_rel`
-
-        builder
-          .optionalMatch(THIS_NODE)
-          .relationship(relationship.getType(), relationship.getDirection(), relationshipAlias)
-          .toAnything()
-          .delete(relationshipAlias)
+      if (updatedAt !== undefined) {
+        builder.setExpr(`${THIS_NODE}.${updatedAt.getKey()}`, stampExpression(updatedAt))
       }
 
-      builder.detachDelete(THIS_NODE)
-    } else if (options?.cascade === false) {
-      builder.detachDelete(THIS_NODE)
-    } else {
-      // Recursively match and delete related nodes, bounded by depth
-      // (neode DeleteNode.js addCascadeDeleteNode) — 'annotated' selection
-      // walks only the relationships declared `cascade: true`
-      for (const relationship of schema.getRelationships()) {
-        this.addCascadeDelete(
-          builder,
-          THIS_NODE,
-          relationship,
-          1,
-          options?.depth ?? MAX_CASCADE_DEPTH,
-          selection,
+      const version = versionProperty(schema)
+
+      if (version !== undefined) {
+        builder.setExpr(
+          `${THIS_NODE}.${version.getKey()}`,
+          versionBump(THIS_NODE, version.getKey()),
         )
       }
-
-      builder.detachDelete(THIS_NODE)
     }
+
+    // NTS-634: the deleted count rides the same statement — exactly one
+    // record comes back (aggregations always return a row), 0 when the
+    // guard MATCH found nothing
+    builder.return(`count(${THIS_NODE}) AS deleted`)
 
     const { query, params } = builder.build()
 
-    await this.runner.run(query, params)
+    const result = await this.runner.run(query, params)
+
+    const deleted = Number(result.records[0]?.get('deleted') ?? 0)
+
+    // NTS-595 idempotency: a repeat soft delete matches zero rows (the
+    // Deleted-label gate hides the already-stamped node) — that is the
+    // documented no-op, not a missing entity. Only a hard delete's zero
+    // rows mean "not found".
+    const isSoftNoOp = soft !== undefined && options?.force !== true
+
+    if (deleted !== 0 || isSoftNoOp || options?.ifExists === true) {
+      return
+    }
+
+    // The missing-entity contract, byte-identical to the Repository's
+    // by-ID throw whose pre-read this zero-row check replaces
+    let notFoundId = criteria.elementId ?? 'unknown'
+
+    if (criteria.value !== undefined) {
+      notFoundId =
+        typeof criteria.value === 'string' || typeof criteria.value === 'number'
+          ? String(criteria.value)
+          : JSON.stringify(criteria.value)
+    }
+
+    throw new NeodeError(`Cannot delete: entity not found for ID ${notFoundId}`)
   }
 }

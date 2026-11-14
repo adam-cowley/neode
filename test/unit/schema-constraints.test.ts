@@ -28,7 +28,7 @@ describe('schemaStatement (single + composite)', () => {
     expect(
       schemaStatement(ConstraintAction.CREATE, ConstraintType.UNIQUE, 'Person', ['email']),
     ).toBe(
-      'CREATE CONSTRAINT person_email_unique IF NOT EXISTS FOR (n:`Person`) REQUIRE n.`email` IS UNIQUE',
+      'CREATE CONSTRAINT person_email_unique_b37312eb IF NOT EXISTS FOR (n:`Person`) REQUIRE n.`email` IS UNIQUE',
     )
   })
 
@@ -39,10 +39,10 @@ describe('schemaStatement (single + composite)', () => {
         ConstraintType.UNIQUE,
         'Person',
         ['eventId', 'email'],
-        schemaObjectName('Person', 'eventid_email', ConstraintType.UNIQUE),
+        schemaObjectName('Person', ['eventId', 'email'], ConstraintType.UNIQUE),
       ),
     ).toBe(
-      'CREATE CONSTRAINT person_eventid_email_unique IF NOT EXISTS FOR (n:`Person`) ' +
+      'CREATE CONSTRAINT person_email_eventid_unique_6279aedc IF NOT EXISTS FOR (n:`Person`) ' +
         'REQUIRE (n.`eventId`, n.`email`) IS UNIQUE',
     )
   })
@@ -54,10 +54,10 @@ describe('schemaStatement (single + composite)', () => {
         ConstraintType.INDEX,
         'Person',
         ['eventId', 'email'],
-        schemaObjectName('Person', 'eventid_email', ConstraintType.INDEX),
+        schemaObjectName('Person', ['eventId', 'email'], ConstraintType.INDEX),
       ),
     ).toBe(
-      'CREATE INDEX person_eventid_email_index IF NOT EXISTS FOR (n:`Person`) ' +
+      'CREATE INDEX person_email_eventid_index_bac51acd IF NOT EXISTS FOR (n:`Person`) ' +
         'ON (n.`eventId`, n.`email`)',
     )
   })
@@ -66,10 +66,10 @@ describe('schemaStatement (single + composite)', () => {
     expect(
       schemaStatement(ConstraintAction.CREATE, ConstraintType.EXISTS, 'Person', ['email']),
     ).toBe(
-      'CREATE CONSTRAINT person_email_exists IF NOT EXISTS FOR (n:`Person`) REQUIRE n.`email` IS NOT NULL',
+      'CREATE CONSTRAINT person_email_exists_b643d272 IF NOT EXISTS FOR (n:`Person`) REQUIRE n.`email` IS NOT NULL',
     )
     expect(schemaStatement(ConstraintAction.DROP, ConstraintType.UNIQUE, 'Person', ['email'])).toBe(
-      'DROP CONSTRAINT person_email_unique IF EXISTS',
+      'DROP CONSTRAINT person_email_unique_b37312eb IF EXISTS',
     )
   })
 
@@ -83,13 +83,13 @@ describe('schemaStatement (single + composite)', () => {
 describe('propertyTypeStatement (NTS-141)', () => {
   it('renders a property-type constraint from the declared type', () => {
     expect(propertyTypeStatement(ConstraintAction.CREATE, 'Person', 'email', 'STRING')).toBe(
-      'CREATE CONSTRAINT person_email_property_type IF NOT EXISTS FOR (n:`Person`) REQUIRE n.`email` IS :: STRING',
+      'CREATE CONSTRAINT person_email_property_type_cb54f2b0 IF NOT EXISTS FOR (n:`Person`) REQUIRE n.`email` IS :: STRING',
     )
   })
 
   it('drops with the same deterministic name', () => {
     expect(propertyTypeStatement(ConstraintAction.DROP, 'Person', 'email', 'STRING')).toBe(
-      'DROP CONSTRAINT person_email_property_type IF EXISTS',
+      'DROP CONSTRAINT person_email_property_type_cb54f2b0 IF EXISTS',
     )
   })
 })
@@ -140,18 +140,18 @@ describe('composite + property-type wiring through the schema configs', () => {
     schema.getProperty('email').setCompositeUnique(['eventId', 'email'])
     schema.getProperty('email').setTyped(true)
 
-    const declared = declaredSchemaObjects()
+    const declared = declaredSchemaObjects({ enterprise: true })
 
     expect(declared.constraints).toEqual(
       expect.arrayContaining([
         {
-          name: 'inspectcomposite_eventid_email_unique',
+          name: 'inspectcomposite_email_eventid_unique_b9433fb6',
           type: ConstraintType.UNIQUE,
           labelsOrTypes: ['InspectComposite'],
           properties: ['eventId', 'email'],
         },
         {
-          name: 'inspectcomposite_email_property_type',
+          name: 'inspectcomposite_email_property_type_32e145de',
           type: ConstraintType.PROPERTY_TYPE,
           labelsOrTypes: ['InspectComposite'],
           properties: ['email'],
@@ -161,7 +161,9 @@ describe('composite + property-type wiring through the schema configs', () => {
 
     // one declaration, one object: no duplicates from the declaring property
     expect(
-      declared.constraints.filter((c) => c.name === 'inspectcomposite_eventid_email_unique'),
+      declared.constraints.filter(
+        (c) => c.name === 'inspectcomposite_email_eventid_unique_b9433fb6',
+      ),
     ).toHaveLength(1)
   })
 
@@ -187,7 +189,7 @@ describe('composite + property-type wiring through the schema configs', () => {
     schema.getProperty('score').setType(PropertyType.NUMBER)
     schema.getProperty('score').setTyped(true)
 
-    const declared = declaredSchemaObjects()
+    const declared = declaredSchemaObjects({ enterprise: true })
 
     expect(declared.constraints.some((c) => c.name.startsWith('inspecttypednumber_'))).toBe(false)
   })

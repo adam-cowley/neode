@@ -3,7 +3,6 @@
 // when this file's service imports are evaluated first.
 import { openBackend, TestBackend } from './support/backend'
 import { defineModel } from '../../src'
-import { NeodeError } from '../../src/errors'
 
 /**
  * Database introspector round-trip (NTS-164): seed a small graph →
@@ -34,7 +33,7 @@ describe('generateModels round-trip', () => {
       `MATCH (n) WHERE n:\`Nts164Person\` OR n:\`Nts164Movie\` OR n:\`Nts164Mixed\` DETACH DELETE n`,
     )
     await backend.connection
-      .run('DROP CONSTRAINT nts164person_id_unique IF EXISTS')
+      .run('DROP CONSTRAINT nts164person_id_unique_fbcdeb32 IF EXISTS')
       .catch(() => undefined)
 
     await backend.close()
@@ -44,7 +43,7 @@ describe('generateModels round-trip', () => {
     const createdAt = backend.capabilities.temporals ? ', createdAt: datetime()' : ''
 
     await backend.connection.run(
-      'CREATE CONSTRAINT nts164person_id_unique IF NOT EXISTS ' +
+      'CREATE CONSTRAINT nts164person_id_unique_fbcdeb32 IF NOT EXISTS ' +
         'FOR (n:`Nts164Person`) REQUIRE n.id IS UNIQUE',
     )
     await backend.connection.run(
@@ -125,15 +124,50 @@ describe('generateModels round-trip', () => {
     )
   })
 
-  it('throws the descriptive error when sampled types conflict', async () => {
-    await backend.connection.run("CREATE (:Nts164Mixed {n: 'text'}) CREATE (:Nts164Mixed {n: 42})")
-
-    await expect(backend.neode.generateModels({ labels: ['Nts164Mixed'] })).rejects.toThrow(
-      NeodeError,
+  it('reports sampled type conflicts as warnings instead of aborting generation', async () => {
+    await backend.connection.run(
+      "CREATE (:Nts164Mixed {id: 'a', n: 'text'}) CREATE (:Nts164Mixed {id: 'b', n: 42})",
     )
 
-    await expect(backend.neode.generateModels({ labels: ['Nts164Mixed'] })).rejects.toThrow(
+    const result = await backend.neode.generateModels({ labels: ['Nts164Mixed'] })
+
+    expect(result.models.map((model) => model.label)).toEqual(['Nts164Mixed'])
+    expect(result.models[0]?.schema['n']).toBeUndefined()
+    expect(result.models[0]?.schema['id']).toEqual({ type: 'string' })
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0]).toMatch(
       /Nts164Mixed[\s\S]*"n"[\s\S]*(number, string|string, number)/,
     )
+  })
+
+  it('samples a bounded number of nodes and walks relationships from the sample only', async () => {
+    await backend.connection.run(
+      `UNWIND range(1, 20) AS i
+       CREATE (s:Nts577Source {id: toString(i)})-[:POINTS_AT]->(:Nts577Target {id: toString(i)})`,
+    )
+
+    try {
+      const result = await backend.neode.generateModels({
+        labels: ['Nts577Source', 'Nts577Target'],
+        sampleSize: 5,
+      })
+
+      const source = result.models.find((model) => model.label === 'Nts577Source')
+
+      expect(source?.properties['id']).toEqual({ type: 'string' })
+      expect(source?.relationships).toEqual([
+        expect.objectContaining({
+          relationship: 'POINTS_AT',
+          target: 'Nts577Target',
+          targetClassName: 'Nts577Target',
+          many: false,
+        }),
+      ])
+      expect(result.warnings).toEqual([])
+    } finally {
+      await backend.connection.run(
+        'MATCH (n) WHERE n:`Nts577Source` OR n:`Nts577Target` DETACH DELETE n',
+      )
+    }
   })
 })

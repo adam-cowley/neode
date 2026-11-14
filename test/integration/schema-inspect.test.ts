@@ -6,7 +6,7 @@ import { inspectSchema } from '../../src/services/schema/inspect.service'
 import { SchemaService } from '../../src/services/schema/schema.service'
 import { FulltextIndexService } from '../../src/services/schema/fulltext.service'
 import { VectorIndexService } from '../../src/services/schema/vector.service'
-import { NodeEntity, Uuid, String } from '../../src/decorators'
+import { NodeEntity, Uuid, Property } from '../../src/decorators'
 import { getModel } from '../../src/meta'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
@@ -16,10 +16,10 @@ class InspectPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
-  @String({ index: true })
+  @Property({ type: 'string', index: true })
   email: string
 }
 
@@ -45,11 +45,13 @@ describe('inspectSchema', () => {
 
     const report = await inspectSchema(backend.connection)
 
-    expect(report.constraints.missing).toContain('inspectperson_name_unique')
-    expect(report.indexes.missing).toContain('inspectperson_email_index')
+    expect(report.constraints.missing).toContain('inspectperson_name_unique_0da7b6ae')
+    expect(report.indexes.missing).toContain('inspectperson_email_index_36e00322')
     // installed may carry capability-probe scratch indexes — the point
     // is that nothing declared is installed yet
-    expect(report.indexes.installed.map((i) => i.name)).not.toContain('inspectperson_email_index')
+    expect(report.indexes.installed.map((i) => i.name)).not.toContain(
+      'inspectperson_email_index_36e00322',
+    )
   })
 
   it('reconciles missing objects once the schema is installed', async () => {
@@ -59,13 +61,17 @@ describe('inspectSchema', () => {
 
     const report = await inspectSchema(backend.connection)
 
-    expect(report.constraints.missing).not.toContain('inspectperson_name_unique')
-    expect(report.indexes.missing).not.toContain('inspectperson_email_index')
-    expect(report.constraints.installed.map((c) => c.name)).toContain('inspectperson_name_unique')
-    expect(report.indexes.installed.map((i) => i.name)).toContain('inspectperson_email_index')
+    expect(report.constraints.missing).not.toContain('inspectperson_name_unique_0da7b6ae')
+    expect(report.indexes.missing).not.toContain('inspectperson_email_index_36e00322')
+    expect(report.constraints.installed.map((c) => c.name)).toContain(
+      'inspectperson_name_unique_0da7b6ae',
+    )
+    expect(report.indexes.installed.map((i) => i.name)).toContain(
+      'inspectperson_email_index_36e00322',
+    )
 
     // Installed and declared → neither missing nor extra
-    expect(report.constraints.extra).not.toContain('inspectperson_name_unique')
+    expect(report.constraints.extra).not.toContain('inspectperson_name_unique_0da7b6ae')
   })
 
   it('reports installed-but-undeclared objects as extra', async () => {
@@ -89,10 +95,16 @@ describe('inspectSchema', () => {
     })
 
     expect(before.indexes.declared.map((i) => i.name)).toEqual(
-      expect.arrayContaining(['inspectperson_name_fulltext', 'inspectperson_embedding_vector']),
+      expect.arrayContaining([
+        'inspectperson_name_fulltext_cf3a3001',
+        'inspectperson_embedding_vector_f316d4f2',
+      ]),
     )
     expect(before.indexes.missing).toEqual(
-      expect.arrayContaining(['inspectperson_name_fulltext', 'inspectperson_embedding_vector']),
+      expect.arrayContaining([
+        'inspectperson_name_fulltext_cf3a3001',
+        'inspectperson_embedding_vector_f316d4f2',
+      ]),
     )
 
     await new FulltextIndexService(backend.connection, [FULLTEXT]).create()
@@ -106,10 +118,10 @@ describe('inspectSchema', () => {
       vector: [VECTOR],
     })
 
-    expect(after.indexes.missing).not.toContain('inspectperson_name_fulltext')
+    expect(after.indexes.missing).not.toContain('inspectperson_name_fulltext_cf3a3001')
 
     if (backend.capabilities.vector) {
-      expect(after.indexes.missing).not.toContain('inspectperson_embedding_vector')
+      expect(after.indexes.missing).not.toContain('inspectperson_embedding_vector_f316d4f2')
     }
   })
 })

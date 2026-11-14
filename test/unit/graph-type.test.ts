@@ -8,7 +8,6 @@ import {
   Property,
   RelationshipEntity,
   StartNode,
-  String,
   Uuid,
 } from '../../src/decorators'
 import { defineModel } from '../../src/meta/map-schema'
@@ -40,7 +39,7 @@ import {
 
 @NodeEntity()
 class GtMovie {
-  @String()
+  @Property({ type: 'string' })
   title!: string
 }
 
@@ -61,10 +60,10 @@ class GtPerson {
   @Uuid({ primary: true })
   id!: string
 
-  @String({ required: true })
+  @Property({ type: 'string', required: true })
   name!: string
 
-  @String({ array: true })
+  @Property({ type: 'string', array: true })
   aliases!: string[]
 
   // NUMBER has no single Cypher type (spans INTEGER + FLOAT) — skipped
@@ -83,7 +82,7 @@ class GtPerson {
 
 @NodeEntity({ labels: ['GtEmployee', 'GtResident'] })
 class GtEmployee {
-  @String({ required: true })
+  @Property({ type: 'string', required: true })
   email!: string
 }
 
@@ -240,7 +239,7 @@ describe('deriveGraphType', () => {
     // NTS-549 — hoisted uniqueness renders as a named CONSTRAINT item with
     // the deterministic <label>_<prop>_unique name
     expect(statement).toContain(
-      'CONSTRAINT `gtperson_id_unique` FOR (n:`GtPerson`) REQUIRE (n.`id`) IS UNIQUE',
+      'CONSTRAINT `gtperson_id_unique_c267d993` FOR (n:`GtPerson`) REQUIRE (n.`id`) IS UNIQUE',
     )
   })
 
@@ -249,7 +248,7 @@ describe('deriveGraphType', () => {
     // LEAVES its uniqueness/key ones — those only go by name
     const statement = graphTypeDropStatement(graphType)
 
-    expect(statement).toContain('CONSTRAINT `gtperson_id_unique`')
+    expect(statement).toContain('CONSTRAINT `gtperson_id_unique_c267d993`')
     expect(statement).toContain('(:`GtPerson` =>)')
   })
 })
@@ -298,7 +297,7 @@ describe('graph type constraint items (NTS-549)', () => {
     })
 
     expect(statement).toContain(
-      'CONSTRAINT `stayed_in_startdate_exists` FOR ()-[r:`STAYED_IN`]->() REQUIRE (r.`startDate`) IS NOT NULL',
+      'CONSTRAINT `stayed_in_startdate_exists_3acf3afd` FOR ()-[r:`STAYED_IN`]->() REQUIRE (r.`startDate`) IS NOT NULL',
     )
     expect(statement).toContain(
       'CONSTRAINT `stayed_type` FOR ()-[r:`STAYED_IN`]->() REQUIRE (r.`endDate`) IS :: DATE',
@@ -308,7 +307,7 @@ describe('graph type constraint items (NTS-549)', () => {
   it('generates a deterministic name when none is given', () => {
     expect(
       graphTypeConstraintName({ labelOrType: 'Person', properties: ['ssn'], kind: 'KEY' }),
-    ).toBe('person_ssn_key')
+    ).toBe('person_ssn_key_657d6def')
   })
 
   it('rejects existence/type constraints over more than one property', () => {
@@ -349,7 +348,7 @@ describe('composite REQUIRE constraints (NTS-552)', () => {
     })
 
     expect(graphTypeSetStatement(derived)).toContain(
-      'CONSTRAINT `nts552unique_name_email_unique` FOR (n:`Nts552Unique`) REQUIRE (n.`name`, n.`email`) IS UNIQUE',
+      'CONSTRAINT `nts552unique_email_name_unique_806b60e9` FOR (n:`Nts552Unique`) REQUIRE (n.`name`, n.`email`) IS UNIQUE',
     )
   })
 
@@ -630,6 +629,9 @@ describe('graph type drift (NTS-550)', () => {
 
         return { records: [] }
       },
+
+      // NTS-598 — the declared set follows the DETECTED edition
+      edition: async () => 'community',
     } as unknown as ConnectionProvider
 
     return connection
@@ -723,14 +725,48 @@ describe('GraphTypeService', () => {
     expect(connection.run).not.toHaveBeenCalled()
   })
 
-  it('runs one SET statement on Enterprise Edition', async () => {
+  it('runs one ADD statement on Enterprise Edition by default (NTS-578)', async () => {
     const connection = stubConnection()
     const results = await new GraphTypeService(connection, true).create()
 
-    expect(connection.run).toHaveBeenCalledTimes(1)
     expect(results[0]?.success).toBe(true)
     expect(results[0]?.type).toBe('GRAPH_TYPE')
+    expect(results[0]?.statement.startsWith('ALTER CURRENT GRAPH TYPE ADD {')).toBe(true)
+
+    const statements = vi.mocked(connection.run).mock.calls.map((call) => call[0])
+
+    expect(statements.some((statement) => statement.includes('GRAPH TYPE SET'))).toBe(false)
+  })
+
+  it('runs one SET statement with replace: true', async () => {
+    const connection = stubConnection()
+    const results = await new GraphTypeService(connection, true).create({ replace: true })
+
+    expect(results[0]?.success).toBe(true)
     expect(results[0]?.statement.startsWith('ALTER CURRENT GRAPH TYPE SET {')).toBe(true)
+  })
+
+  it('refuses replace when it would drop undeclared objects, unless canDropUndeclared', async () => {
+    const run = vi.fn(async (statement: string) =>
+      statement.startsWith('SHOW CURRENT GRAPH TYPE')
+        ? { records: [{ get: () => '{(:`ForeignApp` => {`id` :: STRING NOT NULL})}' }] }
+        : { records: [] },
+    )
+    const connection = { run } as unknown as ConnectionProvider
+
+    const refused = await new GraphTypeService(connection, true).create({ replace: true })
+
+    expect(refused[0]?.success).toBe(false)
+    expect(refused[0]?.error?.message).toContain('ForeignApp')
+    expect(refused[0]?.error?.message).toContain('canDropUndeclared: true')
+    expect(run.mock.calls.some((call) => call[0].includes('GRAPH TYPE SET'))).toBe(false)
+
+    const allowed = await new GraphTypeService(connection, true).create({
+      replace: true,
+      canDropUndeclared: true,
+    })
+
+    expect(allowed[0]?.success).toBe(true)
   })
 
   it('runs one DROP statement', async () => {

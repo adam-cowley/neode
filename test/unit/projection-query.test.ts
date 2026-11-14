@@ -70,6 +70,17 @@ class ProjectionQueryModel {
   })
   siblingCourseTitles: string[]
 
+  // NTS-594 — multi-hop path with a multi-field subset
+  @RelatedMany({
+    path: [
+      { type: 'NEXT_COURSE', direction: 'out' },
+      { type: 'IN_COURSE', direction: 'in' },
+    ],
+    target: () => ProjectionQueryCourse,
+    fields: ['title', 'status'],
+  })
+  siblingCourses: { title: string; status: string }[]
+
   // intermediate hop with a target: label-filtered mid-path
   @RelatedMany({
     path: [
@@ -129,14 +140,16 @@ describe('projection Cypher composition (NTS-135/136/137/138)', () => {
       'cohortLessons: [ (this)<-[:`COHORT`]-(node) | node { .slug, .title } ]',
     )
 
-    // NTS-547 — multi-hop path: hops chained, `node` bound by the last hop
+    // NTS-547 — multi-hop path: hops chained, `node` bound by the last hop.
+    // NTS-594 — multi-hop many projections carry the elementId identity
+    // marker for hydration's node-identity dedupe
     expect(query).toContain(
-      'siblingCourseTitles: [ (this)-[:`NEXT_COURSE`]->(this_h1)<-[:`IN_COURSE`]-(node:`ProjectionQueryCourse`) | node.title ]',
+      'siblingCourseTitles: [ (this)-[:`NEXT_COURSE`]->(this_h1)<-[:`IN_COURSE`]-(node:`ProjectionQueryCourse`) | node { .title, __EAGER_ID__: elementId(node) } ]',
     )
 
     // ...with a label-filtered intermediate hop and a WHERE fragment
     expect(query).toContain(
-      'peerLessons: [ (this)-[:`IN_COURSE`]->(this_h1)<-[:`COHORT`]-(this_h2:`ProjectionQueryModel`)-[:`COMPLETED_LESSON`]->(node:`ProjectionQueryLesson`) WHERE NOT (this)-[:BLOCKED]->(node) | node.slug ]',
+      'peerLessons: [ (this)-[:`IN_COURSE`]->(this_h1)<-[:`COHORT`]-(this_h2:`ProjectionQueryModel`)-[:`COMPLETED_LESSON`]->(node:`ProjectionQueryLesson`) WHERE (NOT (this)-[:BLOCKED]->(node)) | node { .slug, __EAGER_ID__: elementId(node) } ]',
     )
 
     // ...singular form takes the first element
@@ -149,7 +162,7 @@ describe('projection Cypher composition (NTS-135/136/137/138)', () => {
 
     // ...with WHERE, target labels and variable-length hops
     expect(query).toContain(
-      'requiredLessonsCount: COUNT { (this)-[:`COMPLETED_LESSON`*1..2]->(node:`ProjectionQueryLesson`) WHERE NOT node:OptionalLesson }',
+      'requiredLessonsCount: COUNT { (this)-[:`COMPLETED_LESSON`*1..2]->(node:`ProjectionQueryLesson`) WHERE (NOT node:OptionalLesson) }',
     )
 
     // ...with a fixed hop count
@@ -157,7 +170,7 @@ describe('projection Cypher composition (NTS-135/136/137/138)', () => {
 
     // @RelationshipExists: inline EXISTS { } subquery
     expect(query).toContain(
-      'hasNextLesson: EXISTS { (this)-[:`NEXT_LESSON`]->(node) WHERE NOT node:OptionalLesson }',
+      'hasNextLesson: EXISTS { (this)-[:`NEXT_LESSON`]->(node) WHERE (NOT node:OptionalLesson) }',
     )
 
     // @LabelPresent: label predicate
@@ -204,6 +217,32 @@ describe('projection Cypher composition (NTS-135/136/137/138)', () => {
     }
 
     expect(hasProjectedProperties(getModel(OnlyComputed))).toBe(true)
+  })
+
+  it('multi-hop many projections carry a node identity marker, single-hop and singular do not (NTS-594)', () => {
+    const query = normalise(projectionNode('this', getModel(ProjectionQueryModel)))
+
+    // Multi-hop many, single field: the scalar projection becomes a map
+    // carrying the elementId marker hydration dedupes by
+    expect(query).toContain(
+      'siblingCourseTitles: [ (this)-[:`NEXT_COURSE`]->(this_h1)<-[:`IN_COURSE`]-(node:`ProjectionQueryCourse`) | node { .title, __EAGER_ID__: elementId(node) } ]',
+    )
+
+    // Multi-hop many, several fields: marker appended to the field map
+    expect(query).toContain(
+      'siblingCourses: [ (this)-[:`NEXT_COURSE`]->(this_h1)<-[:`IN_COURSE`]-(node:`ProjectionQueryCourse`) | node { .title, .status, __EAGER_ID__: elementId(node) } ]',
+    )
+
+    // Single-hop (cannot duplicate): plain scalar / map projections, no marker
+    expect(query).toContain('completedLessons: [ (this)-[:`COMPLETED_LESSON`]-(node) | node.slug ]')
+    expect(query).toContain(
+      'cohortLessons: [ (this)<-[:`COHORT`]-(node) | node { .slug, .title } ]',
+    )
+
+    // Singular multi-hop takes [0] — nothing to dedupe, no marker
+    expect(query).toContain(
+      'courseViaPath: [ (this)-[:`IN_COURSE`]->(node:`ProjectionQueryCourse`) | node.title ][0]',
+    )
   })
 
   it('counts and exists without an explicit direction default to BOTH', () => {

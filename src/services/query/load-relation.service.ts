@@ -263,6 +263,19 @@ export class LoadRelationService extends QueryService {
       read.builder.limit(level.limit)
     }
 
+    // One-key: the loader takes hydrated[0] — order by the target's
+    // primary key when the level gives none, so the row picked is
+    // deterministic, and read one row when the level trims none
+    if (!relationship.getMany()) {
+      if (level.order === undefined || level.order === '') {
+        applyOrder(read.builder, read.targetSchema.getPrimaryKey()?.getKey(), read.nodeVariable)
+      }
+
+      if (level.limit === undefined) {
+        read.builder.limit(1)
+      }
+    }
+
     read.builder.return(
       `${eagerNode(1, read.nodeVariable, read.targetSchema, { builder: read.builder, filters }, level)} AS node`,
     )
@@ -424,25 +437,33 @@ export class RelatedQuery {
 
   private readonly relationship: RelationshipPropertySchema
 
+  private readonly filters: ReadFilterOptions | undefined
+
   constructor(
     run: <Result>(work: (runner: Runner) => Promise<Result>) => Promise<Result>,
     schema: EntitySchema,
     entity: object,
     relationship: RelationshipPropertySchema,
+    filters?: ReadFilterOptions,
   ) {
     this.run = run
     this.schema = schema
     this.entity = entity
     this.relationship = relationship
+    this.filters = filters
   }
 
   /**
   A fresh traversal builder with the recorded verbs replayed onto it:
   rows for the hydrating terminals (eager map projection RETURN), a
   count for count() — the row-shaping verbs do not affect a count.
+
+  `isFirstOnly` pushes LIMIT 1 into the Cypher for the terminals that take
+  the first row (first(), and find() on a one-key) — only when the caller
+  recorded no limit of its own, which must stand.
   */
-  private statement(isCount: boolean): RelatedReadState {
-    const read = relatedRead(this.schema, this.entity, this.relationship)
+  private statement(isCount: boolean, isFirstOnly = false): RelatedReadState {
+    const read = relatedRead(this.schema, this.entity, this.relationship, this.filters)
 
     for (const operation of this.operations) {
       // Filters apply to a count; the row-shaping verbs do not, and the
@@ -456,7 +477,15 @@ export class RelatedQuery {
       applyOperation(read, operation)
     }
 
-    const projection = `${eagerNode(1, read.nodeVariable, read.targetSchema, { builder: read.builder })} AS node`
+    if (
+      isFirstOnly &&
+      !isCount &&
+      this.operations.every((operation) => operation.kind !== 'limit')
+    ) {
+      read.builder.limit(1)
+    }
+
+    const projection = `${eagerNode(1, read.nodeVariable, read.targetSchema, { builder: read.builder, filters: this.filters })} AS node`
 
     if (isCount) {
       read.builder.return(`count(${read.nodeVariable}) AS count`)
@@ -470,18 +499,18 @@ export class RelatedQuery {
     return read
   }
 
-  private async rows(): Promise<unknown[]> {
-    return this.run(async (runner) => runTraversal(runner, this.statement(false)))
+  private async rows(isFirstOnly = false): Promise<unknown[]> {
+    return this.run(async (runner) => runTraversal(runner, this.statement(false, isFirstOnly)))
   }
 
   async find(): Promise<unknown> {
-    const hydrated = await this.rows()
+    const hydrated = await this.rows(!this.relationship.getMany())
 
     return this.relationship.getMany() ? hydrated : hydrated[0]
   }
 
   async first(): Promise<unknown> {
-    const hydrated = await this.rows()
+    const hydrated = await this.rows(true)
 
     return hydrated[0]
   }

@@ -1,7 +1,7 @@
 import { vi } from 'vitest'
 import { Neode } from '../../src/neode.service'
 import { EventType } from '../../src/common/events'
-import { NodeEntity, InternalId, Uuid, String, OneToMany } from '../../src/decorators'
+import { NodeEntity, InternalId, Uuid, Property, OneToMany } from '../../src/decorators'
 import { Direction } from '../../src/query'
 import {
   AccessMode,
@@ -23,7 +23,7 @@ class Movie {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   title: string
 
   @OneToMany(() => Movie, 'ACTED_IN', Direction.OUTGOING)
@@ -74,7 +74,11 @@ class FakeProvider implements ConnectionProvider {
     }
 
     if (statement.includes('DETACH DELETE')) {
-      return { records: [] }
+      // NTS-634: the guarded delete statement ends RETURN count(...) —
+      // the fake plays the database: one row, the delete happened
+      return {
+        records: [record((key) => (key === 'deleted' ? 1 : undefined), ['deleted'])],
+      }
     }
 
     if (statement.includes('MERGE')) {

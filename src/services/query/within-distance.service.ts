@@ -5,8 +5,11 @@ import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import type { PropertySchema } from '../../meta/property-schema.js'
 import { convertPropertyValue } from '../../utilities.js'
 import { isPoint } from 'neo4j-driver'
+import { propertyReference } from '../../query/quote.js'
 import { QueryService } from './query.service.js'
+import { applyFilterBag } from './filter-bag.js'
 import { applyOrder, type OrderSpec } from './get.service.js'
+import { applyReadFilters, type ReadFilterOptions } from './filters.js'
 
 // SRIDs of the point types Neo4j supports
 const SRID = {
@@ -77,18 +80,16 @@ export class WithinDistanceService extends QueryService {
     order?: OrderSpec,
     limit?: number,
     skip?: number,
+    filters?: ReadFilterOptions,
   ): Promise<T[]> {
     const builder = new Builder()
 
     builder.match(THIS_NODE, schema.getLabels())
 
-    for (const property of schema.getProperties()) {
-      const key = property.getKey()
+    // NTS-574 — the model's named read filters (soft delete, tenant, …)
+    applyReadFilters(builder, schema, filters)
 
-      if (Object.hasOwn(parameters, key)) {
-        builder.where(`${THIS_NODE}.${key}`, parameters[key])
-      }
-    }
+    applyFilterBag(builder, schema, parameters)
 
     const location = schema
       .getProperties()
@@ -105,12 +106,14 @@ export class WithinDistanceService extends QueryService {
     const origin = toCypherPoint(point, location)
 
     builder.whereRaw(
-      `point.distance(${THIS_NODE}.${locationProperty}, ${origin}) <= ${String(distance)}`,
+      `point.distance(${propertyReference(THIS_NODE, locationProperty)}, ${origin}) <= ${String(distance)}`,
     )
 
     // Order by distance from the origin when asked for, otherwise by property
     if (order === 'distance') {
-      builder.orderBy(`point.distance(${THIS_NODE}.${locationProperty}, ${origin})`)
+      builder.orderBy(
+        `point.distance(${propertyReference(THIS_NODE, locationProperty)}, ${origin})`,
+      )
     } else {
       applyOrder(builder, order)
     }

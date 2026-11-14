@@ -4,7 +4,7 @@
 import { openBackend, TestBackend } from './support/backend'
 import { setDefaultNeode } from '../../src/entity-methods'
 import type { WithMethods } from '../../src/entity-methods'
-import { InternalId, NodeEntity, OneToMany, String, Uuid } from '../../src/decorators'
+import { InternalId, NodeEntity, OneToMany, Property, Uuid } from '../../src/decorators'
 import { Direction } from '../../src/query'
 import type { Newable } from '../../src/meta/newable'
 import type { SchemaDefinition } from '../../src/meta/schema-definition.interface'
@@ -19,7 +19,7 @@ class Pet {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 }
 
@@ -31,7 +31,7 @@ class Person {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToMany(() => Pet, 'OWNS', Direction.OUTGOING)
@@ -48,7 +48,7 @@ class Stubborn {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   save(): this {

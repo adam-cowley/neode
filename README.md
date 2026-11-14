@@ -2,11 +2,31 @@
 
 neode is a Neo4j OGM for Node.js designed to take care of the CRUD boilerplate involved with setting up a graph database project. Just install, define your models and go.
 
-It runs against any Cypher-compatible engine: **Neo4j** (Community, Enterprise, Aura) and **Memgraph** over Bolt, or the embedded [Relate](https://github.com/relateapp/relate) engine in-process.
+It runs against any Cypher-compatible engine: **Neo4j** (Community, Enterprise, Aura) over Bolt, or the embedded [Relate](https://github.com/relateapp/relate) engine in-process. Memgraph speaks Bolt and connects, but its Cypher does not yet parse the library's core read paths (sorted subquery loads, keyset pagination), so it is not a supported target.
 
 Coming from [neode](https://github.com/adam-cowley/neode) 0.4.9? Your existing map-based schemas keep working — read the [migration guide](docs/migration-guide.md).
 
 > **1.0 alpha.** This branch is the `1.0.0-alpha.0` prerelease line. Install it with the `next` dist-tag — `npm install neode` still gives you 0.4.9 until 1.0 goes stable.
+
+## What 1.0 guarantees
+
+The 1.0 semver contract covers three things:
+
+- the **public exports of the package root** — everything you import from `'neode'` (the authoritative list is `src/index.ts`),
+- the **typed error taxonomy** — `NeodeError` and its subclasses,
+- the **documented result shapes** of every read path — [docs/decisions/0003-result-shapes.md](docs/decisions/0003-result-shapes.md).
+
+Generated Cypher text and error-message wording are **not** semver-protected — they may change in any release. Match on error classes, not messages.
+
+## Limitations
+
+Known gaps a 1.0 user will hit — documented, not surprising:
+
+- **The embedded Relate engine executes `DELETE` inside an explicit transaction incorrectly** (upstream engine bug — [docs/RELEASE.md](docs/RELEASE.md) §7). Run deletes outside an explicit transaction, or on a Bolt backend.
+- **Multi-database requires Neo4j Enterprise.** `setDatabase()` / per-call `database` arguments work where the server allows it; Community and the embedded engine serve a single database.
+- **Bulk writes are not atomic across chunks.** `createMany()` / `mergeMany()` commit one managed transaction per chunk (default 1000 rows), so a failure partway through leaves earlier chunks committed — [bulk writes](docs/api-reference.md#bulk-writes--pagination).
+- **Filtered kNN post-filters the index's top-k.** Named filters apply after the vector search, so a highly selective filter can return fewer than `k` rows even though neode over-fetches round over round until `k` rows survive or the round cap gives up — [kNN & full-text search](#knn--full-text-search).
+- **Raw Cypher expressions on the embedded engine.** Relate rejects pattern syntax (e.g. `size((this)-[:R]->())`) inside `@Expression` RETURN projections, and SET-side `RawExpression` values are verified only on neo4j-driver backends — [read-model projection decorators](docs/api-reference.md#read-model-projection-decorators).
 
 ## Quickstart
 
@@ -103,9 +123,30 @@ await neode.dropSchema() // reverses installSchema() exactly
 
 `exists` constraints need Neo4j Enterprise — set `NEO4J_ENTERPRISE=true` or call `neode.setEnterprise(true)`.
 
+`unique` and `index` also take a property list: `@Property({ type: 'string', index: ['city', 'region'] })` declares one composite range index over N properties (the array is the full composite, declared on one of its properties), and `installSchema()` / `dropSchema()` / `schemaDrift()` / `applySchemaDrift()` treat it like every other declaration. Two Neo4j limits: uniqueness constraints are single-property — for a composite pair, node key constraints are the Enterprise composite analogue — while composite range indexes have no such restriction.
+
 That's the whole loop. Everything else the library does is in the matrix below.
 
-> **Model definitions are process-global.** Models registered through decorators, `defineModel()` or `neode.model()` / `with()` live in one shared registry, so every `Neode` instance in a process sees them. One set of models per process is the intended shape; run separate processes for separate schemas.
+> **Model definitions are process-global.** Models registered through decorators, `defineModel()` or `neode.model()` / `with()` live in one shared registry, so every `Neode` instance in a process sees them. One set of models per process is the intended shape; run separate processes for separate schemas. A model name registers once: `defineModel()` throws a descriptive error on a second registration of the same name (the previous silent overwrite orphaned the first model's schema), and `defineModel(name, schema, { idempotent: true })` returns the existing registration unchanged — the form to use where the defining module is re-evaluated (Nest HMR, Vitest watch mode).
+
+## REST API from the model definitions
+
+`neode/express` mounts every registered node model as a REST API — the routes, validation, filtering and serialization are all generated from the definitions:
+
+```typescript
+import express from 'express'
+import { router } from 'neode/express'
+
+const app = express()
+
+app.use(express.json())
+app.use('/api', router(neode))
+app.listen(3000)
+```
+
+Per model: `GET /:model` (paginated list — `page`, `limit`, `order`, `sort`, plus equality filters on declared properties, so `GET /api/Person?age=30`), `GET /:model/:id` (primary key), `POST /:model` (create, 201), `PATCH /:model/:id` (update), `DELETE /:model/:id` (delete, 204). `GET /api` returns the ontology — a self-describing index of every mounted model. Errors map onto statuses: validation 422, unique conflicts and optimistic locks 409, domain errors 400.
+
+Writes go through exactly the same validated pipeline as the facade, and reads apply the model's named filters (soft delete, tenancy) — the router adds no bespoke checks. Options: `{ models: ['Person'] }` mounts a subset; `{ middleware: [...] }` mounts auth (or any pass-through hook) before every generated route. Writes trust whatever middleware is in front of the router — an unauthenticated mount is an open write API.
 
 ## Feature matrix
 
@@ -125,11 +166,39 @@ That's the whole loop. Everything else the library does is in the matrix below.
 | Full-text search      | `search()` over a full-text index, `toFulltextQuery()` to escape user input — hydrated entities with relevance scores                                                                                                                                                                            | [kNN & full-text search](#knn--full-text-search)                         |
 | Vector search         | `@Vector({ dimensions })` on a property + `knn()` k-nearest-neighbour search (Cypher 25 `SEARCH` clause with a procedure fallback)                                                                                                                                                               | [kNN & full-text search](#knn--full-text-search)                         |
 | Pagination            | Offset mode `{ page, limit, order? }` and cursor/keyset mode `{ limit, orderBy, after?/before? }` on a temporal property, both via `neode.paginate()`                                                                                                                                            | [The Neode facade](docs/api-reference.md#the-neode-facade)               |
-| Bulk writes           | `createMany()` / `mergeMany()` — chunked `UNWIND` writes, one managed transaction per chunk, rows validated like single creates                                                                                                                                                                  | [The Neode facade](docs/api-reference.md#the-neode-facade)               |
+| Bulk writes           | `createMany()` / `mergeMany()` — chunked `UNWIND` writes, one managed transaction per chunk, rows validated like single creates; a failed chunk rolls back whole (valid rows included) and reports failing row indexes; `rowToProperties()` maps CSV/JSON rows for batch import                  | [Bulk writes](docs/api-reference.md#bulk-writes--pagination)             |
 | Querying              | Fluent `Builder` (all values parameterised), raw `neode.cypher()`, `hydrate` / `hydrateFirst` / `toCollection`, `toJson()` / `jsonSafe()` serialisation                                                                                                                                          | [Query builder](docs/api-reference.md#query-builder)                     |
 | Error taxonomy        | Typed `NeodeError` base, `ConstraintViolationError` (with parsed `label` / `property`), `TransientError` (retryable), `classifyError()` / `isTransientError()`                                                                                                                                   | [API reference](docs/api-reference.md)                                   |
 | Agent ontology        | `ontology()` / `ontologyMarkdown()` — emit the live graph schema for grounding Text2Cypher prompts or MCP resources                                                                                                                                                                              | [API reference](docs/api-reference.md)                                   |
+| REST API              | `neode/express` — `router(neode)` mounts list / get / create / update / delete for every model, generated from the definitions, with error→status mapping and a self-describing ontology index                                                                                                   | [REST API](#rest-api-from-the-model-definitions)                         |
 | Testing & ops         | `wipe()`, `testId()`, data factories (`neode.factory()`), `verifyConnectivity()` / `waitUntilReachable()`, `splitCypherStatements()` / `runCypherScript()`                                                                                                                                       | [API reference](docs/api-reference.md)                                   |
+
+### Benchmarks
+
+Vitest benches live in [`bench/`](bench/) — read/hydration/validation throughput and, in
+[`bench/write-bolt.bench.ts`](bench/write-bolt.bench.ts), the neode write path (`create()` / `createMany()` /
+`merge()` / `mergeMany()`) against raw Cypher over the neo4j-driver (Bolt) path at 300 / 3,000 / 30,000 rows,
+recording wall-clock and statements per write. They run manually against a local Neo4j testcontainer (needs Docker)
+and are not part of the default test gate:
+
+```sh
+./node_modules/.bin/vitest bench --project unit bench/write-bolt.bench.ts
+```
+
+Dated runs are recorded in [`bench/results/`](bench/results/) — e.g.
+[2026-11-11-write.md](bench/results/2026-11-11-write.md) for the write-path numbers (headline: batched
+`UNWIND` writes are 8–35x faster than per-row writes and within ~3x of the raw single-statement ceiling;
+statements per write, not OGM pipeline time, is what separates the strategies).
+
+### Testing against Aura
+
+`test/integration/aura-smoke.test.ts` provisions a real, ephemeral AuraDB instance through the Aura API, smokes schema / bulk-write / read / pagination against it, and destroys it in teardown — nothing outlives the run. Opt in with Aura API client credentials (Aura console → Account settings → Client credentials):
+
+```sh
+AURA_CLIENT_ID=… AURA_CLIENT_SECRET=… AURA_PROJECT_ID=… pnpm test:aura
+```
+
+The credentials are read from the environment, never logged; `AURA_ORGANIZATION_ID` is optional (discovered when omitted). CI runs the same smoke on demand via the manual `aura` workflow (set the `AURA_CLIENT_ID` / `AURA_CLIENT_SECRET` / `AURA_PROJECT_ID` repo secrets).
 
 ### kNN & full-text search
 
@@ -142,7 +211,7 @@ const vectorHits = await knn(runner, 'Person', 'person_plot_vector', vector, 5)
 const textHits = await search(runner, 'Person', 'person_plot', toFulltextQuery(query))
 ```
 
-Indexes are declared on the model — `@Vector({ dimensions: 1536 })` for vectors (installed by `installSchema()`), `fulltext: true` on a property or `installFulltextIndexes(definitions)` for full-text. One caveat: vector search takes its top `k` neighbours _before_ filtering, so a filtered kNN can return fewer than `k` rows — over-fetch with a larger `k` and post-filter in your code.
+Indexes are declared on the model — `@Vector({ dimensions: 1536 })` for vectors (installed by `installSchema()`), `fulltext: true` on a property or `installFulltextIndexes(definitions)` for full-text. One caveat: filters are a post-filter over the index's top-k, so a filtered kNN can return fewer than `k` rows — see [Limitations](#limitations).
 
 ## Docs
 
@@ -151,3 +220,24 @@ Indexes are declared on the model — `@Vector({ dimensions: 1536 })` for vector
 | [docs/api-reference.md](docs/api-reference.md)     | Full API — decorators, map schemas, facade methods, transactions, events, repositories, validation, connection providers    |
 | [docs/migration-guide.md](docs/migration-guide.md) | Migrating from neode 0.4.9 — IDs, facade signatures, sessions, batch, cascade, and what's new                               |
 | [examples/cookbook/](examples/cookbook)            | Runnable script per capability — CRUD, relationships, eager loading & read models, validation, schema, search, transactions |
+
+## Agent skills
+
+Agent-readable skill packs ship in the package and the repo under `skills/`:
+
+| Skill                         | Contents                                                                                                                                                                                                                                                          |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `skills/neode/SKILL.md`       | Generated quick reference — define models, query, relate, transact, common mistakes. Regenerated from source by `pnpm docs:agents`                                                                                                                                |
+| `skills/neode-model/SKILL.md` | Interactive walkthrough for designing and creating models — domain discussion, entity/relationship sketch, decorator suggestions, code; reports inexpressible scenarios, boilerplate and library errors back as Linear issues (NTS) and opens PRs for small fixes |
+
+Install a skill into your agent by copying the directory into its skills folder (OpenCode: `.opencode/skills/`, Claude Code: `.claude/skills/`; global equivalents live under `~/.config/opencode/` and `~/.claude/`):
+
+```sh
+# from the repo checkout
+cp -r skills/neode-model .opencode/skills/
+
+# or from the installed package
+cp -r node_modules/neode/skills/neode-model .opencode/skills/
+```
+
+The rest of the agent surface — `AGENTS.md`, `docs/agent/`, `llms.txt`, `llms-full.txt`, `skills/neode/` — is generated by `pnpm docs:agents` and ships in the npm tarball too.

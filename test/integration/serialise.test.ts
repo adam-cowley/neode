@@ -1,7 +1,8 @@
 import {
   NodeEntity,
+  Protected,
   Uuid,
-  String,
+  Property,
   InternalId,
   Date,
   DateTime,
@@ -27,7 +28,7 @@ class Place {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @Date()
@@ -42,7 +43,7 @@ class Place {
   @Point()
   location: { x: number; y: number }
 
-  @String({ hidden: true })
+  @Property({ type: 'string', hidden: true })
   secret: string
 
   @OneToMany(() => Place, 'NEAR', Direction.OUTGOING, true)
@@ -61,7 +62,7 @@ class Landmark {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToMany(() => Landmark, 'NEARBY', Direction.OUTGOING)
@@ -87,10 +88,10 @@ class Gate {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
-  @String()
+  @Property({ type: 'string' })
   tenant: string
 
   static build(values: Partial<Gate>): Gate {
@@ -106,7 +107,7 @@ class GuardedSite {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToMany(() => Gate, 'GATE_OF', Direction.INCOMING, true)
@@ -114,6 +115,27 @@ class GuardedSite {
 
   static build(values: Partial<GuardedSite>): GuardedSite {
     return Object.assign(new GuardedSite(), values) as unknown as GuardedSite
+  }
+}
+
+// NTS-597: the protected field never serialises, even hydrated
+@NodeEntity()
+class Guarded597Place {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @Property({ type: 'string', unique: true })
+  name: string
+
+  @Property({ type: 'string' })
+  @Protected()
+  password: string
+
+  static build(values: Partial<Guarded597Place>): Guarded597Place {
+    return Object.assign(new Guarded597Place(), values) as unknown as Guarded597Place
   }
 }
 
@@ -183,6 +205,26 @@ describe('toJson round-trip (serialisation)', () => {
 
     expect(roundTripped.founded).toBe('2024-03-15')
     expect(roundTripped.location).toEqual({ srid: 7203, x: 1, y: 2 })
+  })
+
+  // NTS-597: protected properties do not serialise
+  it('omits protected properties from the serialised output', async () => {
+    await backend.neode.save(Guarded597Place.build({ name: 'Vault', password: 'hush' }))
+
+    const found = await backend.neode.getFirst<Guarded597Place>(Guarded597Place, {
+      name: 'Vault',
+    })
+
+    expect(found).toBeDefined()
+
+    // the protected value hydrates onto the instance…
+    expect(found!['password']).toBe('hush')
+
+    const output = toJson(found)
+
+    // …but never serialises
+    expect(output.name).toBe('Vault')
+    expect(output).not.toHaveProperty('password')
   })
 
   it('serialises nested eager relationships as entities', async () => {

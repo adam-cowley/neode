@@ -10,7 +10,7 @@ import {
 import { type Builder, Direction } from '../query/index.js'
 import { EntityType, EntitySchema } from '../meta/entity/entity-schema.js'
 import { NeodeError } from '../errors/index.js'
-import { quote } from '../query/quote.js'
+import { propertyReference, quote, safeKey } from '../query/quote.js'
 import type { LoadSpec, RelationQuery } from '../query/load-spec.js'
 import type { Newable } from '../meta/newable.js'
 import type { PropertySchema } from '../meta/property-schema.js'
@@ -20,6 +20,7 @@ import { getModel } from '../meta/index.js'
 import { isRecord } from '../services/type-guards.js'
 import {
   applyReadFilters,
+  assertPublicWithoutFilters,
   readFilterFragment,
   type ReadFilterOptions,
 } from '../services/query/filters.js'
@@ -131,18 +132,70 @@ function relationshipPattern(alias: string, property: PropertySchema): string {
 }
 
 /**
+Read filters of a path pattern's intermediate nodes (NTS-574): each
+waypoint with a target model carries that model's named filters, so a
+soft-deleted waypoint breaks the path.
+*/
+function waypointFilters(
+  alias: string,
+  property: PropertySchema,
+  context?: EagerFilterContext,
+): string[] {
+  const fragments: string[] = []
+
+  const waypoints = (property.getPath() ?? []).slice(0, -1)
+
+  for (const [index, hop] of waypoints.entries()) {
+    const hopTarget = hop.target?.()
+    const hopSchema = hopTarget === undefined ? undefined : getModel(hopTarget)
+
+    if (!(hopSchema instanceof EntitySchema)) {
+      continue
+    }
+
+    const { fragment, parameters } = readFilterFragment(
+      hopSchema,
+      `${alias}_h${String(index + 1)}`,
+      context?.filters,
+    )
+
+    if (fragment === undefined) {
+      continue
+    }
+
+    fragments.push(fragment)
+
+    if (context?.builder !== undefined) {
+      for (const [name, value] of Object.entries(parameters)) {
+        context.builder.param(name, value)
+      }
+    }
+  }
+
+  return fragments
+}
+
+/**
 WHERE fragment inside COUNT { } / EXISTS { } subqueries: the property's own
 `where` (node convention) plus the target model's named read filters
 (NTS-162) — a filtered-out target is not counted / does not exist.
 */
-function relatedFilter(property: PropertySchema, context?: EagerFilterContext): string {
+function relatedFilter(
+  alias: string,
+  property: PropertySchema,
+  context?: EagerFilterContext,
+): string {
   const parts: string[] = []
 
   const where = property.getWhere()
 
   if (where !== undefined && where.length > 0) {
-    parts.push(where)
+    // Parenthesised: a top-level OR in the property's where must not
+    // escape the AND-join with the read filters (NTS-574)
+    parts.push(`(${where})`)
   }
+
+  parts.push(...waypointFilters(alias, property, context))
 
   const target = property.getEntity()
   const targetSchema = target === undefined ? undefined : getModel(target)
@@ -202,18 +255,26 @@ function relatedProjection(
 
   const isMany = property.getType() === PropertyType.RELATED_MANY
 
+  // NTS-594 — a multi-hop path yields one element per matched path, so the
+  // same end node can arrive through several intermediates. The elementId
+  // marker gives hydration node identity to dedupe by (value identity
+  // collapsed distinct nodes with identical fields); single-hop reads
+  // cannot duplicate and keep the plain scalar / map projection
+  const identity =
+    isMany && property.getPath() !== undefined ? `, ${EAGER_ID}: elementId(node)` : ''
+
   const pattern =
-    fields.length === 1
-      ? `node.${fields[0] ?? ''}`
-      : `node { ${fields.map((field) => `.${field}`).join(', ')} }`
+    identity === '' && fields.length === 1
+      ? `node.${safeKey(fields[0] ?? '')}`
+      : `node { ${fields.map((field) => `.${safeKey(field)}`).join(', ')}${identity} }`
 
   // NTS-547/162 — WHERE inside the comprehension filters elements per path
   // (`node` = the target node, `this` = the annotated node): the property's
   // own where plus the target model's named read filters
-  const comprehension = `[ ${relationshipPattern(alias, property)}${relatedFilter(property, context)} | ${pattern} ]`
+  const comprehension = `[ ${relationshipPattern(alias, property)}${relatedFilter(alias, property, context)} | ${pattern} ]`
 
   // First related node only for the singular form
-  return isMany ? `${key}: ${comprehension}` : `${key}: ${comprehension}[0]`
+  return isMany ? `${safeKey(key)}: ${comprehension}` : `${safeKey(key)}: ${comprehension}[0]`
 }
 
 /**
@@ -232,11 +293,11 @@ function projectedProperty(
   }
 
   if (type === PropertyType.RELATIONSHIP_COUNT) {
-    return `${key}: COUNT { ${relationshipPattern(alias, property)}${relatedFilter(property, context)} }`
+    return `${safeKey(key)}: COUNT { ${relationshipPattern(alias, property)}${relatedFilter(alias, property, context)} }`
   }
 
   if (type === PropertyType.RELATIONSHIP_EXISTS) {
-    return `${key}: EXISTS { ${relationshipPattern(alias, property)}${relatedFilter(property, context)} }`
+    return `${safeKey(key)}: EXISTS { ${relationshipPattern(alias, property)}${relatedFilter(alias, property, context)} }`
   }
 
   if (type === PropertyType.LABEL_PRESENT) {
@@ -246,11 +307,15 @@ function projectedProperty(
       throw new NeodeError(`@LabelPresent property "${key}" requires a label`)
     }
 
-    return `${key}: ${alias}:${quote(label)}`
+    return `${safeKey(key)}: ${alias}:${quote(label)}`
   }
 
-  // COMPUTED runs in TypeScript after hydration
-  return type === PropertyType.EXPRESSION ? `${key}: ${property.getExpression() ?? ''}` : ''
+  // COMPUTED runs in TypeScript after hydration. The expression itself is
+  // the decorator's raw-Cypher escape hatch (NTS-138) — only the
+  // projection key is escaped (NTS-585)
+  return type === PropertyType.EXPRESSION
+    ? `${safeKey(key)}: ${property.getExpression() ?? ''}`
+    : ''
 }
 
 /**
@@ -337,17 +402,19 @@ One recorded operation of a load spec callback: the view records, the
 loader replays each kind into the clause it belongs to
 */
 interface RecordedRelationOperation {
-  kind: 'where' | 'order' | 'limit' | 'skip'
+  kind: 'where' | 'order' | 'limit' | 'skip' | 'withoutFilters'
   arguments_: unknown[]
 }
 
 /**
 Bare property names on the relation's sub-builder resolve against the
-related node's variable; anything else (dotted, raw fragments) passes
-through untouched
+related node's variable; a dotted `alias.property` reference passes
+through, and anything else is quoted as a property key (never raw Cypher)
 */
 export function relationProperty(nodeVariable: string, property: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(property) ? `${nodeVariable}.${property}` : property
+  return /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/.test(property)
+    ? property
+    : propertyReference(nodeVariable, property)
 }
 
 /**
@@ -360,6 +427,22 @@ function relationOrderArguments(nodeVariable: string, arguments_: unknown[]): un
 
   if (isRecord(first) && typeof first['field'] === 'string') {
     return [{ ...first, field: relationProperty(nodeVariable, first['field']) }, ...rest]
+  }
+
+  // Property -> direction map ({ name: 'DESC' }): every key is a bare
+  // property name to prefix
+  if (isRecord(first)) {
+    return [
+      Object.fromEntries(
+        Object.entries(first).map(([key, value]) => [relationProperty(nodeVariable, key), value]),
+      ),
+      ...rest,
+    ]
+  }
+
+  // A list of names / maps: prefix each entry
+  if (Array.isArray(first)) {
+    return [first.flatMap((entry) => relationOrderArguments(nodeVariable, [entry])), ...rest]
   }
 
   if (typeof first === 'string') {
@@ -398,6 +481,15 @@ function relationQuery(): { view: RelationQuery; operations: RecordedRelationOpe
     },
     skip: (skip: number) => {
       operations.push({ kind: 'skip', arguments_: [skip] })
+
+      return view
+    },
+    // NTS-594 — the callback can disable named read filters for its
+    // relation's read, scoped to this relation only
+    withoutFilters: (names: string[]) => {
+      assertPublicWithoutFilters(names)
+
+      operations.push({ kind: 'withoutFilters', arguments_: names })
 
       return view
     },
@@ -441,6 +533,11 @@ function replayTrimOperation(
       break
     }
     case 'where': {
+      break
+    }
+
+    // Not a trim — handled by the filter merge in loadSpecCalls
+    case 'withoutFilters': {
       break
     }
   }
@@ -507,8 +604,21 @@ export function loadSpecCalls(
         .to(nodeVariable, targetSchema.getLabels())
 
       // NTS-162 — the target model's named filters filter the collected
-      // rows too (compileSub namespaces their parameters)
-      applyReadFilters(sub, targetSchema, filters, nodeVariable)
+      // rows too (compileSub namespaces their parameters). The callback's
+      // own disabled names stack on the read's (NTS-594)
+      const disabled = operations
+        .filter((operation) => operation.kind === 'withoutFilters')
+        .flatMap((operation) => operation.arguments_)
+        .filter((name): name is string => typeof name === 'string')
+
+      const withoutFilters = [...(filters?.withoutFilters ?? []), ...disabled]
+
+      applyReadFilters(
+        sub,
+        targetSchema,
+        withoutFilters.length > 0 ? { withoutFilters } : filters,
+        nodeVariable,
+      )
 
       // Wheres filter the MATCH; the sort/page trim rides the WITH clause
       // (a statement renders its own RETURN before its ORDER BY / LIMIT)
@@ -518,6 +628,21 @@ export function loadSpecCalls(
         }
 
         const [property, ...rest] = operation.arguments_
+
+        // Object-map form ({ prop: value }): every key is a bare property
+        // name to prefix (NTS-594)
+        if (isRecord(property)) {
+          sub.where(
+            Object.fromEntries(
+              Object.entries(property).map(([key, value]) => [
+                relationProperty(nodeVariable, key),
+                value,
+              ]),
+            ),
+          )
+
+          continue
+        }
 
         sub.where(
           typeof property === 'string' ? relationProperty(nodeVariable, property) : property,

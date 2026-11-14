@@ -184,11 +184,15 @@ describe('ambient transactions — integration', () => {
     const name = testId('ambient-retry')
     let workRuns = 0
 
-    await flaky.transaction(async (tx) => {
-      workRuns++
+    // NTS-582: a commit-phase failure is ambiguous — retried only on opt-in
+    await flaky.transaction(
+      async (tx) => {
+        workRuns++
 
-      await tx.writeCypher('CREATE (:AmbientPerson { name: $name })', { name })
-    })
+        await tx.writeCypher('CREATE (:AmbientPerson { name: $name })', { name })
+      },
+      { retryCommit: true },
+    )
 
     // The callback re-ran in a fresh transaction (two begins), and the
     // failed attempt left nothing behind — the node exists exactly once
@@ -210,7 +214,7 @@ describe('ambient transactions — integration', () => {
     expect(counting.begins).toBe(1)
   })
 
-  it('a transient COMMIT failure retries the whole callback', async () => {
+  it('a transient COMMIT failure retries the whole callback with retryCommit', async () => {
     // A provider whose first commit throws a transient failure (after
     // aborting the attempt's transaction, as the engines do on a failed
     // commit) and whose second commit succeeds
@@ -245,11 +249,15 @@ describe('ambient transactions — integration', () => {
     const name = testId('ambient-commit-retry')
     let workRuns = 0
 
-    await flaky.transaction(async (tx) => {
-      workRuns++
+    // NTS-582: a commit-phase failure is ambiguous — retried only on opt-in
+    await flaky.transaction(
+      async (tx) => {
+        workRuns++
 
-      await tx.writeCypher('CREATE (:AmbientPerson { name: $name })', { name })
-    })
+        await tx.writeCypher('CREATE (:AmbientPerson { name: $name })', { name })
+      },
+      { retryCommit: true },
+    )
 
     expect(workRuns).toBe(2)
     expect(provider.begins).toBe(2)
@@ -349,7 +357,7 @@ describe('ambient transactions — integration', () => {
         // A nested facade call fails — its joined scope marks the
         // transaction rollback-only — and the callback swallows the error
         try {
-          await backend.neode.batch(['THIS IS NOT CYPHER'])
+          await backend.neode.runAll(['THIS IS NOT CYPHER'])
         } catch {
           // handled — the transaction still must not commit
         }

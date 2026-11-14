@@ -8,7 +8,6 @@ import {
   OneToMany,
   OneToOne,
   Property,
-  String,
   Uuid,
 } from '../../src/decorators'
 import { Direction } from '../../src/query'
@@ -66,7 +65,7 @@ class Card {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   code: string
 }
 
@@ -78,7 +77,7 @@ class Customer {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToMany(() => Order, 'PLACED', Direction.OUTGOING)

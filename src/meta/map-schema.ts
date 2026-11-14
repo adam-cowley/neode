@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto'
 
-import { mergeModel, mergeProperty, mergeRelationshipProperty } from './index.js'
+import { mergeModel, mergeProperty, mergeRelationshipProperty, METAMODEL_KEYS } from './index.js'
 import { NeodeError } from '../errors/index.js'
 import type { Newable } from './newable.js'
-import type { PropertySchema } from './property-schema.js'
-import { PropertyType } from './property-schema.js'
+import { PropertySchema, PropertyType } from './property-schema.js'
 import { toDirection } from '../query/index.js'
 import { isRecord } from '../services/type-guards.js'
 import type {
   ProjectionDefinition,
   PropertyDefinition,
+  PropertyTypeName,
   RelatedOneDefinition,
   RelatedManyDefinition,
   RelationshipCountDefinition,
@@ -38,7 +38,7 @@ const PROJECTION_TYPES = new Set([
 
 // Keyed openly: map definitions may name types the table does not know
 // (unknown names fall back to ANY, neode parity)
-const PROPERTY_TYPES: Record<string, PropertyType | undefined> = {
+export const PROPERTY_TYPES: Record<string, PropertyType | undefined> = {
   any: PropertyType.ANY,
   string: PropertyType.STRING,
   number: PropertyType.NUMBER,
@@ -65,6 +65,12 @@ const modelsByName = new Map<string, Newable>()
 Name index of the original definitions, kept for extendModel cloning
 */
 const definitionsByName = new Map<string, SchemaDefinition>()
+
+/**
+Clone lineage (NTS-596): extend() clone constructor -> the base model
+constructor it was cloned from
+*/
+const extendedFrom = new Map<Newable, Newable>()
 
 /**
 Relationship definitions whose target model was not yet defined
@@ -231,13 +237,47 @@ function definePropertyModel(
   return mergeProperty(constructor, key, PROPERTY_TYPES[full.type] ?? PropertyType.ANY, full)
 }
 
+/**
+Build the declared edge-property schemas of a relationship (NTS-628):
+the map API's `properties` key. Values validate like property maps —
+same type table, same rule keys.
+*/
+function edgePropertySchemas(
+  declared: Record<string, PropertyTypeName | PropertyDefinition>,
+): PropertySchema[] {
+  return Object.entries(declared).map(([name, definition]) => {
+    const full: PropertyDefinition =
+      typeof definition === 'string' ? { type: definition } : definition
+
+    const property = new PropertySchema(name)
+
+    property.setType(PROPERTY_TYPES[full.type] ?? PropertyType.ANY)
+
+    if (full.array === true) {
+      property.setArray(true)
+    }
+
+    if (full.required === true) {
+      property.setRequired(true)
+    }
+
+    // Every config key the metamodel has no flag for is a validation rule
+    // (mergeProperty parity)
+    property.setRules(
+      Object.fromEntries(Object.entries(full).filter(([key]) => !METAMODEL_KEYS.has(key))),
+    )
+
+    return property
+  })
+}
+
 function wireRelationshipModel(
   constructor: Newable,
   key: string,
   definition: RelationshipDefinition,
   target: Newable,
 ): void {
-  mergeRelationshipProperty(
+  const relationship = mergeRelationshipProperty(
     constructor,
     key,
     definition.relationship,
@@ -248,7 +288,15 @@ function wireRelationshipModel(
     definition.description,
     definition.cascade,
     definition.cardinality,
+    definition.enforce,
+    definition.claimConflict,
   )
+
+  // NTS-628: the declared `properties` key is the edge-property schema —
+  // every write accepting edge properties validates against it
+  if (definition.properties !== undefined) {
+    relationship.setEdgeProperties(edgePropertySchemas(definition.properties))
+  }
 }
 
 /**
@@ -303,10 +351,48 @@ function flushPendingProjections(): void {
 }
 
 /**
+Options for defineModel
+*/
+export interface DefineModelOptions {
+  /**
+  Idempotent re-registration for environments that re-evaluate the defining
+  module (Nest HMR, Vitest watch mode): when `name` is already registered,
+  return the existing model unchanged instead of throwing. The existing
+  definition wins — schema changes need a process restart.
+  */
+  idempotent?: boolean
+}
+
+/**
 Register a model from a map-based schema definition (neode parity),
 returning the generated virtual class for the model.
+
+The registry is process-global and a model name registers once: a second
+`defineModel()` under the same name throws a descriptive error (the previous
+behaviour silently orphaned the first model's schema). Pass
+`{ idempotent: true }` to keep the existing registration instead — the
+idempotent form returns the already-registered class for the name.
 */
-export function defineModel(name: string, schema: SchemaDefinition): Newable {
+export function defineModel(
+  name: string,
+  schema: SchemaDefinition,
+  options: DefineModelOptions = {},
+): Newable {
+  // NTS-652: the name index is last-wins by assignment, so a second
+  // registration used to silently orphan the first model's schema in the
+  // process-global metamodel
+  const existing = modelsByName.get(name)
+
+  if (existing !== undefined) {
+    if (options.idempotent === true) {
+      return existing
+    }
+
+    throw new NeodeError(
+      `A model named "${name}" is already registered — the registry is process-global, and re-registering a name silently orphans the first model's schema. Call defineModel("${name}", schema, { idempotent: true }) to return the existing model instead (module re-evaluation: Nest HMR, Vitest watch mode), or register the new definition under a different name.`,
+    )
+  }
+
   const constructor = virtualConstructor(name)
 
   const model = mergeModel(constructor)
@@ -394,11 +480,30 @@ export function extendModel(name: string, as: string, schema: SchemaDefinition =
     throw new NeodeError(unknownDefinitionError(name))
   }
 
-  return defineModel(as, {
+  // NTS-596: remember the clone's base so observer lookups fire the base
+  // model's observers for the clone's entities too
+  const base = modelsByName.get(name)
+
+  const constructor = defineModel(as, {
     ...original,
     ...schema,
     labels: [...(original.labels ?? [name]), as],
   })
+
+  if (base !== undefined && base !== constructor) {
+    extendedFrom.set(constructor, base)
+  }
+
+  return constructor
+}
+
+/**
+Clone lineage (NTS-596): the model an extend() clone was cloned from, or
+undefined when the model is not a clone. The chain terminates at a
+non-clone model (clones are freshly defined, so it cannot cycle).
+*/
+export function getExtendedFrom(model: Newable): Newable | undefined {
+  return extendedFrom.get(model)
 }
 
 /**

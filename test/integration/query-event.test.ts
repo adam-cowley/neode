@@ -2,7 +2,7 @@
 // before anything below is evaluated
 import { openBackend, TestBackend } from './support/backend'
 import { EventType, QueryExecutedEvent } from '../../src/common/events'
-import { InternalId, NodeEntity, String, Uuid } from '../../src/decorators'
+import { InternalId, NodeEntity, Property, Uuid } from '../../src/decorators'
 
 @NodeEntity()
 class EventPerson {
@@ -12,7 +12,7 @@ class EventPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
   static create(name: string): EventPerson {
@@ -60,9 +60,10 @@ describe('query:executed lifecycle event', () => {
 
     await backend.neode.save(EventPerson.create('Adam'))
 
-    // save() runs at least a MERGE and a re-find, every one inside the
-    // open transaction must be reported by the shared chokepoint
-    expect(events.length).toBeGreaterThanOrEqual(2)
+    // NTS-633: save() is a single MERGE whose RETURN hydrates the entity —
+    // no re-find. Every statement of the flow (all of them, inside the
+    // open transaction) must be reported by the shared chokepoint
+    expect(events.length).toBeGreaterThanOrEqual(1)
     events.forEach((event) => {
       expect(typeof event.cypher).toBe('string')
       expect(event.cypher.length).toBeGreaterThan(0)

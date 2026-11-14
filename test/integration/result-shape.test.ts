@@ -73,8 +73,8 @@ class Doc {
 
 // ---------------------------------------------------------------------------
 
-const DOC_INDEX = 'doc_title_fulltext'
-const DOC_VECTOR = 'doc_emb_vector'
+const DOC_INDEX = 'doc_title_fulltext_b4b713e1'
+const DOC_VECTOR = 'doc_emb_vector_d9d13582'
 
 describe('result shape contract (NTS-566) — every read returns the shape', () => {
   let backend: TestBackend

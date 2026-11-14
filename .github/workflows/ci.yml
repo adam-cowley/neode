@@ -30,6 +30,9 @@ jobs:
       # AGENTS.md is generated from the source; fail when it is stale
       - run: pnpm docs:agents --check
 
+      # Unused exports / dependencies fail the build (NTS-599)
+      - run: pnpm knip
+
   # Typecheck, tests with coverage, build and package checks over the
   # supported Node line
   check:
@@ -66,15 +69,33 @@ jobs:
 
       - run: pnpm check:package
 
+      # The tarball must ship dist/ (git-dep installs depend on `prepare`)
+      - name: Packed tarball includes dist/
+        run: |
+          # npm 10 (Node 22) still runs `prepare` for pack and its build output
+          # lands on stdout, so read the file listing npm prints on stderr
+          # rather than parsing --json.
+          npm pack --dry-run 2> pack.txt > /dev/null
+          for p in dist/index.mjs dist/index.cjs dist/index.d.mts; do
+            grep -q " $p\$" pack.txt || { echo "missing $p"; cat pack.txt; exit 1; }
+          done
+
   # Real Neo4j servers via Testcontainers, over the supported server line.
   # Relate (embedded) needs its FFI client built locally (cargo build -p
   # relate-ffi) — it is exercised by local runs, not CI.
+  #
+  # The 1.0 release gate (NTS-671): the 5.x line plus a PINNED current
+  # community tag. No floating "latest" — bump the pin deliberately.
+  # Memgraph is deliberately NOT here: over Bolt it rejects core emitted
+  # reads (ORDER BY after a CALL subquery — keyset pagination, chunk, lazy,
+  # sorted nested loads), so the "memgraph" claim is dropped rather than
+  # gated on a vacuous matrix (NTS-671).
   integration:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        neo4j: ["5-community", "latest"]
+        neo4j: ["5-community", "2026.10.2-community"]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -92,9 +113,11 @@ jobs:
           OGM_TEST_BACKEND: container
           NEO4J_IMAGE: neo4j:${{ matrix.neo4j }}
 
-  # Fails the build when a user-visible change has no changeset
+  # Fails the build when a user-visible change has no changeset.
+  # The Version PR consumes every changeset, so "no changesets found" is
+  # its normal state — skip it on the release branch (changesets bot).
   changeset-status:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

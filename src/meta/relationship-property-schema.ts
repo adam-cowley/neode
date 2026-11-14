@@ -13,6 +13,15 @@ Read paths are untouched: cardinality is a write-time guard.
 */
 export type RelationshipCardinality = 'one' | 'zeroOrOne' | 'many'
 
+/**
+What relate() does when the target of an `enforce` relationship is already
+claimed by a different source (NTS-663): `refuse` — the default — matches
+zero rows and resolves undefined; `detach` deletes the other claimant's
+edges in the same statement (the claim moves); `throw` raises NeodeError
+naming the current claimant.
+*/
+export type ClaimConflictPolicy = 'refuse' | 'detach' | 'throw'
+
 export class RelationshipPropertySchema {
   static fromPropertySchema(original: PropertySchema): RelationshipPropertySchema {
     const cloned = new RelationshipPropertySchema(original.getKey())
@@ -49,12 +58,43 @@ export class RelationshipPropertySchema {
   private cardinality: RelationshipCardinality | undefined
 
   /**
+  Name of a `@Unique` property on the TARGET model that the write paths
+  keep pointed at this node's primary key (NTS-663): the target's
+  uniqueness constraint turns the inverse side of a one-cardinality
+  relationship into a database-level guarantee. Undefined — no claim
+  maintenance.
+  */
+  private enforce: string | undefined
+
+  /**
+  What relate() does when the target is already claimed by a different
+  source (NTS-663). Undefined — 'refuse' (the default).
+  */
+  private claimConflict: ClaimConflictPolicy | undefined
+
+  /**
   Free-text explanation emitted by the agent ontology (NTS-445)
   */
   private description: string | undefined
 
+  /**
+  Declared edge-property schemas (NTS-628): the map API's `properties`
+  key on a relationship definition — the schema runtime edge properties
+  validate against. Empty when the relationship declares none (edge
+  properties are then accepted as literals, relate() parity).
+  */
+  private edgeProperties: PropertySchema[] = []
+
   constructor(key: string) {
     this.key = key
+  }
+
+  setEdgeProperties(properties: PropertySchema[]): void {
+    this.edgeProperties = properties
+  }
+
+  getEdgeProperties(): PropertySchema[] {
+    return [...this.edgeProperties]
   }
 
   getKey(): string {
@@ -124,6 +164,29 @@ export class RelationshipPropertySchema {
   */
   getCardinality(): RelationshipCardinality {
     return this.cardinality ?? (this.many ? 'many' : 'one')
+  }
+
+  setEnforce(enforce: string): void {
+    this.enforce = enforce
+  }
+
+  /**
+  The target property the write paths keep claimed (NTS-663), or undefined
+  when the relationship declares no enforcement property
+  */
+  getEnforce(): string | undefined {
+    return this.enforce
+  }
+
+  setClaimConflict(claimConflict: ClaimConflictPolicy): void {
+    this.claimConflict = claimConflict
+  }
+
+  /**
+  The claim-conflict policy (NTS-663), 'refuse' when undeclared
+  */
+  getClaimConflict(): ClaimConflictPolicy {
+    return this.claimConflict ?? 'refuse'
   }
 
   setEager(isEager: boolean): void {

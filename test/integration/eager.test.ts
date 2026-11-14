@@ -1,7 +1,7 @@
 import {
   NodeEntity,
   Uuid,
-  String,
+  Property,
   InternalId,
   OneToMany,
   RelationshipEntity,
@@ -31,7 +31,7 @@ class Country {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 }
 
@@ -43,7 +43,7 @@ class Continent {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 }
 
@@ -55,7 +55,7 @@ class Studio {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   headquarters: Country
@@ -69,7 +69,7 @@ class Movie {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   title: string
 
   releasedBy: Studio
@@ -84,7 +84,7 @@ class Person {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToMany(() => Movie, 'ACTED_IN', Direction.OUTGOING, true)
@@ -95,7 +95,7 @@ class Person {
 
 @RelationshipEntity()
 class Directed {
-  @String()
+  @Property({ type: 'string' })
   billing: string
 
   @StartNode(() => Person)

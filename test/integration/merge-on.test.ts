@@ -1,4 +1,4 @@
-import { NodeEntity, Uuid, String, Number, InternalId } from '../../src/decorators'
+import { NodeEntity, Uuid, Property, Number, InternalId } from '../../src/decorators'
 import { getModel } from '../../src/meta'
 import { getMergeFields } from '../../src/services/query/merge.service'
 import { openBackend, TestBackend } from './support/backend'
@@ -13,10 +13,10 @@ class Account {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
-  @String()
+  @Property({ type: 'string' })
   email: string
 
   @Number()
@@ -43,7 +43,7 @@ class Tag {
   @InternalId()
   _id: string
 
-  @String({ index: true })
+  @Property({ type: 'string', index: true })
   slug: string
 
   static create(slug: string): Tag {
@@ -74,11 +74,9 @@ describe('mergeOn', () => {
   it('merges an existing node matched by unique property and sets the given properties', async () => {
     const saved = await backend.neode.save(Account.create('Adam'))
 
-    const merged = await backend.neode.mergeOn(
-      Account,
-      { name: 'Adam' },
-      { email: 'adam@example.com', age: 30 },
-    )
+    const merged = (
+      await backend.neode.mergeOn(Account, { name: 'Adam' }, { email: 'adam@example.com', age: 30 })
+    )?.entity
 
     expect(merged).toBeInstanceOf(Account)
     expect(merged!._id).toBe(saved._id)
@@ -88,11 +86,9 @@ describe('mergeOn', () => {
   })
 
   it('creates a node when no match exists, with both match and set properties', async () => {
-    const merged = await backend.neode.mergeOn(
-      Account,
-      { name: 'Ada' },
-      { email: 'ada@example.com' },
-    )
+    const merged = (
+      await backend.neode.mergeOn(Account, { name: 'Ada' }, { email: 'ada@example.com' })
+    )?.entity
 
     const found = await backend.neode.find(Account, merged!.id)
 
@@ -102,7 +98,7 @@ describe('mergeOn', () => {
   })
 
   it('returns a hydrated instance of the entity class', async () => {
-    const merged = await backend.neode.mergeOn(Account, { name: 'Alan' }, { age: 40 })
+    const merged = (await backend.neode.mergeOn(Account, { name: 'Alan' }, { age: 40 }))?.entity
 
     expect(merged).toBeInstanceOf(Account)
     expect(merged!.name).toBe('Alan')

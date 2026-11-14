@@ -19,13 +19,16 @@ import type {
   HydrateQueryOptions,
   QueryOutput,
   QueryParams as QueryParameters,
+  QueryRecord,
+  QuerySummary,
   Runner,
   TransactionHandle,
+  TransformedQueryOutput,
 } from './driver/types.js'
 import { elementIdOfEntity } from './element-id.js'
 import { setDefaultNeode } from './entity-methods.js'
 import { NeodeError } from './errors/index.js'
-import { hydrate, hydrateWhenRequested, splitHydrateArguments } from './hydrate.js'
+import { hydrate, hydrateWhenRequested, mapRecords, splitHydrateArguments } from './hydrate.js'
 import { EntitySchema } from './meta/entity/entity-schema.js'
 import { getModel, getModels } from './meta/index.js'
 import {
@@ -35,7 +38,7 @@ import {
   unknownDefinitionError,
 } from './meta/map-schema.js'
 import type { Newable } from './meta/newable.js'
-import { runObservers, observe, type ModelObservers } from './observers.js'
+import { globalObservers, ObserverRegistry, type ModelObservers } from './observers.js'
 import { TraverseBuilder } from './traverse.js'
 import { type Ontology, ontology, ontologyMarkdown } from './meta/ontology.js'
 import type { RelationshipPropertySchema } from './meta/relationship-property-schema.js'
@@ -54,13 +57,27 @@ import type {
   ReadOptions,
   WithSpec,
 } from './query/load-spec.js'
+import type { WhereFilter, WhereFilterLevel } from './query/where-filter.js'
 import { quote } from './query/quote.js'
 import type { Repository } from './repository/index.js'
 import { FactoryBuilder } from './services/factory.service.js'
-import { WITHOUT_ALL_FILTERS } from './services/query/filters.js'
-import { type BulkChunk, type BulkOptions, BulkService } from './services/query/bulk.service.js'
-import { CreateService } from './services/query/create.service.js'
-import { type DeleteOptions, DeleteService } from './services/query/delete.service.js'
+import { assertPublicWithoutFilters, WITHOUT_ALL_FILTERS } from './services/query/filters.js'
+import {
+  type BulkChunk,
+  type BulkOptions,
+  type RelateManyResult,
+  type RelateManyRow,
+  BulkService,
+  type RowPropertiesResult,
+  type RowToPropertiesOptions,
+  rowToProperties,
+} from './services/query/bulk.service.js'
+import { CreateService, type CreateOptions } from './services/query/create.service.js'
+import {
+  type DeleteOptions,
+  DeleteService,
+  assertDeleteAllScope,
+} from './services/query/delete.service.js'
 import { type DetachResult, DetachService } from './services/query/detach.service.js'
 import {
   type SyncEdgesOptions,
@@ -73,7 +90,19 @@ import { FindByIdService } from './services/query/find-by-id.service.js'
 import { GetService, type OrderSpec } from './services/query/get.service.js'
 import { type KnnMode, knn } from './services/query/knn.service.js'
 import { LoadRelationService, RelatedQuery } from './services/query/load-relation.service.js'
-import { getMergeFields, MergeService } from './services/query/merge.service.js'
+import {
+  getMergeFields,
+  mergeOutcome,
+  mergeResultFromSave,
+  MergeService,
+  type MergeResult,
+} from './services/query/merge.service.js'
+import {
+  type ReplaceRelationshipOptions,
+  ReplaceRelationshipService,
+} from './services/query/replace-relationship.service.js'
+import { addEnforceClaimRemoval, hydrateWrittenNode } from './services/write-utilities.js'
+import { type ParallelBody, type ParallelOptions, runParallel } from './transaction/parallel.js'
 import { rollbackAfterFailure } from './transaction/rollback.js'
 import {
   type CursorPage,
@@ -91,6 +120,7 @@ import { UpdateService } from './services/query/update.service.js'
 import { WithinDistanceService } from './services/query/within-distance.service.js'
 import {
   type ApplySchemaDiffOptions,
+  type ApplySchemaDriftReport,
   applySchemaDrift,
   formatSchemaDrift,
   type SchemaDrift,
@@ -114,10 +144,11 @@ import type {
 } from './services/schema/generate.service.js'
 import {
   GraphTypeService,
+  type GraphTypeCreateOptions,
   type GraphTypeConstraintDefinition,
   type GraphTypeDefinition,
 } from './services/schema/graph-type.service.js'
-import { constructorOf, isConstructorOf, isRecord } from './services/type-guards.js'
+import { constructorOf, isConstructorOf, isObjectArray, isRecord } from './services/type-guards.js'
 import {
   ambientTransaction,
   runAmbientTransaction,
@@ -140,6 +171,17 @@ envelope.
 */
 function isSchemaDefinition(value: unknown): value is SchemaDefinition {
   return isRecord(value)
+}
+
+/**
+Per-call database override (NTS-644, NTS-645), intersected onto the option
+bags of the facade's paginate() / findManyAndCount() / search() and the
+schema-management methods: wins over the setDatabase() default. The
+service-level bags stay free of it — those services run on the runner /
+connection they are given, and its scope fixes the database.
+*/
+interface PerCallDatabaseOption {
+  database?: string | undefined
 }
 
 /* eslint-disable unicorn/prefer-event-target -- the event emitter is shared with TransactionalService (its constructor takes it and calls on/emit), which an EventTarget adapter would break */
@@ -187,10 +229,25 @@ export class Neode implements INeode {
       )
     }
 
-    return new Neode(new RelateConnectionProvider(database, namespace), isEnterprise, options)
+    return new Neode(
+      new RelateConnectionProvider(database, namespace, {
+        ...(options.queueTimeoutMs !== undefined && { queueTimeoutMs: options.queueTimeoutMs }),
+      }),
+      isEnterprise,
+      options,
+    )
   }
 
   private readonly eventEmitter: EventEmitter = new EventEmitter()
+
+  /**
+  NTS-596: the instance's observer registry — `neode.observe()` registers
+  here and this instance's write points look hooks up here, so observers
+  never leak across instances. The module-global registry (the standalone
+  `observe()` function) is chained as the fallback, so process-wide
+  observers keep firing for every instance.
+  */
+  private readonly observers = new ObserverRegistry(globalObservers)
 
   private readonly connection: ConnectionProvider
 
@@ -306,6 +363,198 @@ export class Neode implements INeode {
     )
   }
 
+  /**
+  The runner the per-call-`database` reads run on (NTS-644): with a
+  target — the per-call argument, else the setDatabase() default — the
+  instance connection with it threaded to the port (the query services
+  take a bare Runner, which cannot name a database); without a target, or
+  inside an ambient transaction (bound to one database at open time —
+  NTS-156), getRunner().
+  */
+  private runnerOn(database?: string): Runner {
+    const target = database ?? this.database
+
+    if (target === undefined || ambientTransaction()) {
+      return this.getRunner()
+    }
+
+    return {
+      run: async (statement, parameters) =>
+        this.connection.run(statement, parameters, undefined, target),
+    }
+  }
+
+  /**
+  The connection the schema-management statements run on (NTS-645): the
+  ConnectionProvider counterpart of runnerOn() — the schema services take
+  the whole port (they probe its edition), so the per-call `database`
+  threads as a view of the instance connection whose every statement
+  (DDL, SHOW, edition probe forwards) lands in the target. Without a
+  target, the instance connection itself — exactly today's behaviour,
+  edition-probe cache included. Schema DDL never joins the ambient
+  transaction (it ran autocommit before per-call databases existed), so
+  no ambientTransaction() check here.
+  */
+  private connectionOn(database?: string): ConnectionProvider {
+    const target = database ?? this.database
+
+    if (target === undefined) {
+      return this.connection
+    }
+
+    return {
+      run: async (statement, parameters, mode) =>
+        this.connection.run(statement, parameters, mode, target),
+      beginTransaction: async (mode) => this.connection.beginTransaction(mode, target),
+      edition: async () => this.connection.edition(),
+      close: async () => this.connection.close(),
+    }
+  }
+
+  /**
+  Run a write's side effect (lifecycle event, after* observer) once its
+  data is committed (NTS-582): immediately for a facade call that already
+  committed its own transaction, deferred to the outer commit when the call
+  joined an ambient transaction (dropped if that rolls back or retries).
+  */
+  private async afterCommit(
+    ambient: ReturnType<typeof ambientTransaction>,
+    effect: () => void | Promise<void>,
+  ): Promise<void> {
+    if (ambient) {
+      ambient.effects.defer(effect)
+
+      return
+    }
+
+    await effect()
+  }
+
+  /**
+  NTS-615: eager relationship creation shared by create() and update() —
+  relate the given relationship key -> target(s) in the current unit of
+  work's transaction. Edges are MERGE-based (idempotent on retry) and
+  cardinality-guarded per edge by RelateService; any failure rolls the
+  whole write back. `fromId` matches the freshly created node by
+  elementId (create path — not yet hydrated).
+  */
+  private async eagerRelate(
+    schema: EntitySchema,
+    from: object,
+    fromId: string | undefined,
+    relate: Record<string, object | object[]> | undefined,
+    tx: TransactionHandle,
+  ): Promise<void> {
+    if (relate === undefined) {
+      return
+    }
+
+    for (const [relationshipKey, targets] of Object.entries(relate)) {
+      const relationship = this.resolveRelationship(schema, relationshipKey)
+
+      const list = isObjectArray(targets) ? targets : [targets]
+
+      for (const entry of list) {
+        await new RelateService(tx).relate(schema, from, entry, relationship, {}, false, fromId)
+      }
+    }
+  }
+
+  /**
+  Save plus the write outcome (NTS-630): the created flag the lifecycle
+  events report and the root statement's summary — merge()'s
+  relationship-values path wraps the same outcome mergeOn() returns.
+  */
+  private async saveOutcome<T>(
+    entity: T,
+    database?: string,
+  ): Promise<{ saved: T; created: boolean; summary: QuerySummary | undefined }> {
+    if (!isRecord(entity)) {
+      throw new TypeError('Cannot save a value that is not an entity object')
+    }
+
+    const entityConstructor: unknown = entity.constructor
+
+    if (!isConstructorOf<T>(entityConstructor)) {
+      throw new TypeError('Cannot save a value whose constructor is not a class')
+    }
+
+    const schema = this.getSchema(entityConstructor)
+
+    // NTS-511: beforeSave runs before the dirty check — an observer may
+    // mutate the entity into dirtiness. Errors fail the write.
+    await this.observers.run(entityConstructor, 'beforeSave', entity, {
+      isNew: false,
+      database,
+    })
+
+    // NTS-157: tracked (hydrated) instances write only their dirty
+    // scalar properties; a clean instance is a no-op — no transaction,
+    // no query, no lifecycle events — but only when saving to the same
+    // (default) database. An explicit `database` overrides the no-op:
+    // saving a clean entity to another database is how the audit-copy
+    // pattern (save(entity, 'audit')) gets the node there.
+    const dirtyKeys = diffDirty(schema, entity)
+
+    if (database === undefined && isTracked(entity) && dirtyKeys.length === 0) {
+      // Clean tracked instance: no write, no events — created: false, no summary
+      return { saved: entity, created: false, summary: undefined }
+    }
+
+    const {
+      hydrated: saved,
+      created,
+      summary,
+    } = await this.inWriteTransaction(async (tx) => {
+      const mergeService = new MergeService(tx.getRunner())
+
+      // NTS-633: the merge statement's RETURN carries the written node —
+      // hydrate it directly; FindByIdService stays as the fallback. The
+      // re-hydration bypasses the read filters — the write path may
+      // legitimately save outside the current filter view
+      // (WITHOUT_ALL_FILTERS)
+      const {
+        elementId,
+        created: wasCreated,
+        summary,
+        output,
+      } = await mergeService.save(
+        entity,
+        schema,
+        dirtyKeys.length > 0 ? new Set(dirtyKeys) : undefined,
+      )
+
+      const hydrated = await hydrateWrittenNode<T>(
+        entityConstructor,
+        schema,
+        tx.getRunner(),
+        output,
+        elementId,
+      )
+
+      await tx.commit()
+
+      if (hydrated === undefined) {
+        throw new NeodeError('Entity was saved but could not be found immediately afterwards')
+      }
+
+      return { hydrated, created: wasCreated, summary }
+    }, database)
+
+    // Emit the lifecycle event the save actually was: a merge either created
+    // the node or matched and updated an existing one
+    await this.afterCommit(ambientTransaction(), async () => {
+      this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
+
+      await this.observers.run(entityConstructor, 'afterSave', saved, {
+        isNew: created,
+        database,
+      })
+    })
+
+    return { saved, created, summary }
+  }
+
   getConnection(): ConnectionProvider {
     return this.connection
   }
@@ -394,7 +643,10 @@ export class Neode implements INeode {
   NTS-559: with the `hydrate` option (the options object as the second
   or third argument) the rows are instead hydrated into entities of the
   given class, read from the `alias` column — the same overload
-  `cypher()` offers.
+  `cypher()` offers. NTS-632: with the `recordTransformer` option (the
+  options object as the third argument) each row is instead mapped
+  through the transformer, JSON-safe values in; ignored when `hydrate`
+  is set.
   */
   async read<T>(
     query: Builder | string,
@@ -405,6 +657,11 @@ export class Neode implements INeode {
     parameters?: QueryParameters,
     database?: string,
   ): Promise<QueryOutput>
+  async read<Row>(
+    query: Builder | string,
+    parameters: QueryParameters | undefined,
+    options: HydrateQueryOptions & { recordTransformer: (record: QueryRecord) => Row },
+  ): Promise<TransformedQueryOutput<Row>>
   async read<T>(
     query: Builder | string,
     parameters: QueryParameters | undefined,
@@ -414,7 +671,7 @@ export class Neode implements INeode {
     query: Builder | string,
     parametersOrOptions: QueryParameters | HydrateQueryOptions = {},
     databaseOrOptions: string | HydrateQueryOptions = {},
-  ): Promise<QueryOutput | unknown[]> {
+  ): Promise<QueryOutput | unknown[] | TransformedQueryOutput> {
     const { parameters, options, database } = splitHydrateArguments(
       parametersOrOptions,
       databaseOrOptions,
@@ -423,19 +680,24 @@ export class Neode implements INeode {
     if (typeof query === 'string') {
       const raw = await this.readCypher(query, parameters, database)
 
-      return hydrateWhenRequested(options, raw)
+      return options.recordTransformer && options.hydrate === undefined
+        ? mapRecords(options.recordTransformer, raw)
+        : hydrateWhenRequested(options, raw)
     }
 
     const built = query.build()
 
     const output = await this.readCypher(built.query, { ...built.params, ...parameters }, database)
 
-    return hydrateWhenRequested(options, output)
+    return options.recordTransformer && options.hydrate === undefined
+      ? mapRecords(options.recordTransformer, output)
+      : hydrateWhenRequested(options, output)
   }
 
   /**
   WRITE counterpart of read(): pass a Builder to build-and-run it, or a
-  string to pass it straight through to writeCypher. Routes WRITE.
+  string to pass it straight through to writeCypher. Routes WRITE. The
+  `recordTransformer` option behaves as on read().
   */
   async write<T>(
     query: Builder | string,
@@ -446,6 +708,11 @@ export class Neode implements INeode {
     parameters?: QueryParameters,
     database?: string,
   ): Promise<QueryOutput>
+  async write<Row>(
+    query: Builder | string,
+    parameters: QueryParameters | undefined,
+    options: HydrateQueryOptions & { recordTransformer: (record: QueryRecord) => Row },
+  ): Promise<TransformedQueryOutput<Row>>
   async write<T>(
     query: Builder | string,
     parameters: QueryParameters | undefined,
@@ -455,7 +722,7 @@ export class Neode implements INeode {
     query: Builder | string,
     parametersOrOptions: QueryParameters | HydrateQueryOptions = {},
     databaseOrOptions: string | HydrateQueryOptions = {},
-  ): Promise<QueryOutput | unknown[]> {
+  ): Promise<QueryOutput | unknown[] | TransformedQueryOutput> {
     const { parameters, options, database } = splitHydrateArguments(
       parametersOrOptions,
       databaseOrOptions,
@@ -464,14 +731,18 @@ export class Neode implements INeode {
     if (typeof query === 'string') {
       const raw = await this.writeCypher(query, parameters, database)
 
-      return hydrateWhenRequested(options, raw)
+      return options.recordTransformer && options.hydrate === undefined
+        ? mapRecords(options.recordTransformer, raw)
+        : hydrateWhenRequested(options, raw)
     }
 
     const built = query.build()
 
     const output = await this.writeCypher(built.query, { ...built.params, ...parameters }, database)
 
-    return hydrateWhenRequested(options, output)
+    return options.recordTransformer && options.hydrate === undefined
+      ? mapRecords(options.recordTransformer, output)
+      : hydrateWhenRequested(options, output)
   }
 
   /**
@@ -491,19 +762,30 @@ export class Neode implements INeode {
   Point — serialised to plain structures). With the `hydrate` option the
   rows are instead hydrated into entities of the given class, read from
   the `alias` column ('this' by default, matching the query builder's
-  return alias).
+  return alias). With `recordTransformer` each row is instead mapped
+  through the transformer (JSON-safe values in, its return replaces the
+  row); ignored when `hydrate` is set.
   */
-  cypher(query: string, parameters?: QueryParameters, options?: CypherOptions): Promise<QueryOutput>
+  cypher(
+    query: string,
+    parameters?: QueryParameters,
+    options?: Omit<CypherOptions, 'hydrate' | 'recordTransformer'>,
+  ): Promise<QueryOutput>
   cypher<T>(
     query: string,
     parameters: QueryParameters | undefined,
     options: CypherOptions & { hydrate: new (...arguments_: never[]) => T },
   ): Promise<T[]>
+  cypher<Row>(
+    query: string,
+    parameters: QueryParameters | undefined,
+    options: CypherOptions & { recordTransformer: (record: QueryRecord) => Row },
+  ): Promise<TransformedQueryOutput<Row>>
   async cypher(
     query: string,
     parameters: QueryParameters = {},
     options: CypherOptions = {},
-  ): Promise<QueryOutput | unknown[]> {
+  ): Promise<QueryOutput | unknown[] | TransformedQueryOutput> {
     // NTS-156: inside an ambient transaction the statement joins it; the
     // driver reports no summary for in-transaction runs, so the counters
     // come back empty
@@ -518,12 +800,18 @@ export class Neode implements INeode {
           options.database ?? this.database,
         )
 
-    const rows: QueryOutput = {
+    if (options.hydrate) {
+      return hydrateWhenRequested(options, output)
+    }
+
+    if (options.recordTransformer) {
+      return mapRecords(options.recordTransformer, output)
+    }
+
+    return {
       records: output.records.map((record) => jsonSafeRecord(record)),
       summary: output.summary,
     }
-
-    return options.hydrate ? hydrate(options.hydrate, rows, options.alias) : rows
   }
 
   /**
@@ -537,12 +825,19 @@ export class Neode implements INeode {
     parameters: QueryParameters = {},
     options: { database?: string } = {},
   ): Promise<unknown> {
-    const output = await this.connection.run(
-      `EXPLAIN ${query}`,
-      parameters,
-      'READ',
-      options.database ?? this.database,
-    )
+    // NTS-576: inside an ambient transaction the statement joins it
+    // (a separate connection.run would queue behind the slot the
+    // enclosing transaction holds)
+    const ambient = ambientTransaction()
+
+    const output = ambient
+      ? await ambient.runner.run(`EXPLAIN ${query}`, parameters)
+      : await this.connection.run(
+          `EXPLAIN ${query}`,
+          parameters,
+          'READ',
+          options.database ?? this.database,
+        )
 
     return output.summary?.plan
   }
@@ -557,12 +852,19 @@ export class Neode implements INeode {
     parameters: QueryParameters = {},
     options: { database?: string } = {},
   ): Promise<unknown> {
-    const output = await this.connection.run(
-      `PROFILE ${query}`,
-      parameters,
-      'WRITE',
-      options.database ?? this.database,
-    )
+    // NTS-576: inside an ambient transaction the statement joins it
+    // (a separate connection.run would queue behind the slot the
+    // enclosing transaction holds)
+    const ambient = ambientTransaction()
+
+    const output = ambient
+      ? await ambient.runner.run(`PROFILE ${query}`, parameters)
+      : await this.connection.run(
+          `PROFILE ${query}`,
+          parameters,
+          'WRITE',
+          options.database ?? this.database,
+        )
 
     return output.summary?.profile
   }
@@ -588,7 +890,14 @@ export class Neode implements INeode {
   async openReadTransaction(database?: string): Promise<TransactionalService> {
     const handle = await this.readTransaction(database)
 
-    return new TransactionalService(handle, this.eventEmitter)
+    return new TransactionalService(
+      handle,
+      this.eventEmitter,
+      undefined,
+      true,
+      this.observers,
+      this.connection,
+    )
   }
 
   /**
@@ -598,7 +907,14 @@ export class Neode implements INeode {
   async openWriteTransaction(database?: string): Promise<TransactionalService> {
     const handle = await this.writeTransaction(database)
 
-    return new TransactionalService(handle, this.eventEmitter)
+    return new TransactionalService(
+      handle,
+      this.eventEmitter,
+      undefined,
+      true,
+      this.observers,
+      this.connection,
+    )
   }
 
   /**
@@ -607,6 +923,12 @@ export class Neode implements INeode {
   the work throws. Inside an ambient transaction (NTS-156) the work joins
   it instead — same transaction, close endpoints deferred to the
   outermost unit.
+
+  The unit binds its transaction as the ambient scope for the callback
+  (NTS-642): facade methods called inside — `neode.cypher`, `neode.create`,
+  … — join the SAME transaction, on every backend. Before, they fell
+  through to autocommit: silently outside the unit on Bolt, and a deadlock
+  on the embedded Relate engine's single transaction slot. Never retries.
   */
   async inReadTransaction<T>(
     work: (tx: TransactionalService) => Promise<T>,
@@ -615,28 +937,25 @@ export class Neode implements INeode {
     const ambient = ambientTransaction()
 
     if (ambient) {
-      return ambient.join(this.eventEmitter, work)
+      ambient.assertCompatible('inReadTransaction()', {
+        database,
+      })
+
+      return ambient.join(this.eventEmitter, work, this.observers)
     }
 
-    const tx = await this.openReadTransaction(database)
+    const resolved = database ?? this.database
 
-    try {
-      const result = await work(tx)
-
-      if (!tx.isSettled()) {
-        await tx.commit()
-      }
-
-      return result
-    } catch (error) {
-      // Already settled (the work committed explicitly, then threw): the
-      // commit stands — rethrow without touching the transaction
-      if (tx.isSettled()) {
-        throw error
-      }
-
-      return await rollbackAfterFailure(tx.getTransaction(), error)
-    }
+    return runAmbientTransaction(
+      async () => this.connection.beginTransaction('READ', resolved),
+      this.eventEmitter,
+      work,
+      resolved === undefined
+        ? { routing: 'READ', retries: 0 }
+        : { routing: 'READ', database: resolved, retries: 0 },
+      this.observers,
+      this.connection,
+    )
   }
 
   /**
@@ -645,6 +964,12 @@ export class Neode implements INeode {
   the work throws. Inside an ambient transaction (NTS-156) the work joins
   it instead — same transaction, close endpoints deferred to the
   outermost unit.
+
+  The unit binds its transaction as the ambient scope for the callback
+  (NTS-642): facade methods called inside — `neode.cypher`, `neode.create`,
+  … — join the SAME transaction, on every backend. Before, they fell
+  through to autocommit: silently outside the unit on Bolt, and a deadlock
+  on the embedded Relate engine's single transaction slot. Never retries.
   */
   async inWriteTransaction<T>(
     work: (tx: TransactionalService) => Promise<T>,
@@ -653,28 +978,26 @@ export class Neode implements INeode {
     const ambient = ambientTransaction()
 
     if (ambient) {
-      return ambient.join(this.eventEmitter, work)
+      ambient.assertCompatible('inWriteTransaction()', {
+        database,
+        routing: 'WRITE',
+      })
+
+      return ambient.join(this.eventEmitter, work, this.observers)
     }
 
-    const tx = await this.openWriteTransaction(database)
+    const resolved = database ?? this.database
 
-    try {
-      const result = await work(tx)
-
-      if (!tx.isSettled()) {
-        await tx.commit()
-      }
-
-      return result
-    } catch (error) {
-      // Already settled (the work committed explicitly, then threw): the
-      // commit stands — rethrow without touching the transaction
-      if (tx.isSettled()) {
-        throw error
-      }
-
-      return await rollbackAfterFailure(tx.getTransaction(), error)
-    }
+    return runAmbientTransaction(
+      async () => this.connection.beginTransaction('WRITE', resolved),
+      this.eventEmitter,
+      work,
+      resolved === undefined
+        ? { routing: 'WRITE', retries: 0 }
+        : { routing: 'WRITE', database: resolved, retries: 0 },
+      this.observers,
+      this.connection,
+    )
   }
 
   /**
@@ -687,12 +1010,25 @@ export class Neode implements INeode {
   - Close semantics follow the managed scopes (NTS-561): the transaction
     commits when the callback resolves and rolls back when it throws; an
     explicit `tx.commit()` / `tx.rollback()` inside the callback works.
-  - A failure classified as transient (TransientError —
+  - DEFAULT RETRIES: a failure classified as transient (TransientError —
     `Neo.TransientError.*` codes or a driver `retryable` verdict) retries
     the WHOLE callback in a fresh transaction, `retries` times (default
-    2). The callback must be idempotent: work that reached the database
-    rolls back with the failed attempt, but non-database side effects run
-    again on retry.
+    2, with jittered backoff; pass `retries: 0` to disable — unlike
+    inWriteTransaction, which never retries). The callback must be
+    idempotent: work that reached the database rolls back with the failed
+    attempt, but non-database side effects run again on retry.
+    Terminated / LockClientStopped transactions are never retried.
+  - A failure while COMMITTING is not retried (the server may have
+    committed before the connection dropped, so a re-run could apply the
+    work twice) unless `retryCommit: true`.
+  - Lifecycle events (NODE_CREATED, …) and afterSave / afterDelete
+    observers fire only after the commit; they are dropped on rollback and
+    on a retried attempt.
+  - A nested call that passes a conflicting `routing` / `database` /
+    `retries` / `retryCommit` throws — the nested call joins the outer
+    transaction, so those options can only be set on the outermost unit.
+  - Work that runs after the callback finished (un-awaited promises) throws
+    "transaction already finished".
   - `routing` ('WRITE' default | 'READ') and `database` choose the
     transaction's session — per transaction, not per call.
 
@@ -704,12 +1040,15 @@ export class Neode implements INeode {
   touches ALS.
 
   Joining the ambient transaction: every model read/write
-  (find/get/all/save/create/merge/update/relate/detach/delete), batch(),
+  (find/get/all/save/create/merge/update/relate/detach/delete), runAll(),
   and the raw Cypher paths (cypher/readCypher/writeCypher and the
-  read()/write() sugar). NOT joining (they manage their own sessions, v1):
+  read()/write() sugar), plus (NTS-576)
   search(), knn(), pagination (paginate/chunk/lazy), bulk
-  (createMany/mergeMany), explain()/profile() and the schema-management
-  methods.
+  (createMany/mergeMany) and explain()/profile(). NOT joining: the
+  schema-management methods (installSchema, dropSchema, inspect/drift,
+  graph type, full-text/vector index DDL) — they run on the connection
+  directly and, on the embedded Relate engine, queue behind the
+  transaction's slot: run them outside `transaction()`.
   */
   async transaction<T>(
     work: (tx: TransactionalService) => Promise<T>,
@@ -720,28 +1059,38 @@ export class Neode implements INeode {
     // Already inside an ambient transaction: join it — no begin, no close,
     // and no retry of its own (the outermost unit's retry re-runs the
     // whole callback, so an inner retry would double-apply the work)
-    return ambient
-      ? ambient.join(this.eventEmitter, work)
-      : runAmbientTransaction(
-          async () =>
-            this.connection.beginTransaction(
-              options.routing ?? 'WRITE',
-              options.database ?? this.database,
-            ),
-          this.eventEmitter,
-          work,
-          options,
-        )
+    if (ambient) {
+      ambient.assertCompatible('transaction()', options)
+
+      return ambient.join(this.eventEmitter, work, this.observers)
+    }
+
+    const database = options.database ?? this.database
+
+    return runAmbientTransaction(
+      async () =>
+        this.connection.beginTransaction(
+          options.routing ?? 'WRITE',
+          options.database ?? this.database,
+        ),
+      this.eventEmitter,
+      work,
+      database === undefined ? options : { ...options, database },
+      this.observers,
+      this.connection,
+    )
   }
 
   /**
-  Run a batch of statements within ONE transaction (neode's batch()):
-  begin, run every statement, then commit. On any failure the transaction
-  is rolled back and a TransactionError is thrown, carrying the
-  per-statement errors (aligned with the batch, null where a statement
-  succeeded), the partial results and the failed statements' details.
+  Run every statement of the batch within ONE transaction (v3's batch(),
+  renamed runAll() — NTS-624: the statements run sequentially, the ONE
+  transaction is the point, not throughput): begin, run every statement,
+  then commit. On any failure the transaction is rolled back and a
+  TransactionError is thrown, carrying the per-statement errors (aligned
+  with the batch, null where a statement succeeded), the partial results
+  and the failed statements' details.
   */
-  async batch(
+  async runAll(
     queries: (string | { query: string; params?: QueryParameters })[],
     database?: string,
   ): Promise<QueryOutput[]> {
@@ -776,19 +1125,91 @@ export class Neode implements INeode {
   }
 
   /**
-  Run statements to create the schema
+  Fan operations out across CONCURRENT sessions (NTS-631) — a map (or
+  array) of operation CALLBACKS, each run on its own session:
+
+  ```ts
+  const { tiles, throughput } = await neode.parallel({
+    tiles: (scope) => scope.read(dashboardTilesQuery),
+    throughput: (scope) => scope.read(dashboardThroughputQuery),
+  })
+  ```
+
+  - mode 'read' (default) — one READ autocommit session per operation: N
+    independent reads in one wall-clock batch (the dashboard case).
+  - mode 'write' — one WRITE autocommit session per operation; NO
+    cross-operation atomicity (a failure halfway leaves the earlier
+    writes committed). Every operation still runs; the failures surface
+    in one ParallelError aligned with the input.
+  - mode 'atomic' — all-or-nothing across sessions: one WRITE transaction
+    per operation, every body in parallel against its own transaction,
+    then the transactions commit sequentially ONLY if every body
+    succeeded — any body failure rolls back every open transaction. A
+    commit-phase failure remains the residual risk (surfaced per handle
+    as a 'commit'-phase ParallelError).
+
+  Operations are callbacks receiving the operation's own ParallelScope —
+  a session- (autocommit modes) or transaction- (atomic) bound Runner
+  with the facade's build-and-run sugar — NOT promises: a transaction
+  cannot open before its body runs. parallel() owns the transactions'
+  lifecycle; bodies cannot commit or roll back. Called inside a
+  `transaction()` callback it still fans out fresh sessions (deliberately
+  outside the ambient transaction).
+
+  Contention caveat: parallel writes touching the same nodes serialize on
+  the database's locks — keep operation sets NODE-DISJOINT; same-node
+  writes belong in ONE transaction, run sequentially
+  (inWriteTransaction() / transaction()).
+
+  Backend caveat: atomic mode needs a backend with concurrent sessions
+  (neo4j-driver over Bolt). The embedded Relate engine runs ONE
+  transaction per connection — its begin queue releases the slot only on
+  commit/rollback — so atomic mode with more than one operation
+  deadlocks there: on Relate use the autocommit modes (statements queue
+  safely — correct, but no wall-clock gain) or keep the writes in one
+  sequential transaction (runAll() / transaction()).
+
+  Map in, map out; array in, array out (input order). One transaction
+  for sequential statements stays runAll() / transaction().
+
+  - `operations` — named map or array of callbacks over ParallelScope
+  - `options` — mode ('read' | 'write' | 'atomic', default 'read') and
+    database
   */
-  async installSchema(): Promise<SchemaResult[]> {
-    const service = new SchemaService(this.connection, this.enterprise)
+  parallel<Operations extends Record<string, ParallelBody<unknown>>>(
+    operations: Operations,
+    options?: ParallelOptions,
+  ): Promise<{ [Key in keyof Operations]: Awaited<ReturnType<Operations[Key]>> }>
+  parallel<T>(operations: ParallelBody<T>[], options?: ParallelOptions): Promise<T[]>
+  async parallel(
+    operations: Record<string, ParallelBody<unknown>> | ParallelBody<unknown>[],
+    options: ParallelOptions = {},
+  ): Promise<Record<string, unknown> | unknown[]> {
+    return runParallel(this.connection, operations, options)
+  }
+
+  /**
+  Run statements to create the schema. A `database` option installs into
+  that database per call (NTS-645), winning over the setDatabase() default.
+  */
+  async installSchema(options: PerCallDatabaseOption = {}): Promise<SchemaResult[]> {
+    // NTS-598 — EXISTS / property-type constraints follow the edition
+    // detected from the connection, not the manual flag
+    const service = new SchemaService(this.connectionOn(options.database))
 
     return service.create()
   }
 
   /**
-  Run statements to drop the schema
+  Run statements to drop the schema. DESTRUCTIVE: drops every constraint and
+  index the registered models declare on the connected database (by
+  deterministic name, so objects other applications created under other
+  names are untouched) — never run it against a database you do not own.
+  A `database` option drops from that database per call (NTS-645), winning
+  over the setDatabase() default.
   */
-  async dropSchema(): Promise<SchemaResult[]> {
-    const service = new SchemaService(this.connection, this.enterprise)
+  async dropSchema(options: PerCallDatabaseOption = {}): Promise<SchemaResult[]> {
+    const service = new SchemaService(this.connectionOn(options.database))
 
     return service.drop()
   }
@@ -849,6 +1270,7 @@ export class Neode implements INeode {
     const options = typeof databaseOrOptions === 'object' ? databaseOrOptions : undefined
     const database = typeof databaseOrOptions === 'string' ? databaseOrOptions : options?.database
     const withSpec = options?.with
+    assertPublicWithoutFilters(options?.withoutFilters)
     const filters =
       options?.withoutFilters === undefined ? undefined : { withoutFilters: options.withoutFilters }
 
@@ -893,6 +1315,13 @@ export class Neode implements INeode {
     }
   }
 
+  async get<C extends Newable>(
+    constructor: C,
+    parameters: WhereFilter<C>,
+    limit?: number,
+    skip?: number,
+    databaseOrOptions?: string | { withoutFilters?: string[] | undefined },
+  ): Promise<InstanceType<C>[]>
   async get<T>(
     constructor: new (...arguments_: never[]) => T,
     parameters: Record<string, unknown>,
@@ -901,6 +1330,10 @@ export class Neode implements INeode {
     databaseOrOptions?: string | { withoutFilters?: string[] | undefined },
   ): Promise<T[]> {
     const schema = this.getSchema(constructor)
+
+    assertPublicWithoutFilters(
+      typeof databaseOrOptions === 'object' ? databaseOrOptions.withoutFilters : undefined,
+    )
 
     const filters =
       typeof databaseOrOptions === 'object' && databaseOrOptions.withoutFilters !== undefined
@@ -941,12 +1374,17 @@ export class Neode implements INeode {
     }
   }
 
-  async getFirst<T>(
-    constructor: new (...arguments_: never[]) => T,
+  async getFirst<C extends Newable>(
+    constructor: C,
+    parameters: WhereFilter<C>,
+    database?: string,
+  ): Promise<InstanceType<C> | undefined>
+  async getFirst(
+    constructor: Newable,
     parameters: Record<string, unknown>,
     database?: string,
-  ): Promise<T | undefined> {
-    const records = await this.get<T>(constructor, parameters, 1, 0, database)
+  ): Promise<unknown> {
+    const records = await this.get(constructor, parameters, 1, 0, database)
 
     return records[0]
   }
@@ -955,103 +1393,60 @@ export class Neode implements INeode {
   Find the first node matching a key / value pair (or a property map),
   neode's Model.first(): sugar over getFirst()
   */
-  async first<T>(
-    constructor: new (...arguments_: never[]) => T,
+  async first<C extends Newable>(
+    constructor: C,
+    key: string | WhereFilter<C>,
+    value?: unknown,
+    database?: string,
+  ): Promise<InstanceType<C> | undefined>
+  async first(
+    constructor: Newable,
     key: string | Record<string, unknown>,
     value?: unknown,
     database?: string,
-  ): Promise<T | undefined> {
+  ): Promise<unknown> {
     const parameters = typeof key === 'object' ? key : { [key]: value }
 
-    return this.getFirst<T>(constructor, parameters, database)
+    return this.getFirst(constructor, parameters, database)
   }
 
   async save<T>(entity: T, database?: string): Promise<T> {
-    if (!isRecord(entity)) {
-      throw new TypeError('Cannot save a value that is not an entity object')
-    }
+    const outcome = await this.saveOutcome(entity, database)
 
-    const entityConstructor: unknown = entity.constructor
-
-    if (!isConstructorOf<T>(entityConstructor)) {
-      throw new TypeError('Cannot save a value whose constructor is not a class')
-    }
-
-    const schema = this.getSchema(entityConstructor)
-
-    // NTS-511: beforeSave runs before the dirty check — an observer may
-    // mutate the entity into dirtiness. Errors fail the write.
-    await runObservers(entityConstructor, 'beforeSave', entity, {
-      isNew: false,
-      database,
-    })
-
-    // NTS-157: tracked (hydrated) instances write only their dirty
-    // scalar properties; a clean instance is a no-op — no transaction,
-    // no query, no lifecycle events
-    const dirtyKeys = diffDirty(schema, entity)
-
-    if (isTracked(entity) && dirtyKeys.length === 0) {
-      return entity
-    }
-
-    const { hydrated: saved, created } = await this.inWriteTransaction(async (tx) => {
-      const mergeService = new MergeService(tx.getRunner())
-
-      const { elementId, created: wasCreated } = await mergeService.save(
-        entity,
-        schema,
-        dirtyKeys.length > 0 ? new Set(dirtyKeys) : undefined,
-      )
-
-      const findService = new FindByIdService(tx.getRunner())
-
-      // The re-hydration of a row the write just touched bypasses the read
-      // filters — the write path may legitimately save outside the current
-      // filter view (WITHOUT_ALL_FILTERS)
-      const hydrated = await findService.find<T>(entityConstructor, schema, elementId, {
-        withoutFilters: [WITHOUT_ALL_FILTERS],
-      })
-
-      await tx.commit()
-
-      if (hydrated === undefined) {
-        throw new NeodeError('Entity was saved but could not be found immediately afterwards')
-      }
-
-      return { hydrated, created: wasCreated }
-    }, database)
-
-    // Emit the lifecycle event the save actually was: a merge either created
-    // the node or matched and updated an existing one
-    this.eventEmitter.emit(created ? EventType.NODE_CREATED : EventType.NODE_UPDATED, saved)
-
-    await runObservers(entityConstructor, 'afterSave', saved, {
-      isNew: created,
-      database,
-    })
-
-    return saved
+    return outcome.saved
   }
 
   /**
   CREATE a new entity of the given constructor with the given properties
-  (nested relationship targets included), then hydrate the created node
+  (nested relationship targets included), then hydrate the created node.
+
+  NTS-615: `options.relate` maps a relationship key on the model to a
+  saved target entity (or array of targets) to relate it to — eager
+  relationship creation in the same managed transaction as the create, so
+  a failure mid-write leaves no orphan node. Edges are MERGE-based:
+  retries stay idempotent. The legacy form `create(constructor,
+  properties, database)` — a string third argument, as accepted by
+  callers before options — is kept working.
   */
   async create<T>(
     constructor: new (...arguments_: never[]) => T,
     properties: Record<string, unknown> = {},
+    options?: CreateOptions | string,
     database?: string,
   ): Promise<T> {
     const schema = this.getSchema(constructor)
 
+    const relate = typeof options === 'string' ? undefined : options?.relate
+
+    const databaseArg = typeof options === 'string' ? options : database
+
     // NTS-511: beforeSave before the statement — errors fail the create
-    await runObservers(constructor, 'beforeSave', properties, {
+    await this.observers.run(constructor, 'beforeSave', properties, {
       isNew: true,
-      database,
+      database: databaseArg,
     })
 
-    const tx = await this.beginWorkTransaction('WRITE', database)
+    const tx = await this.beginWorkTransaction('WRITE', databaseArg)
 
     try {
       const constructed = new constructor()
@@ -1064,14 +1459,23 @@ export class Neode implements INeode {
 
       const service = new CreateService(tx)
 
-      const { elementId } = await service.create(schema, constructed)
+      // NTS-633: the CREATE statement's RETURN carries the written node —
+      // hydrate it directly; FindByIdService stays as the fallback
+      // (write-path re-hydration bypasses the read filters —
+      // WITHOUT_ALL_FILTERS). NTS-628: the relationshipProperties carrier
+      // rides along.
+      const { elementId, output } = await service.create(
+        schema,
+        constructed,
+        typeof options === 'string' ? undefined : options?.relationshipProperties,
+      )
 
-      const findService = new FindByIdService(tx)
+      // NTS-615: eager relationships — same transaction as the create
+      // (atomic from the caller's view; a mid-write failure rolls the
+      // node and its edges back together)
+      await this.eagerRelate(schema, constructed, elementId, relate, tx)
 
-      // Write-path re-hydration bypasses the read filters (WITHOUT_ALL_FILTERS)
-      const hydrated = await findService.find<T>(constructor, schema, elementId, {
-        withoutFilters: [WITHOUT_ALL_FILTERS],
-      })
+      const hydrated = await hydrateWrittenNode<T>(constructor, schema, tx, output, elementId)
 
       if (hydrated === undefined) {
         throw new NeodeError('Entity was created but could not be found immediately afterwards')
@@ -1079,10 +1483,15 @@ export class Neode implements INeode {
 
       await tx.commit()
 
-      // Emit event
-      this.eventEmitter.emit(EventType.NODE_CREATED, hydrated)
+      // Emit event (after the outer commit when joined to an ambient transaction)
+      await this.afterCommit(ambientTransaction(), async () => {
+        this.eventEmitter.emit(EventType.NODE_CREATED, hydrated)
 
-      await runObservers(constructor, 'afterSave', hydrated, { isNew: true, database })
+        await this.observers.run(constructor, 'afterSave', hydrated, {
+          isNew: true,
+          database: databaseArg,
+        })
+      })
 
       return hydrated
     } catch (error) {
@@ -1092,15 +1501,25 @@ export class Neode implements INeode {
 
   /**
   MERGE a node on the given match properties, then set the given
-  properties, hydrating the merged node
+  properties, hydrating the merged node. NTS-596: the merge lifecycle runs
+  the save hooks and emits NODE_MERGED with the re-hydrated node once
+  committed (also the event path behind merge() and Repository#upsert).
+  Resolves to the merge outcome (NTS-630): `{ entity, created, updated,
+  counts, summary }` — `created` when the MERGE created the node,
+  `updated` when it matched and wrote, both false on a no-op merge.
   */
   async mergeOn<T>(
     constructor: new (...arguments_: never[]) => T,
     match: Record<string, unknown>,
     set: Record<string, unknown> = {},
     database?: string,
-  ): Promise<T | undefined> {
+  ): Promise<MergeResult<T> | undefined> {
     const schema = this.getSchema(constructor)
+
+    // NTS-596: beforeSave runs before the statement and receives the set
+    // record (the create-path contract — a mutable record of what the
+    // write sets). Errors fail the write.
+    await this.observers.run(constructor, 'beforeSave', set, { isNew: false, database })
 
     const tx = await this.beginWorkTransaction('WRITE', database)
 
@@ -1108,6 +1527,12 @@ export class Neode implements INeode {
       const mergeService = new MergeService(tx)
 
       const output = await mergeService.mergeOn(schema, match, set)
+
+      // The summary counters say whether the MERGE created the node (the
+      // same read the save path makes) — the honest isNew for afterSave
+      const counters = output.summary?.counters ?? {}
+
+      const wasCreated = (counters['nodesCreated'] ?? counters['nodes_created'] ?? 0) > 0
 
       const firstRecord = output.records[0]
 
@@ -1121,16 +1546,28 @@ export class Neode implements INeode {
         throw new NeodeError('mergeOn did not return an elementId')
       }
 
-      const findService = new FindByIdService(tx)
-
-      // Write-path re-hydration bypasses the read filters (WITHOUT_ALL_FILTERS)
-      const hydrated = await findService.find<T>(constructor, schema, elementId, {
-        withoutFilters: [WITHOUT_ALL_FILTERS],
-      })
+      // NTS-633: the MERGE statement's RETURN carries the merged node —
+      // hydrate it directly; FindByIdService stays as the fallback
+      // (write-path re-hydration bypasses the read filters —
+      // WITHOUT_ALL_FILTERS)
+      const hydrated = await hydrateWrittenNode<T>(constructor, schema, tx, output, elementId)
 
       await tx.commit()
 
-      return hydrated
+      await this.afterCommit(ambientTransaction(), async () => {
+        if (hydrated !== undefined) {
+          this.eventEmitter.emit(EventType.NODE_MERGED, hydrated)
+        }
+
+        await this.observers.run(constructor, 'afterSave', hydrated ?? set, {
+          isNew: wasCreated,
+          database,
+        })
+      })
+
+      return hydrated === undefined
+        ? undefined
+        : { entity: hydrated, ...mergeOutcome(output.summary), summary: output.summary }
     } catch (error) {
       return await rollbackAfterFailure(tx, error)
     }
@@ -1140,29 +1577,27 @@ export class Neode implements INeode {
   MERGE a node of the given constructor on its merge fields (the unique
   and indexed properties, neode's Model.merge): those present in
   `properties` form the match, everything else is set, with schema
-  defaults resolving for properties not given
+  defaults resolving for properties not given. Resolves to the same
+  merge outcome mergeOn() returns (NTS-630)
   */
   async merge<T>(
     constructor: new (...arguments_: never[]) => T,
     properties: Record<string, unknown> = {},
     database?: string,
-  ): Promise<T | undefined> {
+  ): Promise<MergeResult<T> | undefined> {
     const schema = this.getSchema(constructor)
 
-    // Entity instances (or arrays of them) in the properties mean
+    // Relationship values (or arrays of them) in the properties mean
     // relationship writes — those go through the save() path, which
     // already creates/relates nested relationships (neode's merge
     // semantics: "Neode will create relationships when either a Node
     // instance, ID property or Object containing match parameters
-    // is passed")
+    // is passed"). NTS-627: primary-key values are relationship writes
+    // too — they route through save() like entity instances.
     const hasRelationshipValues = schema.getRelationships().some((relationship) => {
       const value = properties[relationship.getKey()]
 
-      if (value === undefined || value === null) {
-        return false
-      }
-
-      return Array.isArray(value) ? value.length > 0 : typeof value === 'object'
+      return value !== undefined && value !== null && (!Array.isArray(value) || value.length > 0)
     })
 
     if (hasRelationshipValues) {
@@ -1174,7 +1609,9 @@ export class Neode implements INeode {
 
       Object.assign(constructed, properties)
 
-      return this.save(constructed, database)
+      const { saved, created, summary } = await this.saveOutcome(constructed, database)
+
+      return mergeResultFromSave(saved, created, summary)
     }
 
     const mergeKeys = new Set(getMergeFields(schema).map((property) => property.getKey()))
@@ -1190,11 +1627,23 @@ export class Neode implements INeode {
 
   /**
   UPDATE the given properties on a node (`+=` semantics: provided keys
-  only, matched by the entity's primary key), then re-hydrate it
+  only, matched by the entity's primary key), then re-hydrate it.
+
+  NTS-615: `options.relate` maps a relationship key on the model to a
+  saved target entity (or array of targets) to relate it to, inside the
+  same managed transaction as the update (create() parity). The legacy
+  form `update(entity, properties, database)` — a string third argument —
+  is kept working.
+
+  NTS-596: the update path runs the save lifecycle — beforeSave receives
+  the properties record (mutate it to change what is written), and
+  NODE_UPDATED + afterSave fire once committed (isNew is false: an update
+  never creates).
   */
   async update<T>(
     entity: T,
     properties: Record<string, unknown> = {},
+    options?: CreateOptions | string,
     database?: string,
   ): Promise<T | undefined> {
     if (!isRecord(entity)) {
@@ -1209,21 +1658,49 @@ export class Neode implements INeode {
 
     const schema = this.getSchema(entityConstructor)
 
-    const tx = await this.beginWorkTransaction('WRITE', database)
+    const relate = typeof options === 'string' ? undefined : options?.relate
+
+    const databaseArg = typeof options === 'string' ? options : database
+
+    // NTS-596: beforeSave before the statement — errors fail the write
+    await this.observers.run(entityConstructor, 'beforeSave', properties, {
+      isNew: false,
+      database: databaseArg,
+    })
+
+    const tx = await this.beginWorkTransaction('WRITE', databaseArg)
 
     try {
-      await new UpdateService(tx).update(schema, entity, properties)
+      // NTS-633: the update statement's RETURN carries the mutated node —
+      // hydrate it directly; FindByIdService stays as the fallback
+      // (write-path re-hydration bypasses the read filters —
+      // WITHOUT_ALL_FILTERS)
+      const output = await new UpdateService(tx).update(schema, entity, properties)
+
+      // NTS-615: eager relationships — same transaction as the update;
+      // the entity is hydrated, so RelateService matches it by identity
+      await this.eagerRelate(schema, entity, undefined, relate, tx)
 
       const elementId = elementIdOfEntity(schema, entity)
 
-      const hydrated =
-        elementId === undefined
-          ? undefined
-          : await new FindByIdService(tx).find<T>(entityConstructor, schema, elementId, {
-              withoutFilters: [WITHOUT_ALL_FILTERS],
-            })
+      const hydrated = await hydrateWrittenNode<T>(entityConstructor, schema, tx, output, elementId)
 
       await tx.commit()
+
+      // Nothing written (the entity carries no identity) — no lifecycle
+      // fires, mirroring save()'s clean-instance no-op
+      if (hydrated === undefined) {
+        return undefined
+      }
+
+      await this.afterCommit(ambientTransaction(), async () => {
+        this.eventEmitter.emit(EventType.NODE_UPDATED, hydrated)
+
+        await this.observers.run(entityConstructor, 'afterSave', hydrated, {
+          isNew: false,
+          database: databaseArg,
+        })
+      })
 
       return hydrated
     } catch (error) {
@@ -1263,10 +1740,12 @@ export class Neode implements INeode {
       await tx.commit()
 
       if (result) {
-        this.eventEmitter.emit(
-          shouldForceCreate ? EventType.RELATIONSHIP_CREATED : EventType.RELATIONSHIP_MERGED,
-          result,
-        )
+        await this.afterCommit(ambientTransaction(), () => {
+          this.eventEmitter.emit(
+            shouldForceCreate ? EventType.RELATIONSHIP_CREATED : EventType.RELATIONSHIP_MERGED,
+            result,
+          )
+        })
       }
 
       return result
@@ -1293,6 +1772,81 @@ export class Neode implements INeode {
 
     try {
       const result = await new DetachService(tx).detach(schema, from, to, relationship)
+
+      await tx.commit()
+
+      return result
+    } catch (error) {
+      return await rollbackAfterFailure(tx, error)
+    }
+  }
+
+  /**
+  Replace every edge of ONE declared relationship on a node in a single
+  statement (NTS-634): the relationship's existing edges are deleted and
+  the new set created — no read-modify-write, no TOCTOU window. Targets
+  are entity instances or primary-key values; `properties` are applied to
+  every created edge; `options.merge` MERGEs the new edges instead of
+  CREATEing them. Resolves the relationship by key (or type, relate()
+  parity); BOTH-direction declarations are rejected (match-only, NTS-483).
+  */
+  async replaceRelationship(
+    entity: object,
+    key: string,
+    targets: unknown[],
+    properties: Record<string, unknown> = {},
+    options?: ReplaceRelationshipOptions,
+    database?: string,
+  ): Promise<void> {
+    const schema = this.getSchema(constructorOf(entity))
+    const relationship = this.resolveRelationship(schema, key)
+
+    const tx = await this.beginWorkTransaction('WRITE', database)
+
+    try {
+      await new ReplaceRelationshipService(tx).replaceRelationship(
+        schema,
+        entity,
+        relationship,
+        targets,
+        properties,
+        options,
+      )
+
+      await tx.commit()
+    } catch (error) {
+      return await rollbackAfterFailure(tx, error)
+    }
+  }
+
+  /**
+  Set the properties of ONE declared relationship's edge (NTS-628): match
+  both nodes by identity, MERGE the edge (never duplicating it) and SET
+  the properties — idempotent per re-run, the update path relate()'s
+  create-time properties cannot serve. Validates against the
+  relationship's declared `properties` schema when one is declared.
+  Resolves the relationship by key (or type, relate() parity).
+  */
+  async updateEdgeProperties(
+    entity: object,
+    key: string,
+    target: object,
+    properties: Record<string, unknown> = {},
+    database?: string,
+  ): Promise<GraphRelationship | undefined> {
+    const schema = this.getSchema(constructorOf(entity))
+    const relationship = this.resolveRelationship(schema, key)
+
+    const tx = await this.beginWorkTransaction('WRITE', database)
+
+    try {
+      const result = await new RelateService(tx).updateEdgeProperties(
+        schema,
+        entity,
+        relationship,
+        target,
+        properties,
+      )
 
       await tx.commit()
 
@@ -1397,8 +1951,16 @@ export class Neode implements INeode {
   transaction; the target model's global filters apply inside the
   traversal read.
   */
-  relatedQuery(constructor: Newable, entity: object, relationshipKey: string): RelatedQuery {
+  relatedQuery(
+    constructor: Newable,
+    entity: object,
+    relationshipKey: string,
+    options?: { withoutFilters?: string[] | undefined },
+  ): RelatedQuery {
     const schema = this.getSchema(constructor)
+
+    assertPublicWithoutFilters(options?.withoutFilters)
+
     const relationship = this.requireRelationship(schema, relationshipKey)
 
     return new RelatedQuery(
@@ -1418,6 +1980,9 @@ export class Neode implements INeode {
       schema,
       entity,
       relationship,
+      options?.withoutFilters === undefined
+        ? undefined
+        : { withoutFilters: options.withoutFilters },
     )
   }
 
@@ -1437,8 +2002,11 @@ export class Neode implements INeode {
     query: string,
     limit?: number,
     filters?: { withoutFilters?: string[] | undefined },
+    database?: string,
   ): Promise<ScoredEntity<T>[]> {
-    return search<T>(this.connection, constructor, indexName, query, limit, filters)
+    assertPublicWithoutFilters(filters?.withoutFilters)
+
+    return search<T>(this.runnerOn(database), constructor, indexName, query, limit, filters)
   }
 
   /**
@@ -1453,7 +2021,9 @@ export class Neode implements INeode {
     mode?: KnnMode,
     filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]> {
-    return knn<T>(this.connection, constructor, indexName, vector, k, mode, filters)
+    assertPublicWithoutFilters(filters?.withoutFilters)
+
+    return knn<T>(this.getRunner(), constructor, indexName, vector, k, mode, filters)
   }
 
   /**
@@ -1476,10 +2046,13 @@ export class Neode implements INeode {
   /**
   Read the installed database schema (SHOW CONSTRAINTS / SHOW INDEXES)
   and diff it against the declared schema of the registered models
-  (NTS-142)
+  (NTS-142). A `database` option inspects that database per call
+  (NTS-645), winning over the setDatabase() default.
   */
-  async inspectSchema(options: InspectOptions = {}): Promise<SchemaInspection> {
-    return inspectSchema(this.connection, { enterprise: this.enterprise, ...options })
+  async inspectSchema(
+    options: InspectOptions & PerCallDatabaseOption = {},
+  ): Promise<SchemaInspection> {
+    return inspectSchema(this.connectionOn(options.database), options)
   }
 
   /**
@@ -1500,10 +2073,11 @@ export class Neode implements INeode {
   every index kind (range/text/fulltext/vector), each entry carrying
   the exact fix statement (NTS-450). Drift is data, not an error —
   this never throws on drift; failing a CI run on a non-empty diff is
-  the caller's job.
+  the caller's job. A `database` option inspects that database per call
+  (NTS-645), winning over the setDatabase() default.
   */
-  async schemaDiff(options: InspectOptions = {}): Promise<SchemaDrift> {
-    return schemaDrift(this.connection, { enterprise: this.enterprise, ...options })
+  async schemaDiff(options: InspectOptions & PerCallDatabaseOption = {}): Promise<SchemaDrift> {
+    return schemaDrift(this.connectionOn(options.database), options)
   }
 
   /**
@@ -1517,13 +2091,26 @@ export class Neode implements INeode {
   /**
   Apply the missing objects of a schema drift idempotently; stale
   objects are only dropped with `dropStale: true` (dropping is
-  destructive). Reports each statement like installSchema (NTS-450)
+  destructive: they are installed on the connected database, which on a
+  shared one may belong to other applications). Reports each statement like installSchema (NTS-450).
+  A `database` option applies against that database per call (NTS-645),
+  winning over the setDatabase() default. `returnDriftAfter: true`
+  (NTS-659) runs one post-apply inspection pass and returns
+  `{ statements, driftAfter }` — one probe serves apply + verification.
   */
   async applySchemaDiff(
     diff: SchemaDrift,
-    options: ApplySchemaDiffOptions = {},
-  ): Promise<SchemaResult[]> {
-    return applySchemaDrift(this.connection, diff, options)
+    options: ApplySchemaDiffOptions & PerCallDatabaseOption & { returnDriftAfter: true },
+  ): Promise<ApplySchemaDriftReport>
+  async applySchemaDiff(
+    diff: SchemaDrift,
+    options?: ApplySchemaDiffOptions & PerCallDatabaseOption,
+  ): Promise<SchemaResult[]>
+  async applySchemaDiff(
+    diff: SchemaDrift,
+    options: ApplySchemaDiffOptions & PerCallDatabaseOption = {},
+  ): Promise<SchemaResult[] | ApplySchemaDriftReport> {
+    return applySchemaDrift(this.connectionOn(options.database), diff, options)
   }
 
   /**
@@ -1557,23 +2144,29 @@ export class Neode implements INeode {
   /**
   Derive the graph type from the registered models and set it as the
   database's enforced schema (NTS-548). Enterprise Edition + Neo4j 2026.02+
-  only; `ALTER CURRENT GRAPH TYPE SET` replaces any existing graph type and
-  constraints, so this is deliberately standalone from installSchema().
+  only; deliberately standalone from installSchema().
+
+  Non-destructive by default (NTS-578): only the missing element types and
+  constraint items are `ADD`ed; foreign graph type objects (other apps on a
+  shared database) are left alone, and definitions that differ are reported
+  as failed results rather than rewritten. `replace: true` opts into
+  `ALTER CURRENT GRAPH TYPE SET`, replacing the server's whole graph type —
+  refused when it would drop objects no registered model declares, unless
+  `canDropUndeclared: true`.
 
   `options.constraints` appends named `CONSTRAINT ... FOR ... REQUIRE`
   items (NTS-549) — the only way to constrain labels/types that are not
   identifying ones, e.g. `{ labelOrType: 'Animal', properties: ['id'],
   kind: 'UNIQUE' }`
   */
-  async installGraphType(
-    options: { constraints?: GraphTypeConstraintDefinition[] } = {},
-  ): Promise<SchemaResult[]> {
+  async installGraphType(options: GraphTypeCreateOptions = {}): Promise<SchemaResult[]> {
     return new GraphTypeService(this.connection, this.enterprise).create(options)
   }
 
   /**
   Drop the graph type elements derived from the registered models (NTS-548),
-  including the named constraint items (NTS-549) — dropping an element type
+  including the named constraint items (NTS-549). DESTRUCTIVE: it drops
+  those element types from the connected database's graph type — dropping an element type
   removes its dependent constraints but leaves its uniqueness/key ones,
   which only go by name
   */
@@ -1606,7 +2199,9 @@ export class Neode implements INeode {
   /**
   CREATE every row in chunks of `UNWIND $rows ...` (NTS-126): one managed
   write transaction per chunk, rows validated like create() before the
-  first write
+  first write. NTS-596: every row runs beforeSave (create-path semantics —
+  the row record, mutable, errors fail the write), and every created
+  entity emits NODE_CREATED + afterSave once its chunk committed.
   */
   async createMany<T>(
     constructor: new (...arguments_: never[]) => T,
@@ -1614,18 +2209,37 @@ export class Neode implements INeode {
     options: BulkOptions = {},
     database?: string,
   ): Promise<BulkChunk<T>[]> {
-    return new BulkService(this.connection).createMany<T>(
+    for (const row of rows) {
+      await this.observers.run(constructor, 'beforeSave', row, { isNew: true, database })
+    }
+
+    const chunks = await new BulkService(this.getRunner()).createMany<T>(
       constructor,
       this.getSchema(constructor),
       rows,
       { ...options, database },
     )
+
+    await this.afterCommit(ambientTransaction(), async () => {
+      for (const chunk of chunks) {
+        for (const entity of chunk.entities) {
+          this.eventEmitter.emit(EventType.NODE_CREATED, entity)
+
+          await this.observers.run(constructor, 'afterSave', entity, { isNew: true, database })
+        }
+      }
+    })
+
+    return chunks
   }
 
   /**
   MERGE every row in chunks on the model's merge fields (NTS-126): one
   managed write transaction per chunk; every row must merge on the same
-  merge fields
+  merge fields. NTS-596: every row runs beforeSave, and every merged
+  entity emits NODE_MERGED + afterSave once its chunk committed. A bulk
+  row's create-vs-match is not observable per row, so afterSave sees
+  isNew: false — NODE_MERGED is the event.
   */
   async mergeMany<T>(
     constructor: new (...arguments_: never[]) => T,
@@ -1633,36 +2247,93 @@ export class Neode implements INeode {
     options: BulkOptions = {},
     database?: string,
   ): Promise<BulkChunk<T>[]> {
-    return new BulkService(this.connection).mergeMany<T>(
+    for (const row of rows) {
+      await this.observers.run(constructor, 'beforeSave', row, { isNew: false, database })
+    }
+
+    const chunks = await new BulkService(this.getRunner()).mergeMany<T>(
       constructor,
       this.getSchema(constructor),
       rows,
       { ...options, database },
     )
+
+    await this.afterCommit(ambientTransaction(), async () => {
+      for (const chunk of chunks) {
+        for (const entity of chunk.entities) {
+          this.eventEmitter.emit(EventType.NODE_MERGED, entity)
+
+          await this.observers.run(constructor, 'afterSave', entity, { isNew: false, database })
+        }
+      }
+    })
+
+    return chunks
+  }
+
+  /**
+  Bulk MERGE of relationships (NTS-637): rows name the from- and to-nodes
+  by primary-key value, one UNWIND statement per chunk matches both
+  endpoints and MERGEs the edge — re-running the same rows never
+  duplicates an edge (relate()'s idempotency, per pair). The relationship
+  is the from-model's DECLARED relationship key; the to-model is its
+  declared target; restricted cardinalities and edge-entity (relationship
+  entity) targets are rejected — use relate() for those.
+  */
+  async relateMany(
+    constructor: new (...arguments_: never[]) => unknown,
+    key: string,
+    rows: RelateManyRow[] = [],
+    options: BulkOptions = {},
+    database?: string,
+  ): Promise<RelateManyResult> {
+    return new BulkService(this.getRunner()).relateMany(this.getSchema(constructor), key, rows, {
+      ...options,
+      database,
+    })
+  }
+
+  /**
+  Map one import row (a CSV / JSON / NDJSON record) to the property map
+  createMany() / mergeMany() take: header renames, defaults, fakes,
+  transforms, validation and type conversion through the model schema —
+  collecting failures per row (`{ ok: false, errors }`) instead of
+  throwing, the accumulate-and-report shape file imports want.
+  */
+  async rowToProperties(
+    constructor: new (...arguments_: never[]) => unknown,
+    row: Record<string, unknown>,
+    options: RowToPropertiesOptions = {},
+  ): Promise<RowPropertiesResult> {
+    return rowToProperties(this.getSchema(constructor), row, options)
   }
 
   /**
   Pagination helper (NTS-125). Offset mode — `{ page, limit, order? }` —
   returns `{ items, total, page, limit, totalPages }`; keyset mode —
   `{ limit, orderBy?, after?/before? }` — walks a temporal property and
-  returns `{ items, nextCursor, hasMore }`
+  returns `{ items, nextCursor, hasMore }`. A `database` option on either
+  shape targets a database per call (NTS-644), winning over the
+  setDatabase() default.
   */
-  async paginate<T>(
-    constructor: new (...arguments_: never[]) => T,
-    filter: Record<string, unknown>,
-    options: OffsetPaginateOptions,
-  ): Promise<Page<T>>
-  async paginate<T>(
-    constructor: new (...arguments_: never[]) => T,
-    filter: Record<string, unknown>,
-    options: CursorPaginateOptions,
-  ): Promise<CursorPage<T>>
+  async paginate<C extends Newable>(
+    constructor: C,
+    filter: WhereFilter<C>,
+    options: OffsetPaginateOptions & PerCallDatabaseOption,
+  ): Promise<Page<InstanceType<C>>>
+  async paginate<C extends Newable>(
+    constructor: C,
+    filter: WhereFilter<C>,
+    options: CursorPaginateOptions & PerCallDatabaseOption,
+  ): Promise<CursorPage<InstanceType<C>>>
   async paginate<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown> = {},
-    options?: OffsetPaginateOptions | CursorPaginateOptions,
+    options?: (OffsetPaginateOptions | CursorPaginateOptions) & PerCallDatabaseOption,
   ): Promise<Page<T> | CursorPage<T>> {
-    return new PaginateService(this.connection).paginate<T>(
+    assertPublicWithoutFilters(options?.withoutFilters)
+
+    return new PaginateService(this.runnerOn(options?.database)).paginate<T>(
       constructor,
       this.getSchema(constructor),
       filter,
@@ -1673,14 +2344,23 @@ export class Neode implements INeode {
   /**
   Non-paginated `{ items, total }` read (NTS-166): every entity matching
   the filter plus its total in one call. Options trim the data read
-  only — `total` is always the full filter count.
+  only — `total` is always the full filter count. A `database` option
+  targets a database per call (NTS-644), winning over the setDatabase()
+  default.
   */
+  async findManyAndCount<C extends Newable>(
+    constructor: C,
+    filter?: WhereFilter<C>,
+    options?: FindManyAndCountOptions & PerCallDatabaseOption,
+  ): Promise<ManyAndCount<InstanceType<C>>>
   async findManyAndCount<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown> = {},
-    options: FindManyAndCountOptions = {},
+    options: FindManyAndCountOptions & PerCallDatabaseOption = {},
   ): Promise<ManyAndCount<T>> {
-    return new PaginateService(this.connection).findManyAndCount<T>(
+    assertPublicWithoutFilters(options.withoutFilters)
+
+    return new PaginateService(this.runnerOn(options.database)).findManyAndCount<T>(
       constructor,
       this.getSchema(constructor),
       filter,
@@ -1694,6 +2374,13 @@ export class Neode implements INeode {
   order; return false to stop early. Resolves to the number of items
   delivered.
   */
+  async chunk<C extends Newable>(
+    constructor: C,
+    filter: WhereFilter<C>,
+    size: number,
+    callback: (items: InstanceType<C>[]) => unknown,
+    options?: { orderBy?: string; withoutFilters?: string[] | undefined },
+  ): Promise<number>
   async chunk<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown>,
@@ -1701,7 +2388,9 @@ export class Neode implements INeode {
     callback: (items: T[]) => unknown,
     options: { orderBy?: string; withoutFilters?: string[] | undefined } = {},
   ): Promise<number> {
-    return new PaginateService(this.connection).chunk<T>(
+    assertPublicWithoutFilters(options.withoutFilters)
+
+    return new PaginateService(this.getRunner()).chunk<T>(
       constructor,
       this.getSchema(constructor),
       filter,
@@ -1717,12 +2406,19 @@ export class Neode implements INeode {
   out of the for-await loop stops the walk cleanly — each page is its
   own autocommit read, so no session is left open.
   */
+  lazy<C extends Newable>(
+    constructor: C,
+    filter?: WhereFilter<C>,
+    options?: StreamOptions,
+  ): AsyncGenerator<InstanceType<C>>
   async *lazy<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown> = {},
     options: StreamOptions = {},
   ): AsyncGenerator<T> {
-    yield* new PaginateService(this.connection).lazy<T>(
+    assertPublicWithoutFilters(options.withoutFilters)
+
+    yield* new PaginateService(this.getRunner()).lazy<T>(
       constructor,
       this.getSchema(constructor),
       filter,
@@ -1751,7 +2447,7 @@ export class Neode implements INeode {
   */
   async all<C extends Newable, const WithSpecT extends QueryLoadSpec<C> = never>(
     constructor: C,
-    parameters?: Record<string, unknown>,
+    parameters?: WhereFilter<C>,
     order?: OrderSpec,
     limit?: number,
     skip?: number,
@@ -1760,7 +2456,7 @@ export class Neode implements INeode {
   ): Promise<LoadedEntity<InstanceType<C>, WithSpecT>[]>
   async all<T>(
     constructor: new (...arguments_: never[]) => T,
-    parameters?: Record<string, unknown>,
+    parameters?: WhereFilterLevel<T>,
     order?: OrderSpec,
     limit?: number,
     skip?: number,
@@ -1780,6 +2476,8 @@ export class Neode implements INeode {
     },
   ): Promise<unknown> {
     const schema = this.getSchema(constructor)
+
+    assertPublicWithoutFilters(options?.withoutFilters)
 
     const tx = await this.beginWorkTransaction('READ', database)
 
@@ -1823,8 +2521,21 @@ export class Neode implements INeode {
   /**
   Nodes of the given constructor within `distance` of the given point,
   ordered by distance when `order` is 'distance'
-  (neode's FindWithinDistance)
+  (neode's FindWithinDistance). The model's named read filters apply;
+  `filters.withoutFilters` opts names out (NTS-574).
   */
+  async withinDistance<C extends Newable>(
+    constructor: C,
+    locationProperty: string,
+    point: unknown,
+    distance: number,
+    parameters?: WhereFilter<C>,
+    order?: OrderSpec,
+    limit?: number,
+    skip?: number,
+    database?: string,
+    filters?: { withoutFilters?: string[] | undefined },
+  ): Promise<InstanceType<C>[]>
   async withinDistance<T>(
     constructor: new (...arguments_: never[]) => T,
     locationProperty: string,
@@ -1835,8 +2546,11 @@ export class Neode implements INeode {
     limit?: number,
     skip?: number,
     database?: string,
+    filters?: { withoutFilters?: string[] | undefined },
   ): Promise<T[]> {
     const schema = this.getSchema(constructor)
+
+    assertPublicWithoutFilters(filters?.withoutFilters)
 
     const tx = await this.beginWorkTransaction('READ', database)
 
@@ -1851,6 +2565,7 @@ export class Neode implements INeode {
         order,
         limit,
         skip,
+        filters,
       )
 
       await tx.commit()
@@ -1908,7 +2623,7 @@ export class Neode implements INeode {
   named after the file (neode parity, extended to .ts files)
   */
   withDirectory(directory: string): this {
-    const requireModule = createRequire(__filename)
+    const requireModule = createRequire(import.meta.url)
 
     const files = readdirSync(directory).filter((file) =>
       ['.js', '.ts'].includes(path.extname(file).toLowerCase()),
@@ -1926,6 +2641,21 @@ export class Neode implements INeode {
           : loaded
 
       if (!isSchemaDefinition(candidate)) {
+        // NTS-665: a class default export self-registers on import when it
+        // carries decorators (or is a defineModel virtual class) — decorators
+        // are the house default, so that side-effect registration wins and
+        // the scan skips the file rather than re-registering the constructor
+        // under the file name. An unregistered class is still a mistake.
+        if (typeof candidate === 'function') {
+          if (getModel(candidate) instanceof EntitySchema) {
+            continue
+          }
+
+          throw new NeodeError(
+            `Cannot register model "${name}" from ${file}: the module default-exports a class, and withDirectory() registers map-schema modules only. A decorated class self-registers on import — import it explicitly instead of scanning it, or default-export a plain schema definition from the file.`,
+          )
+        }
+
         throw new TypeError(
           `Cannot register model "${name}" from ${file}: the module did not export a schema definition`,
         )
@@ -1951,19 +2681,23 @@ export class Neode implements INeode {
   hydration. Returns the off function.
   */
   observe(model: Newable, observers: ModelObservers): () => void {
-    return observe(model, observers)
+    return this.observers.observe(model, observers)
   }
 
   /**
   Typed multi-hop traversal (NTS-512): chain hops, run, read hydrated
   rows — one row per matched path, origin entity first.
   */
-  traverse(model: Newable): TraverseBuilder {
+  traverse(model: Newable, options?: { withoutFilters?: string[] | undefined }): TraverseBuilder {
     if (!(getModel(model) instanceof EntitySchema)) {
       throw new NeodeError('traverse() requires a registered model — register it first')
     }
 
-    return new TraverseBuilder(this.getRunner(), () => model)
+    const builder = new TraverseBuilder(this.getRunner(), () => model)
+
+    return options?.withoutFilters === undefined
+      ? builder
+      : builder.withoutFilters(...options.withoutFilters)
   }
 
   /**
@@ -1993,7 +2727,7 @@ export class Neode implements INeode {
     )
 
     try {
-      await runObservers(constructorOf(entity), 'beforeDelete', entity, {
+      await this.observers.run(constructorOf(entity), 'beforeDelete', entity, {
         isNew: false,
         database,
       })
@@ -2005,21 +2739,36 @@ export class Neode implements INeode {
       return await rollbackAfterFailure(tx, error)
     }
 
-    await runObservers(constructorOf(entity), 'afterDelete', entity, {
-      isNew: false,
-      database,
-    })
+    await this.afterCommit(ambientTransaction(), async () => {
+      // Event BEFORE the after* observer (NTS-596): a hook error surfaces
+      // after the commit but never suppresses the emission
+      if (isSoft) {
+        // A soft delete only SETs a label — the node survived, so the
+        // committed change is an update, not a deletion (NTS-596)
+        this.eventEmitter.emit(EventType.NODE_UPDATED, entity)
+      } else if (cascadeOptions?.soft === undefined || cascadeOptions.soft === '') {
+        // Emit event
+        this.eventEmitter.emit(EventType.NODE_DELETED, entity)
+      }
 
-    if (!isSoft && (cascadeOptions?.soft === undefined || cascadeOptions.soft === '')) {
-      // Emit event
-      this.eventEmitter.emit(EventType.NODE_DELETED, entity)
-    }
+      await this.observers.run(constructorOf(entity), 'afterDelete', entity, {
+        isNew: false,
+        database,
+      })
+    })
   }
 
   /**
   DETACH DELETE every node of the given constructor matching the given
   properties, returning the deleted count (neode's Model.deleteAll,
-  extended with a count return)
+  extended with a count return).
+
+  Guarded like Repository.deleteAll (NTS-595): an unfiltered call is
+  refused — pass at least one property, or `{ all: true }` to confirm
+  the wipe. NTS-596: the matched nodes are read and hydrated first, so
+  the delete lifecycle runs per entity — beforeDelete before the delete
+  statement (an error fails the whole delete), and NODE_DELETED +
+  afterDelete once committed.
   */
   async deleteAll(
     constructor: Newable,
@@ -2028,19 +2777,47 @@ export class Neode implements INeode {
   ): Promise<number> {
     const schema = this.getSchema(constructor)
 
-    const builder = new Builder().match('n', schema.getLabels())
+    assertDeleteAllScope(parameters_, schema.getLabels())
 
     // Schema-declared keys only (get() parity): anything else would be raw
     // interpolation into the statement, so unknown keys are ignored
-    for (const property of schema.getProperties()) {
-      const key = property.getKey()
+    const matchBuilder = (): Builder => {
+      const builder = new Builder().match('n', schema.getLabels())
 
-      if (Object.hasOwn(parameters_, key)) {
-        builder.where(`n.${quote(key)}`, parameters_[key])
+      for (const property of schema.getProperties()) {
+        const key = property.getKey()
+
+        if (Object.hasOwn(parameters_, key)) {
+          builder.where(`n.${quote(key)}`, parameters_[key])
+        }
       }
+
+      return builder
     }
 
-    const { query, params: parameters } = builder
+    // Read the matched nodes before deleting them — the delete lifecycle
+    // (NTS-596) needs the entities to observe. Two statements: a row
+    // created between them is deleted without an event (bulk semantics).
+    const { query: readQuery, params: readParams } = matchBuilder().return('n').build()
+
+    const matched = await this.writeCypher(readQuery, readParams, database)
+
+    const entities = hydrate(constructor, matched, 'n')
+
+    for (const entity of entities) {
+      await this.observers.run(constructor, 'beforeDelete', entity, {
+        isNew: false,
+        database,
+      })
+    }
+
+    // NTS-663: release the enforce claims the deleted nodes hold before
+    // the edges go — the bulk statement bypasses DeleteService
+    const removalBuilder = matchBuilder()
+
+    addEnforceClaimRemoval(removalBuilder, schema, 'n')
+
+    const { query, params: parameters } = removalBuilder
       .detachDelete('n')
       .return('count(n) AS count')
       .build()
@@ -2053,7 +2830,79 @@ export class Neode implements INeode {
       throw new NeodeError('count query returned no records')
     }
 
+    await this.afterCommit(ambientTransaction(), async () => {
+      for (const entity of entities) {
+        this.eventEmitter.emit(EventType.NODE_DELETED, entity)
+
+        await this.observers.run(constructor, 'afterDelete', entity, {
+          isNew: false,
+          database,
+        })
+      }
+    })
+
     return Number(firstRecord.get('count'))
+  }
+
+  /**
+  SET / REMOVE a label on the node matched by the entity's elementId and
+  re-hydrate — the write behind the entity instance methods addLabel() /
+  removeLabel() (NTS-596): the save hooks run around it and NODE_UPDATED
+  carries the re-hydrated node once committed (a label change is an
+  update, not a deletion).
+  */
+  async applyLabel<T extends object>(
+    entity: T,
+    label: string,
+    verb: 'SET' | 'REMOVE',
+    database?: string,
+  ): Promise<T | undefined> {
+    const constructor = constructorOf(entity)
+
+    if (constructor === undefined) {
+      throw new NeodeError('Entity has no constructor — cannot resolve its model')
+    }
+
+    const schema = this.getSchema(constructor)
+
+    // NTS-596: beforeSave before the statement — errors fail the write
+    await this.observers.run(constructor, 'beforeSave', entity, { isNew: false, database })
+
+    const elementId = elementIdOfEntity(schema, entity)
+
+    if (elementId === undefined) {
+      throw new NeodeError('Entity has no elementId — save() it before changing its labels')
+    }
+
+    const tx = await this.beginWorkTransaction('WRITE', database)
+
+    try {
+      await tx.run(`MATCH (n) WHERE elementId(n) = $elementId ${verb} n:${quote(label)}`, {
+        elementId,
+      })
+
+      // Write-path re-hydration bypasses the read filters (WITHOUT_ALL_FILTERS)
+      const hydrated = await new FindByIdService(tx).find<T>(constructor, schema, elementId, {
+        withoutFilters: [WITHOUT_ALL_FILTERS],
+      })
+
+      await tx.commit()
+
+      await this.afterCommit(ambientTransaction(), async () => {
+        if (hydrated !== undefined) {
+          this.eventEmitter.emit(EventType.NODE_UPDATED, hydrated)
+        }
+
+        await this.observers.run(constructor, 'afterSave', hydrated ?? entity, {
+          isNew: false,
+          database,
+        })
+      })
+
+      return hydrated
+    } catch (error) {
+      return await rollbackAfterFailure(tx, error)
+    }
   }
 
   /**

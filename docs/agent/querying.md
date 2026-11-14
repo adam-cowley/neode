@@ -8,6 +8,15 @@ Package version: **1.0.0-next.1** (from package.json).
 > churns between versions — LLM training corpora mix neode v1, neode and
 > unrelated OGMs. Regenerate with `pnpm docs:agents`.
 
+> **Default to decorators (NTS-583).** When creating a new project or new models, define them as
+> decorated classes (`@NodeEntity()` + `@Property(...)`) using standard TC39 decorators — never
+> `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`. Use `defineModel` (the
+> map API) only when the user asks for it, or decorators are impossible (models built at runtime,
+> or a toolchain without standard TC39 decorator support).
+>
+> Tooling: TypeScript 5+ (or esbuild/SWC/tsdown with standard decorators), `target` ES2022 or later,
+> `"lib": ["ES2022", "ESNext.Decorators"]`, and leave `experimentalDecorators` unset.
+
 Query builder, repositories, raw Cypher, transactions, hydration, drivers and read-model projections.
 
 ### `AccessMode` (type)
@@ -30,7 +39,7 @@ _source: query/bound-builder.ts_
 
 ### `Builder` (class)
 
-Fluent Cypher query builder. A statement-based builder: every `match()` / `create()` / `merge()` call starts a new statement segment; where clauses accumulate against the current segment and are flushed into it when the next segment starts or when `build()` is called. All user values are passed as query parameters - the generated query contains only aliases. The one exception is `RawExpression` property values (NTS-460), which render verbatim into patterns; bind the values they reference via `param(name, value)`.
+Fluent Cypher query builder. A statement-based builder: every `match()` / `create()` / `merge()` call starts a new statement segment; where clauses accumulate against the current segment and are flushed into it when the next segment starts or when `build()` is called. All user values are passed as query parameters - the generated query contains only aliases. The one exception is `RawExpression` property values (NTS-460), which render verbatim into patterns; bind the values they reference via `param(name, value)`. Named read filters compose into the chain with `withFilters(model, alias?, options?)` (NTS-614).
 
 _source: query/builder.ts_
 
@@ -40,15 +49,33 @@ The result of one chunk: the rows attempted and the hydrated created/merged enti
 
 _source: services/query/bulk.service.ts_
 
+### `BulkChunkError` (class)
+
+Thrown by createMany() / mergeMany() when a chunk's UNWIND fails (NTS-649). The chunk's transaction rolled back: every row of the chunk is unwritten, valid rows included, while earlier chunks stay committed. `failedRows` names each failing row (its index in the full input) with its own error, found by re-running the chunk's rows one transaction per row with every diagnostic transaction rolled back — nothing the diagnosis touches commits. Rows that only fail together (e.g. duplicate unique values within the chunk), or a bulk write inside an open transaction scope (a rolled-back diagnosis is impossible there), report an empty `failedRows` with the reason in the message.
+
+_source: services/query/bulk.service.ts_
+
 ### `BulkOptions` (interface)
+
+_source: services/query/bulk.service.ts_
+
+### `BulkRowFailure` (interface)
+
+One failing row of a failed chunk (NTS-649): the row's zero-based index in the FULL input (not the chunk) and the error the row raised when re-run on its own
 
 _source: services/query/bulk.service.ts_
 
 ### `BulkService` (class)
 
-Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths
+Bulk CREATE and MERGE via UNWIND: one managed write transaction per chunk, one UNWIND statement per transaction, rows validated and reduced to property maps exactly like the single-create / merge paths — `fake` generators included (NTS-608), each row's run independently: unique + `fake` properties are NOT guaranteed distinct across rows (see prepareRows). Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the earlier chunks committed — bulk writes are not atomic across chunks. A failed chunk throws a `BulkChunkError` (NTS-649) that names the failing rows with per-row errors, found by a rolled-back per-row diagnostic pass: every row of the failed chunk (valid rows included) is unwritten, earlier chunks stay committed. Row preparation bounds its embedding-provider calls at MAX_BULK_CONCURRENCY in flight.
 
 _source: services/query/bulk.service.ts_
+
+### `caseExpr` (function)
+
+CASE expression: `CASE WHEN c1 THEN t1 [WHEN …] [ELSE fallback] END`. Conditions and results are Cypher expressions composed by the caller.
+
+_source: query/expressions.ts_
 
 ### `clearFilterParams` (function)
 
@@ -62,6 +89,12 @@ An iterable wrapper over an array of entities (parity with neode's Collection): 
 
 _source: collection.ts_
 
+### `ComparisonOperator` (type)
+
+The operator parameter of whereProps(): one of the ref-to-ref comparison operators (the set the Where clause renders over two references).
+
+_source: query/where.ts_
+
 ### `ConnectionOptions` (interface)
 
 Options a Neode instance accepts alongside its ConnectionProvider.
@@ -73,6 +106,12 @@ _source: driver/types.ts_
 The connection port implemented by every backend.
 
 _source: driver/types.ts_
+
+### `CreateOptions` (interface)
+
+Eager relationship creation on the write path (NTS-615): `relate` maps a relationship KEY (or type) on the written model to the saved target entity — or array of targets — to relate it to, inside the same managed transaction as the write. Edges are MERGE-based, so a retried write stays idempotent (the same guarantee relate() gives).
+
+_source: services/query/create.service.ts_
 
 ### `CursorPage` (interface)
 
@@ -92,11 +131,13 @@ Options for the unified raw query entry, `Neode#cypher`.
 
 _source: driver/types.ts_
 
-### `DeclaredRelationships` (type)
+### `DeleteOptions` (interface)
 
-The declared relationship map of a model constructor (NTS-154), read off the class's phantom `neodeRelationships` static — `undefined` when the model declares none (the `with` spec then falls back to the inferred object/array-key domain, see QueryLoadLevel). TS cannot read the TC39 decorator context's field registrations at the type level (no `emitDecoratorMetadata` in this repo — decision 0001), so the map is the one declaration the author adds per model. The runtime EntitySchema stays the source of truth: a key the map misses is rejected by the runtime validation with the same descriptive error as before.
+_source: services/query/delete.service.ts_
 
-_source: query/load-spec.ts_
+### `DetachResult` (interface)
+
+_source: services/query/detach.service.ts_
 
 ### `Direction` (const)
 
@@ -104,23 +145,29 @@ Direction of a relationship pattern. BOTH renders an undirected match pattern (`
 
 _source: query/direction.ts_
 
-### `EdgeFindResult` (type)
-
-The find() result of an edge-returning read, mirroring the cardinality of the plain FindResult: `RelationshipEdgeRead<T>[]` for a many-key, `RelationshipEdgeRead<T> | undefined` for a one-key. Tuple-wrapped so a union FindResult (`T | undefined`) never distributes. The row shape itself (RelationshipEdgeRead) lives in the one result-shaping module (NTS-566).
-
-_source: services/query/load-relation.service.ts_
-
 ### `EventType` (const)
 
-Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neode.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() when the merge created the node | hydrated entity | | NODE_UPDATED | save() when the merge matched an existing node | hydrated entity | | NODE_MERGED | reserved (mergeOn) | — | | NODE_DELETED | delete() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
+Lifecycle events emitted by Neode (facade) and TransactionalService (work performed inside an open transaction). Subscribe with `neode.on(EventType.NODE_CREATED, handler)`, unsubscribe with `neode.off(...)`. Handlers receive the affected value as their only argument: | Event | Emitted by | Payload | |------------------------|-------------------------------------|--------------------| | NODE_CREATED | create(), save() when the merge created the node, createMany() | hydrated entity | | NODE_UPDATED | save() when the merge matched an existing node, update(), the label writes (addLabel / removeLabel / soft delete) | hydrated entity | | NODE_MERGED | mergeOn() (also behind merge(), Repository#upsert and mergeMany()) | hydrated entity | | NODE_DELETED | delete() (hard deletes), deleteAll() | deleted entity | | RELATIONSHIP_CREATED | relate() with forceCreate | GraphRelationship | | RELATIONSHIP_MERGED | relate() (MERGE, the default) | GraphRelationship | | RELATIONSHIP_UPDATED | reserved | — | | RELATIONSHIP_DELETED | reserved (detach) | — | | QUERY_EXECUTED | every statement run through the | QueryExecutedEvent | | | instance's connection (raw + | | | | service queries, inside and outside | | | | transactions) | | Events are emitted synchronously on an EventEmitter scoped to the Neode instance.
 
 _source: common/events.ts_
 
-### `FindManyAndCountOptions` (interface)
+### `expr` (const)
 
-findManyAndCount() options — they trim the data read only; `total` always counts the whole filter (Prisma parity)
+Leaf Cypher expression helpers. Statement structure lives in Builder (match / where / call / unwind …); these helpers only compose single expressions for RETURN / SET / WHERE positions, so repositories never assemble hand-written clause strings. Every value a caller supplies must be bound as a parameter (`$name`) — these helpers interpolate structure, never data.
 
-_source: services/query/paginate.service.ts_
+_source: query/expressions.ts_
+
+### `FilterOperand` (type)
+
+One filter entry: a bare value (equality — today's bag, byte-identical Cypher) or an operator object.
+
+_source: query/where-filter.ts_
+
+### `FilterOperators` (interface)
+
+The operator-object tier of a filter operand (NTS-646): every operator maps 1:1 onto a Builder method — eq/neq → where/whereNot, gt/gte/lt/lte → where(prop, op, value), in → whereIn, contains/startsWith/endsWith → whereContains/whereStartsWith/whereEndsWith, null → whereNull/whereNotNull. No `between` (compose { gte, lte }), no `nin` (no Builder counterpart), and no raw/alias-taking operators — those stay Builder-only. The string operators type to `never` on non-string values, so `{ age: { contains: 'x' } }` is a type error.
+
+_source: query/where-filter.ts_
 
 ### `GraphNode` (interface)
 
@@ -158,12 +205,6 @@ Hydrate one row of a projection read (NTS-135/136/137/138). The RETURN map proje
 
 _source: projection/hydrate.ts_
 
-### `HydrateQueryOptions` (interface)
-
-Options for the hydrate overloads of the build-and-run sugar, `Neode#read` / `Neode#write` (NTS-559): with a `hydrate` class the rows are hydrated into entities of that class instead of returned raw.
-
-_source: driver/types.ts_
-
 ### `instrumentConnectionProvider` (function)
 
 Instrument a provider transparently: property reads the wrapper doesn't satisfy — duck-typed introspection such as `connection.database` on the neo4j provider — forward to the inner provider, so consumers holding `Neode#getConnection()` see through the instrumentation.
@@ -184,7 +225,7 @@ _source: driver/json-safe.ts_
 
 ### `knn` (function)
 
-k-nearest-neighbour search over a vector index, returning hydrated entities with their similarity score, best match first. With the default `auto` mode the Cypher 25 `SEARCH` clause is attempted first and the queryNodes procedure is used as a fallback; when the backend supports neither a combined error is raised. NTS-162 — the model's named read filters apply to both query forms (a `WHERE` over the matched / YIELDed rows); `filters.withoutFilters` disables names for this call.
+k-nearest-neighbour search over a vector index, returning hydrated entities with their similarity score, best match first. With the default `auto` mode the Cypher 25 `SEARCH` clause is attempted first and the queryNodes procedure is used as a fallback; when the backend supports neither a combined error is raised. NTS-162 — the model's named read filters apply to both query forms (a `WHERE` over the matched / YIELDed rows); `filters.withoutFilters` disables names for this call. NTS-584 — the filters are a post-filter over the index's top-k: the SEARCH clause's in-index `WHERE` only takes property predicates over properties registered as additional filter properties on the vector index (which neode's index definitions never declare) and has no label predicates, so the soft-delete filter can never go there. Filtered searches therefore over-fetch round over round until k rows survive the filters or the round cap gives up — k is filled whenever that many valid neighbours exist.
 
 _source: services/query/knn.service.ts_
 
@@ -196,23 +237,9 @@ _source: services/query/knn.service.ts_
 
 ### `LabelPredicate` (class)
 
-A label predicate: `alias:Label` (several labels require all of them), shared by `whereLabel` (`WHERE n:Completed`) and `orderByLabel` (`ORDER BY n:Completed DESC`).
-
 _source: query/label-predicate.ts_
 
 ### `LoadedEntity` (type)
-
-_source: query/load-spec.ts_
-
-### `LoadOptions` (interface)
-
-Traversal options for a lazy relation load (`instance.load(key, options)`, NTS-558): pushed into the traversal's ORDER BY / SKIP / LIMIT — the sorted and truncated related reads that otherwise drop callers to a raw Builder.
-
-_source: query/load-spec.ts_
-
-### `LoadSpec` (type)
-
-One entry of a load spec (NTS-560): a callback decorating the relation's read. `true` (a plain request) is also accepted at the `with` key.
 
 _source: query/load-spec.ts_
 
@@ -221,6 +248,42 @@ _source: query/load-spec.ts_
 Non-paginated `{ items, total }` read (Prisma's findManyAndCount)
 
 _source: services/query/paginate.service.ts_
+
+### `MAX_CASCADE_DEPTH` (const)
+
+Maximum depth of the self-referential cascade walk — the delete-path counterpart of MAX_TRAVERSE_DEPTH (traverse) and MAX_CREATE_DEPTH (services/write-utilities). Overridable per call with the `depth` option of (NTS-595).
+
+_source: services/query/delete.service.ts_
+
+### `MergeCounts` (interface)
+
+Aggregated write counters of a merge write (NTS-630): nodes and relationships count their creates + deletes, properties counts SET operations.
+
+_source: services/query/merge.service.ts_
+
+### `mergeOutcome` (function)
+
+Derive the merge outcome from a statement summary's write counters. The backends name the counters differently (neo4j: nodesCreated, the Relate engine: nodes_created) — both spellings are read.
+
+_source: services/query/merge.service.ts_
+
+### `MergeOutcome` (interface)
+
+What a merge write did (NTS-630), derived from the driver summary's write counters: `created` when the MERGE created the node, `updated` when it matched and wrote to it — both false when nothing changed.
+
+_source: services/query/merge.service.ts_
+
+### `MergeResult` (interface)
+
+The result of merge() / mergeOn() (NTS-630): the hydrated entity plus the write outcome and the raw driver summary preserved for power users. Breaking (1.0.0-next): replaces the bare-entity return.
+
+_source: services/query/merge.service.ts_
+
+### `mergeResultFromSave` (function)
+
+Wrap a save() outcome into a MergeResult (NTS-630): the save path knows `created` from its own statement, but the pure-CREATE branch (no merge fields) carries no summary — its counters stay unreported (zeros) while the created flag stands.
+
+_source: services/query/merge.service.ts_
 
 ### `Neo4jConnectionProvider` (class)
 
@@ -258,6 +321,48 @@ Pagination helpers. Two modes, selected by the options shape: - `{ page, limit, 
 
 _source: services/query/paginate.service.ts_
 
+### `ParallelBody` (type)
+
+One parallel() operation: receives the operation's own scope and resolves when its work is done. A callback, not a promise — a transaction cannot open before the body runs.
+
+_source: transaction/parallel.ts_
+
+### `ParallelError` (class)
+
+Thrown by parallel() when an operation fails (NTS-631): - autocommit modes ('read' / 'write') — `phase` is 'body' and `errors` carries every failed operation in input order. Nothing is rolled back (autocommit has nothing to roll back) and `rollback` is undefined. - atomic mode — `phase` is 'body' when an operation body failed (every open transaction was rolled back first; `rollback` reports how that went), or 'commit' when every body succeeded but a commit failed (the documented residual risk, surfaced per handle). The first failure is also set as the error's `cause`.
+
+_source: transaction/parallel.ts_
+
+### `ParallelMode` (type)
+
+What parallel() fans out as: - 'read' (default) — concurrent READ autocommit sessions - 'write' — concurrent WRITE autocommit sessions, no cross-operation atomicity - 'atomic' — one WRITE transaction per operation, all-or-nothing commit
+
+_source: transaction/parallel.ts_
+
+### `ParallelOperationError` (interface)
+
+One failed operation of a parallel() fan-out.
+
+_source: transaction/parallel.ts_
+
+### `ParallelOptions` (interface)
+
+Options for parallel().
+
+_source: transaction/parallel.ts_
+
+### `ParallelRollbackReport` (interface)
+
+Atomic-mode rollback report: what the rollback of the opened transactions did after a body failed.
+
+_source: transaction/parallel.ts_
+
+### `ParallelScope` (interface)
+
+The scope one parallel() operation runs on: a Runner bound to the operation's own session (autocommit modes) or transaction (atomic mode), plus the facade's build-and-run sugar — pass a Builder or a raw string. Routing is fixed per scope (the mode option decides it once); a transaction's routing was fixed when it opened.
+
+_source: transaction/parallel.ts_
+
 ### `projectionNode` (function)
 
 The RETURN map projection for a model's read query: all properties, the hydration identity markers, full-entity eager relationships and every projected property — one query per read. `withSpec` (NTS-560, NTS-154) additionally renders requested non-eager relationships: `true` renders the standard comprehension fragment, a nested spec object renders the level's spec fragment (the NTS-498 shape, keys validated down the target's declared relationship graph), and a decorating callback renders `key: <key>_loaded` (`[0]` for singular) — the alias the CALL subquery loadSpecCalls() published. Requested keys count as loaded: the hydrated values materialize as own properties through the regular eager hydration path.
@@ -272,8 +377,6 @@ _source: projection/projection.service.ts_
 
 ### `Property` (class)
 
-A property in a SET clause: `property operator $param` or, inline in a pattern, `property: $param`. With `isRaw`, the value renders verbatim (an inline Cypher expression, NTS-460) instead of a parameter reference.
-
 _source: query/property.ts_
 
 ### `QueryExecutedEvent` (interface)
@@ -281,18 +384,6 @@ _source: query/property.ts_
 Payload of QUERY_EXECUTED, emitted once per executed statement.
 
 _source: common/events.ts_
-
-### `QueryLoadLevel` (type)
-
-One nested level of a `with` load spec, keyed off the entity's DECLARED FIELD types (no map entry required): the LoadOptions trim keys (order / skip / limit / withoutFilters) sit beside the relationship keys, exactly the object `parseLoadLevel` (NTS-498) reads at runtime — a relationship named exactly like a reserved option key is unusable in the spec, as the runtime reserves it. Relationship keys descend recursively through the declared field types: an array field loads many (`Item[]` in the narrowed return), an entity field loads one (`Item | undefined`).
-
-_source: query/load-spec.ts_
-
-### `QueryLoadSpec` (type)
-
-The `with` load spec checked against the type-level model map (NTS-154), keyed by the model CONSTRUCTOR: - with a `neodeRelationships` phantom static: the spec's keys must be DECLARED RELATIONSHIPS (`keyof` the map entry, intersected with the class's own fields) — property keys, method keys and typos are type errors; - without one: the inferred fallback domain (QueryLoadLevel) — keys whose declared field type can hold related entities. Every level also accepts the LoadOptions trim keys and descends through the declared field types, mirroring parseLoadLevel at runtime.
-
-_source: query/load-spec.ts_
 
 ### `QueryOutput` (interface)
 
@@ -320,7 +411,7 @@ _source: driver/types.ts_
 
 ### `RawExpression` (class)
 
-A raw Cypher expression used as an inline pattern property value (NTS-460): rendered verbatim into the pattern — `{ prop: <expression> }` — instead of being bound as a parameter. Variable references (`row.answers`), server-side calls (`datetime()`) and parameter references (`$name`, bound via `Builder#param`) are all legal; the expression must never interpolate data.
+A raw Cypher expression used as an inline pattern property value (NTS-460): rendered verbatim into the pattern — `{ prop: <expression> }` — instead of being bound as a parameter. Variable references (`row.answers`), server-side calls (`datetime()`) and parameter references (`$name`, bound via `Builder#param`) are all legal; the expression must never interpolate data. On the write paths (NTS-629) an expression value in a create()/merge() property map renders as a trailing `SET this.prop = <expression>` clause instead of an inline pattern value — inside a CREATE / MERGE pattern the node variable is not yet bound, and the trailing SET clauses render in map order, so a later expression may reference an earlier property. Expression values skip write-time property validation; the stored value is validated against the property's type when it is next read. SET-side expressions: verified on neo4j-driver backends; on the embedded Relate engine, avoid pattern syntax inside expressions until verified.
 
 _source: query/expressions.ts_
 
@@ -336,35 +427,23 @@ Per-query filter options, accepted by every filtered read (NTS-162): - `withoutF
 
 _source: services/query/filters.ts_
 
-### `ReadOptions` (interface)
-
-Options for the model reads that accept a load spec (NTS-560).
-
-_source: query/load-spec.ts_
-
 ### `RelateConnectionProvider` (class)
 
 ConnectionProvider over the embedded Relate engine (@relate/relate) — in-process, no Bolt server. The engine is a soft dependency, loaded at construction time; the client shapes are structural so it stays that way.
 
 _source: driver/relate.ts_
 
-### `RelatedQuery` (class)
+### `RelateManyResult` (interface)
 
-The scope instance.related(key) returns (NTS-497): the queryable generalisation of load() — Builder-style verbs (where / orderBy / limit / skip) composed ON TOP of the relationship traversal, with the terminal find() / first() / count() running it and hydrating the related entities through the regular hydration path (projection-aware: nested eager relationships ride the eager map projection, as at load()). The related target's own global filters (NTS-162) apply inside the traversal read — a filtered-out target yields an empty result, never an error, and the parent row is never affected (plain MATCH — no OPTIONAL MATCH, NTS-565). NTS-499 extends the scope with relationship-aware reads: whereRelationship() filters on the EDGE's own properties (the predicate joins the traversal's WHERE, composed with the target predicates of where()), and withRelationship() returns each row as `{ node, edge }` — the hydrated target alongside the traversed GraphRelationship. Both ride the same flat MATCH: no new clause shapes, no OPTIONAL MATCH. The typed view of the scope is the RelatedScope interface, projected through EntityMethods.related — the class is the runtime engine, its terminals answering `unknown` exactly as MethodImpl.load does. Each terminal runs its own READ scope: verbs are recorded at chain time and replayed onto a fresh traversal per terminal. count() counts the matching related nodes — the row-shaping verbs (order / skip / limit) do not affect it, as with a total alongside a paged read.
+The relateMany() aggregate: edges MERGE-matched-or-created and the number of chunks written
 
-_source: services/query/load-relation.service.ts_
+_source: services/query/bulk.service.ts_
 
-### `RelatedScope` (interface)
+### `RelateManyRow` (interface)
 
-The related() scope surface (NTS-497): Builder-style verbs composed on top of one declared relationship traversal, with the terminals running the composed statement. Property names are bare ("year") — the scope prefixes them with the related node's variable, exactly as RelationQuery does at load-spec replay (NTS-560). Every verb returns the scope for chaining. `T` is the related entity type; `FindResult` is what find() resolves to — `T[]` for a many-key, `T | undefined` for a one-key (the declared relationship property's own type).
+One row of relateMany(): the from- and to-node primary-key values plus optional edge properties
 
-_source: services/query/load-relation.service.ts_
-
-### `RelationQuery` (interface)
-
-The sub-builder a load spec callback receives (NTS-560): the comprehension / subquery-legal operations only — where, orderBy, limit, skip. No return(), no writes, no statement segments. Property names are bare ("orderDate") — the loader prefixes them with the related node's variable. Every method returns the view for chaining.
-
-_source: query/load-spec.ts_
+_source: services/query/bulk.service.ts_
 
 ### `RelationshipEdgeRead` (interface)
 
@@ -372,11 +451,11 @@ One result row of an edge-returning related() read (NTS-499): the hydrated relat
 
 _source: services/query/shape.ts_
 
-### `RelationshipSerialisationOptions` (interface)
+### `ReplaceRelationshipOptions` (interface)
 
-Relationship serialisation control for toJson() (NTS-564): which of the entity's declared relationships serialise, and how many levels deep. - `include` — opt-in: only these declared relationships serialise. A declared key that is not loaded on the instance serialises nothing (toJson never reads the database — load first via `with` / load()). - `exclude` — opt-out: every loaded relationship except these. - `depth` — how many relationship LEVELS serialise (1 = the entity's own relationships, nested entities serialise their properties only); omit for unlimited (the default). Values below 1 serialise no relationships. Keys in include / exclude must be declared relationships — unknown keys throw the schema's descriptive error naming the valid relationship keys (the NTS-498 pattern). Both lists apply to the serialised entity's own relationships; `depth` is what bounds the nesting below it.
+Options for
 
-_source: serialise.ts_
+_source: services/query/replace-relationship.service.ts_
 
 ### `Repository` (class)
 
@@ -389,6 +468,28 @@ _source: repository/index.ts_
 Resolve the Relate client module and native library. The client is not yet published to npm, so it is loaded from disk: 1. `RELATE_CLIENT_PATH` env var, or 2. the sibling `relate` repository checkout (`../relate/clients/javascript`) The native library location is passed through via `RELATE_LIB` (see the Relate client's loader) — detected automatically here when a sibling repository checkout exists.
 
 _source: driver/relate.ts_
+
+### `RowPropertiesResult` (type)
+
+The result of mapping one source row (a CSV / JSON / NDJSON record) through the model's write pipeline
+
+_source: services/query/bulk.service.ts_
+
+### `rows` (function)
+
+The rows of a raw query result as plain objects keyed by column name — the `toObject()` shape the neo4j driver's Record offers, with every value run through jsonSafe. The row type is a caller assertion (the RETURN columns are not statically known): pass it explicitly for dot access — `rows<{ name: string }>(output)` — or read index-signature style with brackets. The scalar pattern for a single-row result is `rows<{ n: number }>(output)[0]?.n`.
+
+_source: driver/rows.ts_
+
+### `rowToProperties` (function)
+
+Map one source row to the property map createMany() / mergeMany() take — the batch-import row pipeline, non-throwing. Renames apply first, then the single-create order (fake -> embeddings -> derived -> transforms, NTS-608/ 449/569), then conversion through the schema BEFORE validation: file sources deliver strings (every CSV cell is one), and a numeric string must not fail its type rule. Unset properties resolve defaults and fakes exactly like create(). Returns `{ ok: false, errors }` instead of throwing — a ValidationError carries every failing check; a value its type cannot absorb (nested relationship values, `age: "x"`) becomes one synthetic issue. The `properties` of an ok result feed createMany()/mergeMany() directly: already-converted driver values pass through those pipelines unchanged.
+
+_source: services/query/bulk.service.ts_
+
+### `RowToPropertiesOptions` (interface)
+
+_source: services/query/bulk.service.ts_
 
 ### `Runner` (interface)
 
@@ -410,15 +511,15 @@ _source: services/query/search.service.ts_
 
 ### `setFilterParams` (function)
 
-Set the parameter a named filter's `where` references as `$name` (`setFilterParams('tenant', 'acme')` for `where: 'node.tenantId = $tenant'`). Values are bound as query parameters — they never render into the query text.
+Set the process-wide DEFAULT for the parameter a named filter's `where` references as `$name` (`setFilterParams('tenant', 'acme')` for `where: 'node.tenantId = $tenant'`). Values are bound as query parameters — they never render into the query text. UNSAFE UNDER CONCURRENCY: the value is global to the process, so `setFilterParams('tenant', t); await x; query` lets a concurrent request overwrite it between the set and the read — a cross-tenant leak. Use it only for genuinely process-wide values (single-tenant apps, scripts, tests); for per-request values use `withFilterParams`, whose scope wins over this default.
 
 _source: services/query/filters.ts_
 
-### `StreamOptions` (interface)
+### `ShortestPathOptions` (interface)
 
-lazy() options — the keyset walk behind cursor pagination
+Options for Builder.shortestPath() (NTS-658)
 
-_source: services/query/paginate.service.ts_
+_source: query/builder.ts_
 
 ### `SyncEdgesOptions` (interface)
 
@@ -429,10 +530,6 @@ _source: services/query/sync.service.ts_
 ### `SyncEdgesResult` (interface)
 
 What a sync did: how many edges were related and how many detached (zero and zero for a no-op sync — nothing is written)
-
-_source: services/query/sync.service.ts_
-
-### `SyncService` (class)
 
 _source: services/query/sync.service.ts_
 
@@ -450,13 +547,7 @@ _source: query/direction.ts_
 
 ### `toJson` (function)
 
-Convert an entity into a JSON friendly object: plain properties (hidden and structural properties skipped), `_id` (elementId when the model carries an internal id property) and `_labels` (the schema's labels). Eagerly loaded relationships are serialised recursively. `options.relationships` (NTS-564) controls relationship serialisation — `include` / `exclude` name declared relationships, `depth` bounds the levels. Without options the serialisation is exactly as before: every loaded relationship, unlimited depth.
-
-_source: serialise.ts_
-
-### `ToJsonOptions` (interface)
-
-Options for toJson() (NTS-564). Every key is optional — a call without options serialises exactly as before.
+Convert an entity into a JSON friendly object: plain properties (hidden, protected and structural properties skipped), `_id` (elementId when the model carries an internal id property) and `_labels` (the schema's labels). Eagerly loaded relationships are serialised recursively. `options.relationships` (NTS-564) controls relationship serialisation — `include` / `exclude` name declared relationships, `depth` bounds the levels. Without options the serialisation is exactly as before: every loaded relationship, unlimited depth. `seen` (NTS-597) tracks the entities on the current serialisation path — a graph that re-reaches one of its own ancestors (a cycle) throws a NeodeError instead of overflowing the stack. Shared (non-cyclic) sub-graphs serialise in full.
 
 _source: serialise.ts_
 
@@ -468,7 +559,7 @@ _source: transaction/transactional.service.ts_
 
 ### `TransactionError` (class)
 
-Thrown by Neode.batch() when any statement of the batch fails and the transaction is rolled back (port of neode's TransactionError): - `errors` — per-statement error aligned with the input batch, null where the statement succeeded - `results` — results of the statements that succeeded before the failure - `details` — the failed statements only ({ index, query, params, error })
+Thrown by Neode.runAll() (v3's batch(), NTS-624) when any statement of the batch fails and the transaction is rolled back (port of neode's TransactionError): - `errors` — per-statement error aligned with the input batch, null where the statement succeeded - `results` — results of the statements that succeeded before the failure - `details` — the failed statements only ({ index, query, params, error })
 
 _source: transaction/errors.ts_
 
@@ -478,11 +569,11 @@ An explicit transaction: statements run in scope until commit/rollback.
 
 _source: driver/types.ts_
 
-### `TransactionOptions` (interface)
+### `TransformedQueryOutput` (interface)
 
-Options for `Neode#transaction` — routing and database are per transaction (the transaction's session decides them once at open time).
+A query result whose rows were mapped by a `recordTransformer` — the row shape is the transformer's return type, known only at the call site.
 
-_source: transaction/ambient.ts_
+_source: driver/types.ts_
 
 ### `valueToJson` (function)
 
@@ -490,20 +581,137 @@ Convert a single property value into its JSON friendly shape.
 
 _source: serialise.ts_
 
+### `WhereFilter` (type)
+
+A where filter checked against the model's declared properties (NTS-646), keyed by the model CONSTRUCTOR: equality values and operator objects type-check against the declared property keys, relationship keys take nested bags. Unknown keys — typos, method keys — are compile errors at the call site (object-literal excess-property checking); a `Record<string, unknown>` variable still passes (literals are the contract), and the runtime helper throws on unknown operator keys. `ts await neode.get(Person, { name: 'Adam', age: { gte: 18 } }) await neode.get(Person, { pets: { kind: { startsWith: 'ca' } } }) await neode.get(Person, { nme: 'Adam' }) // ← compile error `
+
+_source: query/where-filter.ts_
+
+### `WhereFilterLevel` (type)
+
+One level of a where filter, keyed off the entity's DECLARED FIELD types: property keys take bare values or operator objects, relationship keys take nested filter bags (recursing through FieldTarget, the same descent QueryLoadLevel uses). No phantom map required — a mis-filed key the fallback domain lets through is caught by the runtime consumption loop.
+
+_source: query/where-filter.ts_
+
 ### `WhereNull` (class)
 
 An `IS NULL` / `IS NOT NULL` predicate on a property, rendered by toString() — the value of `Builder.whereNull` / `whereNotNull`.
 
 _source: query/where-null.ts_
 
-### `WITHOUT_ALL_FILTERS` (const)
+### `withFilterParams` (function)
 
-The reserved withoutFilters entry that disables EVERY named filter for the query — the write paths' internal re-hydration (save / create / merge use FindByIdService to re-read the row they just wrote) must find rows the current filter view hides. Filters are a read policy; writes never read through them.
+Run the work with request-scoped filter params (NTS-575). Every read the work performs — across awaits, and isolated from concurrent callers — sees these values, which take precedence over `setFilterParams` defaults. Scopes nest: an inner scope overrides the outer one name by name, and a value of `undefined` hides the outer/default value inside the scope. `ts await withFilterParams({ tenant: req.tenantId }, async () => { await Article.all() }) ` Needs a runtime with AsyncLocalStorage (Node.js), like ambient transactions.
 
 _source: services/query/filters.ts_
 
-### `WithSpec` (type)
+### `WITHOUT_ALL_FILTERS` (const)
 
-The `with` load spec on find / findAll / all (NTS-560): relationship key -> request. Keys must name relationships declared on the model — unknown keys are rejected at compile time when the model type is known and throw a NeodeError at runtime.
+The reserved withoutFilters entry that disables EVERY named filter for the query — the write paths' internal re-hydration (save / create / merge / update hydrate the row their own RETURN carries, falling back to a FindByIdService re-read where RETURN cannot serve) must find rows the current filter view hides. Filters are a read policy; writes never read through them. Internal service call sites pass it directly to the query services; the public read option bags (facade, TransactionalService, Repository, load specs, traverse) reject it through assertPublicWithoutFilters (NTS-610) — without that gate one user-supplied string switches off tenancy AND soft delete on any read.
 
-_source: query/load-spec.ts_
+_source: services/query/filters.ts_
+
+## Consuming raw rows — the recipe
+
+Raw reads return QueryOutput: one QueryRecord per row (`get` /`has` /`keys`).
+Pick the first helper that fits — none of them needs the `.get()`-cast plumbing.
+
+Row maps — plain objects keyed by column, values JSON-safe:
+
+```ts
+import { rows } from 'neode'
+
+const output = await neode.cypher('MATCH (p:Person) RETURN p.name AS name, p.age AS age')
+const people = rows<{ name: string; age: number }>(output) // [{ name: 'Adam', age: 30 }, …]
+const first = rows<{ name: string }>(output)[0]?.name // the scalar pattern: one row, one value
+```
+
+Per-query reshaping — `recordTransformer` maps every record before it reaches the
+caller (`cypher()`, and the same option on `read()` /`write()`; ignored when `hydrate` is set):
+
+```ts
+const output = await neode.cypher(
+  'MATCH (p:Person) RETURN p.name AS name',
+  {},
+  {
+    recordTransformer: (row) => ({ name: row.get('name') }),
+  },
+)
+output.records // the mapped rows — [{ name: 'Adam' }, …]
+```
+
+Entities — when the row is (or contains) a node of a registered model, hydrate
+instead of touching rows: `hydrate` /`hydrateFirst` /`toCollection` over the raw
+output, or the `hydrate` option on `read()` /`write()` /`cypher()`:
+
+```ts
+const people = await neode.read(query, { hydrate: Person }) // hydrated entities, eager columns attached
+```
+
+Use rows()/recordTransformer for shapes the model does not project — aggregates,
+ad-hoc returns, cross-model rows; use hydration when the row IS an entity. The
+values of rows() are already JSON-safe; for a raw QueryRecord crossing a JSON
+boundary (event payload, cache) wrap it with jsonSafeRecord(record).
+
+Prefer one statement over id-polling: Neo4j's core benefit is pattern-matching a
+whole subgraph at once. Lists load via `with`-specs on the root read (each with-spec
+renders into the same statement, NTS-565 — no OPTIONAL MATCH), never via per-instance
+`load()` /`related()` in a loop — the get-ids-then-poll anti-pattern, one traversal per
+terminal. Instance loads are for one-off deep dives on a single entity:
+
+```ts
+// the anti-pattern: one traversal per row (N+1)
+const people = await neode.all(Person)
+for (const person of people) {
+  await person.load('orders')
+}
+
+// one with-spec read: the orders render inside the same statement
+const people = await neode.getRepository(Person).findAll({}, { with: { orders: true } })
+```
+
+## Trust boundary — what is safe for user input
+
+Every VALUE a query carries binds as a parameter: filters, properties,
+full-text query strings, vectors — user input is safe there. Identifiers
+(labels, relationship types, property keys, order directions, limits,
+skips, degrees) cannot be bound: the library backtick-escapes or validates
+them, so schema-declared and semi-trusted strings are safe too
+(`safeKey` / `quote` / `assertDirection` / `assertCount`, all
+idempotent on already-quoted input).
+
+Raw-expression channels render VERBATIM into the statement and are
+TRUSTED-INPUT ONLY — never pass user-supplied text:
+
+- `RawExpression` property values, `@Expression` projections and the
+  `cypher` option of `@Derived` — the expression must never interpolate
+  data; bind values it references via `param(name, value)` and reference
+  them as `$name`.
+- `expr()` / `caseExpr()` compose single expressions from fragments —
+  same rule for every fragment.
+- `whereRaw()`, `whereExists(pattern)`, `whereAny()`, `return()`,
+  `unwind()`, `setExpr()` / `onCreateSetExpr()` / `onMatchSetExpr()`,
+  `callProcedure()`, `call` / `forEach` sub-builders, `remove()`,
+  `delete()` / `detachDelete()` and `orderBy()` FIELD terms (the field
+  may be any expression, so it cannot be escaped — the model-read services
+  escape user order keys via `orderTerms()` before reaching it).
+- Aliases and path variables must be plain identifiers
+  (`match` / `create` / `merge` / `to` / `relationship` /
+  `asPath` / `whereId` assert this — they cannot be escaped without
+  changing meaning).
+- `runCypherScript()` / `splitCypherStatements()` — the script IS
+  Cypher by definition; a .cypher file on disk is trusted input.
+- Schema DDL (`createUniqueConstraint` and friends) — labels, properties
+  and index names come from the model definitions; the SchemaService
+  composers backtick-quote them, the Builder DDL composes them unquoted.
+
+Model-defined named filters (`@Filter where`) and `setFilterParams`
+values are developer-declared; filter VALUES bind as parameters, and
+`withoutFilters: ['*']` is rejected on every public read (NTS-610) — a
+user-supplied string can never switch off tenancy or soft delete. The
+`neode/express` router is a write-open surface (mount auth in front of
+it) but an injection-closed one: query keys map onto DECLARED property
+filters as parameters, unknown keys are dropped, `order` / `sort`
+travel as OrderSpec data through the escaping order renderer, and nothing
+on a request can reach `withoutFilters`, `wipe()` or any destructive
+call.

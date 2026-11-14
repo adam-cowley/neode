@@ -109,6 +109,14 @@ export interface ConnectionOptions {
   a per-call `routing` (defaultRouting itself defaults to 'READ')
   */
   defaultRouting?: AccessMode
+
+  /**
+  Milliseconds a statement / transaction waits for the embedded Relate
+  engine's single transaction slot before failing — forwarded to
+  `RelateConnectionProvider` by `forRelate` (default 30000; `0` or
+  `Infinity` waits forever). Ignored by the other providers.
+  */
+  queueTimeoutMs?: number
 }
 
 /**
@@ -131,6 +139,24 @@ export interface CypherOptions {
   Column that holds the node to hydrate (default 'this')
   */
   alias?: string
+  /**
+  Map each record before it reaches the caller: the returned value
+  replaces the record in the result's `records` array. The transformer
+  sees the row JSON-safe (the pass every `cypher()` row already goes
+  through). Ignored when `hydrate` is set — hydration owns the rows
+  then. Shape the rows into plain objects to skip the `.get()` plumbing:
+  `recordTransformer: (row) => ({ id: row.get('id') })`
+  */
+  recordTransformer?: (record: QueryRecord) => unknown
+}
+
+/**
+A query result whose rows were mapped by a `recordTransformer` — the row
+shape is the transformer's return type, known only at the call site.
+*/
+export interface TransformedQueryOutput<Row = unknown> {
+  records: Row[]
+  summary?: QuerySummary | undefined
 }
 
 /**
@@ -147,6 +173,13 @@ export interface HydrateQueryOptions {
   Per-call database override
   */
   database?: string
+  /**
+  Map each raw row before it reaches the caller — the
+  CypherOptions.recordTransformer option, on the `Neode#read` /
+  `Neode#write` sugar (pass the options object as the third argument).
+  The transformer sees the row JSON-safe. Ignored when `hydrate` is set.
+  */
+  recordTransformer?: (record: QueryRecord) => unknown
 }
 
 /**

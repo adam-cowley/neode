@@ -89,10 +89,12 @@ describe('projection nested filters / sort (NTS-145)', () => {
 
     // Traversal bound in the same single read query — no N+1
     expect(cypher).toContain(
-      'MATCH (this)-[this_course_filter_rel:`IN_COURSE`]->(this_course_filter:ProjectionFilterCourse)',
+      'WHERE (EXISTS { WITH this MATCH (this)-[this_course_filter_rel:`IN_COURSE`]->(this_course_filter:ProjectionFilterCourse)',
     )
-    expect(cypher).toContain('WHERE (this_course_filter.slug = $where_this_course_filter_slug)')
-    expect(params.where_this_course_filter_slug).toBe('intro')
+    expect(cypher).toContain(
+      'WHERE (this_course_filter.slug = $sub0_where_this_course_filter_slug)',
+    )
+    expect(params.sub0_where_this_course_filter_slug).toBe('intro')
 
     // The RETURN projection is untouched
     expect(cypher).toContain('RETURN this {')
@@ -106,10 +108,10 @@ describe('projection nested filters / sort (NTS-145)', () => {
 
     const cypher = normalise(query)
 
-    expect(cypher).toContain('WHERE (this.name = $where_this_name)')
+    expect(cypher).toContain('this.name = $where_this_name')
     expect(params.where_this_name).toBe('Adam')
-    expect(cypher).toContain('WHERE (this_course_filter.title = $where_this_course_filter_title)')
-    expect(params.where_this_course_filter_title).toBe('Neo4j Mastery')
+    expect(cypher).toContain('this_course_filter.title = $sub0_where_this_course_filter_title')
+    expect(params.sub0_where_this_course_filter_title).toBe('Neo4j Mastery')
   })
 
   it('nested filter on a full-entity @RelatedOne behaves the same', async () => {
@@ -118,12 +120,12 @@ describe('projection nested filters / sort (NTS-145)', () => {
     const cypher = normalise(query)
 
     expect(cypher).toContain(
-      'MATCH (this)-[this_fullCourse_filter_rel:`IN_COURSE`]->(this_fullCourse_filter:ProjectionFilterCourse)',
+      'EXISTS { WITH this MATCH (this)-[this_fullCourse_filter_rel:`IN_COURSE`]->(this_fullCourse_filter:ProjectionFilterCourse)',
     )
     expect(cypher).toContain(
-      'WHERE (this_fullCourse_filter.slug = $where_this_fullCourse_filter_slug)',
+      'WHERE (this_fullCourse_filter.slug = $sub0_where_this_fullCourse_filter_slug)',
     )
-    expect(params.where_this_fullCourse_filter_slug).toBe('graph-basics')
+    expect(params.sub0_where_this_fullCourse_filter_slug).toBe('graph-basics')
   })
 
   it('nested filter on a @RelatedMany matches when one related node matches', async () => {
@@ -131,11 +133,12 @@ describe('projection nested filters / sort (NTS-145)', () => {
 
     const cypher = normalise(query)
 
+    // EXISTS wrap: several matching related nodes never duplicate the root row (NTS-574)
     expect(cypher).toContain(
-      'MATCH (this)-[this_completedLessons_filter_rel:`DONE`]-(this_completedLessons_filter)',
+      'EXISTS { WITH this MATCH (this)-[this_completedLessons_filter_rel:`DONE`]-(this_completedLessons_filter)',
     )
     expect(cypher).toContain(
-      'WHERE (this_completedLessons_filter.slug = $where_this_completedLessons_filter_slug)',
+      'WHERE (this_completedLessons_filter.slug = $sub0_where_this_completedLessons_filter_slug)',
     )
   })
 
@@ -145,9 +148,19 @@ describe('projection nested filters / sort (NTS-145)', () => {
     expect(normalise(query)).not.toContain('_filter')
   })
 
-  it('throws a clear error for an object filter on a non-related property', async () => {
+  it('treats an object filter on a non-related property as an operator object (NTS-646)', async () => {
+    // was: a nested-filter rejection — operator objects are the NTS-646 tier
+    const { query, params } = await compile({ lessonCount: { gte: 2 } })
+
+    const cypher = normalise(query)
+
+    expect(cypher).toContain('WHERE (this.lessonCount >= $where_this_lessonCount)')
+    expect(params['where_this_lessonCount']).toBe(2)
+  })
+
+  it('throws a clear error for an unknown operator key (NTS-646)', async () => {
     await expect(compile({ lessonCount: { minimum: 2 } })).rejects.toThrow(
-      /lessonCount.*@RelatedOne.*@RelatedMany/s,
+      /Unknown where-filter operator "minimum" on property "lessonCount"/s,
     )
   })
 
@@ -167,16 +180,17 @@ describe('projection nested filters / sort (NTS-145)', () => {
     expect(cypher).toContain('ORDER BY this_course_filter[0]')
   })
 
-  it('reuses the filter traversal for a nested sort on the same property', async () => {
+  it('sorts through its own COLLECT subquery next to a nested filter on the same property', async () => {
     const { query } = await compile({ course: { title: 'Neo4j Mastery' } }, { course: 'title' })
 
     const cypher = normalise(query)
 
-    // One traversal (the filtering MATCH), no extra subquery for the sort
-    expect(cypher.match(/this_course_filter_rel/g)).toHaveLength(1)
+    // The filter rides an EXISTS subquery (NTS-574) and binds nothing
+    // outward, so the sort carries its own COLLECT subquery
+    expect(cypher).toContain('EXISTS {')
+    expect(cypher).toContain('COLLECT {')
     expect(cypher).not.toContain('OPTIONAL MATCH')
-    expect(cypher).not.toContain('COLLECT {')
-    expect(cypher).toContain('ORDER BY this_course_filter.title')
+    expect(cypher).toContain('ORDER BY this_course_filter[0]')
   })
 
   it('throws for a nested sort on a @RelatedMany', async () => {

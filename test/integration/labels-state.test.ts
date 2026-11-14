@@ -3,7 +3,7 @@
 // query services below are evaluated
 import { openBackend, TestBackend } from './support/backend'
 import { setDefaultNeode, WithMethods } from '../../src/entity-methods'
-import { NodeEntity, InternalId, String, Uuid } from '../../src/decorators'
+import { NodeEntity, InternalId, Property, Uuid } from '../../src/decorators'
 import { Builder } from '../../src/query'
 
 // ---- Fixtures (per-file: decorator registry is global per module) -----------
@@ -16,7 +16,7 @@ class Enrolment {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   course: string
 }
 

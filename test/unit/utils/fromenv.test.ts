@@ -110,6 +110,8 @@ describe('configFromEnv', () => {
   })
 
   it('parses the integer config settings as numbers', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {}) // NTS-589: RETRY_TIME now warns it is not applied
+
     const env = configFromEnv({
       NEO4J_MAX_CONNECTION_POOLSIZE: '50',
       NEO4J_MAX_TRANSACTION_RETRY_TIME: '5000',
@@ -125,6 +127,19 @@ describe('configFromEnv', () => {
       connectionTimeout: 30000,
       connectionAcquisitionTimeout: 60000,
     })
+  })
+
+  it('warns that NEO4J_MAX_TRANSACTION_RETRY_TIME is not applied (NTS-589)', () => {
+    // The OGM opens its own unmanaged transactions, so the driver's
+    // managed-transaction retry setting never applies — say so at parse
+    // time, but keep passing the value through (the driver may use it)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const env = configFromEnv({ NEO4J_MAX_TRANSACTION_RETRY_TIME: '5000' })
+
+    expect(env.config.maxTransactionRetryTime).toBe(5000)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('NEO4J_MAX_TRANSACTION_RETRY_TIME'))
+    expect(warn.mock.calls[0]?.[0]).toMatch(/retries.*transaction\(\)/s)
   })
 
   it('maps NEO4J_DISABLE_LOSSLESS_INTEGERS as a boolean', () => {
@@ -149,6 +164,29 @@ describe('configFromEnv', () => {
 
       expect(configFromEnv({ NEO4J_ENCRYPTION: 'maybe' }).config.encrypted).toBeUndefined()
       expect(warn).toHaveBeenCalled()
+    })
+
+    it('warns and ignores NEO4J_ENCRYPTION on a +s / +ssc scheme (NTS-589)', () => {
+      // The driver rejects an explicit `encrypted` next to a scheme that
+      // already decides encryption — fromEnv must surface that at parse
+      // time instead of letting the driver throw a cryptic error later
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      expect(
+        configFromEnv({ NEO4J_URI: 'neo4j+s://cloud.neo4j.io:7687', NEO4J_ENCRYPTION: 'true' })
+          .config,
+      ).toEqual({})
+      expect(
+        configFromEnv({ NEO4J_URI: 'bolt+ssc://host:7687', NEO4J_ENCRYPTION: 'false' }).config,
+      ).toEqual({})
+
+      // A plain scheme still maps the env value
+      expect(
+        configFromEnv({ NEO4J_URI: 'bolt://host:7687', NEO4J_ENCRYPTION: 'true' }).config,
+      ).toEqual({ encrypted: true })
+
+      expect(warn).toHaveBeenCalledTimes(2)
+      expect(warn.mock.calls[0]?.[0]).toMatch(/NEO4J_ENCRYPTION.*\+s \/ \+ssc scheme/s)
     })
   })
 

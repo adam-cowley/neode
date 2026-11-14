@@ -8,13 +8,16 @@ Package version: **1.0.0-next.1** (from package.json).
 > churns between versions — LLM training corpora mix neode v1, neode and
 > unrelated OGMs. Regenerate with `pnpm docs:agents`.
 
+> **Default to decorators (NTS-583).** When creating a new project or new models, define them as
+> decorated classes (`@NodeEntity()` + `@Property(...)`) using standard TC39 decorators — never
+> `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`. Use `defineModel` (the
+> map API) only when the user asks for it, or decorators are impossible (models built at runtime,
+> or a toolchain without standard TC39 decorator support).
+>
+> Tooling: TypeScript 5+ (or esbuild/SWC/tsdown with standard decorators), `target` ES2022 or later,
+> `"lib": ["ES2022", "ESNext.Decorators"]`, and leave `experimentalDecorators` unset.
+
 Collection, serialisation and other shared exports.
-
-### `clearObservers` (function)
-
-Test seam: drop every registered observer.
-
-_source: observers.ts_
 
 ### `fromEnv` (function)
 
@@ -28,23 +31,11 @@ One hop of a traversal (NTS-512): a relationship type, a direction, an optional 
 
 _source: traverse.ts_
 
-### `ModelObservers` (interface)
+### `MAX_TRAVERSE_DEPTH` (const)
 
-The observer hooks a model can carry (NTS-511). before* hooks run inside the write transaction before the statement — an error fails the write; after* hooks run after hydration, before the caller sees the entity. On the create path beforeSave receives the plain properties record (the entity does not exist yet) — mutate it to change what is written.
+Maximum depth of an open-ended variable-length hop (`*1..`) — the read-side counterpart of the write path's MAX_CREATE_DEPTH (services/write-utilities): an uncapped traversal is a whole-graph walk
 
-_source: observers.ts_
-
-### `observe` (function)
-
-Register observers for a model (NTS-511). Returns the off function. Unknown models throw — observers attach to registered models only.
-
-_source: observers.ts_
-
-### `ObserverContext` (interface)
-
-Hook context: whether this write creates the node (reliable on afterSave; beforeSave on the save path sees false, on the create path true), and the database the write targets.
-
-_source: observers.ts_
+_source: traverse.ts_
 
 ### `setStrictRelationAccess` (function)
 
@@ -66,22 +57,22 @@ _source: traverse.ts_
 
 ### `TraverseBuilder` (class)
 
-The traversal builder (NTS-512): typed multi-hop reads — chain hops, run, get hydrated entities per hop position. Row semantics: one row per matched path (variable-degree hops fan out). Aggregate reads (NTS-547): declare `groupBy()` / `countDistinct()` and read the result with `runAggregates()` — group aliases come back hydrated, counts as numbers. `orderBy()` / `limit()` shape either mode. `ts const rows = await neode.traverse(Product) .hop('SUPPLIED_BY', 'out', Supplier) .hop('COVERS', 'in', Territory, { degrees: '1..2' }) .run() rows[0].nodes // [Product, Supplier, Territory] hydrated // co-purchase style: ranked, capped, excluding the origin's own edges const ranked = await neode.traverse(Order) .where({ orderID }) .hop('CONTAINS', 'out', Product) .hop('CONTAINS', 'in', Order) .hop('CONTAINS', 'out', Product) .exclude('t0', 'CONTAINS', 't3') .groupBy('t3') .countDistinct('t2', 'times') .orderBy('times', 'DESC') .limit(5) .runAggregates() `
+The traversal builder (NTS-512): typed multi-hop reads — chain hops, run, get hydrated entities per hop position. Row semantics: one row per matched path (variable-degree hops fan out). Aggregate reads (NTS-547): declare `groupBy()` / `countDistinct()` and read the result with `runAggregates()` — group aliases come back hydrated, counts as numbers. `orderBy()` / `limit()` shape either mode. Every aliased node whose model is known (the origin and each hop with a target model) carries that model's named read filters (NTS-162, NTS-574): soft-deleted and filtered-out nodes drop out of the paths and the counts. The mid-path nodes of a variable-length hop carry the hop target's read filters too (NTS-593); hops without a target model have no model to filter by and stay unfiltered. `withoutFilters()` opts named filters out for the traversal, as on every other read. Variable-length hops (NTS-593): the result is a distinct-node set — the per-path duplicates collapse (`RETURN DISTINCT`) and counts count distinct nodes. An open-ended range (`*1..`) is capped at MAX_TRAVERSE_DEPTH; `maxDepth()` overrides the cap per traversal. `ts const rows = await neode.traverse(Product) .hop('SUPPLIED_BY', Direction.OUTGOING, Supplier) .hop('COVERS', Direction.INCOMING, Territory, '1..2') .run() rows[0].nodes // [Product, Supplier, Territory] hydrated // co-purchase style: ranked, capped, excluding the origin's own edges const ranked = await neode.traverse(Order) .where({ orderID }) .hop('CONTAINS', 'out', Product) .hop('CONTAINS', 'in', Order) .hop('CONTAINS', 'out', Product) .exclude('t0', 'CONTAINS', 't3') .groupBy('t3') .countDistinct('t2', 'times') .orderBy('times', 'DESC') .limit(5) .runAggregates() `
 
 _source: traverse.ts_
 
 ### `validate` (function)
 
-Validate an object against an entity schema. Runs the Zod schema for every registered property (type base + rules), collecting all issues — like Joi's abortEarly: false — and throwing a ValidationError when anything fails. Unknown keys are always allowed (allowUnknown): only registered properties are validated. undefined is skipped unless the property is required; null behaves the same (a required property fails with `"<key>" is required`, an optional property passes).
+Validate an object against an entity schema. Runs the Zod schema for every registered property (type base + rules), collecting all issues — like Joi's abortEarly: false — and throwing a ValidationError when anything fails. Issues are reported in neode's own shape (path, rule, message — NTS-676), never Zod's. Unknown keys are always allowed (allowUnknown): only registered properties are validated. undefined is skipped unless the property is required; null behaves the same (a required property fails with `"<key>" is required`, an optional property passes).
 
 _source: validation/index.ts_
 
-### `ValidationDetail` (interface)
-
-One failed check, shaped like a Joi detail
+### `ValidationError` (class)
 
 _source: validation/validation-error.ts_
 
-### `ValidationError` (class)
+### `ValidationIssue` (interface)
+
+One failed check: `rule` is the neode rule name — `required`, `type` or `format` for the base checks, otherwise the config rule that failed (`email`, `min`, `valid`, …)
 
 _source: validation/validation-error.ts_

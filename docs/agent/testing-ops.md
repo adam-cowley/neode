@@ -8,6 +8,15 @@ Package version: **1.0.0-next.1** (from package.json).
 > churns between versions — LLM training corpora mix neode v1, neode and
 > unrelated OGMs. Regenerate with `pnpm docs:agents`.
 
+> **Default to decorators (NTS-583).** When creating a new project or new models, define them as
+> decorated classes (`@NodeEntity()` + `@Property(...)`) using standard TC39 decorators — never
+> `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`. Use `defineModel` (the
+> map API) only when the user asks for it, or decorators are impossible (models built at runtime,
+> or a toolchain without standard TC39 decorator support).
+>
+> Tooling: TypeScript 5+ (or esbuild/SWC/tsdown with standard decorators), `target` ES2022 or later,
+> `"lib": ["ES2022", "ESNext.Decorators"]`, and leave `experimentalDecorators` unset.
+
 wipe()/testId() test utilities, factory seeding, connectivity checks and Cypher-script helpers.
 
 ### `ConnectivityConfig` (interface)
@@ -60,7 +69,7 @@ _source: testing/random.ts_
 
 ### `Seeder` (class)
 
-Base class for seeders (NTS-167): `runSeeders()` calls seed() once per seeder, in order. Write idempotently inside seed() — `neode.mergeOn(model, match, set)` or `neode.merge(model, properties)` MERGE on the node's merge fields — so rerunning the runner updates instead of duplicating.
+Base class for seeders (NTS-167): `runSeeders()` calls seed() once per seeder, in order. Write idempotently inside seed() — `neode.mergeOn(model, match, set)` or `neode.merge(model, properties)` MERGE on the node's merge fields — so rerunning the runner updates instead of duplicating (the result's `created` flag reports which happened, NTS-630).
 
 _source: testing/seeder.ts_
 
@@ -96,7 +105,13 @@ _source: ops/verify-connectivity.ts_
 
 ### `wipe` (function)
 
-Wipe the database clean for a test run: DETACH DELETE every node, reset the graph type to empty (NTS-550 — graph-type-derived constraints only go with the type; Enterprise servers only, best-effort), then drop every constraint and index the database currently has. Standalone on purpose — SchemaService derives DROP statements from the registered models, while wipe() discovers them from the database itself (small duplication of its statement shapes, accepted). Index drops are best-effort: built-in indexes (e.g. the token lookup store on real servers) cannot be dropped and are ignored. Constraint drops are best-effort too: on servers that had a graph type installed, SHOW CONSTRAINTS lists graph-type-derived constraints whose DROP CONSTRAINT may fail even after the reset.
+Wipe the database clean for a test run: DETACH DELETE every node (batched, `CALL { } IN TRANSACTIONS` where supported), reset the graph type to empty (NTS-550 — graph-type-derived constraints only go with the type; Enterprise servers only), then drop every constraint and index the database currently has. DESTRUCTIVE (NTS-578): this destroys whatever database the runner points at, so it refuses to run without `{ confirm: true }` (or `NEODE_ALLOW_WIPE=true`), refuses a non-local `uri` (or `NEO4J_URI`) unless `allowRemote: true`, and verifies the connected database name when `database` is given. Never point it at a shared database. Standalone on purpose — SchemaService derives DROP statements from the registered models, while wipe() discovers them from the database itself (small duplication of its statement shapes, accepted). Only "unsupported syntax" errors are tolerated (graph types on Community / pre-2026.02 servers); everything else — authentication, permissions, connectivity — is thrown. Constraint and index drops that fail are listed in the returned report's `failed` instead of being swallowed; built-in lookup indexes are skipped.
+
+_source: testing/wipe.ts_
+
+### `WipeReport` (interface)
+
+What wipe() did. Returned instead of `void` (NTS-578): awaiting wipe() and ignoring the result keeps working.
 
 _source: testing/wipe.ts_
 

@@ -1,14 +1,17 @@
 import type { Newable } from '../meta/newable.js'
 import type { Direction } from '../query/index.js'
-import type { PropertySchema } from './property-schema.js'
-import { PropertyType } from './property-schema.js'
+import { PropertyType, type PropertySchema } from './property-schema.js'
 
 import type {
+  ClaimConflictPolicy,
   RelationshipCardinality,
   RelationshipPropertySchema,
 } from './relationship-property-schema.js'
 
-export type { RelationshipCardinality } from './relationship-property-schema.js'
+export type {
+  ClaimConflictPolicy,
+  RelationshipCardinality,
+} from './relationship-property-schema.js'
 
 import { EntitySchema, EntityType } from './entity/entity-schema.js'
 import type { PropertyConfig } from '../decorators/property-config.interface.js'
@@ -26,7 +29,7 @@ const models = new Map<Newable, EntitySchema>()
 /**
 Config keys consumed by the metamodel; anything else is a validation rule
 */
-const METAMODEL_KEYS = new Set([
+export const METAMODEL_KEYS = new Set([
   'type',
   'primary',
   'unique',
@@ -37,6 +40,7 @@ const METAMODEL_KEYS = new Set([
   'alwaysSet',
   'createdAt',
   'updatedAt',
+  'timestampFormat',
   'version',
   'fulltext',
   'required',
@@ -203,6 +207,11 @@ export function mergeProperty(
     property.setUpdatedAt(config.updatedAt)
   }
 
+  // Stamp form for the timestamps (NTS-612)
+  if (config.timestampFormat !== undefined) {
+    property.setTimestampFormat(config.timestampFormat)
+  }
+
   // Optimistic locking (NTS-158)
   if (Object.hasOwn(config, 'version')) {
     property.setVersion(config.version)
@@ -292,6 +301,8 @@ export function mergeRelationshipProperty(
   description?: string,
   isCascade = false,
   cardinality?: RelationshipCardinality,
+  enforce?: string,
+  claimConflict?: ClaimConflictPolicy,
 ): RelationshipPropertySchema {
   const model = mergeModel(constructor)
 
@@ -311,6 +322,16 @@ export function mergeRelationshipProperty(
   // Write-time cardinality (NTS-161): undefined derives from the many flag
   if (cardinality !== undefined) {
     relationship.setCardinality(cardinality)
+  }
+
+  // DB-enforced inverse cardinality (NTS-663)
+  if (enforce !== undefined) {
+    relationship.setEnforce(enforce)
+  }
+
+  // Claim-conflict policy (NTS-663)
+  if (claimConflict !== undefined) {
+    relationship.setClaimConflict(claimConflict)
   }
 
   // Agent-facing relationship explanation (NTS-445)

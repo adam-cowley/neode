@@ -12,6 +12,12 @@ export interface RelationQuery {
   orderBy(...arguments_: unknown[]): RelationQuery
   limit(limit: number): RelationQuery
   skip(skip: number): RelationQuery
+  /**
+  Named read filters to disable for this relation's read (NTS-594): the
+  same names a withoutFilters option takes on the parent read, scoped to
+  this decorated relation.
+  */
+  withoutFilters(names: string[]): RelationQuery
 }
 
 /**
@@ -69,26 +75,6 @@ export interface ReadOptions<T> {
 // ---------------------------------------------------------------------------
 // The type-level model map (NTS-154)
 // ---------------------------------------------------------------------------
-
-/**
-The key the type-level model map (NTS-154) is declared under: a phantom
-static on the entity class. `declare static` erases at emit — zero runtime
-footprint, TC39-decorator-safe (no `emitDecoratorMetadata`).
-
-```ts
-@NodeEntity()
-class Person {
-  name!: string
-  @OneToMany(() => Pet, 'HAS_PET', Direction.OUTGOING) pets?: Pet[]
-  @OneToOne({ type: 'HAS_CARD', target: () => Card }) card?: Card
-
-  // the type-level model map: these fields are relationships — every
-  // other field is a property and rejected by the `with` load spec
-  declare static readonly neodeRelationships: { pets: true; card: true }
-}
-```
-*/
-export type ModelMapKey = 'neodeRelationships'
 
 /**
 The declared relationship map of a model constructor (NTS-154), read off

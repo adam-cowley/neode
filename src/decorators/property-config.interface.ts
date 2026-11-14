@@ -1,9 +1,22 @@
-import type { DefaultValue } from '../meta/property-schema.js'
+import type { DefaultValue, TimestampFormat } from '../meta/property-schema.js'
 import type {
   TransformConfig,
   VectorConfig,
   DerivedConfig,
 } from '../meta/schema-definition.interface.js'
+
+/**
+Config for the @CreatedAt / @UpdatedAt decorators (NTS-612)
+*/
+export interface TimestampConfig {
+  /**
+  Which form the server-side stamp writes: 'datetime' (the default)
+  stores the `datetime()` temporal, 'iso-string' stores its `toString()`
+  rendering — an ISO-8601 string that compares lexically against
+  client-supplied timestamps.
+  */
+  format?: TimestampFormat
+}
 
 export interface PropertyConfig {
   /**
@@ -17,6 +30,8 @@ export interface PropertyConfig {
   boolean: single-property unique constraint.
   string[]: composite unique covering exactly the listed properties
   (NTS-140) — declared on one property, the array is the full composite.
+  Neo4j limits: uniqueness constraints are single-property — node key
+  constraints are the Enterprise composite analogue (NTS-650).
   */
   unique?: boolean | string[]
   onCreateSet?: boolean
@@ -33,6 +48,13 @@ export interface PropertyConfig {
   */
   updatedAt?: boolean
   /**
+  Stamp form for a server-side timestamp (NTS-612): 'iso-string' renders
+  the stamp as `toString(datetime())` so the stored value compares
+  lexically against client ISO strings; the default stores the temporal.
+  Set through `@CreatedAt` / `@UpdatedAt` config.
+  */
+  timestampFormat?: TimestampFormat
+  /**
   Optimistic locking (NTS-158): the integer property every write keeps in
   sync — stamped 0 on create, incremented by 1 on every write addressed to
   the node, and checked with `WHERE n.version = $expected` when the
@@ -46,7 +68,10 @@ export interface PropertyConfig {
   readonly?: boolean
   /**
   boolean: single-property index.
-  string[]: composite index covering exactly the listed properties (NTS-140).
+  string[]: composite index covering exactly the listed properties
+  (NTS-140): one range index over all N properties, created by
+  `installSchema()` and drift-covered by `schemaDrift()` /
+  `applySchemaDrift()` (NTS-650).
   */
   index?: boolean | string[]
   exists?: boolean

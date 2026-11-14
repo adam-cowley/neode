@@ -21,20 +21,20 @@ describe('fulltext index statements', () => {
   const def = { label: 'Movie', properties: ['title', 'plot'] }
 
   it('names the index deterministically from the label and properties', () => {
-    expect(fulltextIndexName(def)).toBe('movie_title_plot_fulltext')
+    expect(fulltextIndexName(def)).toBe('movie_plot_title_fulltext_fb2ce53c')
     expect(fulltextIndexName({ ...def, name: 'custom' })).toBe('custom')
   })
 
   it('renders a CREATE FULLTEXT INDEX statement with an IF NOT EXISTS guard', () => {
     expect(createFulltextStatement(def)).toBe(
-      'CREATE FULLTEXT INDEX movie_title_plot_fulltext IF NOT EXISTS ' +
+      'CREATE FULLTEXT INDEX movie_plot_title_fulltext_fb2ce53c IF NOT EXISTS ' +
         'FOR (n:`Movie`) ON EACH [n.`title`, n.`plot`]',
     )
   })
 
   it('renders a DROP FULLTEXT INDEX statement with an IF EXISTS guard', () => {
     expect(dropFulltextStatement(fulltextIndexName(def))).toBe(
-      'DROP FULLTEXT INDEX movie_title_plot_fulltext IF EXISTS',
+      'DROP FULLTEXT INDEX movie_plot_title_fulltext_fb2ce53c IF EXISTS',
     )
   })
 
@@ -88,7 +88,7 @@ describe('declarative fulltext via installSchema (NTS-436)', () => {
 
     expect(fulltext).toHaveLength(1)
     expect(fulltext[0]?.statement).toBe(
-      'CREATE FULLTEXT INDEX fulltextcourse_title_blurb_fulltext IF NOT EXISTS ' +
+      'CREATE FULLTEXT INDEX fulltextcourse_blurb_title_fulltext_97601a37 IF NOT EXISTS ' +
         'FOR (n:`FulltextCourse`) ON EACH [n.`title`, n.`blurb`]',
     )
   })
@@ -101,7 +101,7 @@ describe('declarative fulltext via installSchema (NTS-436)', () => {
 
     expect(fulltext).toHaveLength(1)
     expect(fulltext[0]?.statement).toBe(
-      'DROP FULLTEXT INDEX fulltextcourse_title_blurb_fulltext IF EXISTS',
+      'DROP FULLTEXT INDEX fulltextcourse_blurb_title_fulltext_97601a37 IF EXISTS',
     )
   })
 })
@@ -110,13 +110,13 @@ describe('vector index statements', () => {
   const def = { label: 'Movie', property: 'emb', dimensions: 1536 }
 
   it('names the index deterministically from the label and property', () => {
-    expect(vectorIndexName(def)).toBe('movie_emb_vector')
+    expect(vectorIndexName(def)).toBe('movie_emb_vector_30fc1ec8')
     expect(vectorIndexName({ ...def, name: 'custom' })).toBe('custom')
   })
 
   it('defaults the similarity function to cosine', () => {
     expect(createVectorStatement(def)).toBe(
-      'CREATE VECTOR INDEX movie_emb_vector IF NOT EXISTS ' +
+      'CREATE VECTOR INDEX movie_emb_vector_30fc1ec8 IF NOT EXISTS ' +
         "FOR (n:`Movie`) ON (n.`emb`) OPTIONS { indexConfig: { `vector.dimensions`: 1536, `vector.similarity_function`: 'cosine' } }",
     )
   })
@@ -129,7 +129,7 @@ describe('vector index statements', () => {
 
   it('renders a DROP VECTOR INDEX statement with an IF EXISTS guard', () => {
     expect(dropVectorStatement(vectorIndexName(def))).toBe(
-      'DROP VECTOR INDEX movie_emb_vector IF EXISTS',
+      'DROP VECTOR INDEX movie_emb_vector_30fc1ec8 IF EXISTS',
     )
   })
 
@@ -161,7 +161,7 @@ describe('declaredSchemaObjects', () => {
     expect(declared.constraints).toEqual(
       expect.arrayContaining([
         {
-          name: 'person_name_unique',
+          name: 'person_name_unique_bf021514',
           type: 'UNIQUE',
           labelsOrTypes: ['Person'],
           properties: ['name'],
@@ -171,7 +171,7 @@ describe('declaredSchemaObjects', () => {
     expect(declared.indexes).toEqual(
       expect.arrayContaining([
         {
-          name: 'person_email_index',
+          name: 'person_email_index_a08ed6c6',
           type: 'INDEX',
           labelsOrTypes: ['Person'],
           properties: ['email'],
@@ -189,12 +189,17 @@ describe('declaredSchemaObjects', () => {
     expect(declared.indexes).toEqual(
       expect.arrayContaining([
         {
-          name: 'movie_title_plot_fulltext',
+          name: 'movie_plot_title_fulltext_fb2ce53c',
           type: 'FULLTEXT',
           labelsOrTypes: ['Movie'],
           properties: ['title', 'plot'],
         },
-        { name: 'movie_emb_vector', type: 'VECTOR', labelsOrTypes: ['Movie'], properties: ['emb'] },
+        {
+          name: 'movie_emb_vector_30fc1ec8',
+          type: 'VECTOR',
+          labelsOrTypes: ['Movie'],
+          properties: ['emb'],
+        },
       ]),
     )
   })
@@ -209,12 +214,12 @@ describe('declaredSchemaObjects', () => {
     schema.getProperty('body').setExists()
 
     expect(
-      declaredSchemaObjects().constraints.every((c) => c.name !== 'contract_body_exists'),
+      declaredSchemaObjects().constraints.every((c) => c.name !== 'contract_body_exists_721ee413'),
     ).toBe(true)
     expect(declaredSchemaObjects({ enterprise: true }).constraints).toEqual(
       expect.arrayContaining([
         {
-          name: 'contract_body_exists',
+          name: 'contract_body_exists_721ee413',
           type: 'EXISTS',
           labelsOrTypes: ['Contract'],
           properties: ['body'],

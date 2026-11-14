@@ -2,8 +2,8 @@ import type { ConnectionProvider } from '../../driver/types.js'
 import { getModels } from '../../meta/index.js'
 import {
   ConstraintType,
-  compositeSchemaObjectName,
   cypherPropertyType,
+  isEnterpriseConnection,
   schemaObjectName,
 } from './schema.service.js'
 import { type FulltextIndexDefinition, fulltextIndexName } from './fulltext.service.js'
@@ -21,9 +21,10 @@ function declared(list: SchemaObject[], object: SchemaObject): void {
 
 /**
 Which objects count as "declared" for the inspection: pass the
-full-text/vector index definitions and the enterprise flag your
-installSchema call used, so the diff is not polluted by false "extra"
-entries.
+full-text/vector index definitions your installSchema call used, so the
+diff is not polluted by false "extra" entries. The edition is DETECTED
+from the connection (NTS-598) — EXISTS / property-type constraints are
+declared only on Enterprise.
 */
 export interface InspectOptions {
   /**
@@ -34,10 +35,6 @@ export interface InspectOptions {
   Vector index definitions to include in the declared set
   */
   vector?: VectorIndexDefinition[]
-  /**
-  Existence constraints are Enterprise-only: include them in the declared set
-  */
-  enterprise?: boolean
   /**
   NTS-550 — named graph type constraint items (the extras passed to
   installGraphType()) so the graph type family does not report them missing
@@ -143,12 +140,23 @@ function indexRowToObject(row: ShowRow): SchemaObject | null {
 }
 
 /**
-The schema objects the registered models (plus the given definitions) would install
+The schema objects the registered models (plus the given definitions) would
+install. `enterprise` is the RESOLVED edition gate (NTS-598): inspectSchema
+passes the edition detected from the connection — EXISTS and property-type
+constraints are Enterprise-only, both at install time and here.
 */
-export function declaredSchemaObjects(options: InspectOptions = {}): {
+export function declaredSchemaObjects(
+  options: {
+    fulltext?: FulltextIndexDefinition[]
+    vector?: VectorIndexDefinition[]
+    graphTypeConstraints?: GraphTypeConstraintDefinition[]
+    enterprise?: boolean
+  } = {},
+): {
   constraints: SchemaObject[]
   indexes: SchemaObject[]
 } {
+  const isEnterprise = options.enterprise === true
   const constraints: SchemaObject[] = []
   const indexes: SchemaObject[] = []
 
@@ -159,16 +167,16 @@ export function declaredSchemaObjects(options: InspectOptions = {}): {
 
         if (property.isUnique()) {
           constraints.push({
-            name: schemaObjectName(label, key, ConstraintType.UNIQUE),
+            name: schemaObjectName(label, [key], ConstraintType.UNIQUE),
             type: ConstraintType.UNIQUE,
             labelsOrTypes: [label],
             properties: [key],
           })
         }
 
-        if (property.isExists() && options.enterprise === true) {
+        if (isEnterprise && property.isExists()) {
           constraints.push({
-            name: schemaObjectName(label, key, ConstraintType.EXISTS),
+            name: schemaObjectName(label, [key], ConstraintType.EXISTS),
             type: ConstraintType.EXISTS,
             labelsOrTypes: [label],
             properties: [key],
@@ -177,17 +185,22 @@ export function declaredSchemaObjects(options: InspectOptions = {}): {
 
         if (property.isIndex()) {
           indexes.push({
-            name: schemaObjectName(label, key, ConstraintType.INDEX),
+            name: schemaObjectName(label, [key], ConstraintType.INDEX),
             type: ConstraintType.INDEX,
             labelsOrTypes: [label],
             properties: [key],
           })
         }
 
-        // Property-type constraint (NTS-141), opt-in via `typed: true`
-        if (property.isTyped() && cypherPropertyType(property.getType()) !== undefined) {
+        // Property-type constraint (NTS-141), opt-in via `typed: true` —
+        // Enterprise-only, matching the install gate
+        if (
+          isEnterprise &&
+          property.isTyped() &&
+          cypherPropertyType(property.getType()) !== undefined
+        ) {
           constraints.push({
-            name: schemaObjectName(label, key, ConstraintType.PROPERTY_TYPE),
+            name: schemaObjectName(label, [key], ConstraintType.PROPERTY_TYPE),
             type: ConstraintType.PROPERTY_TYPE,
             labelsOrTypes: [label],
             properties: [key],
@@ -201,7 +214,7 @@ export function declaredSchemaObjects(options: InspectOptions = {}): {
 
         if (compositeUnique !== undefined && compositeUnique.length > 0) {
           declared(constraints, {
-            name: compositeSchemaObjectName(label, compositeUnique, ConstraintType.UNIQUE),
+            name: schemaObjectName(label, compositeUnique, ConstraintType.UNIQUE),
             type: ConstraintType.UNIQUE,
             labelsOrTypes: [label],
             properties: compositeUnique,
@@ -212,7 +225,7 @@ export function declaredSchemaObjects(options: InspectOptions = {}): {
 
         if (compositeIndex !== undefined && compositeIndex.length > 0) {
           declared(indexes, {
-            name: compositeSchemaObjectName(label, compositeIndex, ConstraintType.INDEX),
+            name: schemaObjectName(label, compositeIndex, ConstraintType.INDEX),
             type: ConstraintType.INDEX,
             labelsOrTypes: [label],
             properties: compositeIndex,
@@ -254,7 +267,11 @@ export async function inspectSchema(
   connection: ConnectionProvider,
   options: InspectOptions = {},
 ): Promise<SchemaInspection> {
-  const [constraintRows, indexRows] = await Promise.all([
+  // NTS-598 — the declared set follows the DETECTED edition, so Community
+  // databases are never told their missing EXISTS / property-type
+  // constraints are drift
+  const [isEnterprise, constraintRows, indexRows] = await Promise.all([
+    isEnterpriseConnection(connection),
     connection.run('SHOW CONSTRAINTS', {}, 'READ'),
     connection.run('SHOW INDEXES', {}, 'READ'),
   ])
@@ -265,7 +282,7 @@ export async function inspectSchema(
     .map((row) => indexRowToObject(row))
     .filter((object): object is SchemaObject => object !== null)
 
-  const declaredObjects = declaredSchemaObjects(options)
+  const declaredObjects = declaredSchemaObjects({ ...options, enterprise: isEnterprise })
 
   return {
     constraints: diff(declaredObjects.constraints, installedConstraints),

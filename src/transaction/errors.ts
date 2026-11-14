@@ -17,7 +17,8 @@ export interface BatchStatementError {
 }
 
 /**
-Thrown by Neode.batch() when any statement of the batch fails and the
+Thrown by Neode.runAll() (v3's batch(), NTS-624) when any statement of
+the batch fails and the
 transaction is rolled back (port of neode's TransactionError):
 
  - `errors`  — per-statement error aligned with the input batch, null

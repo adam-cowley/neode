@@ -208,9 +208,9 @@ export async function validationCatch(neode: Neode): Promise<void> {
   }
 }
 
-export async function batch(neode: Neode): Promise<unknown> {
+export async function runAll(neode: Neode): Promise<unknown> {
   try {
-    const results = await neode.batch([
+    const results = await neode.runAll([
       'CREATE (n:Person { name: "Adam" })',
       { query: 'CREATE (n:Person { name: $name })', params: { name: 'Joe' } },
     ])

@@ -352,3 +352,101 @@ describe('relationship-aware instance reads (NTS-499)', () => {
     }
   })
 })
+
+describe('one-key related() reads one row (NTS-591)', () => {
+  let backend: TestBackend
+
+  let executed: QueryExecutedEvent[]
+
+  const onQuery = (event: QueryExecutedEvent): void => {
+    executed.push(event)
+  }
+
+  beforeAll(async () => {
+    backend = await openBackend()
+
+    setDefaultNeode(backend.neode)
+  })
+
+  beforeEach(() => {
+    executed = []
+
+    setFilterParams('tenant', 'acme')
+
+    backend.neode.on(EventType.QUERY_EXECUTED, onQuery)
+  })
+
+  afterEach(async () => {
+    backend.neode.off(EventType.QUERY_EXECUTED, onQuery)
+
+    clearFilterParams()
+
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  /** A saved person with one related movie per year, freshly re-found — the first year rides the one-key unless `withFavorite` is false */
+  async function seededPerson(years: number[], withFavorite = true): Promise<WithMethods<Person>> {
+    const person = new Person()
+    person.name = `person-${Math.random()}`
+
+    const savedPerson = (await backend.neode.save(person)) as WithMethods<Person>
+
+    for (const [index, year] of years.entries()) {
+      const movie = new Movie()
+      movie.title = `Movie ${index}-${Math.random()}`
+      movie.year = year
+      movie.tenant = 'acme'
+
+      const savedMovie = (await backend.neode.save(movie)) as WithMethods<Movie>
+
+      await savedPerson.relateTo(savedMovie, withFavorite && index === 0 ? 'favorite' : 'actedIn')
+    }
+
+    return (await backend.neode.find(Person, savedPerson.id)) as WithMethods<Person>
+  }
+
+  it('find() on a one-key pushes LIMIT 1 into the traversal read', async () => {
+    const person = await seededPerson([1999])
+
+    executed = []
+
+    const favorite = await person.related('favorite').find()
+
+    expect(favorite).toBeInstanceOf(Movie)
+
+    // One statement: the traversal read itself, one row
+    expect(executed).toHaveLength(1)
+    expect(executed[0]?.cypher).toContain('LIMIT 1')
+  })
+
+  it('a recorded limit stands — first() does not clobber it', async () => {
+    const person = await seededPerson([2013, 1999, 2003], false)
+
+    executed = []
+
+    const first = await person.related('actedIn').orderBy('year').limit(2).first()
+
+    expect(first).toBeInstanceOf(Movie)
+    expect(first?.year).toBe(1999)
+
+    const traversal = executed[0]?.cypher ?? ''
+
+    expect(traversal).toContain('LIMIT 2')
+    expect(traversal).not.toContain('LIMIT 1')
+  })
+
+  it('find() on a many-key reads every row (no LIMIT)', async () => {
+    const person = await seededPerson([1999, 2003, 2013], false)
+
+    executed = []
+
+    const movies = await person.related('actedIn').find()
+
+    expect(movies).toHaveLength(3)
+    expect(executed[0]?.cypher).not.toContain('LIMIT')
+  })
+})

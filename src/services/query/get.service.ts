@@ -4,6 +4,7 @@ import { THIS_NODE } from '../../constants.js'
 import type { EntitySchema } from '../../meta/entity/entity-schema.js'
 import { applyOrder, type OrderSpec } from '../../query/order-spec.js'
 import { QueryService } from './query.service.js'
+import { applyFilterBag } from './filter-bag.js'
 import { applyReadFilters, type ReadFilterOptions } from './filters.js'
 
 // The order forms live in the shared query module (the Repository uses the
@@ -26,13 +27,7 @@ export class GetService extends QueryService {
 
     applyReadFilters(builder, schema, filters)
 
-    for (const property of schema.getProperties()) {
-      const key = property.getKey()
-
-      if (Object.hasOwn(parameters, key)) {
-        builder.where(`${THIS_NODE}.${key}`, parameters[key])
-      }
-    }
+    applyFilterBag(builder, schema, parameters)
 
     applyOrder(builder, order)
 

@@ -2,6 +2,8 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   extractDocs,
+  renderAgentsMd,
+  renderLlmsFull,
   renderLlmsTxt,
   renderPages,
   renderSkillMd,
@@ -68,19 +70,30 @@ describe('generate-agent-docs extraction', () => {
     )
     expect(ontology?.summary).toContain('prompt-ready markdown')
   })
+
+  it('extracts symbols exported under an alias (expr / caseExpr)', () => {
+    const querying = areaSymbols('Querying')
+
+    const expr = querying.find((symbol) => symbol.name === 'expr')
+    expect(expr?.summary).toContain('Leaf Cypher expression helpers')
+
+    const caseExpr = querying.find((symbol) => symbol.name === 'caseExpr')
+    expect(caseExpr?.summary).toContain('CASE')
+  })
 })
 
 describe('per-page markdown (NTS-163)', () => {
   const pages = renderPages(docs, '0.0.0-test')
   const paths = pages.map((page) => page.path)
 
-  it('emits one page per doc area plus schema reference and ontology', () => {
+  it('emits one page per doc area plus schema reference, ontology and auditing', () => {
     expect(paths).toEqual([
       ...docs.areas.map(
         (area) => `docs/agent/${area.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`,
       ),
       'docs/agent/schema-reference.md',
       'docs/agent/agent-ontology-api.md',
+      'docs/agent/auditing.md',
     ])
   })
 
@@ -122,9 +135,42 @@ describe('skills pack (NTS-163)', () => {
     }
   })
 
-  it('version-pins, warns off training data, and names the @String replacement', () => {
+  it('version-pins, warns off training data, and teaches the string property form', () => {
     expect(skill).toContain('v0.0.0-test')
     expect(skill).toContain('not training data')
-    expect(skill).toContain("@Property({ type: 'string' })")
+    // NTS-670: the deprecated @String is removed — the skill must not teach it
+    expect(skill).not.toContain('@String')
+  })
+})
+
+describe('decorators-first default (NTS-583)', () => {
+  const outputs: Array<[string, string]> = [
+    ['AGENTS.md', renderAgentsMd(docs, '0.0.0-test')],
+    ['llms.txt', renderLlmsTxt(docs, '0.0.0-test')],
+    ['llms-full.txt', renderLlmsFull(docs, '0.0.0-test')],
+    ['SKILL.md', renderSkillMd('0.0.0-test')],
+    ...renderPages(docs, '0.0.0-test').map((page) => [page.path, page.content] as [string, string]),
+  ]
+
+  it('states the decorators-default rule in every generated output', () => {
+    for (const [name, content] of outputs) {
+      expect(content, name).toContain('Default to decorators')
+      expect(content, name).toContain('`defineModel` (the')
+      expect(content, name).toContain('experimentalDecorators')
+      expect(content, name).toContain('reflect-metadata')
+    }
+  })
+
+  it('shows the rule before the model-definition guidance in AGENTS.md', () => {
+    const agents = renderAgentsMd(docs, '0.0.0-test')
+    expect(agents.indexOf('Default to decorators')).toBeLessThan(agents.indexOf('## Rules'))
+    expect(agents).not.toContain('Two equivalent APIs')
+  })
+
+  it('presents the map API as the alternative, decorators first', () => {
+    const skill = renderSkillMd('0.0.0-test')
+    expect(skill).not.toContain('Two equivalent APIs')
+    expect(skill.indexOf('@NodeEntity()')).toBeLessThan(skill.indexOf('defineModel('))
+    expect(skill).toContain('Alternative')
   })
 })

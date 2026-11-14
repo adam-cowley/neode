@@ -1,4 +1,5 @@
 import {
+  NeodeError,
   NodeEntity,
   Property,
   Primary,
@@ -308,6 +309,78 @@ describe('withoutFilters in the transactional mirrors (NTS-568)', () => {
     expect(tenantOff.map((comment) => comment.commentID)).toEqual(['c1'])
 
     await tx.commit()
+  })
+})
+
+// ---- NTS-610: '*' rejected at the public read boundary ----------------------
+
+describe("withoutFilters ['*'] is rejected at the public boundary (NTS-610)", () => {
+  let backend: TestBackend
+  let comments: Repository<FilterComment>
+
+  beforeAll(async () => {
+    backend = await openBackend()
+    comments = backend.neode.getRepository(FilterComment)
+  })
+
+  beforeEach(async () => {
+    await backend.clearGraph()
+    clearFilterParams()
+
+    setFilterParams('tenant', 'acme')
+
+    await comments.save(FilterComment.create('c1', 'acme'))
+    await comments.save(FilterComment.create('c2', 'beta'))
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  it('the facade reads reject it, named filters keep working', async () => {
+    await expect(
+      backend.neode.all(FilterComment, {}, undefined, undefined, undefined, undefined, {
+        withoutFilters: ['*'],
+      }),
+    ).rejects.toThrow(NeodeError)
+
+    await expect(
+      backend.neode.find(FilterComment, 'c2', { withoutFilters: ['*'] }),
+    ).rejects.toThrow(NeodeError)
+
+    const both = await comments.findAll({}, { withoutFilters: ['tenant'] })
+    expect(both.map((comment) => comment.commentID).sort()).toEqual(['c1', 'c2'])
+  })
+
+  it('the transactional mirrors reject it', async () => {
+    const tx = await backend.neode.openReadTransaction()
+
+    await expect(tx.find(FilterComment, 'c2', { withoutFilters: ['*'] })).rejects.toThrow(
+      NeodeError,
+    )
+    await expect(
+      tx.get(FilterComment, {}, undefined, undefined, { withoutFilters: ['*'] }),
+    ).rejects.toThrow(NeodeError)
+    await expect(
+      tx.all(FilterComment, {}, undefined, undefined, undefined, undefined, {
+        withoutFilters: ['*'],
+      }),
+    ).rejects.toThrow(NeodeError)
+
+    await tx.commit()
+  })
+
+  it('the Repository reads reject it', async () => {
+    await expect(comments.findAll({}, { withoutFilters: ['*'] })).rejects.toThrow(NeodeError)
+    await expect(comments.find('c2', { withoutFilters: ['*'] })).rejects.toThrow(NeodeError)
+  })
+
+  it('the internal write-path re-hydration still works', async () => {
+    // save() re-reads the row it just wrote through FindByIdService with
+    // '*' — a filtered-out tenant must come back hydrated
+    const saved = await comments.save(FilterComment.create('c3', 'acme'))
+
+    expect(saved.commentID).toBe('c3')
   })
 })
 

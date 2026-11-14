@@ -58,7 +58,10 @@ describe('the `with` load spec (NTS-560)', () => {
   })
 
   it('the relation view is satisfied by the real Builder', () => {
-    expectTypeOf<Builder>().toExtend<RelationQuery>()
+    // The replayed verbs exist on the real Builder. withoutFilters
+    // (NTS-594) is replayed by the loader through applyReadFilters —
+    // filters are a read policy, not a Builder verb.
+    expectTypeOf<keyof Omit<RelationQuery, 'withoutFilters'>>().toExtend<keyof Builder>()
   })
 
   it('find keeps its Promise<T | undefined> contract with a load spec', () => {

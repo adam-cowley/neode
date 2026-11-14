@@ -1,5 +1,6 @@
 import { openBackend, isEnterprise, TestBackend } from './support/backend'
 import { Neode } from '../../src/neode.service'
+import { NodeEntity, Property, Uuid } from '../../src/decorators'
 import {
   AccessMode,
   ConnectionProvider,
@@ -7,6 +8,16 @@ import {
   QueryParams,
   TransactionHandle,
 } from '../../src/driver/types'
+
+// Per-file fixture: the decorator registry is global per module
+@NodeEntity()
+class MultiDbPerson {
+  @Uuid({ primary: true })
+  id!: string
+
+  @Property({ type: 'string' })
+  name!: string
+}
 
 /**
  * Wraps an inner provider (edition/close forward) while recording the
@@ -117,16 +128,76 @@ describe('multi-database wiring', () => {
     expect(recording.beginDatabases[1]).toBe('explicit-db')
   })
 
-  // Regression test for adam-cowley/neode#182: batch and the transaction()
-  // callback form used the wrong database
-  it('threads the configured database into batch() and transaction()', async () => {
+  // NTS-644: the getRunner()-based reads — paginate(), findManyAndCount()
+  // and search() — honour a per-call `database` over the setDatabase()
+  // default
+  it('threads the per-call database of paginate(), findManyAndCount() and search() to the provider', async () => {
+    const recording = new RecordingProvider(backend.connection)
+    const neode = new Neode(recording)
+    neode.setDatabase('default-db')
+
+    // The setDatabase default applies when no override is given (paginate
+    // runs two autocommit reads: data + COUNT)
+    await neode.paginate(MultiDbPerson, {}, { page: 1, limit: 10 })
+    expect(recording.runDatabases[0]).toBe('default-db')
+    expect(recording.runDatabases[1]).toBe('default-db')
+
+    // The per-call override wins
+    await neode.paginate(MultiDbPerson, {}, { page: 1, limit: 10, database: 'override-db' })
+    expect(recording.runDatabases[2]).toBe('override-db')
+
+    await neode.findManyAndCount(MultiDbPerson, {}, { database: 'override-db' })
+    expect(recording.runDatabases[3]).toBe('override-db')
+
+    await neode.search(MultiDbPerson, 'index', 'query', undefined, undefined, 'override-db')
+    expect(recording.runDatabases[4]).toBe('override-db')
+  })
+
+  // NTS-645: the schema-management methods — installSchema() /
+  // dropSchema() / inspectSchema() / schemaDiff() / applySchemaDiff() —
+  // honour a per-call `database` over the setDatabase() default
+  it('threads the per-call database of the schema methods to the provider', async () => {
+    // Backward compat: no setDatabase, no override — the provider decides
+    // (undefined passes through, exactly the pre-NTS-645 behaviour)
+    const recording = new RecordingProvider(backend.connection)
+    const plain = new Neode(recording)
+    await plain.installSchema()
+    await plain.dropSchema()
+    expect(recording.runDatabases.length).toBeGreaterThan(0)
+    expect(recording.runDatabases.every((database) => database === undefined)).toBe(true)
+
+    recording.runDatabases.length = 0
+    const neode = new Neode(recording)
+    neode.setDatabase('default-db')
+
+    // No override: the setDatabase() default drives the DDL
+    await neode.installSchema()
+    expect(recording.runDatabases.length).toBeGreaterThan(0)
+    expect(recording.runDatabases.every((database) => database === 'default-db')).toBe(true)
+
+    recording.runDatabases.length = 0
+
+    // The per-call override wins on every schema method
+    await neode.dropSchema({ database: 'override-db' })
+    await neode.inspectSchema({ database: 'override-db' })
+
+    const drift = await neode.schemaDiff({ database: 'override-db' })
+    await neode.applySchemaDiff(drift, { database: 'override-db' })
+
+    expect(recording.runDatabases.length).toBeGreaterThan(0)
+    expect(recording.runDatabases.every((database) => database === 'override-db')).toBe(true)
+  })
+
+  // Regression test for adam-cowley/neode#182: runAll() (v3's batch) and the
+  // transaction() callback form used the wrong database
+  it('threads the configured database into runAll() and transaction()', async () => {
     const recording = new RecordingProvider(backend.connection)
     const neode = new Neode(recording)
 
-    // batch() honours the setDatabase default, then the per-call override
+    // runAll() honours the setDatabase default, then the per-call override
     neode.setDatabase('batch-db')
-    await neode.batch(['RETURN 1 AS one'])
-    await neode.batch(['RETURN 1 AS one'], 'override-db')
+    await neode.runAll(['RETURN 1 AS one'])
+    await neode.runAll(['RETURN 1 AS one'], 'override-db')
     expect(recording.beginDatabases[0]).toBe('batch-db')
     expect(recording.beginDatabases[1]).toBe('override-db')
 
@@ -206,9 +277,138 @@ describe('multi-database against the server', () => {
     }
   })
 
-  // Regression test for adam-cowley/neode#182: transaction() and batch()
+  // Regression: save(entity, database) on a CLEAN tracked entity used to
+  // hit the dirty-check no-op and silently write nothing — the audit-copy
+  // pattern (save(person, 'audit')) never reached the target database
+  it('save(entity, database) lands a clean entity in the named database', async (ctx) => {
+    if (!backend.capabilities.multiDatabase || !isEnterprise(backend.capabilities)) {
+      ctx.skip() // CREATE DATABASE requires Enterprise
+    }
+
+    const name = 'ogm-save-audit-copy'
+
+    try {
+      await createDatabaseOnline(backend.connection, name)
+
+      const neode = new Neode(backend.connection)
+
+      const adam = await neode.create(MultiDbPerson, { name: 'Adam' })
+      await neode.save(adam, name)
+
+      const copies = await backend.connection.run(
+        'MATCH (n:MultiDbPerson) RETURN count(n) AS n',
+        undefined,
+        'WRITE',
+        name,
+      )
+      expect(copies.records[0].get('n')).toBe(1)
+    } finally {
+      await backend.connection
+        .run(`DROP DATABASE \`${name}\` IF EXISTS`, undefined, 'WRITE', 'system')
+        .catch(() => {})
+    }
+  })
+
+  // NTS-644: the getRunner()-based reads target a per-call named
+  // database — the override wins over the setDatabase() default
+  it('paginate() and findManyAndCount() read a per-call named database', async (ctx) => {
+    if (!backend.capabilities.multiDatabase || !isEnterprise(backend.capabilities)) {
+      ctx.skip() // CREATE DATABASE requires Enterprise
+    }
+
+    const name = 'ogm-paginate-per-call-db'
+    const other = 'ogm-paginate-per-call-db-other'
+
+    try {
+      await createDatabaseOnline(backend.connection, name)
+      await createDatabaseOnline(backend.connection, other)
+
+      const neode = new Neode(backend.connection)
+      neode.setDatabase(name)
+
+      // A probe row exists ONLY in the target database
+      await backend.connection.run(
+        'CREATE (:MultiDbPerson { id: $id, name: "Target" })',
+        { id: 'probe-1' },
+        'WRITE',
+        name,
+      )
+
+      // No override: the setDatabase default applies — the row is found
+      const onDefault = await neode.paginate(MultiDbPerson, {}, { page: 1, limit: 10 })
+      expect(onDefault.total).toBe(1)
+
+      const counted = await neode.findManyAndCount(MultiDbPerson)
+      expect(counted.total).toBe(1)
+
+      // The per-call override wins over the default: `other` is empty
+      const onOverride = await neode.findManyAndCount(MultiDbPerson, {}, { database: other })
+      expect(onOverride.total).toBe(0)
+
+      const paged = await neode.paginate(MultiDbPerson, {}, { page: 1, limit: 10, database: other })
+      expect(paged.total).toBe(0)
+    } finally {
+      // Clean the default database too, so a regression (reads falling
+      // through to it) cannot mask missing cleanup
+      await backend.connection.run('MATCH (n:MultiDbPerson) DETACH DELETE n').catch(() => {})
+
+      for (const db of [name, other]) {
+        await backend.connection
+          .run(`DROP DATABASE \`${db}\` IF EXISTS`, undefined, 'WRITE', 'system')
+          .catch(() => {})
+      }
+    }
+  })
+
+  // NTS-645: the schema-management methods install into / inspect / drop
+  // from a per-call named database — the drift workflow included
+  it('installs and drops the schema in a per-call named database', async (ctx) => {
+    if (!backend.capabilities.multiDatabase || !isEnterprise(backend.capabilities)) {
+      ctx.skip() // CREATE DATABASE requires Enterprise
+    }
+
+    const name = 'ogm-schema-per-call-db'
+
+    try {
+      await createDatabaseOnline(backend.connection, name)
+
+      const neode = new Neode(backend.connection)
+
+      // Install into the named database (no setDatabase — per-call only)
+      const installed = await neode.installSchema({ database: name })
+      expect(installed.length).toBeGreaterThan(0)
+      expect(installed.every((result) => result.success)).toBe(true)
+
+      // Everything declared is installed there — no drift
+      const inspection = await neode.inspectSchema({ database: name })
+      expect(inspection.constraints.missing).toEqual([])
+
+      const drift = await neode.schemaDiff({ database: name })
+      expect(drift.constraints.missing).toEqual([])
+
+      // Drop from the named database, then heal it back through the
+      // drift-apply — all per call
+      await neode.dropSchema({ database: name })
+
+      const dropped = await neode.schemaDiff({ database: name })
+      expect(dropped.constraints.missing.length).toBeGreaterThan(0)
+
+      const applied = await neode.applySchemaDiff(dropped, { database: name })
+      expect(applied.length).toBeGreaterThan(0)
+      expect(applied.every((result) => result.success)).toBe(true)
+
+      const healed = await neode.inspectSchema({ database: name })
+      expect(healed.constraints.missing).toEqual([])
+    } finally {
+      await backend.connection
+        .run(`DROP DATABASE \`${name}\` IF EXISTS`, undefined, 'WRITE', 'system')
+        .catch(() => {})
+    }
+  })
+
+  // Regression test for adam-cowley/neode#182: transaction() and runAll()
   // used to write to the wrong database
-  it('runs transaction() and batch() in the setDatabase target', async (ctx) => {
+  it('runs transaction() and runAll() in the setDatabase target', async (ctx) => {
     if (!backend.capabilities.multiDatabase || !isEnterprise(backend.capabilities)) {
       ctx.skip() // CREATE DATABASE requires Enterprise
     }
@@ -223,8 +423,8 @@ describe('multi-database against the server', () => {
       const neode = new Neode(backend.connection)
       neode.setDatabase(name)
 
-      // batch() honours the configured database…
-      await neode.batch(['CREATE (n:MultiDbProbe { name: "batch" })'])
+      // runAll() honours the configured database…
+      await neode.runAll(['CREATE (n:MultiDbProbe { name: "batch" })'])
 
       // …transaction() too…
       await neode.inWriteTransaction(async (tx) => {
@@ -233,7 +433,7 @@ describe('multi-database against the server', () => {
       })
 
       // …and the per-call override wins over setDatabase
-      await neode.batch(['CREATE (n:MultiDbProbe { name: "override" })'], override)
+      await neode.runAll(['CREATE (n:MultiDbProbe { name: "override" })'], override)
 
       // Nothing landed on the default database
       const onDefault = await backend.connection.run('MATCH (n:MultiDbProbe) RETURN count(n) AS n')

@@ -1,13 +1,14 @@
 import { vi } from 'vitest'
 import { Repository } from '../../src/repository'
-import { WITHOUT_ALL_FILTERS } from '../../src/services/query/filters'
+import { NeodeError } from '../../src/errors/neode-error'
+import { GuardViolationError } from '../../src/errors/guard-violation'
 import type { INeode } from '../../src/neode.interface'
 import { GraphNode, QueryOutput, QueryRecord } from '../../src/driver/types'
 import {
   NodeEntity,
   InternalId,
   Uuid,
-  String,
+  Property,
   Number as NumberProperty,
 } from '../../src/decorators'
 import { fulltextIndexName } from '../../src/services/schema/fulltext.service'
@@ -22,7 +23,7 @@ class Movie {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   title: string
 
   @NumberProperty()
@@ -38,7 +39,7 @@ class Loose {
   @InternalId()
   _id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 }
 
@@ -125,6 +126,29 @@ describe('Repository', () => {
       expect(mocks.find.mock.calls[0][0]).toBe(Movie)
       expect(mocks.find.mock.calls[0][1]).toBe('abc-123')
       expect(found?.title).toBe('Alien')
+    })
+
+    it('keeps the repository database when options are passed (NTS-607)', async () => {
+      const { neode, mocks } = stubNeode()
+      mocks.find.mockResolvedValue(Movie.build({ title: 'Alien' }))
+
+      const repo = new Repository<Movie>(neode, Movie, 'analytics')
+      await repo.find('abc-123', { withoutFilters: ['tenant'] })
+
+      expect(mocks.find.mock.calls[0][2]).toEqual({
+        database: 'analytics',
+        withoutFilters: ['tenant'],
+      })
+    })
+
+    it('an explicit options.database wins over the repository database', async () => {
+      const { neode, mocks } = stubNeode()
+      mocks.find.mockResolvedValue(Movie.build({ title: 'Alien' }))
+
+      const repo = new Repository<Movie>(neode, Movie, 'analytics')
+      await repo.find('abc-123', { database: 'other' })
+
+      expect(mocks.find.mock.calls[0][2]).toEqual({ database: 'other' })
     })
   })
 
@@ -306,7 +330,9 @@ describe('Repository', () => {
     it('merges on the given properties and returns the hydrated entity', async () => {
       const { neode, mocks } = stubNeode()
       const merged = Movie.build({ id: 'u1', title: 'Alien', released: 1979 })
-      mocks.merge.mockResolvedValue(merged)
+      // NTS-630: merge() resolves to the merge-outcome wrapper; upsert
+      // unwraps `.entity`
+      mocks.merge.mockResolvedValue({ entity: merged })
 
       const repo = new Repository<Movie>(neode, Movie)
       const result = await repo.upsert({ title: 'Alien', released: 1979 })
@@ -355,20 +381,19 @@ describe('Repository', () => {
     })
 
     it('resolves a primary key value to the entity, then deletes it', async () => {
-      const { neode, mocks } = stubNeode()
-      const entity = Movie.build({ id: 'u1', title: 'Alien' })
-      mocks.find.mockResolvedValue(entity)
+      const { neode, mocks } = stubNeode({
+        records: [record(node({ id: 'u1', title: 'Alien' }))],
+      })
 
       const repo = new Repository<Movie>(neode, Movie)
 
       await repo.delete('u1')
 
-      // The delete lookup bypasses the read filters (NTS-162): a write
-      // may target rows the current filter view hides
-      expect(mocks.find).toHaveBeenCalledWith(Movie, 'u1', {
-        withoutFilters: [WITHOUT_ALL_FILTERS],
-      })
-      expect(mocks.delete.mock.calls[0][0]).toBe(entity)
+      // The delete lookup bypasses the read filters directly (a write
+      // may target rows the current filter view hides) — NTS-610: it no
+      // longer routes '*' through the public find mapper
+      expect(mocks.find).not.toHaveBeenCalled()
+      expect(mocks.delete.mock.calls[0][0]).toMatchObject({ id: 'u1', title: 'Alien' })
     })
 
     it('throws when no entity exists for the primary key value', async () => {
@@ -407,16 +432,26 @@ describe('Repository', () => {
       expect(Object.values(params)).toContain(1979)
     })
 
-    it('clears every node of the label when called without params', async () => {
+    it('clears every node of the label when confirmed with { all: true }', async () => {
       const { neode, mocks } = stubNeode({ records: [record(0)] })
 
       const repo = new Repository<Movie>(neode, Movie)
-      await repo.deleteAll()
+      await repo.deleteAll({ all: true })
 
       const query = mocks.writeCypher.mock.calls[0][0]
 
       expect(query).not.toContain('WHERE')
       expect(query).toContain('DETACH DELETE this')
+    })
+
+    it('refuses an unfiltered call with a fix hint (NTS-595)', async () => {
+      const { neode } = stubNeode({ records: [] })
+
+      const repo = new Repository<Movie>(neode, Movie)
+
+      await expect(repo.deleteAll()).rejects.toThrow(/deleteAll\(\) refused on Movie/)
+      await expect(repo.deleteAll()).rejects.toThrow(/\{ all: true \}/)
+      await expect(repo.deleteAll({})).rejects.toThrow(NeodeError)
     })
   })
 
@@ -542,6 +577,54 @@ describe('Repository', () => {
 
       expect(value).toBe(0)
     })
+
+    it('renders the min floor as a WITH … WHERE guard terminal (NTS-655)', async () => {
+      const { neode, mocks } = stubNeode({ records: [keyedRecord({ value: 3 })] })
+
+      const repo = new Repository<Movie>(neode, Movie)
+      const value = await repo.increment('u1', 'released', -2, { min: 0 })
+
+      const [query, params] = mocks.writeCypher.mock.calls[0]
+
+      // The guard is a terminal between the SETs and the RETURN — the
+      // floor is checked in the same statement, under the write lock
+      expect(query).toMatch(
+        /WITH this\nWHERE \(this\.`released` >= \$min\)\nRETURN this\.`released` AS value/,
+      )
+      expect(params.min).toBe(0)
+      expect(params.by).toBe(-2)
+      expect(value).toBe(3)
+    })
+
+    it('throws GuardViolationError when the guard filters the row (NTS-655)', async () => {
+      const { neode } = stubNeode()
+
+      const repo = new Repository<Movie>(neode, Movie)
+
+      await expect(repo.increment('u1', 'released', -2, { min: 0 })).rejects.toThrow(
+        GuardViolationError,
+      )
+    })
+
+    it('min takes precedence over ifExists — a zero-row result always throws (fail-closed)', async () => {
+      const { neode } = stubNeode()
+
+      const repo = new Repository<Movie>(neode, Movie)
+
+      await expect(
+        repo.increment('u1', 'released', -2, { min: 0, ifExists: true }),
+      ).rejects.toThrow(GuardViolationError)
+    })
+
+    it('rejects a non-finite min', async () => {
+      const { neode } = stubNeode()
+
+      const repo = new Repository<Movie>(neode, Movie)
+
+      await expect(repo.increment('u1', 'released', -2, { min: Number.NaN })).rejects.toThrow(
+        'min must be a finite number',
+      )
+    })
   })
 
   describe('countBy', () => {
@@ -582,13 +665,13 @@ describe('Repository', () => {
       @Uuid({ primary: true })
       id: string
 
-      @String()
+      @Property({ type: 'string' })
       title: string
 
-      @String({ fulltext: true })
+      @Property({ type: 'string', fulltext: true })
       plot: string
 
-      @String({ fulltext: true })
+      @Property({ type: 'string', fulltext: true })
       summary: string
 
       static build(values: Record<string, unknown>): Searchable {

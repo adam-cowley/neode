@@ -8,6 +8,15 @@ Package version: **1.0.0-next.1** (from package.json).
 > churns between versions — LLM training corpora mix neode v1, neode and
 > unrelated OGMs. Regenerate with `pnpm docs:agents`.
 
+> **Default to decorators (NTS-583).** When creating a new project or new models, define them as
+> decorated classes (`@NodeEntity()` + `@Property(...)`) using standard TC39 decorators — never
+> `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`. Use `defineModel` (the
+> map API) only when the user asks for it, or decorators are impossible (models built at runtime,
+> or a toolchain without standard TC39 decorator support).
+>
+> Tooling: TypeScript 5+ (or esbuild/SWC/tsdown with standard decorators), `target` ES2022 or later,
+> `"lib": ["ES2022", "ESNext.Decorators"]`, and leave `experimentalDecorators` unset.
+
 Indexes, constraints, full-text and vector indexes, schema inspection and drift workflow.
 
 ### `ApplySchemaDiffOptions` (interface)
@@ -18,27 +27,15 @@ _source: services/schema/drift.service.ts_
 
 ### `applySchemaDrift` (function)
 
-Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450).
+Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive: on a shared database "stale" objects may belong to other applications — review the drift first). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450). With `returnDriftAfter: true` (NTS-659) one extra inspection pass runs after the statements and the call returns `{ statements, driftAfter }` instead — the caller's verification probe, applied and reported in one round trip.
 
 _source: services/schema/drift.service.ts_
 
-### `currentGraphType` (function)
+### `ApplySchemaDriftReport` (interface)
 
-The installed graph type's canonical specification string, or undefined when no graph type is installed (`'{}'` in server output). Backend errors (the command needs Cypher 25 / Neo4j 2026.02+ Enterprise) propagate to the caller — drift probing catches them and omits the family.
+NTS-659 — the result of applySchemaDrift with `returnDriftAfter: true`: the applied statements plus the drift of a single post-apply inspection pass, so one probe serves apply + verification
 
-_source: services/schema/graph-type.service.ts_
-
-### `deriveGraphType` (function)
-
-Derive the graph type from the registered models (the same walk the ontology emits): node models become node element types (first label identifies, the rest are implied), their relationship declarations become relationship element types. Uniqueness is hoisted into named constraint items (NTS-549). Duplicate identifying labels/types: first model wins — anything the server rejects surfaces in the SchemaResult error. `options.constraints` appends user-declared constraint items — the only way to constrain labels/types that are not identifying ones (NTS-549).
-
-_source: services/schema/graph-type.service.ts_
-
-### `deriveGraphTypeElementsOnly` (function)
-
-Derives a graph type and strips its constraint items + any uniqueness flags — the key/uniqueness shape ALTER leaves unchanged (NTS-551)
-
-_source: services/schema/graph-type.service.ts_
+_source: services/schema/drift.service.ts_
 
 ### `formatSchemaDrift` (function)
 
@@ -52,121 +49,15 @@ A full-text index to keep installed on the database
 
 _source: services/schema/fulltext.service.ts_
 
-### `fulltextIndexName` (function)
-
-_source: services/schema/fulltext.service.ts_
-
 ### `FulltextIndexService` (class)
 
 Installs/drops the given full-text index definitions, following the same result-reporting pattern as SchemaService
 
 _source: services/schema/fulltext.service.ts_
 
-### `GeneratedModel` (interface)
-
-One generated model: the label it maps, the inferred primary key and the map-schema definition ready for defineModel().
-
-_source: services/schema/generate.service.ts_
-
-### `GeneratedRelationship` (interface)
-
-One generated relationship declaration: always direction 'out' — the walk captures every relationship once, from its source label.
-
-_source: services/schema/generate.service.ts_
-
-### `generateModels` (function)
-
-Generate model definitions from the graph: labels, sampled property types, relationships and unique-constraint primary keys (NTS-164). Labels without nodes produce no model (nothing to infer from).
-
-_source: services/schema/generate.service.ts_
-
-### `GenerateModelsOptions` (interface)
-
-Options for generateModels.
-
-_source: services/schema/generate.service.ts_
-
-### `GenerateModelsResult` (interface)
-
-The generateModels result: the models plus both rendered styles.
-
-_source: services/schema/generate.service.ts_
-
-### `graphTypeAddStatement` (function)
-
-`ALTER CURRENT GRAPH TYPE ADD { ... }` — NTS-551: add new element types and constraint items to the existing graph type. Only additions are valid: an ADD cannot modify an existing element type, and independent constraints cannot be added to labels/types that already serve as identifying ones — server-side rejections surface in the SchemaResult error.
-
-_source: services/schema/graph-type.service.ts_
-
-### `graphTypeAlterStatement` (function)
-
-`ALTER CURRENT GRAPH TYPE ALTER { ... }` — NTS-551: replace the definition of existing element types (it redefines them to exactly what is given — partially defining an element type does not leave the omitted parts unchanged). Key/uniqueness constraints cannot be included: they cannot be altered server-side and remain unchanged instead, so definitions carrying them are rejected rather than silently redefined without them.
-
-_source: services/schema/graph-type.service.ts_
-
-### `GraphTypeConstraintDefinition` (interface)
-
-NTS-549 — one named constraint item of a graph type
-
-_source: services/schema/graph-type.service.ts_
-
-### `GraphTypeConstraintKind` (type)
-
-What the constraint enforces: uniqueness, key (existence + uniqueness), property existence, or property type
-
-_source: services/schema/graph-type.service.ts_
-
-### `graphTypeConstraintName` (const)
-
-Deterministic name for a graph type constraint item (the same `<label>_<props>_<kind>` shape as the standalone constraint names)
-
-_source: services/schema/graph-type.service.ts_
-
-### `GraphTypeDefinition` (interface)
-
-A complete graph type: the shape derived from the registered models
-
-_source: services/schema/graph-type.service.ts_
-
-### `graphTypeDropStatement` (function)
-
-`ALTER CURRENT GRAPH TYPE DROP { ... }` — drops the element types by identifying label/relationship type plus every named constraint item. Dropping an element type removes its dependent constraints (label existence, property type/existence) but LEAVES its uniqueness/key constraints — those survive as constraints on non-identifying labels and must go by name.
-
-_source: services/schema/graph-type.service.ts_
-
-### `GraphTypeNodeDefinition` (interface)
-
-Node element type: `(:Label => :Implied1&:Implied2 { ... })`
-
-_source: services/schema/graph-type.service.ts_
-
-### `GraphTypePropertyDefinition` (interface)
-
-One property of a node/relationship element type: rendered `name :: TYPE`, plus `NOT NULL` when `nullable` is false and `IS UNIQUE` when `unique`
-
-_source: services/schema/graph-type.service.ts_
-
-### `GraphTypeRelationshipDefinition` (interface)
-
-Relationship element type: `(:Source)-[:TYPE => { ... }]->(:Target)`. Both ends optional (BOTH-direction relationships render bare ends)
-
-_source: services/schema/graph-type.service.ts_
-
-### `GraphTypeService` (class)
-
-Applies the model-derived graph type with one SET/DROP statement, following the same result-reporting pattern as the other schema services
-
-_source: services/schema/graph-type.service.ts_
-
-### `graphTypeSetStatement` (function)
-
-`ALTER CURRENT GRAPH TYPE SET { ... }` — replaces the database's existing graph type and constraints
-
-_source: services/schema/graph-type.service.ts_
-
 ### `InspectOptions` (interface)
 
-Which objects count as "declared" for the inspection: pass the full-text/vector index definitions and the enterprise flag your installSchema call used, so the diff is not polluted by false "extra" entries.
+Which objects count as "declared" for the inspection: pass the full-text/vector index definitions your installSchema call used, so the diff is not polluted by false "extra" entries. The edition is DETECTED from the connection (NTS-598) — EXISTS / property-type constraints are declared only on Enterprise.
 
 _source: services/schema/inspect.service.ts_
 
@@ -175,12 +66,6 @@ _source: services/schema/inspect.service.ts_
 Read the installed schema (SHOW CONSTRAINTS / SHOW INDEXES) and diff it against the declared schema
 
 _source: services/schema/inspect.service.ts_
-
-### `parseGraphTypeSpecification` (function)
-
-Parse the canonical `specification` string `SHOW CURRENT GRAPH TYPE` returns into the structural definition (NTS-550) — the same shapes the statement builders render, so drift comparison is structural on both sides. Accepts both the multi-line canonical form and a full `ALTER CURRENT GRAPH TYPE SET` statement (single-line, comma-separated). Throws on fragments it cannot parse (the canonical form is deterministic — a failure is a library bug and should be loud).
-
-_source: services/schema/graph-type.service.ts_
 
 ### `SchemaDiff` (interface)
 
@@ -202,7 +87,7 @@ _source: services/schema/drift.service.ts_
 
 One drifted schema object: what it is, where it lives, and the exact statement(s) that would resolve the drift (NTS-450)
 
-_source: services/schema/drift.service.ts_
+_source: services/schema/graph-type.service.ts_
 
 ### `SchemaDriftGroup` (interface)
 
@@ -221,6 +106,10 @@ _source: services/schema/inspect.service.ts_
 One constraint or index as inspected from the database (SHOW CONSTRAINTS / SHOW INDEXES).
 
 _source: services/schema/inspect.service.ts_
+
+### `SchemaResult` (interface)
+
+_source: services/schema/schema-objects.ts_
 
 ### `VectorIndexDefinition` (interface)
 

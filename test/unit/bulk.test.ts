@@ -1,15 +1,35 @@
-import { NodeEntity, Uuid, String, Number, InternalId, OneToMany } from '../../src/decorators'
+import {
+  NodeEntity,
+  Uuid,
+  Number,
+  InternalId,
+  OneToMany,
+  OneToOne,
+  Property,
+  Boolean,
+  RelationshipEntity,
+  StartNode,
+  EndNode,
+} from '../../src/decorators'
 import { Direction } from '../../src/query'
 import { getModel } from '../../src/meta'
 import { ValidationError } from '../../src/validation'
+import { NeodeError } from '../../src/errors'
+import { convertEdgeProperties } from '../../src/services/relationship-values'
 import {
+  BulkChunkError,
+  BulkService,
   buildCreateQuery,
   buildMergeQuery,
+  buildRelateQuery,
   chunk,
+  prepareRows,
   processCreateRow,
   processMergeRow,
+  rowToProperties,
 } from '../../src/services/query/bulk.service'
 import { toCursorValue } from '../../src/services/query/paginate.service'
+import type { ConnectionProvider, Runner } from '../../src/driver/types'
 import { PropertySchema, PropertyType } from '../../src/meta/property-schema'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
@@ -22,7 +42,7 @@ class BulkPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String({ min: 2 })
+  @Property({ type: 'string', min: 2 })
   name: string
 
   @Number()
@@ -37,10 +57,10 @@ class BulkAccount {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
-  @String({ index: true })
+  @Property({ type: 'string', index: true })
   slug: string
 
   @Number()
@@ -57,6 +77,87 @@ class BulkPost {
 
   @OneToMany(() => BulkPerson, 'WROTE', Direction.OUTGOING)
   author: BulkPerson
+}
+
+@NodeEntity()
+class BulkOneAuthor {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @OneToOne({ target: () => BulkPerson, type: 'WROTE', direction: Direction.OUTGOING })
+  author: BulkPerson
+}
+
+@RelationshipEntity()
+class BulkOwnership {
+  @Uuid({ primary: true })
+  id: string
+
+  @StartNode(() => BulkPerson)
+  owner: BulkPerson
+
+  @EndNode(() => BulkPost)
+  post: BulkPost
+}
+
+@NodeEntity()
+class BulkEdgeOwner {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @OneToMany(() => BulkOwnership, 'OWNS', Direction.OUTGOING)
+  ownership: BulkOwnership[]
+}
+
+@NodeEntity()
+class BulkNoPk {
+  @InternalId()
+  _id: string
+
+  @OneToMany(() => BulkNoPk, 'KNOWS', Direction.OUTGOING)
+  knows: BulkNoPk[]
+}
+
+// The InternalId fallback: getPrimaryKey() resolves to the internal-id
+// property for models without an explicit @Primary — relateMany matches
+// on it like any other pk.
+
+let fakeSequence = 0
+
+@NodeEntity()
+class BulkBadge {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @Property({ type: 'string', unique: true, fake: () => `slug-${++fakeSequence}` })
+  slug: string
+
+  @Property({ type: 'string', required: true, fake: () => `code-${++fakeSequence}` })
+  code: string
+
+  @Property({ type: 'string', fake: () => `tag-${++fakeSequence}` })
+  tag: string
+}
+
+@NodeEntity()
+class BulkFlagged {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @Boolean()
+  active: boolean
 }
 
 const FIXED_UUID = '0c0ffee0-0000-4000-8000-000000000000'
@@ -180,6 +281,44 @@ describe('bulk helpers', () => {
     })
   })
 
+  describe('fake generators (NTS-608)', () => {
+    it('resolves fake properties in createMany rows like single create', async () => {
+      const schema = getModel(BulkBadge)!
+      const rows = [{}, {}, {}]
+
+      const { rows: prepared } = await prepareRows(rows, schema)
+      const maps = prepared.map((row) => processCreateRow(row, schema))
+
+      // The required fake property: rows validate (no throw) and every
+      // row carries a generated value
+      const codes = maps.map((map) => map.code)
+      expect(codes.every((code) => typeof code === 'string' && code.startsWith('code-'))).toBe(true)
+
+      // Distinct within the batch (generator-side; bulk does not retry)
+      expect(new Set(codes).size).toBe(rows.length)
+
+      // The plain fake property is present too
+      expect(maps.every((map) => typeof map.tag === 'string' && map.tag.startsWith('tag-'))).toBe(
+        true,
+      )
+    })
+
+    it('resolves fakes in mergeMany rows before the match/set split', async () => {
+      const schema = getModel(BulkBadge)!
+
+      // No explicit merge field: the faked unique property supplies the
+      // match (a fresh value per row — merge creates, like single merge())
+      const { rows: prepared } = await prepareRows([{}], schema)
+      const [row] = prepared
+      const { match, set } = processMergeRow(row!, schema)
+
+      expect(match.slug).toMatch(/^slug-/)
+      expect(set).not.toHaveProperty('slug')
+      // The required fake property is written like any other value
+      expect(set.code).toMatch(/^code-/)
+    })
+  })
+
   describe('query builders', () => {
     it('builds the bulk CREATE statement around UNWIND', () => {
       const query = buildCreateQuery(['BulkPerson'])
@@ -197,10 +336,95 @@ describe('bulk helpers', () => {
     it('builds the bulk MERGE statement on the given match keys', () => {
       const query = buildMergeQuery(['BulkAccount'], ['id', 'name'])
 
-      expect(query).toContain('UNWIND $rows AS row')
+      expect(query).toContain('UNWIND $rows AS item')
+      expect(query).toContain('WITH item.row AS row, item.create AS created')
       expect(query).toContain('MERGE (this:BulkAccount { id: row.id, name: row.name })')
       expect(query).toContain('SET this += row')
       expect(query).toContain('RETURN this')
+    })
+
+    it('builds the relateMany statement: MATCH both pks, MERGE the edge, upsert props', () => {
+      const query = buildRelateQuery(
+        ['BulkPost'],
+        ['BulkPerson'],
+        'WROTE',
+        Direction.OUTGOING,
+        'id',
+        'id',
+      )
+
+      expect(query).toContain('UNWIND $rows AS row')
+      expect(query).toContain('MATCH (from:BulkPost { id: row.from })')
+      expect(query).toContain('MATCH (to:BulkPerson { id: row.to })')
+      // Endpoints are MATCH-bound — the MERGE is the edge only (the
+      // embedded engine rejects label re-declarations on bound variables)
+      expect(query).toContain('MERGE (from)-[rel:WROTE]->(to)')
+      expect(query).toContain('ON CREATE SET rel = coalesce(row.properties, {})')
+      expect(query).toContain('ON MATCH SET rel += coalesce(row.properties, {})')
+      expect(query).toContain('RETURN count(rel) AS related')
+    })
+
+    it('renders an INCOMING declaration with the reversed MERGE pattern', () => {
+      const query = buildRelateQuery(
+        ['BulkPost'],
+        ['BulkPerson'],
+        'WROTE',
+        Direction.INCOMING,
+        'id',
+        'id',
+      )
+
+      expect(query).toContain('MERGE (from)<-[rel:WROTE]-(to)')
+    })
+
+    it('escapes hostile labels and types', () => {
+      const query = buildRelateQuery(
+        ['Post` DETACH DELETE x'],
+        ['Person'],
+        'W` ROTE',
+        Direction.OUTGOING,
+        'id',
+        'id',
+      )
+
+      expect(query).toContain('MATCH (from:`Post`` DETACH DELETE x` {')
+      expect(query).toContain('[rel:`W`` ROTE`]')
+    })
+
+    it('rejects an undirected (BOTH) declaration', () => {
+      expect(() =>
+        buildRelateQuery(['BulkPost'], ['BulkPerson'], 'WROTE', Direction.BOTH, 'id', 'id'),
+      ).toThrow(NeodeError)
+    })
+  })
+
+  describe('relateMany validation (before any statement runs)', () => {
+    const bulk = new BulkService({
+      run: async () => ({ records: [], summary: undefined }),
+    } as never)
+
+    it('rejects a relationship key the model does not declare', async () => {
+      await expect(
+        bulk.relateMany(getModel(BulkPost)!, 'notDeclared', [{ from: 'p1', to: 'p1' }]),
+      ).rejects.toThrow(NeodeError)
+    })
+
+    it('rejects restricted cardinalities (one / zeroOrOne)', async () => {
+      await expect(
+        bulk.relateMany(getModel(BulkOneAuthor)!, 'author', [{ from: 'p1', to: 'p1' }]),
+      ).rejects.toThrow(/only supports "many" relationships/)
+    })
+
+    it('rejects edge-entity (relationship entity) targets', async () => {
+      await expect(
+        bulk.relateMany(getModel(BulkEdgeOwner)!, 'ownership', [{ from: 'p1', to: 'p1' }]),
+      ).rejects.toThrow(/edge entities/)
+    })
+
+    it('converts edge properties through the shared pipeline', () => {
+      // A plain relationship accepts literal edge properties untouched
+      const relationship = getModel(BulkPost)!.getRelationship('author')
+      expect(convertEdgeProperties(relationship, { weight: 2 })).toEqual({ weight: 2 })
     })
   })
 
@@ -235,6 +459,208 @@ describe('bulk helpers', () => {
       expect(toCursorValue('2026-01-02T03:04:05Z', datetime)).toBe('2026-01-02T03:04:05Z')
       expect(toCursorValue(undefined, datetime)).toBeUndefined()
       expect(toCursorValue(null, datetime)).toBeUndefined()
+    })
+  })
+
+  describe('rowToProperties (NTS-625)', () => {
+    it('maps a row through the create pipeline, converting values', async () => {
+      const result = await rowToProperties(getModel(BulkPerson), {
+        id: FIXED_UUID,
+        name: 'Adam',
+        age: '30',
+      })
+
+      expect(result.ok).toBe(true)
+
+      if (result.ok) {
+        expect(result.properties.id).toBe(FIXED_UUID)
+        expect(result.properties.name).toBe('Adam')
+        expect(result.properties.age).toBe(30)
+      }
+    })
+
+    it('resolves defaults and fakes for unset properties', async () => {
+      const result = await rowToProperties(getModel(BulkBadge), { slug: 'slug-manual' })
+
+      expect(result.ok).toBe(true)
+
+      if (result.ok) {
+        expect(result.properties.slug).toBe('slug-manual')
+        expect(result.properties.code).toMatch(/^code-\d+$/) // fake generator ran
+      }
+    })
+
+    it('applies the header rename map before the pipeline', async () => {
+      const result = await rowToProperties(
+        getModel(BulkPerson),
+        { uuid: FIXED_UUID, person_name: 'Adam', age: 30 },
+        { map: { uuid: 'id', person_name: 'name' } },
+      )
+
+      expect(result.ok).toBe(true)
+
+      if (result.ok) {
+        expect(result.properties.id).toBe(FIXED_UUID)
+        expect(result.properties.name).toBe('Adam')
+      }
+    })
+
+    it('collects every failing check as { ok: false } instead of throwing', async () => {
+      const result = await rowToProperties(getModel(BulkPerson), { id: 'not-a-uuid', name: 'A' })
+
+      expect(result.ok).toBe(false)
+
+      if (!result.ok) {
+        expect(result.errors.length).toBeGreaterThanOrEqual(2)
+
+        for (const issue of result.errors) {
+          expect(issue.message).toBeTruthy()
+          expect(issue.rule).toBeTruthy()
+        }
+      }
+    })
+
+    it('reports nested relationship rows as a single error', async () => {
+      const result = await rowToProperties(getModel(BulkPost), {
+        id: FIXED_UUID,
+        title: 'T',
+        author: 1,
+      })
+
+      expect(result.ok).toBe(false)
+
+      if (!result.ok) {
+        expect(result.errors).toHaveLength(1)
+        expect(result.errors[0]?.message).toContain('nested relationship values')
+      }
+    })
+
+    it('coerces boolean strings and passes unparseable forms to validation (NTS-639)', async () => {
+      const schema = getModel(BulkFlagged)
+
+      const coerced = await rowToProperties(schema, { id: FIXED_UUID, active: ' TRUE ' })
+
+      expect(coerced.ok).toBe(true)
+
+      if (coerced.ok) {
+        expect(coerced.properties.active).toBe(true)
+      }
+
+      const rejected = await rowToProperties(schema, { id: FIXED_UUID, active: 'yes' })
+
+      expect(rejected.ok).toBe(false)
+    })
+  })
+
+  describe('BulkChunkError (NTS-649)', () => {
+    it('lists the failing rows with their messages', () => {
+      const cause = new Error('MadeUpConstraintError')
+      const error = new BulkChunkError(
+        1,
+        2,
+        2,
+        [
+          {
+            index: 2,
+            error: new Error('Node already exists with property `name` = `taken`'),
+          },
+        ],
+        cause,
+      )
+
+      expect(error.name).toBe('BulkChunkError')
+      expect(error.chunkIndex).toBe(1)
+      expect(error.failedRows.map((failure) => failure.index)).toEqual([2])
+      expect(error.message).toContain('#2')
+      expect(error.message).toContain('Node already exists')
+      expect(error.message).toContain('earlier chunks stay committed')
+      expect(error.cause).toBe(cause)
+    })
+
+    it('explains when no single row fails on its own', () => {
+      const error = new BulkChunkError(0, 0, 3, [], new Error('constraint violation'))
+
+      expect(error.failedRows).toEqual([])
+      expect(error.message).toContain('fail together')
+    })
+
+    it('explains when the per-row diagnosis is unavailable', () => {
+      const error = new BulkChunkError(0, 0, 3, undefined, new Error('constraint violation'))
+
+      expect(error.failedRows).toEqual([])
+      expect(error.message).toContain('diagnosis unavailable')
+    })
+  })
+
+  describe('writeChunks failure reporting (NTS-649)', () => {
+    it('collects failing rows through a rolled-back per-row diagnosis', async () => {
+      const schema = getModel(BulkPerson)!
+
+      let commits = 0
+      let rollbacks = 0
+
+      const tx = {
+        async run(_query: string, params: { rows: Record<string, unknown>[] }) {
+          // The chunk statement (all rows at once) always fails
+          if (params.rows.length > 1) {
+            throw new Error('UNWIND batch failed')
+          }
+
+          if (params.rows[0]?.name === 'poison') {
+            throw new Error('unique constraint violation')
+          }
+
+          return { records: [] }
+        },
+        async commit() {
+          commits += 1
+        },
+        async rollback() {
+          rollbacks += 1
+        },
+      }
+
+      const provider = { beginTransaction: async () => tx } as unknown as ConnectionProvider
+
+      const error = await new BulkService(provider)
+        .createMany(BulkPerson, schema, [
+          { name: 'Adam', age: 30 },
+          { name: 'poison', age: 1 },
+        ])
+        .then(
+          () => null,
+          (thrown) => thrown,
+        )
+
+      expect(error).toBeInstanceOf(BulkChunkError)
+      expect(error?.chunkIndex).toBe(0)
+      expect(error?.failedRows.map((failure) => failure.index)).toEqual([1])
+      expect(error?.message).toContain('unique constraint violation')
+
+      // Nothing the diagnosis touched committed — the chunk tx rolled back
+      expect(commits).toBe(0)
+      expect(rollbacks).toBe(3)
+    })
+
+    it('reports the chunk failure without a diagnosis inside an open transaction', async () => {
+      const schema = getModel(BulkPerson)!
+
+      const runner: Runner = {
+        async run() {
+          throw new Error('UNWIND batch failed')
+        },
+      }
+
+      const error = await new BulkService(runner)
+        .createMany(BulkPerson, schema, [{ name: 'Adam', age: 30 }])
+        .then(
+          () => null,
+          (thrown) => thrown,
+        )
+
+      expect(error).toBeInstanceOf(BulkChunkError)
+      expect(error?.failedRows).toEqual([])
+      expect(error?.message).toContain('diagnosis unavailable')
     })
   })
 })

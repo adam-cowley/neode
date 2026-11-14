@@ -3,7 +3,6 @@ import {
   NodeEntity,
   Uuid,
   Version,
-  String,
   Number,
   InternalId,
   DateTime,
@@ -11,10 +10,14 @@ import {
   Point,
   Date,
   Property,
+  Unique,
+  UpdatedAt,
 } from '../../src/decorators'
 import { Direction } from '../../src/query'
 import { getModel } from '../../src/meta'
 import { ValidationError } from '../../src/validation'
+import { NeodeError } from '../../src/errors'
+import { BulkService, BulkChunkError } from '../../src/services/query/bulk.service'
 import { BulkService } from '../../src/services/query/bulk.service'
 import { PaginateService } from '../../src/services/query/paginate.service'
 
@@ -28,7 +31,7 @@ class BulkPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String({ min: 2 })
+  @Property({ type: 'string', min: 2 })
   name: string
 
   @Number()
@@ -73,6 +76,35 @@ class BulkPlace {
 }
 
 @NodeEntity()
+class BulkDated {
+  @InternalId()
+  _id: string
+
+  @Property({ type: 'string' })
+  name: string
+
+  // A typed merge key: file sources deliver it as a string (NTS-637)
+  @Property({ type: 'date', unique: true })
+  day: string
+}
+
+@NodeEntity()
+class BulkStamped {
+  @InternalId()
+  _id: string
+
+  @Property({ type: 'string' })
+  name: string
+
+  // The NTS-612 iso-string form: the stored value is the string rendering,
+  // so a string match value must stay a string (NTS-638)
+  @Unique()
+  @UpdatedAt({ format: 'iso-string' })
+  @DateTime()
+  syncedAt: string
+}
+
+@NodeEntity()
 class BulkAccount {
   @InternalId()
   _id: string
@@ -80,7 +112,7 @@ class BulkAccount {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @Number()
@@ -95,11 +127,28 @@ class BulkPost {
   @Uuid({ primary: true })
   id: string
 
-  @String({ min: 2 })
+  @Property({ type: 'string', min: 2 })
   title: string
 
   @OneToMany(() => BulkPerson, 'WROTE', Direction.OUTGOING)
   author: BulkPerson[]
+}
+
+// NTS-649: the poison-row fixture — `code` carries a server-side unique
+// constraint installed (and dropped) by the failure-reporting describe below
+@NodeEntity()
+class BulkUniqueRow {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @Property({ type: 'string', unique: true })
+  code: string
+
+  @Property({ type: 'string' })
+  name: string
 }
 
 // ---------------------------------------------------------------------------
@@ -241,6 +290,273 @@ describe('bulk (createMany / mergeMany)', () => {
     await expect(
       bulk.createMany(BulkPerson, schema, [{ name: 'Adam' }], { chunkSize: 0 }),
     ).rejects.toThrow(/chunkSize/i)
+  })
+})
+
+describe('relateMany', () => {
+  let backend: TestBackend
+  let bulk: BulkService
+
+  beforeAll(async () => {
+    backend = await openBackend()
+    bulk = new BulkService(backend.connection)
+  })
+
+  afterEach(async () => {
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  async function edgeCount(): Promise<number> {
+    const output = await backend.connection.run(
+      'MATCH (:`BulkPost`)-[r:WROTE]->(:`BulkPerson`) RETURN count(r) AS n',
+      {},
+    )
+    return +output.records[0]!.get('n')
+  }
+
+  it('merges every row by primary-key value and reports the count', async () => {
+    const schema = getModel(BulkPerson)!
+    const people = (
+      await bulk.createMany(BulkPerson, schema, [
+        { id: '11111111-1111-4111-8111-111111111111', name: 'adam' },
+        { id: '22222222-2222-4222-8222-222222222222', name: 'grace' },
+      ])
+    ).flatMap((chunk) => chunk.entities)
+    const posts = (
+      await bulk.createMany(BulkPost, getModel(BulkPost)!, [
+        { id: '33333333-3333-4333-8333-333333333333', title: 'graphs' },
+        { id: '44444444-4444-4444-8444-444444444444', title: 'cypher' },
+      ])
+    ).flatMap((chunk) => chunk.entities)
+
+    const result = await bulk.relateMany(getModel(BulkPost)!, 'author', [
+      { from: posts[0]!.id, to: people[0]!.id, properties: { weight: 1 } },
+      { from: posts[1]!.id, to: people[1]!.id },
+      { from: posts[0]!.id, to: people[1]!.id },
+    ])
+
+    expect(result).toEqual({ related: 3, chunks: 1 })
+    expect(await edgeCount()).toBe(3)
+  })
+
+  it('is idempotent: re-running the same rows never duplicates edges', async () => {
+    await bulk.createMany(BulkPerson, getModel(BulkPerson)!, [
+      { id: '11111111-1111-4111-8111-111111111111', name: 'adam' },
+    ])
+    await bulk.createMany(BulkPost, getModel(BulkPost)!, [
+      { id: '33333333-3333-4333-8333-333333333333', title: 'graphs' },
+    ])
+
+    const rows = [
+      { from: '33333333-3333-4333-8333-333333333333', to: '11111111-1111-4111-8111-111111111111' },
+    ]
+    await bulk.relateMany(getModel(BulkPost)!, 'author', rows)
+    const second = await bulk.relateMany(getModel(BulkPost)!, 'author', rows)
+
+    expect(second.related).toBe(1)
+    expect(await edgeCount()).toBe(1)
+  })
+
+  it('applies edge properties to created and matched edges alike', async () => {
+    await bulk.createMany(BulkPerson, getModel(BulkPerson)!, [
+      { id: '11111111-1111-4111-8111-111111111111', name: 'adam' },
+    ])
+    await bulk.createMany(BulkPost, getModel(BulkPost)!, [
+      { id: '33333333-3333-4333-8333-333333333333', title: 'graphs' },
+    ])
+
+    const rows = [
+      {
+        from: '33333333-3333-4333-8333-333333333333',
+        to: '11111111-1111-4111-8111-111111111111',
+        properties: { weight: 2 },
+      },
+    ]
+    await bulk.relateMany(getModel(BulkPost)!, 'author', rows)
+    await bulk.relateMany(getModel(BulkPost)!, 'author', [
+      { ...rows[0]!, properties: { weight: 9 } },
+    ])
+
+    const output = await backend.connection.run(
+      'MATCH (:`BulkPost`)-[r:WROTE]->(:`BulkPerson`) RETURN r.weight AS w',
+      {},
+    )
+    expect(+output.records[0]!.get('w')).toBe(9)
+    expect(await edgeCount()).toBe(1)
+  })
+
+  it('skips rows whose endpoints do not match, without error', async () => {
+    await bulk.createMany(BulkPerson, getModel(BulkPerson)!, [
+      { id: '11111111-1111-4111-8111-111111111111', name: 'adam' },
+    ])
+    await bulk.createMany(BulkPost, getModel(BulkPost)!, [
+      { id: '33333333-3333-4333-8333-333333333333', title: 'graphs' },
+    ])
+
+    const result = await bulk.relateMany(getModel(BulkPost)!, 'author', [
+      { from: '33333333-3333-4333-8333-333333333333', to: '11111111-1111-4111-8111-111111111111' },
+      { from: '99999999-9999-4999-8999-999999999999', to: '11111111-1111-4111-8111-111111111111' },
+    ])
+
+    expect(result.related).toBe(1)
+    expect(await edgeCount()).toBe(1)
+  })
+
+  it('chunks large row sets across statements', async () => {
+    const schema = getModel(BulkPerson)!
+    const people = (
+      await bulk.createMany(
+        BulkPerson,
+        schema,
+        Array.from({ length: 5 }, (_, index) => ({
+          id: `55555555-5555-4555-8555-${index.toString().padStart(12, '0')}`,
+          name: `person-${index}`,
+        })),
+      )
+    ).flatMap((chunk) => chunk.entities)
+    const posts = (
+      await bulk.createMany(
+        BulkPost,
+        getModel(BulkPost)!,
+        Array.from({ length: 5 }, (_, index) => ({
+          id: `66666666-6666-4666-8666-${index.toString().padStart(12, '0')}`,
+          title: `post-${index}`,
+        })),
+      )
+    ).flatMap((chunk) => chunk.entities)
+
+    const rows = people.flatMap((person, index) =>
+      posts.map((post) => ({ from: post.id, to: person.id })),
+    )
+
+    const result = await bulk.relateMany(getModel(BulkPost)!, 'author', rows, { chunkSize: 10 })
+
+    expect(result.related).toBe(25)
+    expect(result.chunks).toBe(3)
+    expect(await edgeCount()).toBe(25)
+  })
+
+  it('rejects a relationship the model does not declare', async () => {
+    await expect(
+      bulk.relateMany(getModel(BulkPost)!, 'notDeclared', [{ from: 'a', to: 'b' }]),
+    ).rejects.toThrow(NeodeError)
+  })
+})
+
+// ---- NTS-649: a failed chunk names its failing rows; its valid rows roll back with it ----
+
+describe('bulk chunk failure reporting (NTS-649)', () => {
+  let backend: TestBackend
+  let bulk: BulkService
+
+  const schema = () => getModel(BulkUniqueRow)!
+
+  beforeAll(async () => {
+    backend = await openBackend()
+    bulk = new BulkService(backend.connection)
+
+    if (backend.capabilities.constraints) {
+      await backend.connection.run(
+        'CREATE CONSTRAINT bulk_nts649_code IF NOT EXISTS FOR (n:BulkUniqueRow) REQUIRE n.code IS UNIQUE',
+      )
+    }
+  })
+
+  afterEach(async () => {
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    if (backend.capabilities.constraints) {
+      try {
+        await backend.connection.run('DROP CONSTRAINT bulk_nts649_code IF EXISTS')
+      } catch {
+        // not all backends support dropping constraints
+      }
+    }
+
+    await backend.close()
+  })
+
+  it('reports the failing row of a mid-import chunk and rolls the chunk back', async () => {
+    if (!backend.capabilities.constraints) {
+      return
+    }
+
+    // The poison target: a node the batch's third row collides with
+    await backend.connection.run(
+      "CREATE (:BulkUniqueRow { code: 'taken-1', name: 'pre-existing' })",
+    )
+
+    const error = await bulk
+      .createMany(
+        BulkUniqueRow,
+        schema(),
+        [
+          { code: 'row-0', name: 'Ok 0' },
+          { code: 'row-1', name: 'Ok 1' },
+          { code: 'taken-1', name: 'Poison' },
+          { code: 'row-3', name: 'Ok 3' },
+        ],
+        { chunkSize: 2 },
+      )
+      .then(
+        () => null,
+        (thrown) => thrown,
+      )
+
+    expect(error).toBeInstanceOf(BulkChunkError)
+    expect(error?.chunkIndex).toBe(1)
+    expect(error?.failedRows.map((failure) => failure.index)).toEqual([2])
+    expect(error?.message).toContain('earlier chunks stay committed')
+
+    // Fate: the first chunk committed; the failed chunk's valid row
+    // (index 3) rolled back with it, and the pre-existing node survives
+    const stored = await backend.neode.readCypher(
+      'MATCH (n:BulkUniqueRow) RETURN n.code AS code ORDER BY n.code',
+    )
+
+    expect(stored.records.map((record) => record.get('code'))).toEqual([
+      'row-0',
+      'row-1',
+      'taken-1',
+    ])
+  })
+
+  it('reports every failing row of a chunk together', async () => {
+    if (!backend.capabilities.constraints) {
+      return
+    }
+
+    await backend.connection.run(
+      "UNWIND $targets AS target CREATE (:BulkUniqueRow { code: target, name: 'pre-existing' })",
+      { targets: ['taken-1', 'taken-2'] },
+    )
+
+    const error = await bulk
+      .createMany(
+        BulkUniqueRow,
+        schema(),
+        [
+          { code: 'row-0', name: 'Ok 0' },
+          { code: 'taken-1', name: 'Poison 1' },
+          { code: 'row-2', name: 'Ok 2' },
+          { code: 'taken-2', name: 'Poison 2' },
+        ],
+        { chunkSize: 4 },
+      )
+      .then(
+        () => null,
+        (thrown) => thrown,
+      )
+
+    expect(error).toBeInstanceOf(BulkChunkError)
+    expect(error?.chunkIndex).toBe(0)
+    expect(error?.failedRows.map((failure) => failure.index)).toEqual([1, 3])
   })
 })
 
@@ -536,6 +852,42 @@ describe('paginate', () => {
 
       expect((page.items as BulkPerson[]).map((person) => person.visits)).toEqual([3, 4])
       expect(page.hasMore).toBe(false)
+    })
+
+    it('completes the walk when some rows lack the cursor key (NTS-592)', async () => {
+      // Four rows, three with the key removed. The old walk took a null
+      // boundary into the cursor ('[null, …]') and the next page crashed
+      // on datetime('[null, …]') — or stopped silently on a non-temporal
+      // key. Null-key rows are now excluded deterministically: the walk
+      // covers the set-key rows and ends cleanly.
+      await new BulkService(backend.connection).createMany(
+        BulkPerson,
+        schema(),
+        Array.from({ length: 4 }, (_, i) => ({ name: `Person ${i}`, visits: i })),
+      )
+
+      await backend.connection.run(
+        "MATCH (p:BulkPerson) WHERE p.name <> 'Person 0' REMOVE p.createdAt",
+      )
+
+      // createMany does not stamp @DateTime — set the one key explicitly
+      await backend.connection.run(
+        'MATCH (p:BulkPerson { name: $name }) SET p.createdAt = datetime($when)',
+        { name: 'Person 0', when: '2026-01-01T00:00:00Z' },
+      )
+
+      const seen: BulkPerson[] = []
+
+      for await (const person of paginate.lazy<BulkPerson>(
+        BulkPerson,
+        schema(),
+        {},
+        { limit: 2, orderBy: 'createdAt' },
+      )) {
+        seen.push(person)
+      }
+
+      expect(seen.map((person) => person.name)).toEqual(['Person 0'])
     })
 
     it('rejects an unknown cursor property and ambiguous options', async () => {
@@ -876,5 +1228,98 @@ describe('bulk mergeMany with @Version (NTS-528)', () => {
 
     expect(version + 0).toBe(1)
     expect(hits + 0).toBe(5)
+  })
+})
+
+// ---- NTS-637: merge match keys convert through the schema ----
+
+describe('bulk merge-key conversion (NTS-637)', () => {
+  let backend: TestBackend
+
+  beforeAll(async () => {
+    backend = await openBackend()
+  })
+
+  afterEach(async () => {
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  it('mergeMany matches a typed merge key given as string file data', async () => {
+    const service = new BulkService(backend.neode.getConnection())
+    const schema = getModel(BulkDated)
+
+    const first = await service.mergeMany(BulkDated, schema, [
+      { day: '2024-01-01', name: 'First' },
+      { day: '2024-01-02', name: 'Second' },
+    ])
+
+    expect(first[0]?.entities).toHaveLength(2)
+
+    // Re-running the same file: the string form must match the stored
+    // (converted) temporal value — without conversion the MERGE never
+    // matches and silently duplicates
+    const second = await service.mergeMany(BulkDated, schema, [
+      { day: '2024-01-01', name: 'First updated' },
+    ])
+
+    expect(second[0]?.entities).toHaveLength(1)
+
+    const stored = await backend.neode.readCypher(
+      'MATCH (d:BulkDated) RETURN d.name AS name, d.day AS day ORDER BY d.name',
+      {},
+    )
+
+    expect(stored.records).toHaveLength(2)
+    expect(stored.records.map((record) => record.get('name'))).toEqual(['First updated', 'Second'])
+
+    const day = stored.records[1]?.get('day') as { year?: number }
+
+    expect(day).toMatchObject({ year: 2024, month: 1, day: 2 })
+  })
+
+  it('mergeMany matches an iso-string merge key given as string file data (NTS-638)', async () => {
+    const service = new BulkService(backend.neode.getConnection())
+    const schema = getModel(BulkStamped)
+
+    await service.mergeMany(BulkStamped, schema, [
+      { syncedAt: '2024-03-04T05:06:07Z', name: 'First' },
+    ])
+
+    await service.mergeMany(BulkStamped, schema, [
+      { syncedAt: '2024-03-04T05:06:07Z', name: 'First updated' },
+    ])
+
+    const stored = await backend.neode.readCypher(
+      'MATCH (s:BulkStamped) RETURN s.name AS name, s.syncedAt AS syncedAt',
+      {},
+    )
+
+    // The string match value equals the stored string form — matched and
+    // updated, not duplicated
+    expect(stored.records).toHaveLength(1)
+    expect(stored.records[0]?.get('name')).toBe('First updated')
+    expect(stored.records[0]?.get('syncedAt')).toBe('2024-03-04T05:06:07Z')
+  })
+
+  it('facade rowToProperties resolves the schema and maps rows (NTS-641)', async () => {
+    const ok = await backend.neode.rowToProperties(BulkPerson, {
+      id: '0c0ffee0-0000-4000-8000-000000000000',
+      name: 'Adam',
+      visits: '3',
+    })
+
+    expect(ok.ok).toBe(true)
+
+    if (ok.ok) {
+      expect(ok.properties.visits).toBe(3)
+    }
+
+    const bad = await backend.neode.rowToProperties(BulkPerson, { name: 'A' })
+
+    expect(bad.ok).toBe(false)
   })
 })

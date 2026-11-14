@@ -5,9 +5,6 @@ export { InternalId } from './internal-id.decorator.js'
 
 export { Primary } from './node/primary.decorator.js'
 export { Uuid } from './node/uuid.decorator.js'
-// @deprecated Use @Property({ type: 'string' }) instead
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- re-exporting the deprecated @String on purpose: the legacy decorator stays exported for compatibility
-export { String } from './node/string.decorator.js'
 export { Number } from './node/number.decorator.js'
 export { OneToOne } from './node/one-to-one.decorator.js'
 export { OneToMany } from './node/one-to-many.decorator.js'

@@ -1,4 +1,4 @@
-import type { QueryParams as QueryParameters, QueryOutput } from '../driver/types.js'
+import type { QueryParams as QueryParameters, QueryOutput, QueryRecord } from '../driver/types.js'
 import type { INeode } from '../neode.interface.js'
 import { Builder } from './builder.js'
 
@@ -36,5 +36,27 @@ export class BoundBuilder extends Builder {
   */
   async write(parameters: QueryParameters = {}): Promise<QueryOutput> {
     return this.scope.write(this, parameters, this.database)
+  }
+
+  /**
+  Build and run the statement through the bound scope, routed READ, and
+  return the first row — undefined when the result set is empty (the
+  one-row read shape; naming follows Collection#first, NTS-613).
+  */
+  async first(parameters: QueryParameters = {}): Promise<QueryRecord | undefined> {
+    const output = await this.read(parameters)
+
+    return output.records[0]
+  }
+
+  /**
+  `.first()` narrowed to one column: the named column's value on the
+  first row, undefined on an empty result set (the one-row, one-scalar
+  read shape, NTS-613).
+  */
+  async scalar(name: string, parameters: QueryParameters = {}): Promise<unknown> {
+    const first = await this.first(parameters)
+
+    return first?.get(name)
   }
 }

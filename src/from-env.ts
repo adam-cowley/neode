@@ -6,10 +6,41 @@ a driver config and construct a Neode over a neo4j-driver Driver.
 Lives apart from utilities.ts on purpose — it constructs the Neode
 service, and utilities is imported BY the service layer.
 */
-import { config as configDotenv } from 'dotenv'
+import type { DotenvConfigOutput } from 'dotenv'
 import { auth, type Config, driver as createDriver, logging } from 'neo4j-driver'
+import { createRequire } from 'node:module'
 import { Neo4jConnectionProvider } from './driver/neo4j-connection-provider.js'
+import { NeodeError } from './errors/index.js'
 import { Neode } from './neode.service.js'
+import { isRecord } from './services/type-guards.js'
+
+/**
+The dotenv module surface loadDotenv uses. The import is TYPE-ONLY —
+it never loads dotenv at runtime (NTS-599: importing neode must not pay
+for dotenv, only fromEnv() reads env config). The sync require below keeps
+fromEnv() synchronous — a dynamic import() would force it async, breaking
+the documented API — and dotenv ships CJS, so it is the same module
+`import` would return.
+*/
+interface DotenvModule {
+  config: (options?: { path?: string }) => DotenvConfigOutput
+}
+
+const requireCjs = createRequire(import.meta.url)
+
+function isDotenvModule(value: unknown): value is DotenvModule {
+  return isRecord(value) && typeof value['config'] === 'function'
+}
+
+function loadDotenv(): void {
+  const module_: unknown = requireCjs('dotenv')
+
+  if (!isDotenvModule(module_)) {
+    throw new NeodeError('The dotenv module resolved from node_modules is not the expected shape')
+  }
+
+  module_.config()
+}
 
 export interface EnvConnectionConfig {
   uri: string
@@ -73,6 +104,7 @@ export function configFromEnv(
   const protocol = envValue(environment, 'NEO4J_PROTOCOL') ?? 'bolt'
   const host = envValue(environment, 'NEO4J_HOST') ?? 'localhost'
   const port = envValue(environment, 'NEO4J_PORT') ?? '7687'
+  const uri = envValue(environment, 'NEO4J_URI') ?? `${protocol}://${host}:${port}`
 
   const config: Record<string, unknown> = {}
 
@@ -100,6 +132,12 @@ export function configFromEnv(
     }
   }
 
+  if (envValue(environment, 'NEO4J_MAX_TRANSACTION_RETRY_TIME') !== undefined) {
+    console.warn(
+      'fromEnv: NEO4J_MAX_TRANSACTION_RETRY_TIME is passed to the driver, but neode opens its own unmanaged transactions and never applies it — control transaction retries with the `retries` option of transaction() instead',
+    )
+  }
+
   const disableLosslessIntegers = envValue(environment, 'NEO4J_DISABLE_LOSSLESS_INTEGERS')
 
   if (disableLosslessIntegers !== undefined) {
@@ -115,6 +153,17 @@ export function configFromEnv(
       config['encrypted'] = false
     } else {
       warnIgnoring('NEO4J_ENCRYPTION', `unknown value "${encryption}"`)
+    }
+
+    // A +s / +ssc scheme implies encryption — the driver rejects an explicit
+    // `encrypted` next to it, so the env value must not reach it (NTS-589)
+    if (config['encrypted'] !== undefined && /^(neo4j|bolt)\+s(sc)?:\/\//.test(uri)) {
+      delete config['encrypted']
+
+      warnIgnoring(
+        'NEO4J_ENCRYPTION',
+        `"${uri}" uses a +s / +ssc scheme, which already decides encryption — the driver rejects an explicit \`encrypted\` there`,
+      )
     }
   }
 
@@ -162,7 +211,7 @@ export function configFromEnv(
   const password = envValue(environment, 'NEO4J_PASSWORD')
 
   return {
-    uri: envValue(environment, 'NEO4J_URI') ?? `${protocol}://${host}:${port}`,
+    uri,
     auth:
       username === undefined || password === undefined ? undefined : auth.basic(username, password),
     config: {
@@ -186,7 +235,7 @@ merged over the env-derived values.
 export function fromEnv(driverConfig: Config = {}): Neode {
   // Load vars from .env — dotenv does not clobber variables that are
   // already set in process.env
-  configDotenv()
+  loadDotenv()
 
   const {
     uri,

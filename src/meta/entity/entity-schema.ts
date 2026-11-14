@@ -23,12 +23,22 @@ export interface FilterDefinition {
 
 /**
 Filter names double as Cypher parameter names (letters, digits, underscores)
-and as withoutFilters keys.
+and as withoutFilters keys. The keyset statements bind their own parameters
+under reserved names, so filters cannot take them.
 */
 export function assertFilterName(name: string): void {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
     throw new NeodeError(
       `Filter name "${name}" is invalid — use letters, digits and underscores, starting with a letter or underscore`,
+    )
+  }
+
+  // NTS-592 — the hand-written keyset statement binds $cursor / $cursorId
+  // for the cursor and $filter_<property> for property filters; a filter
+  // sharing a name would overwrite the statement's own binding
+  if (name === 'cursor' || name === 'cursorId' || name.startsWith('filter_')) {
+    throw new NeodeError(
+      `Filter name "${name}" is reserved — keyset pagination binds $cursor and $cursorId, and property filters bind $filter_<property>. Rename the filter (e.g. "cursor_1" or "my_${name}").`,
     )
   }
 }

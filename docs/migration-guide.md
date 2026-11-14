@@ -13,7 +13,7 @@ This guide covers everything that moved, plus what neode 1.0 gives you that neod
 - [The query builder](#the-query-builder)
 - [Collections → plain arrays](#collections--plain-arrays)
 - [Validation: Joi rules → Zod, same names](#validation-joi-rules--zod-same-names)
-- [batch() and TransactionError](#batch-and-transactionerror)
+- [runAll() and TransactionError](#runall-and-transactionerror)
 - [Cascade delete — and detach — now both work](#cascade-delete--and-detach--now-both-work)
 - [Repositories](#repositories)
 - [Schema sync: installSchema / dropSchema](#schema-sync-installschema--dropschema)
@@ -30,7 +30,7 @@ This guide covers everything that moved, plus what neode 1.0 gives you that neod
 5. **Replace session usage with transactions** — `session()` / `readSession()` / `writeSession()` / `transaction()` are gone; the OGM manages its own transactions. → [Sessions → transactions](#sessions--transactions)
 6. **Port `neode.query()` call sites** — the builder is now a standalone `Builder` class you build and run yourself. → [The query builder](#the-query-builder)
 7. **Expect plain arrays** instead of `Collection` from `all()` / `get()`. → [Collections → plain arrays](#collections--plain-arrays)
-8. **Review error handling** — validation rules keep their Joi names over Zod, and `batch()` reports every failed statement. → [Validation](#validation-joi-rules--zod-same-names), [batch() and TransactionError](#batch-and-transactionerror)
+8. **Review error handling** — validation rules keep their Joi names over Zod, and `runAll()` reports every failed statement. → [Validation](#validation-joi-rules--zod-same-names), [runAll() and TransactionError](#runall-and-transactionerror)
 9. **Review cascade deletes** — the schema-level `cascade: true` annotation cascades that relationship on every delete; `{ cascade: true }` on the delete call still takes everything. → [Cascade delete](#cascade-delete--and-detach--now-both-work)
 10. **Switch ids to elementId** — numeric internal node ids no longer exist on Neo4j 5+. → [IDs: internal ids → elementId](#ids-internal-ids--elementid)
 11. **Install constraints and indexes at boot** — `installSchema()` is new (0.4 never created them for you). → [Schema sync](#schema-sync-installschema--dropschema)
@@ -307,7 +307,7 @@ const output = await new Builder()
   .execute(neode.getConnection(), 'READ')
 ```
 
-The fluent surface you know carries over — `match()`, `optionalMatch()`, `where()` (and `whereId`, `whereRaw`, `whereBetween`, `whereNot`, `or`), `create()`, `merge()`, `set()`, `onCreateSet()`, `onMatchSet()`, `delete()`, `detachDelete()`, `remove()`, `return()`, `orderBy()`, `limit()`, `skip()`, `with()`, `relationship()` — plus new predicates (`whereIn`, `whereContains`, `whereStartsWith`, `whereEndsWith`, `whereNull`, `whereExists`, `whereLabel`, `whereGroup`). All values are passed as query parameters — the generated query contains only aliases.
+The fluent surface you know carries over — `match()`, `optionalMatch()`, `where()` (and `whereId`, `whereRaw`, `whereBetween`, `whereNot`, `or`), `create()`, `merge()`, `set()`, `onCreateSet()`, `onMatchSet()`, `delete()`, `detachDelete()`, `remove()`, `return()`, `orderBy()`, `limit()`, `skip()`, `with()`, `relationship()` — plus new predicates (`whereIn`, `whereContains`, `whereStartsWith`, `whereEndsWith`, `whereNull`, `whereExists`, `whereNotPattern`, `whereLabel`, `whereGroup`). All values are passed as query parameters — the generated query contains only aliases.
 
 What moved:
 
@@ -364,7 +364,7 @@ The same keys are accepted in map-based definitions (`neode.model('Person', { em
 
 The complete rule list is in the [API reference](api-reference.md#validation-rules) — `min`, `max`, `length`, `regex`, `email`, `ip`, `uri`, `alphanum`, `allow`, `valid`, `invalid`, `positive`, `precision`, `before`/`after`, `lowercase`/`uppercase`, `truncate`, … Unknown rule names throw neode's familiar `Not sure how to validate <rule> on <key>`.
 
-Validation runs automatically on every write path (`save`, `create`, `update`) and throws a `ValidationError` — the port of neode's error, with the same `.details` / `.input` shape:
+Validation runs automatically on every write path (`save`, `create`, `update`) and throws a `ValidationError` — the port of neode's error, with neode's own `.issues` / `.input` shape:
 
 ```typescript
 import { ValidationError } from 'neode'
@@ -373,8 +373,8 @@ try {
   await neode.create(Person, { name: 'A', email: 'not-an-email' })
 } catch (error) {
   if (error instanceof ValidationError) {
-    // error.details — one { path, message, type } entry per failed check
-    // error.input   — the object that failed
+    // error.issues — one { path, rule, message } entry per failed check
+    // error.input  — the object that failed
     console.warn(error.message)
   }
 }
@@ -386,15 +386,15 @@ Differences from neode:
 - The `error` option (custom error builder) is not supported.
 - `duration` finally has real validation, and `point` checks SRIDs (4326/4979/7203/9157).
 
-## batch() and TransactionError
+## runAll() and TransactionError
 
-`batch()` keeps neode's contract — all statements in **one** transaction, rolled back on failure — with a more honest error:
+`runAll()` — neode's `batch()`, renamed (NTS-624): the statements run sequentially and the ONE transaction is the point, so the name no longer suggests a throughput feature — keeps neode's contract, all statements in **one** transaction, rolled back on failure, with a more honest error:
 
 ```typescript
 import { TransactionError } from 'neode'
 
 try {
-  const results = await neode.batch([
+  const results = await neode.runAll([
     'CREATE (n:Person { name: "Adam" })',
     { query: 'CREATE (n:Person { name: $name })', params: { name: 'Joe' } },
   ])
@@ -488,7 +488,7 @@ Method notes for neode users:
 
 - **`patch(entity, properties)`**, not `update` — `update()` on the facade and on entity instances keeps neode's `+=` semantics, but the repository method is named `patch` so subclasses can define their own `update(id, input)`.
 - **`delete(entityOrId, { ifExists: true })`** — accepts an entity instance or a primary key value; the default throws when the id is missing, `ifExists` silently no-ops.
-- **`increment(entityOrId, property, by?, { ifExists? })`** — one server-side `SET n.prop = coalesce(n.prop, 0) + by`, safe under concurrency; returns the new value.
+- **`increment(entityOrId, property, by?, { ifExists?, min? })`** — one server-side `SET n.prop = coalesce(n.prop, 0) + by`, safe under concurrency; returns the new value. `min` (NTS-655) checks a floor in the same statement, under the write lock — a post-write value below it throws `GuardViolationError` (run guarded decrements inside a managed transaction so the violation rolls back).
 - **`countBy(property, params?)`** — grouped counts over one declared property.
 - `find(id)`, `findBy(params)`, `findAll(params, { order, limit, skip })`, `where(params)`, `count(params)`, `save(entity)`, `saveAll(entities)` round out the surface.
 
@@ -547,7 +547,7 @@ Available: `NODE_CREATED`, `NODE_UPDATED`, `NODE_DELETED`, `RELATIONSHIP_CREATED
 - When a model declares no primary key, neode 1.0 falls back to `<first label lowercased>_id` — the same default as neode.
 - Labels are always sorted and merged on write (`extend()` adds an extra label).
 - The query builder (`Builder`) is bundled in-tree — no separate package, and no `neo4j.Integer` coupling.
-- `@String` still exists for parity but is deprecated and shadows the global `String` type — prefer `@Property({ type: 'string' })`.
+- `@String` was removed in 1.0 (NTS-670) — use `@Property({ type: 'string' })`.
 - Error messages are richer: missing-model errors name the registered models; hydration failures name the model and property.
 - Integer values beyond `Number.MAX_SAFE_INTEGER` are rejected instead of silently losing precision.
 - Out-transforms are sync-only: an async `out` transform is rejected at hydration.

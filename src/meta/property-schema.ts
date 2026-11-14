@@ -101,6 +101,14 @@ export const NON_VALUE_TYPES = new Set<PropertyType>([
 ])
 
 /**
+Which form a server-side timestamp stamps (NTS-612): 'datetime' (the
+default) stores the `datetime()` temporal, 'iso-string' stores its
+`toString()` rendering — an ISO-8601 string that compares lexically
+against client-supplied timestamps
+*/
+export type TimestampFormat = 'datetime' | 'iso-string'
+
+/**
 Property types that map onto Neo4j temporal values
 */
 export type DefaultValue = (model: object, schema: EntitySchema) => unknown
@@ -130,6 +138,13 @@ export class PropertySchema {
   */
   private createdAt = false
   private updatedAt = false
+
+  /**
+  The form the timestamp stamps in (NTS-612): 'datetime' stores the
+  temporal, 'iso-string' stores `toString(datetime())` — read by the
+  write paths' stamp expression
+  */
+  private timestampFormat: TimestampFormat = 'datetime'
 
   /**
   Optimistic locking (NTS-158): @Version marks the integer property the
@@ -450,6 +465,14 @@ export class PropertySchema {
 
   isUpdatedAt(): boolean {
     return this.updatedAt
+  }
+
+  setTimestampFormat(format: TimestampFormat): void {
+    this.timestampFormat = format
+  }
+
+  getTimestampFormat(): TimestampFormat {
+    return this.timestampFormat
   }
 
   setVersion(isVersion = true): void {

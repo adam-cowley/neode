@@ -5,7 +5,7 @@ import { openBackend, TestBackend } from './support/backend'
 import {
   NodeEntity,
   Uuid,
-  String,
+  Property,
   Number as NumberType,
   InternalId,
   DateTime,
@@ -29,7 +29,7 @@ class Person {
   @Uuid({ primary: true })
   person_id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @NumberType()
@@ -69,7 +69,7 @@ class Place {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
   @Point()

@@ -4,7 +4,7 @@
 import { openBackend, TestBackend } from './support/backend'
 import { setDefaultNeode } from '../../src/entity-methods'
 import { EventType, QueryExecutedEvent } from '../../src/common/events'
-import { CreatedAt, InternalId, NodeEntity, String, UpdatedAt, Uuid } from '../../src/decorators'
+import { CreatedAt, InternalId, NodeEntity, Property, UpdatedAt, Uuid } from '../../src/decorators'
 import { BulkService } from '../../src/services/query/bulk.service'
 import { getModel } from '../../src/meta'
 
@@ -18,7 +18,7 @@ class TimestampedPage {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   title: string
 
   @CreatedAt()
@@ -26,6 +26,24 @@ class TimestampedPage {
 
   @UpdatedAt()
   updatedAt: unknown
+}
+
+@NodeEntity()
+class IsoStampedPage {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @Property({ type: 'string' })
+  title: string
+
+  @CreatedAt({ format: 'iso-string' })
+  createdAt: string
+
+  @UpdatedAt({ format: 'iso-string' })
+  updatedAt: string
 }
 
 /**
@@ -138,7 +156,7 @@ describe('@CreatedAt / @UpdatedAt timestamps (NTS-165)', () => {
 
     const merged = await backend.neode.mergeOn(
       TimestampedPage,
-      { id: created?.id },
+      { id: created?.entity.id },
       { title: 'v2' },
     )
 
@@ -150,8 +168,8 @@ describe('@CreatedAt / @UpdatedAt timestamps (NTS-165)', () => {
     expect(merge?.cypher).toContain('ON MATCH SET this.updatedAt = datetime()')
 
     // createdAt survives the matched write byte-for-byte
-    expect(merged?.createdAt).toEqual(created?.createdAt)
-    expect(stampedYear(merged?.updatedAt)).toBe(new Date().getFullYear())
+    expect(merged?.entity.createdAt).toEqual(created?.entity.createdAt)
+    expect(stampedYear(merged?.entity.updatedAt)).toBe(new Date().getFullYear())
   })
 
   it('createMany stamps every row', async () => {
@@ -186,5 +204,75 @@ describe('@CreatedAt / @UpdatedAt timestamps (NTS-165)', () => {
     expect(merged?.entities[0]?.createdAt).toEqual(created?.entities[0]?.createdAt)
     expect(stampedYear(merged?.entities[0]?.updatedAt)).toBe(new Date().getFullYear())
     expect(merged?.entities[0]?.title).toBe('B')
+  })
+})
+
+describe("@CreatedAt / @UpdatedAt { format: 'iso-string' } (NTS-612)", () => {
+  let backend: TestBackend
+  let queries: QueryExecutedEvent[]
+
+  const statementContaining = (needle: string): QueryExecutedEvent | undefined =>
+    queries.find((event) => event.cypher.includes(needle))
+
+  beforeAll(async () => {
+    backend = await openBackend()
+
+    setDefaultNeode(backend.neode)
+
+    backend.neode.on(EventType.QUERY_EXECUTED, (event) => queries.push(event as QueryExecutedEvent))
+  })
+
+  beforeEach(() => {
+    queries = []
+  })
+
+  afterEach(async () => {
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  it('create() stamps toString(datetime()) and stores an ISO string', async () => {
+    const page = await backend.neode.create(IsoStampedPage, { title: 'Home' })
+
+    expect(queries[0]?.cypher).toContain('createdAt: toString(datetime())')
+    expect(queries[0]?.cypher).toContain('updatedAt: toString(datetime())')
+
+    // An ISO-8601 string, not a temporal: parses as a date, ends in Z, and
+    // compares lexically against a client-supplied ISO string — the
+    // temporal's own string form carries a +00:00 offset and would not
+    expect(typeof page.createdAt).toBe('string')
+    expect(page.createdAt.endsWith('Z')).toBe(true)
+    expect(new Date(page.createdAt).getTime()).not.toBeNaN()
+    expect(page.updatedAt > '2026-01-01T00:00:00.000Z').toBe(true)
+  })
+
+  it('update() re-stamps an ISO string', async () => {
+    const page = await backend.neode.create(IsoStampedPage, { title: 'Home' })
+
+    const createdAt = page.createdAt
+
+    queries.length = 0
+
+    await page.update({ title: 'About' })
+
+    const update = statementContaining('this.updatedAt = toString(datetime())')
+
+    expect(update?.cypher).toContain('this.updatedAt = toString(datetime())')
+
+    const found = await backend.neode.find(IsoStampedPage, page.id)
+
+    expect(typeof found?.updatedAt).toBe('string')
+    expect(new Date(found?.updatedAt ?? '').getTime()).not.toBeNaN()
+    // Re-stamped at-or-after the create stamp. The server clock writes both
+    // stamps and only guarantees they do not go backwards: same-resolution
+    // writes give equal stamps, and toString(datetime()) renders fractional
+    // seconds at variable width, so neither strict order nor lexical string
+    // order is a safe assertion — compare parsed times
+    expect(new Date(found?.updatedAt ?? '').getTime()).toBeGreaterThanOrEqual(
+      new Date(createdAt).getTime(),
+    )
   })
 })

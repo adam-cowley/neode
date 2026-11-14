@@ -255,9 +255,45 @@ describe('derived property statement shapes (NTS-569)', () => {
     expect(derivedIndex).toBeGreaterThan(setIndex)
   })
 
-  it('update: the patch triggers the recompute over the stored sources', async () => {
-    const runnerSpy = runner()
-    const service = new UpdateService(runnerSpy)
+  it('update: the patch triggers the recompute over the STORED (database) sources', async () => {
+    // NTS-597: the derive input's stored domain is the database row, not the
+    // in-memory entity — a stale stub must not feed the compute
+    const calls: { query: string; params: Record<string, unknown> }[] = []
+
+    const twoPhaseRunner: Runner = {
+      run: async (query: string, params: Record<string, unknown>) => {
+        calls.push({ query, params })
+
+        if (query.includes('SET')) {
+          return {
+            records: [
+              {
+                get: (key: string) => (key === '__id' ? '4:u' : undefined),
+                has: (key: string) => key === '__id',
+                keys: ['__id'],
+              },
+            ],
+            summary: { counters: {} },
+          }
+        }
+
+        // the required-property read: the node's current row
+        return {
+          records: [
+            {
+              get: (key: string) =>
+                key === 'this'
+                  ? { elementId: '4:u', labels: ['Thing'], properties: { a: 1, b: 7 } }
+                  : undefined,
+              has: (key: string) => key === 'this',
+              keys: ['this'],
+            },
+          ],
+        }
+      },
+    } as unknown as Runner
+
+    const service = new UpdateService(twoPhaseRunner)
 
     const schema = schemaWithDerived(
       [
@@ -271,14 +307,18 @@ describe('derived property statement shapes (NTS-569)', () => {
       ['a', 'b'],
     )
 
-    const entity = { id: 1, a: 1, b: 7 }
+    // the in-memory a/b are stale — only the database row (a: 1) may feed it
+    const entity = { id: 1, a: 999, b: 999 }
 
     await service.update(schema, entity, { b: 10 })
 
-    const [query, params] = (runnerSpy.run as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      string,
-      Record<string, unknown>,
-    ]
+    // one shared read (derive + refill), then the write
+    expect(calls.length).toBe(2)
+
+    const write = calls[1]!
+
+    const query = write.query
+    const params = write.params
 
     // compute: stored a (1) + patched b (10) = 11, written with the patch
     expect(JSON.stringify(params)).toContain('"sum":11')

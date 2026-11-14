@@ -1,5 +1,6 @@
 import neo4j from 'neo4j-driver'
 import { normalizeDriverValue } from '../../../src/driver/neo4j-connection-provider'
+import { NeodeError } from '../../../src/errors'
 
 /**
  A value from a "foreign realm": it carries the identifier properties the
@@ -65,5 +66,17 @@ describe('normalizeDriverValue', () => {
     expect(normalizeDriverValue(neo4j.int(5))).toBe(5)
     expect(normalizeDriverValue([neo4j.int(1)])).toEqual([1])
     expect(normalizeDriverValue({ createdAt: neo4j.int(1) })).toEqual({ createdAt: 1 })
+  })
+
+  it('throws on an Integer outside the safe range instead of losing precision (NTS-589 test gap)', () => {
+    // 2^53 + 1 — safeToNumber must reject it rather than round silently
+    // (NTS-582 behaviour, previously untested)
+    const outOfRange = neo4j.int('9007199254740993')
+
+    expect(() => normalizeDriverValue(outOfRange)).toThrow(NeodeError)
+    expect(() => normalizeDriverValue(outOfRange)).toThrow(/safe integer range/)
+
+    // Nested inside a record / temporal field too
+    expect(() => normalizeDriverValue({ year: outOfRange })).toThrow(/safe integer range/)
   })
 })

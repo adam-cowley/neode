@@ -1,0 +1,568 @@
+/**
+ * NTS-600 — the curated public export surface is EXACT: the package root
+ * exports exactly the value set asserted below (plus the type surface
+ * asserted further down). A symbol added to the root export must be added
+ * to this list deliberately — that is the curation contract.
+ *
+ * NTS-669 — the surface is FROZEN for 1.0: the value names are pinned by the
+ * exact `keyof Root` assertion, and the type-only names by the compiler-counted
+ * runtime assertion below (type exports are erased at runtime, so they cannot
+ * show up in `keyof`). Any post-freeze addition or deletion — value or type —
+ * must land here as a reviewable diff.
+ */
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
+import { describe, expect, expectTypeOf, it } from 'vitest'
+import type {
+  AccessMode,
+  ApplySchemaDiffOptions,
+  ApplySchemaDriftReport,
+  BatchStatementError,
+  BulkChunk,
+  BulkOptions,
+  BulkRowFailure,
+  ComputedDefinition,
+  ConnectionOptions,
+  ConnectionProvider,
+  ConnectivityConfig,
+  CreateOptions,
+  CursorPage,
+  CursorPaginateOptions,
+  CypherOptions,
+  DeleteOptions,
+  DetachResult,
+  EntityMethods,
+  EntityOntology,
+  ExpressionDefinition,
+  FactoryWithSpec,
+  FilterOperand,
+  FilterOperators,
+  FulltextIndexDefinition,
+  GraphNode,
+  GraphRelationship,
+  Hop,
+  INeode,
+  InspectOptions,
+  KnnMode,
+  LabelPresentDefinition,
+  LoadedEntity,
+  ManyAndCount,
+  MergeCounts,
+  MergeOutcome,
+  MergeResult,
+  OffsetPaginateOptions,
+  Ontology,
+  OrderSpec,
+  Page,
+  PaginateOptions,
+  ParallelBody,
+  ParallelMode,
+  ParallelOperationError,
+  ParallelOptions,
+  ParallelRollbackReport,
+  ParallelScope,
+  ProjectionDirection,
+  PropertyDefinition,
+  PropertyOntology,
+  PropertySchema,
+  PropertyTypeName,
+  QueryExecutedEvent,
+  QueryOutput,
+  QueryParams,
+  QueryRecord,
+  QuerySummary,
+  ReadFilterOptions,
+  RelatedConfig,
+  RelatedManyDefinition,
+  RelatedOneDefinition,
+  RelationshipConfig,
+  RelationshipCountConfig,
+  RelationshipCountDefinition,
+  RelationshipDefinition,
+  RelationshipEdgeRead,
+  RelationshipExistsConfig,
+  RelationshipExistsDefinition,
+  RelationshipOntology,
+  ReplaceRelationshipOptions,
+  RepositoryConstructor,
+  RowPropertiesResult,
+  RowToPropertiesOptions,
+  RunCypherScriptOptions,
+  Runner,
+  SchemaDefinition,
+  SchemaDefinitionEntry,
+  SchemaDiff,
+  SchemaDrift,
+  SchemaDriftEntry,
+  SchemaDriftGroup,
+  SchemaInspection,
+  SchemaObject,
+  SchemaResult,
+  ScoredEntity,
+  SyncEdgesOptions,
+  SyncEdgesResult,
+  TransactionHandle,
+  TransformConfig,
+  TransformedQueryOutput,
+  TraversalRow,
+  ValidationIssue,
+  VectorConfig,
+  VectorIndexDefinition,
+  WaitUntilReachableOptions,
+  WhereFilter,
+  WhereFilterLevel,
+  WipeReport,
+  WipeTarget,
+  WithMethods,
+} from '../../src/index.js'
+import {
+  getModel,
+  requireRelateClient,
+  validate,
+  ValidationError,
+  vectorIndexName,
+} from '../../src/index.js'
+
+type Root = typeof import('../../src/index.js')
+
+/**
+ * The compiler's view of the package root's exports — every name a consumer
+ * can import, values AND types (the type tests above only see the value side
+ * through `keyof Root`). Ground truth for the frozen type-only surface below.
+ */
+function publicExportNames(): string[] {
+  const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
+  const config = ts.readConfigFile(path.join(repoRoot, 'tsconfig.json'), ts.sys.readFile)
+  const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, repoRoot)
+  const indexPath = path.join(repoRoot, 'src/index.ts')
+  const program = ts.createProgram([indexPath], parsed.options)
+  const source = program.getSourceFile(indexPath)
+  if (source === undefined) throw new Error('src/index.ts did not resolve into the program')
+  const moduleSymbol = program.getTypeChecker().getSymbolAtLocation(source)
+  if (moduleSymbol === undefined) throw new Error('src/index.ts is not a module')
+  return program
+    .getTypeChecker()
+    .getExportsOfModule(moduleSymbol)
+    .map((s) => s.name)
+    .sort()
+}
+
+/**
+ * NTS-669 — the FROZEN type-only export surface (104 names): every export of
+ * src/index.ts that is not a runtime value. The runtime values are pinned
+ * exactly by the `keyof Root` assertion above; a name appearing here that
+ * becomes (or stops being) a value export fails both assertions, so the
+ * value/type split cannot rot silently either.
+ */
+const FROZEN_TYPE_SURFACE = [
+  'AccessMode',
+  'ApplySchemaDiffOptions',
+  'ApplySchemaDriftReport',
+  'BatchStatementError',
+  'BulkChunk',
+  'BulkOptions',
+  'BulkRowFailure',
+  'ComparisonOperator',
+  'ComputedDefinition',
+  'ConnectionOptions',
+  'ConnectionProvider',
+  'ConnectivityConfig',
+  'CreateOptions',
+  'CursorPage',
+  'CursorPaginateOptions',
+  'CypherOptions',
+  'DeleteOptions',
+  'DetachResult',
+  'EntityMethods',
+  'EntityOntology',
+  'ExpressionDefinition',
+  'FactoryWithSpec',
+  'FilterOperand',
+  'FilterOperators',
+  'FulltextIndexDefinition',
+  'GraphNode',
+  'GraphRelationship',
+  'Hop',
+  'INeode',
+  'InspectOptions',
+  'KnnMode',
+  'LabelPresentDefinition',
+  'LoadedEntity',
+  'ManyAndCount',
+  'MergeCounts',
+  'MergeOutcome',
+  'MergeResult',
+  'OffsetPaginateOptions',
+  'Ontology',
+  'OrderSpec',
+  'Page',
+  'PaginateOptions',
+  'ParallelBody',
+  'ParallelMode',
+  'ParallelOperationError',
+  'ParallelOptions',
+  'ParallelRollbackReport',
+  'ParallelScope',
+  'ProjectionDirection',
+  'PropertyDefinition',
+  'PropertyOntology',
+  'PropertySchema',
+  'PropertyTypeName',
+  'QueryExecutedEvent',
+  'QueryOutput',
+  'QueryParams',
+  'QueryRecord',
+  'QuerySummary',
+  'ReadFilterOptions',
+  'RelateManyResult',
+  'RelateManyRow',
+  'RelatedConfig',
+  'RelatedManyDefinition',
+  'RelatedOneDefinition',
+  'RelationshipConfig',
+  'RelationshipCountConfig',
+  'RelationshipCountDefinition',
+  'RelationshipDefinition',
+  'RelationshipEdgeRead',
+  'RelationshipExistsConfig',
+  'RelationshipExistsDefinition',
+  'RelationshipOntology',
+  'ReplaceRelationshipOptions',
+  'RepositoryConstructor',
+  'RowPropertiesResult',
+  'RowToPropertiesOptions',
+  'RunCypherScriptOptions',
+  'Runner',
+  'SchemaDefinition',
+  'SchemaDefinitionEntry',
+  'SchemaDiff',
+  'SchemaDrift',
+  'SchemaDriftEntry',
+  'SchemaDriftGroup',
+  'SchemaInspection',
+  'SchemaObject',
+  'SchemaResult',
+  'ScoredEntity',
+  'ShortestPathOptions',
+  'SyncEdgesOptions',
+  'SyncEdgesResult',
+  'TransactionHandle',
+  'TransformConfig',
+  'TransformedQueryOutput',
+  'TraversalRow',
+  'ValidationIssue',
+  'VectorConfig',
+  'VectorIndexDefinition',
+  'WaitUntilReachableOptions',
+  'WhereFilter',
+  'WhereFilterLevel',
+  'WipeReport',
+  'WipeTarget',
+  'WithMethods',
+] as const
+
+describe('public export surface (NTS-600)', () => {
+  it('exports exactly the documented value surface', () => {
+    expectTypeOf<keyof Root>().toEqualTypeOf<
+      | 'Boolean'
+      | 'BoundBuilder'
+      | 'Builder'
+      | 'BulkChunkError'
+      | 'BulkService'
+      | 'CardinalityViolationError'
+      | 'Collection'
+      | 'Computed'
+      | 'ConnectivityTimeoutError'
+      | 'ConstraintViolationError'
+      | 'CreatedAt'
+      | 'Date'
+      | 'DateTime'
+      | 'Default'
+      | 'Derived'
+      | 'Direction'
+      | 'Duration'
+      | 'EndNode'
+      | 'EntityRepository'
+      | 'EventType'
+      | 'Expression'
+      | 'FactoryBuilder'
+      | 'Filter'
+      | 'Float'
+      | 'FulltextIndexService'
+      | 'GuardViolationError'
+      | 'Hidden'
+      | 'Index'
+      | 'InternalId'
+      | 'LabelPredicate'
+      | 'LabelPresent'
+      | 'LocalDateTime'
+      | 'LocalTime'
+      | 'MAX_CASCADE_DEPTH'
+      | 'MAX_TRAVERSE_DEPTH'
+      | 'Neo4jConnectionProvider'
+      | 'Neode'
+      | 'NeodeError'
+      | 'NodeEntity'
+      | 'Number'
+      | 'OnCreateSet'
+      | 'OnMatchSet'
+      | 'OneToMany'
+      | 'OneToOne'
+      | 'OptimisticLockError'
+      | 'OtherNode'
+      | 'PaginateService'
+      | 'ParallelError'
+      | 'Point'
+      | 'Primary'
+      | 'ProjectionService'
+      | 'Property'
+      | 'Protected'
+      | 'RawExpression'
+      | 'Readonly'
+      | 'RelateConnectionProvider'
+      | 'RelatedMany'
+      | 'RelatedOne'
+      | 'RelationNotLoadedError'
+      | 'RelationshipCount'
+      | 'RelationshipEntity'
+      | 'RelationshipExists'
+      | 'Repository'
+      | 'Required'
+      | 'Seeder'
+      | 'SoftDelete'
+      | 'StartNode'
+      | 'Time'
+      | 'TransactionError'
+      | 'TransactionalService'
+      | 'TransientError'
+      | 'TraverseBuilder'
+      | 'Unique'
+      | 'UpdatedAt'
+      | 'Uuid'
+      | 'ValidationError'
+      | 'Vector'
+      | 'VectorIndexService'
+      | 'Version'
+      | 'WITHOUT_ALL_FILTERS'
+      | 'WhereNull'
+      | 'applyEntityMethods'
+      | 'applySchemaDrift'
+      | 'caseExpr'
+      | 'classifyError'
+      | 'clearFilterParams'
+      | 'default'
+      | 'defineModel'
+      | 'expr'
+      | 'extendModel'
+      | 'formatSchemaDrift'
+      | 'fromEnv'
+      | 'getModel'
+      | 'getModelByName'
+      | 'getModelsByName'
+      | 'getRepository'
+      | 'hasProjectedProperties'
+      | 'hydrate'
+      | 'hydrateFirst'
+      | 'hydrateProjection'
+      | 'inspectSchema'
+      | 'instrumentConnectionProvider'
+      | 'isTransientError'
+      | 'jsonSafe'
+      | 'jsonSafeRecord'
+      | 'knn'
+      | 'mergeOutcome'
+      | 'mergeRelationshipProperty'
+      | 'mergeResultFromSave'
+      | 'ontology'
+      | 'ontologyMarkdown'
+      | 'projectionNode'
+      | 'readFilterFragment'
+      | 'registerRepository'
+      | 'requireRelateClient'
+      | 'resolveRepository'
+      | 'rows'
+      | 'rowToProperties'
+      | 'runCypherScript'
+      | 'runSeeders'
+      | 'schemaDrift'
+      | 'search'
+      | 'seededRandom'
+      | 'setDefaultNeode'
+      | 'setFilterParams'
+      | 'setStrictRelationAccess'
+      | 'splitCypherStatements'
+      | 'testId'
+      | 'toCollection'
+      | 'toDirection'
+      | 'toFulltextQuery'
+      | 'toJson'
+      | 'validate'
+      | 'valueToJson'
+      | 'vectorIndexName'
+      | 'verifyConnectivity'
+      | 'waitUntilReachable'
+      | 'wipe'
+      | 'withFilterParams'
+    >()
+  })
+
+  it('exports the documented type surface', () => {
+    expectTypeOf<
+      [
+        AccessMode,
+        ApplySchemaDiffOptions,
+        ApplySchemaDriftReport,
+        BatchStatementError,
+        BulkChunk<unknown>,
+        BulkOptions,
+        BulkRowFailure,
+        ComputedDefinition,
+        ConnectionOptions,
+        ConnectionProvider,
+        ConnectivityConfig,
+        CreateOptions,
+        CursorPage<unknown>,
+        CursorPaginateOptions,
+        CypherOptions,
+        DeleteOptions,
+        DetachResult<unknown, unknown>,
+        EntityMethods,
+        EntityOntology,
+        ExpressionDefinition,
+        FactoryWithSpec,
+        FilterOperand<unknown, never>,
+        FilterOperators<unknown>,
+        FulltextIndexDefinition,
+        GraphNode,
+        GraphRelationship,
+        Hop,
+        INeode,
+        InspectOptions,
+        KnnMode,
+        LabelPresentDefinition,
+        LoadedEntity<unknown, never>,
+        ManyAndCount<unknown>,
+        MergeCounts,
+        MergeOutcome,
+        MergeResult<unknown>,
+        OffsetPaginateOptions,
+        Ontology,
+        OrderSpec,
+        Page<unknown>,
+        PaginateOptions,
+        ParallelBody<unknown>,
+        ParallelMode,
+        ParallelOperationError,
+        ParallelOptions,
+        ParallelRollbackReport,
+        ParallelScope,
+        ProjectionDirection,
+        PropertyDefinition,
+        PropertyOntology,
+        PropertySchema,
+        PropertyTypeName,
+        QueryExecutedEvent,
+        QueryOutput,
+        QueryParams,
+        QueryRecord,
+        QuerySummary,
+        ReadFilterOptions,
+        RelatedConfig,
+        RelatedManyDefinition,
+        RelatedOneDefinition,
+        RelationshipConfig,
+        RelationshipCountConfig,
+        RelationshipCountDefinition,
+        RelationshipDefinition,
+        RelationshipEdgeRead<unknown>,
+        RelationshipExistsConfig,
+        RelationshipExistsDefinition,
+        RelationshipOntology,
+        ReplaceRelationshipOptions,
+        RepositoryConstructor,
+        RowPropertiesResult,
+        RowToPropertiesOptions,
+        RunCypherScriptOptions,
+        Runner,
+        SchemaDefinition,
+        SchemaDefinitionEntry,
+        SchemaDiff,
+        SchemaDrift,
+        SchemaDriftEntry,
+        SchemaDriftGroup,
+        SchemaInspection,
+        SchemaObject,
+        SchemaResult,
+        ScoredEntity<unknown>,
+        SyncEdgesOptions,
+        SyncEdgesResult,
+        TransactionHandle,
+        TransformConfig,
+        TransformedQueryOutput,
+        TraversalRow,
+        ValidationIssue,
+        VectorConfig,
+        VectorIndexDefinition,
+        WaitUntilReachableOptions,
+        WhereFilter<new (...arguments_: never[]) => unknown>,
+        WhereFilterLevel<unknown>,
+        WipeReport,
+        WipeTarget,
+        WithMethods<unknown>,
+      ]
+    >().toExtend<unknown[]>()
+  })
+
+  it('exposes the NTS-601 consumer-facing helpers with their signatures', () => {
+    expectTypeOf(validate).toBeFunction()
+    expectTypeOf(getModel).toBeFunction()
+    expectTypeOf(vectorIndexName).toBeFunction()
+    expectTypeOf(requireRelateClient).toBeFunction()
+    expectTypeOf(vectorIndexName).parameter(0).toEqualTypeOf<VectorIndexDefinition>()
+    expectTypeOf(vectorIndexName).returns.toEqualTypeOf<string>()
+  })
+
+  it('exposes the NTS-602 doc-taught result types with their shapes', () => {
+    // related(k).withRelationship().find() / .first() rows
+    // (docs/decisions/0003-result-shapes.md, NTS-499/566)
+    expectTypeOf<RelationshipEdgeRead<{ id: string }>>().toEqualTypeOf<{
+      node: { id: string }
+      edge: GraphRelationship
+    }>()
+    // findManyAndCount's `{ items, total }` (docs/decisions/0003-result-shapes.md)
+    expectTypeOf<ManyAndCount<{ id: string }>>().toEqualTypeOf<{
+      items: { id: string }[]
+      total: number
+    }>()
+    // the with-spec-narrowed read return: no spec = the entity itself
+    expectTypeOf<LoadedEntity<{ id: string }, never>>().toEqualTypeOf<{ id: string }>()
+    // installSchema()/dropSchema()/applySchemaDrift's result row
+    expectTypeOf<SchemaResult['statement']>().toEqualTypeOf<string>()
+    expectTypeOf<SchemaResult['success']>().toEqualTypeOf<boolean>()
+    expectTypeOf<DeleteOptions['mode']>().toEqualTypeOf<'delete' | 'detach' | undefined>()
+  })
+
+  it('exposes the neode-owned validation shape — no Zod on the surface (NTS-676)', () => {
+    // ValidationError.issues is neode's own shape: path, rule, message —
+    // the rules are named in neode's vocabulary (required / type / format
+    // / the failing config rule), never Zod's issue codes
+    expectTypeOf<ValidationError['issues']>().toEqualTypeOf<ValidationIssue[]>()
+    expectTypeOf<ValidationIssue>().toEqualTypeOf<{
+      message: string
+      path: (string | number)[]
+      rule: string
+    }>()
+    // the never-populated Zod-typed `zodError` field is removed
+    // @ts-expect-error NTS-676 — removed: Zod stays an implementation detail
+    expectTypeOf<ValidationError['zodError']>().toBeUnknown()
+  })
+
+  it('freezes the complete export set — additions and deletions are reviewable diffs (NTS-669)', async () => {
+    const values = new Set(Object.keys(await import('../../src/index.js')))
+    const typeOnly = publicExportNames().filter((name) => !values.has(name))
+    // Every export the compiler sees is exactly: the runtime value surface
+    // (pinned by the keyof assertion above) plus this frozen type-only list.
+    expect(typeOnly).toEqual(FROZEN_TYPE_SURFACE)
+  })
+})

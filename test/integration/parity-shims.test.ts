@@ -3,7 +3,7 @@ import {
   NodeEntity,
   Number as NumberProperty,
   OneToMany,
-  String as StringProperty,
+  Property as StringProperty,
   Uuid,
 } from '../../src/decorators'
 import { Direction } from '../../src/query'
@@ -99,10 +99,12 @@ describe('P4.11 parity shims', () => {
 
   describe('merge', () => {
     it('creates a node when no match exists, merging on the unique properties', async () => {
-      const merged = await backend.neode.merge(Person, {
-        name: 'Adam',
-        age: 30,
-      })
+      const merged = (
+        await backend.neode.merge(Person, {
+          name: 'Adam',
+          age: 30,
+        })
+      )?.entity
 
       expect(merged).toBeInstanceOf(Person)
       expect(merged!.name).toBe('Adam')
@@ -113,10 +115,12 @@ describe('P4.11 parity shims', () => {
     it('matches an existing node on its unique property and sets the rest', async () => {
       const saved = await backend.neode.save(Person.create('Adam'))
 
-      const merged = await backend.neode.merge(Person, {
-        name: 'Adam',
-        age: 31,
-      })
+      const merged = (
+        await backend.neode.merge(Person, {
+          name: 'Adam',
+          age: 31,
+        })
+      )?.entity
 
       expect(merged!._id).toBe(saved._id)
       expect(merged!.age).toBe(31)
@@ -139,11 +143,14 @@ describe('P4.11 parity shims', () => {
       expect(await count('MATCH (n:Pet) RETURN count(n) AS c')).toBe(1)
     })
 
-    it('deletes every node of the label when no properties are given', async () => {
+    it('deletes every node of the label when confirmed with { all: true }', async () => {
       await backend.neode.save(Person.create('A'))
       await backend.neode.save(Person.create('B'))
 
-      expect(await backend.neode.deleteAll(Person)).toBe(2)
+      // An unfiltered deleteAll is refused (NTS-595 destructive guard)
+      await expect(backend.neode.deleteAll(Person)).rejects.toThrow(/deleteAll\(\) refused/)
+
+      expect(await backend.neode.deleteAll(Person, { all: true })).toBe(2)
       expect(await count('MATCH (n:Person) RETURN count(n) AS c')).toBe(0)
     })
   })

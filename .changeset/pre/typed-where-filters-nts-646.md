@@ -1,0 +1,5 @@
+---
+'neode': minor
+---
+
+Typed where filters keyed to the model's declared properties (NTS-646): the `where` bags of get / getFirst / first / all / paginate / findManyAndCount / chunk / lazy / withinDistance (facade + transactional mirrors) and the Repository read bags (findBy / findAll / where / count / countBy / deleteAll) take `WhereFilter<C>` — equality values and operator objects (`{ age: { gte: 18 } }`) are checked against the model's declared property keys, relationship keys take nested filter bags, and a mistyped key or operator is a compile error instead of a silently-unfiltered query. The operator set maps 1:1 onto the Builder's methods: eq, neq, gt, gte, lt, lte, in, contains, startsWith, endsWith, null — `between` composes as `{ gte, lte }`, and the raw-Cypher escape hatch (`Builder.where`) is untouched. Runtime Cypher for existing queries is unchanged: the four duplicated equality loops collapsed into one shared helper, and an unknown operator key inside a bag throws a descriptive NeodeError instead of filtering nothing.

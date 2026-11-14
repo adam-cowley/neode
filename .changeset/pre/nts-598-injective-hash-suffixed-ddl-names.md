@@ -1,0 +1,4 @@
+---
+'neode': minor
+---
+feat(schema)!: injective hash-suffixed DDL names, edition auto-detection, fail-loud graph-type parse (NTS-598). Generated constraint/index names gain a deterministic hash suffix (`person_email_unique_b37312eb`), so `User`/`user` labels and `a`+`b_c` vs `a_b`+`c` composites no longer collide — ONE-TIME CHURN: on the next install/drift apply, previously installed constraints and indexes are dropped and recreated under the new names (review drift before applying on shared databases). Enterprise-only DDL (existence + property-type constraints) is now declared from the edition DETECTED via `CALL dbms.components()` instead of the manual flag (no more false stale on Community), and graph-type drift throws when the canonical specification cannot be parsed instead of reporting bogus drift.

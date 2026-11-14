@@ -1,0 +1,28 @@
+name: aura
+# Ephemeral AuraDB smoke (NTS-651): the test provisions a real instance in
+# beforeAll and destroys it in afterAll — this workflow just supplies the
+# API credentials. Run manually from the Actions tab.
+on:
+  workflow_dispatch:
+
+jobs:
+  aura-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Aura smoke (provisions → smokes → destroys a real instance)
+        run: pnpm test:aura
+        env:
+          AURA_CLIENT_ID: ${{ secrets.AURA_CLIENT_ID }}
+          AURA_CLIENT_SECRET: ${{ secrets.AURA_CLIENT_SECRET }}
+          AURA_PROJECT_ID: ${{ secrets.AURA_PROJECT_ID }}
+          AURA_ORG_ID: ${{ secrets.AURA_ORGANIZATION_ID }}

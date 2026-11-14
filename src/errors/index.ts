@@ -2,9 +2,10 @@
 // errors (neo4j-driver's Neo4jError, the Relate client's RelateError) to
 // these types; unknown errors pass through untouched.
 
-export { classifyError, isTransientError } from './classify.js'
+export { classifyError, isRetryableError, isTransientError } from './classify.js'
 export { CardinalityViolationError } from './cardinality-violation.js'
 export { ConstraintViolationError } from './constraint-violation.js'
+export { GuardViolationError } from './guard-violation.js'
 export { NeodeError } from './neode-error.js'
 export { OptimisticLockError } from './optimistic-lock.js'
 export { RelationNotLoadedError } from './relation-not-loaded.js'

@@ -47,36 +47,9 @@ export interface RelatedConfig {
 }
 
 /**
-NTS-547 — config for @RelatedOne / @RelatedMany with a multi-hop `path`:
-the declarative version of "entities reached through a chain of
-relationships" (e.g. products co-ordered with this one). `fields` is
-required — path reads support the projected (fields-subset) form only.
-`target()` is the LAST hop's end; when given, `fields` is type-checked
-against it and the final node is label-filtered.
-*/
-export interface PathRelatedConfig {
-  /**
-  The hops, in traversal order from the annotated node
-  */
-  path: RelatedPathHop[]
-  /**
-  Field subset to project from the final node
-  */
-  fields: string[]
-  /**
-  Target entity of the final hop — checks `fields` and label-filters the end
-  */
-  target?: () => Newable
-  /**
-  WHERE fragment inside the comprehension: `node` = final node, `this` = the
-  annotated node (e.g. 'NOT (this)-[:CONTAINS]->(node)')
-  */
-  where?: string
-}
-
-/**
-Checked form of `PathRelatedConfig`: `fields` must be keys of the final
-hop's target instance type.
+Checked form of the `path` config for @RelatedOne / @RelatedMany
+(NTS-547, the multi-hop form): `fields` must be keys of the final hop's
+target instance type.
 */
 export interface CheckedPathRelatedConfig<T extends object> {
   path: RelatedPathHop[]

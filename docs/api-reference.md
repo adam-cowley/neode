@@ -38,7 +38,6 @@ import Neode, {
   Primary,
   Uuid,
   Property,
-  String,
   Number,
   Boolean,
   Float,
@@ -236,7 +235,6 @@ Every property must declare a type — either through `@Property({ type })` or a
 | Decorator                                                     | Type name   | Notes                                                                                                                           |
 | ------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `@Property(config?)`                                          | —           | The general form: `@Property({ type: 'string', index: true })`. **Preferred** — the sugar decorators below shadow global types. |
-| `@String(config?)`                                            | `string`    | **Deprecated** (shadows the global `String`) — use `@Property({ type: 'string' })`.                                             |
 | `@Number(config?)`                                            | `number`    |                                                                                                                                 |
 | `@Int(config?)`                                               | —           | _not provided_ — use `@Property({ type: 'int' })`                                                                               |
 | `@Float(config?)`                                             | `float`     |                                                                                                                                 |
@@ -258,8 +256,8 @@ All of these are understood by `@Property` (and by the sugar decorators, which a
 | `type`            | Property type name (see table above).                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `array`           | Store as an array.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `primary`         | Primary key — the MERGE key for `save()`.                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `unique`          | Unique constraint (created by `installSchema()`); unique values are always SET on merge.                                                                                                                                                                                                                                                                                                                                                                |
-| `index`           | Index (created by `installSchema()`).                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `unique`          | Unique constraint (created by `installSchema()`); unique values are always SET on merge. The array form (`unique: ['a', 'b']`) declares a composite unique over exactly the listed properties (NTS-140) — Neo4j's uniqueness constraints are single-property, so the composite analogue is the node key constraint (Enterprise).                                                                                                                        |
+| `index`           | Index (created by `installSchema()`). The array form (`index: ['a', 'b']`) declares one composite range index over exactly the listed properties (NTS-140/650).                                                                                                                                                                                                                                                                                         |
 | `required`        | Required property — existence constraint in Enterprise mode.                                                                                                                                                                                                                                                                                                                                                                                            |
 | `exists`          | Property existence constraint (Enterprise only).                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `default`         | Value or `(model, schema) => value`, resolved on create.                                                                                                                                                                                                                                                                                                                                                                                                |
@@ -290,17 +288,17 @@ Each applies the matching config option to the property it decorates:
 @NodeEntity()
 class Movie {
   @InternalId()
-  _id: string
+  _id!: string
 
   @Uuid({ primary: true })
-  id: string
+  id!: string
 
   @Property({ type: 'string', unique: true })
-  title: string
+  title!: string
 
   @Property({ type: 'datetime' })
   @Default(() => new Date().toISOString())
-  createdAt: string
+  createdAt!: string
 }
 ```
 
@@ -311,13 +309,38 @@ class Movie {
 target: Pet[];
 ```
 
-| Decorator                                        | Signature                                                                | Description                                                                                                                                                                |
-| ------------------------------------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@OneToOne(config)`                              | `{ type, direction, target?, eager? }` — `target` is `() => EntityClass` | Single relationship. Without `target`, the type is read from `design:type` (needs `reflect-metadata` + `emitDecoratorMetadata`; unavailable for self-referential classes). |
-| `@OneToMany(factory, type?, direction?, eager?)` | `factory: () => EntityClass`                                             | Many relationship (array). Defaults: `type: ''`, `direction: BOTH`.                                                                                                        |
-| `@NodeEntity`-level                              | —                                                                        | For self-referential relationships, register the property through the metamodel after the class is defined (or use the map API).                                           |
+| Decorator                                                                                                        | Signature                                                                                                                               | Description                                                                                                                                                                          |
+| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@OneToOne(config)`                                                                                              | `{ type, direction, target, eager?, cascade?, description?, cardinality?, enforce?, claimConflict? }` — `target` is `() => EntityClass` | Single relationship. `cardinality` defaults to `'one'`. `enforce` names a `@Unique` property on the target that the write paths keep pointed at this node's primary key (see below). |
+| `@OneToMany(factory, type?, direction?, eager?, cascade?, description?, cardinality?, enforce?, claimConflict?)` | Config form takes the same keys; `cardinality` defaults to `'many'`                                                                     | Many relationship (array). `cardinality: 'one' / 'zeroOrOne'` restricts it to a single edge.                                                                                         |
+| `@NodeEntity`-level                                                                                              | —                                                                                                                                       | For self-referential relationships, register the property through the metamodel after the class is defined (or use the map API).                                                     |
 
 `Direction` is the enum `INCOMING | OUTGOING | BOTH`; the legacy case-insensitive strings `'in' | 'out' | 'both'` (and `'IN' | 'OUT' | 'BOTH'`) are accepted anywhere a direction is taken — unknown values fall back to `BOTH`.
+
+#### Cardinality and claims
+
+`cardinality` is a write-time guard (NTS-161): a `'one'` / `'zeroOrOne'` relationship holds at most one edge per node — a second `relate()` throws `CardinalityViolationError`. Use `syncEdges()` (or `replaceRelationship()`) to swap the edge; both detach first.
+
+`enforce` turns the INVERSE side into a database-level guarantee (NTS-663). It names a `@Unique` property on the TARGET model, and every write path keeps it pointed at the source node's primary-key value — "relate = claim":
+
+```typescript
+@NodeEntity()
+class Person {
+  @Uuid({ primary: true })
+  id: string
+
+  @OneToOne({
+    type: 'LIVES_AT',
+    target: () => Address,
+    direction: 'out',
+    cardinality: 'one',
+    enforce: 'currentOccupantId', // @Unique property on Address
+  })
+  address: Address | undefined
+}
+```
+
+The target's uniqueness constraint (installed by `installSchema()`) then rejects a second node claiming the same target — raw Cypher included. `replaceRelationship()` / `syncEdges()` move the claim in one atomic statement; `delete()` releases it. `claimConflict` picks what `relate()` does when the target is already claimed by a different source: `'refuse'` (default — resolves `undefined`), `'detach'` (the other claimant's edges are deleted and the claim moves) or `'throw'`. The forward side (one target per source) stays an application-level guard: Neo4j has no edge-count constraint.
 
 ### Relationship entities
 
@@ -326,13 +349,13 @@ For relationships modelled as their own entity (with start/end nodes and edge pr
 ```typescript
 @RelationshipEntity()
 class Rating {
-  @InternalId() _id: string
+  @InternalId() _id!: string
 
-  @StartNode(() => User) user: User
-  @EndNode(() => Movie) movie: Movie
+  @StartNode(() => User) user!: User
+  @EndNode(() => Movie) movie!: Movie
 
   @Property({ type: 'number' })
-  score: number
+  score!: number
 }
 ```
 
@@ -345,28 +368,34 @@ These declare values projected into the read query — one RETURN projection per
 ```typescript
 @NodeEntity()
 class Learner {
-  @InternalId() _id: string
+  @InternalId() _id!: string
+
+  @Property({ type: 'string' })
+  firstName!: string
+
+  @Property({ type: 'string' })
+  lastName!: string
 
   @RelatedOne({ type: 'IN_COURSE', direction: 'out', target: () => Course, fields: ['title'] })
   course?: Pick<Course, 'title'> // nested read-only DTO
 
   @RelatedMany({ type: 'COMPLETED_LESSON', target: () => Lesson, fields: ['slug'] })
-  completedLessons: string[] // single field → scalar array
+  completedLessons!: string[] // single field → scalar array
 
   @RelationshipCount({ type: 'COMPLETED_LESSON', direction: 'out' })
-  completedCount: number // inline COUNT { } subquery
+  completedCount!: number // inline COUNT { } subquery
 
   @RelationshipExists({ type: 'NEXT_LESSON', direction: 'out' })
-  hasNextLesson: boolean // inline EXISTS { } boolean
+  hasNextLesson!: boolean // inline EXISTS { } boolean
 
   @LabelPresent('OptionalLesson')
-  isOptional: boolean // true when the node has the label
+  isOptional!: boolean // true when the node has the label
 
   @Expression('size((this)-[:KNOWS]->())')
-  friendCount: number // raw Cypher, `this` = the root node
+  friendCount!: number // raw Cypher, `this` = the root node
 
-  @Computed((entity) => `${entity.firstName} ${entity.lastName}`)
-  fullName: string // computed in TypeScript after hydration
+  @Computed((entity) => `${(entity as Learner).firstName} ${(entity as Learner).lastName}`)
+  fullName!: string // computed in TypeScript after hydration
 }
 ```
 
@@ -431,13 +460,15 @@ Rules are plain keys in the property config, using neode's rule names, mapped on
 
 **Temporals** (`date`, `time`, `datetime`, `localtime`, `localdatetime`) — `before` / `after` with a `Date`, date string or `'now'`.
 
-Validation runs automatically on every write path (`save`, `create`, `update`). Failures throw a validation error whose `details` array carries one `{ path, message }` entry per failing check (and `.input` holds the rejected values):
+Validation runs automatically on every write path (`save`, `create`, `update`). Failures throw a validation error whose `issues` array carries one neode-owned `{ path, rule, message }` entry per failing check — `rule` names the check in neode's vocabulary (`required`, `type`, `format`, or the failing config rule such as `email` or `min`) — and `.input` holds the rejected values:
 
 ```typescript
+import { ValidationError } from 'neode'
+
 try {
   await neode.save(Object.assign(new User(), { email: 'nope' }))
 } catch (e) {
-  e.details // [{ path: ['email'], message: '"email" must be a valid email', … }]
+  if (e instanceof ValidationError) e.issues // [{ path: ['email'], rule: 'email', message: '"email" must be a valid email', … }]
 }
 ```
 
@@ -465,15 +496,15 @@ neode.model('Person', {
 
 Registration functions:
 
-| Function                                     | Description                                                                                         |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `neode.model(name, schema?)`                 | Define a model, or look up a previously defined one (throws when unknown).                          |
-| `neode.with({ Name: schema, … })`            | Define many at once. Chainable.                                                                     |
-| `neode.withDirectory(path)`                  | Register each module's default export in a directory as a model named after the file (`.js`/`.ts`). |
-| `neode.extend(name, as, schema?)`            | Clone a model under a new name, adding the new name as an extra label, merging the schema on top.   |
-| `defineModel(name, schema)`                  | Standalone registry version of `model(name, schema)` — no instance needed.                          |
-| `extendModel(name, as, schema?)`             | Standalone version of `extend`.                                                                     |
-| `getModelByName(name)` / `getModelsByName()` | Look up registered map models.                                                                      |
+| Function                                     | Description                                                                                                                                                                                                                                      |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `neode.model(name, schema?)`                 | Define a model, or look up a previously defined one (throws when unknown).                                                                                                                                                                       |
+| `neode.with({ Name: schema, … })`            | Define many at once. Chainable.                                                                                                                                                                                                                  |
+| `neode.withDirectory(path)`                  | Register each module's default export in a directory as a model named after the file (`.js`/`.ts`). Map-schema modules only — a module default-exporting a class is refused (decorated classes self-register on import: import them explicitly). |
+| `neode.extend(name, as, schema?)`            | Clone a model under a new name, adding the new name as an extra label, merging the schema on top.                                                                                                                                                |
+| `defineModel(name, schema, options?)`        | Standalone registry version of `model(name, schema)` — no instance needed. A second registration of the same name throws; `{ idempotent: true }` returns the existing model instead (module re-evaluation: Nest HMR, Vitest watch mode).         |
+| `extendModel(name, as, schema?)`             | Standalone version of `extend`.                                                                                                                                                                                                                  |
+| `getModelByName(name)` / `getModelsByName()` | Look up registered map models.                                                                                                                                                                                                                   |
 
 `mergeRelationshipProperty(constructor, key, type, target, direction, isMany, isEager?, description?)` registers a relationship property through the metamodel directly — the tooling-level escape hatch for relationships that decorators can't express (e.g. self-referential classes on legacy setups).
 
@@ -499,8 +530,12 @@ All methods take an optional trailing `database?: string` override. Query method
 neode.save<T>(entity: T, database?): Promise<T>
 // MERGE on the primary key, re-hydrate. Idempotent per unique value.
 
-neode.create<T>(constructor, properties?, database?): Promise<T>
+neode.create<T>(constructor, properties?, options?: CreateOptions | string, database?): Promise<T>
 // CREATE — nested relationship targets included — then hydrate.
+// `options.relate` (NTS-615) maps a relationship key to a saved target
+// entity (or array of targets) related in the SAME managed transaction —
+// MERGE-based edges, so retries stay idempotent. A string third argument
+// stays the legacy database override.
 
 neode.mergeOn<T>(constructor, match, set, database?): Promise<T | undefined>
 // MERGE on the given match properties, then SET.
@@ -519,8 +554,11 @@ neode.getFirst<T>(constructor, params, database?): Promise<T | undefined>
 neode.all<T>(constructor, params?, order?, limit?, skip?, database?): Promise<T[]>
 // order forms: 'name' | ['name', 'age'] | { name: 'DESC' } | [{ name: 'DESC' }] | { field, order? }
 
-neode.update<T>(entity, properties?, database?): Promise<T | undefined>
+neode.update<T>(entity, properties?, options?: CreateOptions | string, database?): Promise<T | undefined>
 // `+=` on the primary key: provided keys only, then re-hydrate.
+// `options.relate` (NTS-615) relates eager targets in the same managed
+// transaction as the update (create() parity); a string third argument
+// stays the legacy database override.
 
 neode.relate<From, To>(constructor, from, to, relationshipKey, properties?, forceCreate?, database?): Promise<GraphRelationship | undefined>
 // MERGE the relationship (CREATE with forceCreate). The relationship is
@@ -563,12 +601,19 @@ neode.explain(query: string, params?: QueryParams, options?: { database? }): Pro
 // EXPLAIN — returns the plan, never executes.
 neode.profile(query: string, params?: QueryParams, options?: { database? }): Promise<unknown>
 // PROFILE — executes (routes WRITE) and returns the profiled plan.
-neode.batch(queries: Array<string | { query: string; params?: QueryParams }>, database?): Promise<QueryOutput[]>
 // All statements in ONE write transaction; every statement is attempted,
 // then rolled back on any failure (see Transactions).
+neode.runAll(queries: Array<string | { query: string; params?: QueryParams }>, database?): Promise<QueryOutput[]>
 ```
 
 `QueryOutput` is `{ records: QueryRecord[]; summary? }`; a `QueryRecord` offers `get(key)`, `has(key)`, `keys`.
+
+> **Passing `cypher()` options as a variable (NTS-617).** With `{ hydrate: Model }` as an inline literal the rows come back typed `Promise<Model[]>`. A pre-built options variable annotated `CypherOptions` instead resolves to `Promise<QueryOutput>` even when it carries `hydrate` (and the runtime hydrates): excess property checks only apply to literals, so the variable matches the raw overload. TypeScript cannot distinguish the two at the call site — annotate the variable with `satisfies` instead of a `CypherOptions` annotation to keep the literal type:
+>
+> ```typescript
+> const options = { hydrate: Order } satisfies CypherOptions
+> await neode.cypher(query, undefined, options) // Promise<Order[]>
+> ```
 
 ### The rest of the facade
 
@@ -614,6 +659,14 @@ neode.factory(model: string | Newable): FactoryBuilder
 
 `Builder` is the fluent Cypher builder the facade uses internally, importable directly when you need statements the facade does not express. Every user value is parameterised — the generated query contains only aliases.
 
+### Trust boundary — safe for user input vs trusted-only (NTS-675)
+
+**Safe for user input:** every _value_ (filters, properties, full-text query strings, vectors — all bound as parameters), and every _identifier_: labels, relationship types, property keys, order directions, limits/skips and traversal degrees are backtick-escaped or validated (`safeKey` / `quote` / `assertDirection` / `assertCount` — idempotent on already-quoted input). `toFulltextQuery()` sanitises free text into a safe Lucene query.
+
+**Trusted-input only** — these render verbatim into the statement and must never receive user-supplied text: `RawExpression` property values (and `@Expression` projections, and `@Derived`'s `cypher` — bind the values they reference via `param()` and reference them as `$name`), `expr()` / `caseExpr()` fragments, `whereRaw()`, `whereExists()`, `whereAny()`, `return()`, `unwind()`, `setExpr()` / `onCreateSetExpr()` / `onMatchSetExpr()`, `callProcedure()`, `remove()`, `delete()` / `detachDelete()`, and the _field_ term of `orderBy()` (it may be any expression, so it cannot be escaped — model-read services escape user order keys via `orderTerms()` before reaching it). Aliases and path variables must be plain identifiers (asserted, since they cannot be escaped without changing meaning). `runCypherScript()` / `splitCypherStatements()` run a script's contents verbatim — a `.cypher` file is trusted by definition.
+
+Destructive and filter-disabling surfaces stay behind explicit opt-in: `wipe()` requires `{ confirm: true }` and a local database, and `withoutFilters: ['*']` is rejected on every public read (NTS-610) — user input can never switch off tenancy or soft delete, including through the `neode/express` router (query keys map onto declared-property filters as parameters; unknown keys are dropped; `order`/`sort` travel as OrderSpec data through the escaping renderer).
+
 ### `create()` / `merge()` — extra labels on nodes
 
 Both take `(alias, labels, properties)`. `labels` is a single label, an **array of labels** (a multi-label node), or `false` for no label:
@@ -637,14 +690,14 @@ A **stored derived property** is computed on the write path from other propertie
 
 ```typescript
 class Order {
-  @Property({ type: 'datetime' }) orderDate: string
+  @Property({ type: 'datetime' }) orderDate!: string
   @Property({ type: 'datetime' }) shippedDate?: string
 
   // TypeScript-side: runs against the entity's property record
   @Property({ type: 'duration' })
   @Derived({
     from: ['orderDate', 'shippedDate'],
-    compute: (o) => durationBetween(String(o.orderDate), String(o.shippedDate)),
+    compute: (o) => durationBetween(String(o['orderDate']), String(o['shippedDate'])),
   })
   timeToShip?: unknown
 
@@ -674,6 +727,29 @@ Map API: `derived: { from, compute | cypher }` on the property definition.
 ### `expr` / `caseExpr` — Cypher expression helpers
 
 `expr` is a map of single-expression helpers for RETURN / SET / WHERE positions (`expr.coalesce('a', 'b')`, `expr.count()`, `expr.exists(pattern)`, `expr.datetime()`, `expr.any(v, list, predicate)`, `expr.listComprehension(pattern, projection)`, …). `caseExpr(pairs, fallback?)` builds `CASE WHEN … THEN … [ELSE …] END`. They compose structure only — every value stays a bound parameter.
+
+Path variables read through `expr.nodes('p')`, `expr.relationships('p')` and `expr.type('r')` (NTS-658) — e.g. `[n IN expr.nodes('p') | n.name]`.
+
+### `shortestPath()` — shortest-path patterns (NTS-658)
+
+`builder.shortestPath(variable, from, to, options?)` opens its own `MATCH` segment rendering `MATCH p = shortestPath((from)-[:TYPE]-(to))`, bound to a path variable a RETURN can project:
+
+```typescript
+new Builder()
+  .match('a', 'Product', { productID: 1 })
+  .match('b', 'Product', { productID: 2 })
+  .shortestPath('p', 'a', 'b', { relationship: 'CONTAINS', degrees: '..2' })
+  .return(`[n IN ${expr.nodes('p')} | labels(n)[0]] AS kinds`)
+  .build()
+// MATCH (a:Product { productID: $a_productID })
+// MATCH (b:Product { productID: $b_productID })
+// MATCH p = shortestPath((a)-[:`CONTAINS`*..2]-(b))
+// RETURN [n IN nodes(p) | labels(n)[0]] AS kinds
+```
+
+Options: `relationship` (a type or list of types — multi-type `shortestPath` can return wrong-shaped paths, see below), `direction` (defaults to BOTH, the undirected `shortestPath` form) and `degrees` (a traversal bound — Neo4j rejects a minimum length other than 0 or 1 inside `shortestPath`, so multi-hop bounds are the `'..2'` / `'1..2'` forms, and an exact length like `2` throws naming the fix). `variable`, `from` and `to` are plain variable names (validated like aliases); `from`/`to` are node variables bound by earlier matches — give them labels there when the pattern needs them.
+
+When a fixed shape is required — a multi-type `shortestPath` happily returns a shorter wrong-shaped path (a customer-less Product-Order-Product chain instead of one through the customer) — pin the exact edge chain with `match()` / `relationship()` / `to()` / `asPath('p')` instead; the path variable binds the whole segment pattern the same way.
 
 ### Predicates: `WhereNull`, `LabelPredicate`
 
@@ -714,11 +790,13 @@ await neode.inReadTransaction(async (tx) => {
 })
 ```
 
+Facade methods called inside the callback **join the unit's transaction** (NTS-642) — `neode.cypher(...)`, `neode.create(...)`, `neode.save(...)`, … run on the same transaction and commit or roll back with the unit, exactly like inside `neode.transaction()`. Only calls on a _different_ `Neode` instance run outside it. Like `transaction()`, a statement that failed on the driver and was swallowed inside the callback marks the unit rollback-only: the commit is refused with a `NeodeError` naming the swallowed failure — rethrow inside the callback to surface the original error instead. Unlike `transaction()`, the managed units never retry; pass `retries` to `neode.transaction()` for transient-failure re-runs.
+
 Lower-level handles (if you want to drive the connection port yourself): `readTransaction(database?)` / `writeTransaction(database?)` return a `TransactionHandle` — a `Runner` (`run(statement, params?)`) plus `commit()` / `rollback()`.
 
-### batch() and TransactionError
+### runAll() and TransactionError
 
-`neode.batch(queries, database?)` runs every statement in **one** write transaction. Every statement is attempted; on any failure the transaction rolls back and a `TransactionError` is thrown, carrying:
+`neode.runAll(queries, database?)` — v3's `batch()`, renamed (NTS-624) — runs every statement in **one** write transaction. Every statement is attempted; on any failure the transaction rolls back and a `TransactionError` is thrown, carrying:
 
 - `errors: (BatchStatementError | null)[]` — aligned with the input array, `null` where a statement succeeded,
 - `results: QueryOutput[]` — results produced before the failure,
@@ -728,14 +806,15 @@ Lower-level handles (if you want to drive the connection port yourself): `readTr
 
 Subscribe with `neode.on(event, handler)` — returns the instance for chaining; `neode.off(event, handler)` unsubscribes. Events are emitted synchronously on an emitter scoped to the instance, and also fire for work done inside transactions.
 
-| Event                                                                   | Emitted by                                                   | Payload             |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------- |
-| `EventType.NODE_CREATED`                                                | `create()`, `save()` when the merge created the node         | hydrated entity     |
-| `EventType.NODE_UPDATED`                                                | `save()` when the merge matched and updated an existing node | hydrated entity     |
-| `EventType.NODE_DELETED`                                                | `delete()` (not for soft deletes — the node survives)        | deleted entity      |
-| `EventType.RELATIONSHIP_CREATED`                                        | `relate()` with `forceCreate`                                | `GraphRelationship` |
-| `EventType.RELATIONSHIP_MERGED`                                         | `relate()` (MERGE, the default)                              | `GraphRelationship` |
-| `EventType.NODE_MERGED`, `RELATIONSHIP_UPDATED`, `RELATIONSHIP_DELETED` | reserved                                                     | —                   |
+| Event                                                    | Emitted by                                                                                                                                | Payload             |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| `EventType.NODE_CREATED`                                 | `create()`, `save()` when the merge created the node, `createMany()`                                                                      | hydrated entity     |
+| `EventType.NODE_UPDATED`                                 | `save()` when the merge matched and updated an existing node, `update()`, the label writes (`addLabel()` / `removeLabel()` / soft delete) | hydrated entity     |
+| `EventType.NODE_DELETED`                                 | `delete()` (not for soft deletes — the node survives; a soft delete emits `NODE_UPDATED`), `deleteAll()` per deleted entity               | deleted entity      |
+| `EventType.RELATIONSHIP_CREATED`                         | `relate()` with `forceCreate`                                                                                                             | `GraphRelationship` |
+| `EventType.RELATIONSHIP_MERGED`                          | `relate()` (MERGE, the default)                                                                                                           | `GraphRelationship` |
+| `EventType.NODE_MERGED`                                  | `mergeOn()` (also behind `merge()`, `Repository#upsert` and `mergeMany()`)                                                                | hydrated entity     |
+| `EventType.RELATIONSHIP_UPDATED`, `RELATIONSHIP_DELETED` | reserved                                                                                                                                  | —                   |
 
 ```typescript
 neode.on(EventType.NODE_CREATED, (entity) => console.log('created', entity))
@@ -753,21 +832,21 @@ await people.count({ age: 30 })
 
 `Repository<Entity>` methods:
 
-| Method          | Signature                                                             | Description                                                                                                                                                                                                                                   |
-| --------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `find`          | `(id) => Promise<Entity \| undefined>`                                | By primary key.                                                                                                                                                                                                                               |
-| `findBy`        | `(params?) => Promise<Entity \| undefined>`                           | First match.                                                                                                                                                                                                                                  |
-| `findAll`       | `(params?, options?: { order?, limit?, skip? }) => Promise<Entity[]>` | `order` takes the same `OrderSpec` forms as `all()`.                                                                                                                                                                                          |
-| `where`         | `(params?) => Promise<Entity[]>`                                      | Alias of `findAll(params)`.                                                                                                                                                                                                                   |
-| `count`         | `(params?) => Promise<number>`                                        |                                                                                                                                                                                                                                               |
-| `save`          | `(object) => Promise<Entity>`                                         | MERGE on primary key.                                                                                                                                                                                                                         |
-| `saveAll`       | `(objects) => Promise<Entity[]>`                                      | One save (one write transaction) at a time.                                                                                                                                                                                                   |
-| `patch`         | `(entity, properties) => Promise<Entity>`                             | Apply a patch, then persist via save. Named `patch` so domain interfaces declaring their own `update(id, input)` can be implemented by subclasses (NTS-454/458/459).                                                                          |
-| `delete`        | `(entityOrId, { ifExists?, ...deleteOptions }) => Promise<void>`      | By instance or primary key value. Throws on a missing ID; `{ ifExists: true }` silently no-ops (NTS-457). Cascade options forward to the delete service — annotations decide by default, `{ cascade: true }` / `{ cascade: false }` override. |
-| `increment`     | `(entityOrId, property, by?, { ifExists? }) => Promise<number>`       | Atomic `SET n.prop = coalesce(n.prop, 0) + by` (NTS-435). Returns the new value, or 0 when missing with `ifExists` (NTS-455).                                                                                                                 |
-| `countBy`       | `(property, params?) => Promise<Record<string, number>>`              | Grouped counts over one declared property (NTS-453).                                                                                                                                                                                          |
-| `deleteAll`     | `(params?) => Promise<number>`                                        | One bulk `DETACH DELETE` of every match; returns the count. No cascade, no per-node events.                                                                                                                                                   |
-| `getPrimaryKey` | `() => PropertySchema`                                                |                                                                                                                                                                                                                                               |
+| Method          | Signature                                                             | Description                                                                                                                                                                                                                                                                                                                                                      |
+| --------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `find`          | `(id) => Promise<Entity \| undefined>`                                | By primary key.                                                                                                                                                                                                                                                                                                                                                  |
+| `findBy`        | `(params?) => Promise<Entity \| undefined>`                           | First match.                                                                                                                                                                                                                                                                                                                                                     |
+| `findAll`       | `(params?, options?: { order?, limit?, skip? }) => Promise<Entity[]>` | `order` takes the same `OrderSpec` forms as `all()`.                                                                                                                                                                                                                                                                                                             |
+| `where`         | `(params?) => Promise<Entity[]>`                                      | Alias of `findAll(params)`.                                                                                                                                                                                                                                                                                                                                      |
+| `count`         | `(params?) => Promise<number>`                                        |                                                                                                                                                                                                                                                                                                                                                                  |
+| `save`          | `(object) => Promise<Entity>`                                         | MERGE on primary key.                                                                                                                                                                                                                                                                                                                                            |
+| `saveAll`       | `(objects) => Promise<Entity[]>`                                      | One save (one write transaction) at a time.                                                                                                                                                                                                                                                                                                                      |
+| `patch`         | `(entity, properties) => Promise<Entity>`                             | Apply a patch, then persist via save. Named `patch` so domain interfaces declaring their own `update(id, input)` can be implemented by subclasses (NTS-454/458/459).                                                                                                                                                                                             |
+| `delete`        | `(entityOrId, { ifExists?, ...deleteOptions }) => Promise<void>`      | By instance or primary key value. Throws on a missing ID; `{ ifExists: true }` silently no-ops (NTS-457). Cascade options forward to the delete service — annotations decide by default, `{ cascade: true }` / `{ cascade: false }` override.                                                                                                                    |
+| `increment`     | `(entityOrId, property, by?, { ifExists?, min? }) => Promise<number>` | Atomic `SET n.prop = coalesce(n.prop, 0) + by` (NTS-435). Returns the new value, or 0 when missing with `ifExists` (NTS-455). With `min` (NTS-655) the floor is checked in the same statement, under the write lock — a post-write value below it throws `GuardViolationError` (the throw rolls a managed `inWriteTransaction` unit back; exactly `min` passes). |
+| `countBy`       | `(property, params?) => Promise<Record<string, number>>`              | Grouped counts over one declared property (NTS-453).                                                                                                                                                                                                                                                                                                             |
+| `deleteAll`     | `(params?) => Promise<number>`                                        | One bulk `DETACH DELETE` of every match; returns the count. No cascade, no per-node events.                                                                                                                                                                                                                                                                      |
+| `getPrimaryKey` | `() => PropertySchema`                                                |                                                                                                                                                                                                                                                                                                                                                                  |
 
 ### Custom repositories
 
@@ -797,7 +876,11 @@ const results = await neode.installSchema()
 await neode.dropSchema()
 ```
 
-Property-existence constraints (`REQUIRE n.prop IS NOT NULL`) are Enterprise-only — enable enterprise mode or the statements are skipped.
+Every schema-management method — `installSchema()`, `dropSchema()`, `inspectSchema()`, `schemaDiff()` and `applySchemaDiff()` — accepts a `{ database }` option that targets a non-default database for that one call, winning over `setDatabase()` (NTS-645): `await neode.installSchema({ database: 'analytics' })`.
+
+Property-existence constraints (`REQUIRE n.prop IS NOT NULL`) and property-type constraints are Enterprise-only — the edition is detected from the connection (`CALL dbms.components()`) and the statements are skipped on Community.
+
+Composite declarations take the property list on one of the composite's properties (NTS-650): `index: ['city', 'region']` installs one range index over all N properties, and `unique: ['a', 'b']` is the unique analogue, deduped by deterministic name when more than one property of the group declares it. Neo4j limits: uniqueness constraints are single-property (node key constraints are the Enterprise composite analogue); composite range indexes have no such restriction. `schemaDrift()` and `applySchemaDrift()` cover composite objects like every other declaration.
 
 ## Schema inspection & drift
 
@@ -806,7 +889,7 @@ Read the installed schema and diff it against the declared models — cheap, rea
 ```typescript
 import { inspectSchema, schemaDrift, formatSchemaDrift, applySchemaDrift } from 'neode'
 
-const inspection = await inspectSchema(connection, { fulltext?: […], vector?: […], enterprise? })
+const inspection = await inspectSchema(connection, { fulltext?: […], vector?: […] }) // the edition is auto-detected (NTS-598)
 // SchemaInspection: { constraints: SchemaDiff, indexes: SchemaDiff }
 // SchemaDiff: { installed, declared, missing, stale, mismatched } — SchemaObject rows
 
@@ -816,9 +899,16 @@ console.log(formatSchemaDrift(drift)) // human-readable, grouped by missing / st
 await applySchemaDrift(connection, drift, { dropStale?: boolean }) // idempotent apply (IF NOT EXISTS)
 ```
 
+```typescript
+const report = await applySchemaDrift(connection, drift, {
+  dropStale: false,
+  returnDriftAfter: true, // NTS-659: { statements, driftAfter } — one extra probe serves apply + verification
+})
+```
+
 - `schemaDrift` — declared-vs-installed inspection of constraints and every index kind (range/text/fulltext/vector), one `SchemaDriftEntry` per object carrying the CREATE/DROP statement that would resolve it. `SchemaDriftGroup` groups one family by action; `ApplySchemaDiffOptions.dropStale` also drops installed-but-undeclared objects (destructive, off by default).
-- `applySchemaDrift` — apply the missing objects idempotently; mismatched objects are never auto-applied; stale objects only dropped with `dropStale: true`. Each statement is reported with a `SchemaResult`.
-- The facade mirrors these as `neode.inspectSchema(options?)`, `neode.schemaDiff(options?)`, `neode.formatSchemaDiff(diff)` and `neode.applySchemaDiff(diff, options?)` — they pass the instance's connection and declared index definitions for you.
+- `applySchemaDrift` — apply the missing objects idempotently; mismatched objects are never auto-applied; stale objects only dropped with `dropStale: true`. Each statement is reported with a `SchemaResult`. With `returnDriftAfter: true` (NTS-659) it runs one post-apply inspection pass and returns `{ statements, driftAfter }` — `driftAfter` is a fresh `schemaDrift()` over the same `InspectOptions` (the `fulltext` / `vector` / `graphTypeConstraints` you pass flow through to the re-probe), so the verification report comes from the same call that applied the fixes. Without the flag the return stays `SchemaResult[]`.
+- The facade mirrors these as `neode.inspectSchema(options?)`, `neode.schemaDiff(options?)`, `neode.formatSchemaDiff(diff)` and `neode.applySchemaDiff(diff, options?)` — they pass the instance's connection and declared index definitions for you. All of them (and `installSchema()` / `dropSchema()`) accept a `database` option that scopes the statements to that database per call (NTS-645).
 
 ## Soft delete
 
@@ -852,11 +942,13 @@ await repo.delete('p1', { force: true }) // real DETACH DELETE
 ```typescript
 const off = neode.observe(Product, {
   beforeSave: (entity) => {
-    entity.slug ??= slugify(entity.name)
+    const product = entity as Product // hooks receive the entity loosely typed
+    product.slug ??= slugify(product.name)
   }, // create path: receives the properties record
   afterSave: (entity, { isNew }) => audit.log(isNew ? 'created' : 'updated', entity),
   beforeDelete: (entity) => {
-    if (entity.protected) throw new Error('protected')
+    const product = entity as Product
+    if (product.protected) throw new Error('protected')
   },
   afterDelete: (entity) => audit.log('deleted', entity),
 })
@@ -864,7 +956,10 @@ const off = neode.observe(Product, {
 
 - `beforeSave` runs before the dirty diff, so observer mutations count as changes; on the create path it receives the mutable properties record (the entity does not exist yet).
 - `afterSave` context: `{ isNew, database }` — `isNew` mirrors whether the merge created the node.
-- Soft deletes fire `beforeDelete`/`afterDelete` (the entity left the read model) but not the `NODE_DELETED` event (the node stays).
+- Every write path runs the lifecycle (NTS-596): `update()` (beforeSave sees the mutable properties record), `mergeOn()` / `merge()` / `Repository#upsert` / `mergeMany()` (`NODE_MERGED`), `createMany()`, `deleteAll()` (per deleted entity) and the label writes — `addLabel()` / `removeLabel()` and a soft delete (`NODE_UPDATED`: the node survives, so the committed change is an update).
+- Soft deletes fire `beforeDelete`/`afterDelete` (the entity left the read model) and `NODE_UPDATED`, but not the `NODE_DELETED` event (the node stays).
+- An after-hook error surfaces after the commit — the data stays committed and the event was already emitted; it never suppresses emission.
+- Observers are scoped to the Neode instance they register on (`neode.observe()`); the standalone `observe()` function registers process-wide observers that fire for every instance. Models registered with `extend()` fire their base model's observers too.
 - Returns the off function.
 
 ## Traversals
@@ -872,14 +967,16 @@ const off = neode.observe(Product, {
 `neode.traverse(Model)` (NTS-512) — typed multi-hop reads through the Builder, one hydrated row per matched path:
 
 ```typescript
+import { Direction } from 'neode'
+
 const rows = await neode
   .traverse(Product)
   .where({ productID: 1 }) // declared-property filters on the start node
-  .hop('SUPPLIED_BY', 'out', Supplier) // class or lazy thunk
-  .hop('COVERS', 'in', Territory, { degrees: '1..2' }) // variable-length hop
+  .hop('SUPPLIED_BY', Direction.OUTGOING, Supplier) // class or lazy thunk
+  .hop('COVERS', Direction.INCOMING, Territory, '1..2') // variable-length hop
   .run()
 
-rows[0].nodes // [Product, Supplier, Territory] — hydrated entities
+rows[0]?.nodes // [Product, Supplier, Territory] — hydrated entities
 ```
 
 - Each node is hydrated with the registered model whose labels match the node (most specific wins); unmatched nodes come back as raw driver nodes.
@@ -891,12 +988,14 @@ rows[0].nodes // [Product, Supplier, Territory] — hydrated entities
 The same builder runs as an aggregate read — the co-purchase shape ("entities reached through shared origins, ranked by how many origins they share, excluding the ones already connected to the start"):
 
 ```typescript
+import { Direction } from 'neode'
+
 const rows = await neode
   .traverse(Order)
   .where({ orderID })
-  .hop('CONTAINS', 'out', Product) //  t1: this order's products
-  .hop('CONTAINS', 'in', Order) //    t2: other orders…
-  .hop('CONTAINS', 'out', Product) // t3: …and what they contain
+  .hop('CONTAINS', Direction.OUTGOING, Product) //  t1: this order's products
+  .hop('CONTAINS', Direction.INCOMING, Order) //    t2: other orders…
+  .hop('CONTAINS', Direction.OUTGOING, Product) // t3: …and what they contain
   .exclude('t0', 'CONTAINS', 't3') // not already in THIS order
   .groupBy('t3')
   .countDistinct('t2', 'times')
@@ -917,8 +1016,13 @@ The database-agnostic port every backend implements:
 
 ```typescript
 interface ConnectionProvider {
-  run(statement, parameters?, mode?: 'READ' | 'WRITE', database?): Promise<QueryOutput>
-  beginTransaction(mode?, database?): Promise<TransactionHandle>
+  run(
+    statement: string,
+    parameters?: QueryParams,
+    mode?: AccessMode,
+    database?: string,
+  ): Promise<QueryOutput>
+  beginTransaction(mode?: AccessMode, database?: string): Promise<TransactionHandle>
   edition(): Promise<'enterprise' | 'community' | 'unknown'>
   close(): Promise<void>
 }
@@ -1009,15 +1113,41 @@ Three rules the hard way teaches:
 
 What differs when running tests on the embedded engine (`OGM_TEST_BACKEND=relate`, zero setup) vs a real Neo4j:
 
-| Capability                                       | Embedded Relate                       | Real Neo4j 5/2025               |
-| ------------------------------------------------ | ------------------------------------- | ------------------------------- |
-| Constraints, range/fulltext/vector indexes       | ✅                                    | ✅                              |
-| `COUNT { }` / `EXISTS { }` subquery projections  | ✅                                    | ✅                              |
-| Pattern comprehensions in RETURN (`@RelatedOne`) | ✅                                    | ✅                              |
-| Vector writes via plain `SET n.prop = $list`     | ✅                                    | ✅                              |
-| `db.create.setNodeVectorProperty` procedure      | ❌                                    | ✅ (the library never needs it) |
-| Empty-string query parameters                    | ❌ rejected — write absent properties | ✅                              |
-| Property-existence constraints, multi-database   | ❌ (Enterprise features)              | Enterprise                      |
+| Capability                                                  | Embedded Relate                                            | Real Neo4j 5/2025               |
+| ----------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------- |
+| Constraints, range/fulltext/vector indexes                  | ✅                                                         | ✅                              |
+| `COUNT { }` / `EXISTS { }` subquery projections             | ✅                                                         | ✅                              |
+| Pattern comprehensions in RETURN (`@RelatedOne`)            | ✅                                                         | ✅                              |
+| Vector writes via plain `SET n.prop = $list`                | ✅                                                         | ✅                              |
+| `db.create.setNodeVectorProperty` procedure                 | ❌                                                         | ✅ (the library never needs it) |
+| Empty-string query parameters                               | ❌ rejected — write absent properties                      | ✅                              |
+| Node-to-node identity comparison (`a <> b`)                 | ❌ rejected — compare `elementId(a) <> elementId(b)`       | ✅                              |
+| `MERGE (a:L)` re-declaring labels on a MATCH-bound endpoint | ❌ rejected (`VariableAlreadyBound`) — render bare aliases | ✅                              |
+| Property-existence constraints, multi-database              | ❌ (Enterprise features)                                   | Enterprise                      |
+
+### Relationship writes — portability caveats
+
+Caveats consumers hit when hand-writing Builder statements around relationship
+writes. relate() itself already follows every one of these; they bite when you
+compose your own MATCH … MERGE statements.
+
+1. **Node identity comparison: compare `elementId`s, never nodes.** `WHERE fr1 <> fr2` is Cypher-spec
+   legal (identity comparison) but not implemented on every Cypher-compatible backend — the embedded
+   Relate engine rejects it. The portable form is a plain scalar comparison: `WHERE elementId(fr1) <> elementId(fr2)`.
+   relate()'s cardinality guard already does exactly this.
+2. **MERGE on MATCH-bound endpoints: render bare aliases.** In the relate-path statement shape
+   `MATCH (a:L { pk: … }) … MERGE (a)-[r:T]->(b)`, do not re-declare labels or properties on the bound
+   endpoints inside the MERGE pattern. The embedded engine rejects `MERGE (a:L)-[r:T]->(b:L)` after
+   `MATCH (a:L …)` with `VariableAlreadyBound`; real Neo4j accepts it (labels become no-op predicates
+   on bound vars). relateMany() renders `MERGE (a)-[r:T]->(b)` — bare aliases — for exactly this reason.
+3. **UNWIND row maps: never bind `undefined`.** The embedded engine fails an UNWIND row whose map value
+   is `undefined`. Bulk row preparation must coerce absent values to `null` or drop the key — the same
+   rule as empty-string parameters above (the OGM's own write paths skip `undefined` keys).
+4. **relate() semantics, restated.** MERGE-based relate() is idempotent PER PAIR: re-relating the same
+   two nodes never duplicates the edge. But `one` / `zeroOrOne` cardinality counts TOTAL edges per node —
+   per-pair idempotency cannot enforce it (hence the cardinality guard and its check-then-write race note).
+   Bulk writes (relateMany()) cannot run the per-row cardinality guard at all — restricted cardinalities
+   are rejected up-front — and edge-entity (relationship-entity) targets are out of scope for bulk relate.
 
 ### App structure that scales
 
@@ -1025,7 +1155,7 @@ Two scopes, one rule: **repositories take `INeode`** (the minimal interface — 
 
 - `models/` — decorators + validation, no logic
 - `repositories/` — queries on the `INeode` surface (reads, `Builder` + `readCypher`, simple writes)
-- `services/` — orchestration on the facade: `openWriteTransaction()`, `PaginateService(runner)`, `knn(runner, …)`, `batch()`
+- `services/` — orchestration on the facade: `openWriteTransaction()`, `PaginateService(runner)`, `knn(runner, …)`, `runAll()`
 - `api/` — a listen-free Hono app (`app.request()` in tests, no network)
 
 ## Instance methods
@@ -1033,10 +1163,12 @@ Two scopes, one rule: **repositories take `INeode`** (the minimal interface — 
 Hydrated entities get active-record methods on their prototype (wired once per class at first hydration):
 
 ```typescript
+import type { DeleteOptions, DetachResult, GraphRelationship } from 'neode'
+
 interface EntityMethods {
   save(): Promise<this> // MERGE, re-hydrate
   update(properties?: Record<string, unknown>): Promise<this> // `+=`, re-hydrate
-  delete(options?: { cascade?; mode?; depth?; soft? } | string): Promise<this>
+  delete(options?: DeleteOptions | string): Promise<this>
   // With { soft: 'Archived' } the label is SET instead and the refreshed
   // entity is returned; otherwise the node is deleted and the (detached)
   // instance is returned.
@@ -1045,10 +1177,10 @@ interface EntityMethods {
   relateTo(
     other: object,
     relationshipKey: string,
-    properties?,
-    shouldForceCreate?,
+    properties?: Record<string, unknown>,
+    shouldForceCreate?: boolean,
   ): Promise<GraphRelationship | undefined>
-  detachFrom<To extends object>(other: To, relationshipKey: string): Promise<{ from; to }>
+  detachFrom<To extends object>(other: To, relationshipKey: string): Promise<DetachResult<this, To>>
   toJson(): Record<string, unknown>
 }
 ```
@@ -1165,7 +1297,12 @@ Declarative read models composed into a single RETURN projection per read — on
 When a projection reads a field subset, pass `target()` and derive the annotation with `Pick`:
 
 ```typescript
-@RelatedOne({ type: 'PLACED_BY', direction: 'out', target: () => Customer, fields: ['customerID', 'companyName', 'country'] })
+@RelatedOne({
+  type: 'PLACED_BY',
+  direction: 'out',
+  target: () => Customer,
+  fields: ['customerID', 'companyName', 'country'],
+})
 customer?: Pick<Customer, 'customerID' | 'companyName' | 'country'>
 ```
 
@@ -1196,11 +1333,46 @@ await new BulkService(neode.getConnection()).createMany(Person, schema, rows, { 
 await new PaginateService(neode.getConnection()).paginate(Person, schema, filter, { page: 1, limit: 25 })
 ```
 
-- `BulkService.createMany(constructor, schema, rows, options?)` — bulk CREATE via UNWIND: one managed write transaction per chunk (default 1000 rows), rows validated and reduced exactly like single `create()`. Nested relationship targets in rows throw.
-- `BulkService.mergeMany(...)` — bulk MERGE on the model's merge fields; rows matching an existing node update it (`+=`), the rest are created. Every row must merge on the same merge fields.
+- `BulkService.createMany(constructor, schema, rows, options?)` — bulk CREATE via UNWIND: one managed write transaction per chunk (default 1000 rows), rows validated and reduced exactly like single `create()` (fake generators included). Nested relationship targets in rows throw. Each row's `fake` generator runs independently: unique + `fake` properties are **not** guaranteed distinct across rows — use DB-safe generators (e.g. random UUIDs).
+- `BulkService.mergeMany(...)` — bulk MERGE on the model's merge fields; rows matching an existing node update it (`+=`), the rest are created. Every row must merge on the same merge fields. Fake generators resolve per row before the match/set split, so a unique property carrying a `fake` yields a fresh value per row (each row creates).
 - `PaginateService.paginate(constructor, schema, filter, options)` — offset mode (`{ page?, limit, order? }`) returns `Page<T>` = `{ items, total, page, limit, totalPages }` over two autocommit reads; keyset mode (`{ limit, orderBy?, after?, before? }`) walks a temporal property (default `createdAt`) and returns `CursorPage<T>` = `{ items, nextCursor, hasMore }`. Cursors are opaque composites, so rows sharing a property value are never skipped between pages.
 
 Both return `BulkChunk<T>` = `{ count, entities }` per chunk. Prefer the facade wrappers (`neode.createMany`, `neode.mergeMany`, `neode.paginate`) — they resolve the schema for you.
+
+**When a chunk fails (NTS-649):** the chunk's transaction rolls back — every row of the failed chunk is unwritten, valid rows included, while earlier chunks stay committed (bulk writes are not atomic across chunks). The thrown `BulkChunkError` reports the per-row fate: `chunkIndex` and `failedRows` — each failing row's index in the full input with its own error, found by re-running the chunk's rows one transaction per row with every diagnostic transaction rolled back (nothing the diagnosis touches commits). Rows that only fail together (e.g. duplicate unique values within a chunk) report an empty `failedRows` with the reason in the message — fix the failing rows and re-run the import from the first uncommitted chunk.
+
+### Batch import: files and streams into the bulk APIs
+
+Rows for the bulk APIs come from wherever the data lives. Parse at the edge with any reader (`csv-parse`, NDJSON lines, a paginated API pull) and feed batches as they arrive — `for await` gives backpressure, memory stays bounded by the batch size, and each batch commits its own transaction. Because `mergeMany()` MERGEs on the model's merge fields, re-running a file is idempotent: matched rows update instead of duplicating.
+
+```typescript
+const batch: Record<string, unknown>[] = []
+
+for await (const record of createReadStream('products.csv').pipe(parse({ columns: true }))) {
+  batch.push(record)
+
+  if (batch.length === 1000) {
+    await neode.mergeMany(Product, batch)
+    batch.length = 0
+  }
+}
+
+if (batch.length > 0) await neode.mergeMany(Product, batch)
+```
+
+Headers that do not match the model's property names go through the `map` rename of `neode.rowToProperties(Model, row, { map? })` — it maps ONE row through the write pipeline (renames, defaults, fakes, transforms, validation, type conversion) without throwing, so an import can report bad rows and keep writing good ones:
+
+```typescript
+const result = await neode.rowToProperties(Product, record, { map: { product_name: 'name' } })
+
+if (result.ok) {
+  batch.push(result.properties)
+} else {
+  rejected.push({ line, errors: result.errors }) // ValidationIssue[]: message / path / rule per check
+}
+```
+
+Conversion runs before validation in `rowToProperties` (file sources deliver strings, and a numeric string must not fail its type rule); rows it maps feed `createMany()` / `mergeMany()` unchanged — already-converted driver values pass those pipelines through. A full runnable version lives in `examples/cookbook/bulk-import.ts`.
 
 ## Factories & seeding
 
@@ -1243,7 +1415,7 @@ import { verifyConnectivity, waitUntilReachable, wipe, testId, splitCypherStatem
 
 await verifyConnectivity({ uri: 'bolt://localhost:7687', auth?, config?, database? })
 await waitUntilReachable({ uri, … }, { timeout?: 30_000, interval?: 500, check? })
-await wipe(neode) // DETACH DELETE everything, then drop all constraints + indexes
+await wipe(neode, { confirm: true, database?, uri?, allowRemote?, batchSize? }) // DESTRUCTIVE: batched DETACH DELETE, reset graph type, drop all constraints + indexes → WipeReport
 const id = testId('person') // 'person-<timestamp>-<random>'
 const statements = splitCypherStatements(script) // semicolon-split, comment/string aware
 await runCypherScript(runner, script, { onStatement?(statement, index) })
@@ -1251,7 +1423,7 @@ await runCypherScript(runner, script, { onStatement?(statement, index) })
 
 - `verifyConnectivity` — check a database is reachable right now, with a throwaway driver (closed again afterwards).
 - `waitUntilReachable` — retry with backoff until reachable or the timeout elapses (then: `ConnectivityTimeoutError`).
-- `wipe` — wipe the database clean for a test run: DETACH DELETE every node, then drop every constraint and index the database currently has. Standalone on purpose — `installSchema()` derives statements from the registered models, `wipe()` from the database itself. Index drops are best-effort (built-in indexes are ignored).
+- `wipe` — wipe the database clean for a test run: DETACH DELETE every node, then drop every constraint and index the database currently has. Standalone on purpose — `installSchema()` derives statements from the registered models, `wipe()` from the database itself. **Destructive (NTS-578):** refuses without `{ confirm: true }` (or `NEODE_ALLOW_WIPE=true`), refuses a non-local `uri` / `NEO4J_URI` unless `allowRemote: true`, and pins the connected database name when `database` is given. Only unsupported-syntax errors are tolerated; failed drops are listed in the returned `WipeReport.failed`.
 - `splitCypherStatements` / `runCypherScript` — split a `.cypher` script into statements (semicolons inside strings, backtick identifiers and comments don't split), then run them sequentially, failing fast on the first error.
 - `testId(prefix?)` — unique per-run ids, safe as property values, safe for parallel suites.
 

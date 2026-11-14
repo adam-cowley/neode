@@ -4,6 +4,8 @@ or, inline in a pattern, `property: $param`.
 With `isRaw`, the value renders verbatim (an inline Cypher
 expression, NTS-460) instead of a parameter reference.
 */
+import { safeKey } from './quote.js'
+
 export class Property {
   private readonly key: string
   private readonly param: string
@@ -25,10 +27,18 @@ export class Property {
   }
 
   toString(): string {
-    return `${this.key} ${this.operator} ${this.param}`.trim()
+    // Keys arrive as composed references (`alias.key` from the write
+    // services, a bare alias with `+=`) — quote only the trailing
+    // property-key segment; a pre-quoted segment passes through
+    // (safeKey is idempotent, NTS-675)
+    const dot = this.key.indexOf('.')
+    const reference = dot === -1 ? '' : this.key.slice(0, dot + 1)
+    const tail = dot === -1 ? this.key : this.key.slice(dot + 1)
+
+    return `${reference}${safeKey(tail)} ${this.operator} ${this.param}`.trim()
   }
 
   toInlineString(): string {
-    return `${this.key}: ${this.param}`.trim()
+    return `${safeKey(this.key)}: ${this.param}`.trim()
   }
 }

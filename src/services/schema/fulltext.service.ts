@@ -23,11 +23,7 @@ export interface FulltextIndexDefinition {
 export function fulltextIndexName(definition: FulltextIndexDefinition): string {
   return (
     definition.name ??
-    schemaObjectName(
-      definition.label,
-      definition.properties.map((property) => property.toLowerCase()).join('_'),
-      ConstraintType.FULLTEXT,
-    )
+    schemaObjectName(definition.label, definition.properties, ConstraintType.FULLTEXT)
   )
 }
 

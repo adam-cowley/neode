@@ -1,11 +1,12 @@
 /**
 Graph type support (NTS-548): derive a Neo4j graph type (Cypher 25,
 Enterprise Edition, 2026.02+) from the registered models and apply it with
-`ALTER CURRENT GRAPH TYPE SET { ... }` / `ALTER CURRENT GRAPH TYPE DROP { ... }`.
+`ALTER CURRENT GRAPH TYPE ADD { ... }` (default, non-destructive), `SET`
+(opt-in replace) and `DROP { ... }`.
 
 Complements installSchema() (constraints + indexes) as its own method: a
 graph type SET replaces the database's existing graph type and constraints,
-so it is deliberately never merged into the installSchema() flow.
+so it is opt-in (NTS-578) and never merged into the installSchema() flow.
 
 https://neo4j.com/docs/cypher-manual/current/schema/graph-types/
 */
@@ -109,14 +110,10 @@ export interface GraphTypeConstraintDefinition {
 
 /**
 Deterministic name for a graph type constraint item (the same
-`<label>_<props>_<kind>` shape as the standalone constraint names)
+`<label>_<props>_<kind>_<hash>` shape as the standalone constraint names)
 */
 export const graphTypeConstraintName = (constraint: GraphTypeConstraintDefinition): string =>
-  schemaObjectName(
-    constraint.labelOrType,
-    constraint.properties.map((property) => property.toLowerCase()).join('_'),
-    constraint.kind.toLowerCase(),
-  )
+  schemaObjectName(constraint.labelOrType, constraint.properties, constraint.kind)
 
 const renderProperty = (property: GraphTypePropertyDefinition): string =>
   `${quote(property.name)} :: ${property.type}` +
@@ -876,6 +873,13 @@ function graphTypeResult(action: ConstraintAction, statement: string): SchemaRes
   }
 }
 
+function failedResult(action: ConstraintAction, statement: string, error: unknown): SchemaResult {
+  return {
+    ...graphTypeResult(action, statement),
+    error: error instanceof Error ? error : new Error(String(error)),
+  }
+}
+
 function graphTypeUnsupported(action: ConstraintAction): SchemaResult {
   const verbs: Record<ConstraintAction, string> = {
     [ConstraintAction.CREATE]: 'SET',
@@ -894,7 +898,27 @@ function graphTypeUnsupported(action: ConstraintAction): SchemaResult {
 }
 
 /**
-Applies the model-derived graph type with one SET/DROP statement, following
+Options for installing the model-derived graph type (NTS-578)
+*/
+export interface GraphTypeCreateOptions {
+  /**
+  Extra named constraint items (NTS-549)
+  */
+  constraints?: GraphTypeConstraintDefinition[]
+  /**
+  Opt into `ALTER CURRENT GRAPH TYPE SET`, replacing the server's whole
+  graph type (default: false — only missing objects are added)
+  */
+  replace?: boolean
+  /**
+  With `replace`: proceed even when the replacement drops installed
+  objects the registered models do not declare
+  */
+  canDropUndeclared?: boolean
+}
+
+/**
+Applies the model-derived graph type with one ADD/SET/DROP statement, following
 the same result-reporting pattern as the other schema services
 */
 export class GraphTypeService {
@@ -920,12 +944,128 @@ export class GraphTypeService {
     return [result]
   }
 
-  async create(
-    options: { constraints?: GraphTypeConstraintDefinition[] } = {},
+  private async replace(
+    declared: GraphTypeDefinition,
+    canDropUndeclared: boolean,
   ): Promise<SchemaResult[]> {
-    return this.enterprise
-      ? this.run(ConstraintAction.CREATE, graphTypeSetStatement(deriveGraphType(options)))
-      : [graphTypeUnsupported(ConstraintAction.CREATE)]
+    const statement = graphTypeSetStatement(declared)
+
+    if (!canDropUndeclared) {
+      let specification: string | undefined
+
+      try {
+        specification = await currentGraphType(this.connection)
+      } catch (error) {
+        return [failedResult(ConstraintAction.CREATE, statement, error)]
+      }
+
+      const stale =
+        specification === undefined
+          ? []
+          : graphTypeDriftGroup(parseGraphTypeSpecification(specification), declared, specification)
+              .stale
+
+      if (stale.length > 0) {
+        const names = stale.map((entry) => entry.name || entry.labelsOrTypes.join(',')).join(', ')
+
+        return [
+          failedResult(
+            ConstraintAction.CREATE,
+            statement,
+            new Error(
+              `Refusing to replace the graph type — ALTER CURRENT GRAPH TYPE SET would drop ` +
+                `${String(stale.length)} installed object(s) no registered model declares: ${names}. ` +
+                'They may belong to another application sharing this database. Register the models that ' +
+                'declare them, use installGraphType() without `replace` to only add what is missing, or ' +
+                'pass `canDropUndeclared: true` to drop them deliberately.',
+            ),
+          ),
+        ]
+      }
+    }
+
+    return this.run(ConstraintAction.CREATE, statement)
+  }
+
+  /**
+  Install the model-derived graph type (NTS-578). Non-destructive by
+  default: probes the installed graph type and `ADD`s only the element
+  types and constraint items that are missing, leaving everything else on
+  a shared database alone; differing definitions are reported as failed
+  results (fix: `alter()` or `replace: true`), never rewritten.
+
+  `replace: true` opts into `ALTER CURRENT GRAPH TYPE SET`, which replaces
+  the server's WHOLE graph type. It is refused when that would drop
+  element types or constraints the registered models do not declare,
+  unless `canDropUndeclared: true` is passed too.
+  */
+  async create(options: GraphTypeCreateOptions = {}): Promise<SchemaResult[]> {
+    if (!this.enterprise) {
+      return [graphTypeUnsupported(ConstraintAction.CREATE)]
+    }
+
+    const declared = deriveGraphType(
+      options.constraints === undefined ? {} : { constraints: options.constraints },
+    )
+
+    if (options.replace === true) {
+      return this.replace(declared, options.canDropUndeclared === true)
+    }
+
+    let specification: string | undefined
+
+    try {
+      specification = await currentGraphType(this.connection)
+    } catch (error) {
+      return [failedResult(ConstraintAction.CREATE, graphTypeAddStatement(declared), error)]
+    }
+
+    const drift = graphTypeDriftGroup(
+      specification === undefined
+        ? { nodes: [], relationships: [] }
+        : parseGraphTypeSpecification(specification),
+      declared,
+      specification,
+    )
+
+    const missing = {
+      nodes: declared.nodes.filter((node) =>
+        drift.missing.some((entry) => entry.name === node.label),
+      ),
+      relationships: (declared.relationships ?? []).filter((relationship) =>
+        drift.missing.some((entry) => entry.name === relationship.type),
+      ),
+      constraints: (declared.constraints ?? []).filter((constraint) =>
+        drift.missing.some(
+          (entry) => entry.name === (constraint.name ?? graphTypeConstraintName(constraint)),
+        ),
+      ),
+    }
+
+    const results: SchemaResult[] = []
+
+    if (missing.nodes.length + missing.relationships.length + missing.constraints.length > 0) {
+      results.push(...(await this.run(ConstraintAction.CREATE, graphTypeAddStatement(missing))))
+    } else if (drift.mismatched.length === 0) {
+      results.push({
+        ...graphTypeResult(ConstraintAction.CREATE, '-- graph type already up to date'),
+        success: true,
+      })
+    }
+
+    for (const entry of drift.mismatched) {
+      results.push({
+        ...graphTypeResult(ConstraintAction.ALTER, entry.createStatement ?? ''),
+        label: entry.name,
+        error: new Error(
+          `Installed graph type element "${entry.name}" differs from the registered models and ` +
+            'was left unchanged (installGraphType() does not rewrite existing definitions). ' +
+            'Redefine it with alterGraphType(), or pass `replace: true` to replace the whole graph type.',
+        ),
+      })
+    }
+
+    return results
   }
 
   async drop(
@@ -957,5 +1097,264 @@ export class GraphTypeService {
     return this.enterprise
       ? this.run(ConstraintAction.ALTER, graphTypeAlterStatement(definition))
       : [graphTypeUnsupported(ConstraintAction.ALTER)]
+  }
+}
+
+/**
+One drifted schema object: what it is, where it lives, and the exact
+statement(s) that would resolve the drift (NTS-450)
+*/
+export interface SchemaDriftEntry {
+  name: string
+  type: string
+  labelsOrTypes: string[]
+  properties: string[]
+  /**
+  The CREATE statement that would install the object — present on
+  missing and mismatched entries
+  */
+  createStatement?: string | undefined
+  /**
+  The DROP statement that would remove the object — present on stale
+  and mismatched entries
+  */
+  dropStatement?: string | undefined
+}
+
+/**
+NTS-550 — drift of the graph type: the installed canonical specification
+versus the model-derived definition, per element
+*/
+export interface GraphTypeDrift {
+  /**
+  The installed canonical specification string (undefined: none installed)
+  */
+  installed: string | undefined
+  /**
+  The declared `ALTER CURRENT GRAPH TYPE SET { ... }` — the full-replace
+  fix statement
+  */
+  declaredStatement: string
+  missing: SchemaDriftEntry[]
+  stale: SchemaDriftEntry[]
+  mismatched: SchemaDriftEntry[]
+}
+
+const hasSameValues = (left: string[], right: string[]): boolean =>
+  left.length === right.length && left.every((value) => right.includes(value))
+
+// ---- Graph type family (NTS-550) ---------------------------------------------
+
+function compareStrings(a: string, b: string): number {
+  if (a < b) {
+    return -1
+  }
+
+  if (a > b) {
+    return 1
+  }
+
+  return 0
+}
+
+/**
+`name::TYPE[!]` signature — whitespace-insensitive property comparison
+*/
+const propertySignature = (property: GraphTypePropertyDefinition): string =>
+  `${property.name}::${property.type.replaceAll(' ', '')}${property.nullable === false ? '!' : ''}`
+
+const signatureSet = (properties: GraphTypePropertyDefinition[] | undefined): string[] => {
+  const signatures = (properties ?? []).map((property) => propertySignature(property))
+
+  signatures.sort(compareStrings)
+
+  return signatures
+}
+
+const sortedCopy = (values: string[]): string[] => {
+  const copy = [...values]
+
+  copy.sort(compareStrings)
+
+  return copy
+}
+
+const isSameNodeDefinition = (
+  declared: GraphTypeNodeDefinition,
+  installed: GraphTypeNodeDefinition,
+): boolean => {
+  const declaredImplies = sortedCopy(declared.implies ?? [])
+  const installedImplies = sortedCopy(installed.implies ?? [])
+
+  return (
+    hasSameValues(declaredImplies, installedImplies) &&
+    hasSameValues(signatureSet(declared.properties), signatureSet(installed.properties))
+  )
+}
+
+const isSameRelationshipDefinition = (
+  declared: GraphTypeRelationshipDefinition,
+  installed: GraphTypeRelationshipDefinition,
+): boolean =>
+  declared.source === installed.source &&
+  declared.target === installed.target &&
+  hasSameValues(signatureSet(declared.properties), signatureSet(installed.properties))
+
+const isSameConstraintContent = (
+  declared: GraphTypeConstraintDefinition,
+  installed: GraphTypeConstraintDefinition,
+): boolean =>
+  declared.kind === installed.kind &&
+  declared.labelOrType === installed.labelOrType &&
+  (declared.relationship === true) === (installed.relationship === true) &&
+  (declared.kind !== 'TYPE' || declared.type === installed.type) &&
+  hasSameValues(sortedCopy(declared.properties), sortedCopy(installed.properties))
+
+/**
+Diff the installed graph type against the derived definition, per element
+(nodes and relationship element types by identifying label/type, named
+constraint items by content — the server generates names for the unnamed
+ones). Fix statements reuse the statement builders: ADD for missing
+elements, DROP for stale, ALTER for redefinitions.
+*/
+export function graphTypeDriftGroup(
+  installed: GraphTypeDefinition,
+  declared: GraphTypeDefinition,
+  installedSpecification: string | undefined,
+): GraphTypeDrift {
+  const missing: SchemaDriftEntry[] = []
+  const stale: SchemaDriftEntry[] = []
+  const mismatched: SchemaDriftEntry[] = []
+  const base = { type: ConstraintType.GRAPH_TYPE } as const
+
+  const installedNodes = new Map(installed.nodes.map((node) => [node.label, node]))
+  const declaredNodes = new Map(declared.nodes.map((node) => [node.label, node]))
+
+  for (const [label, node] of declaredNodes) {
+    const installedNode = installedNodes.get(label)
+
+    if (installedNode === undefined) {
+      missing.push({
+        ...base,
+        name: label,
+        labelsOrTypes: [label],
+        properties: (node.properties ?? []).map((property) => property.name),
+        createStatement: graphTypeAddStatement({ nodes: [node], relationships: [] }),
+      })
+    } else if (!isSameNodeDefinition(node, installedNode)) {
+      mismatched.push({
+        ...base,
+        name: label,
+        labelsOrTypes: [label],
+        properties: (node.properties ?? []).map((property) => property.name),
+        createStatement: graphTypeAlterStatement({ nodes: [node], relationships: [] }),
+        dropStatement: graphTypeDropStatement({ nodes: [{ label }], relationships: [] }),
+      })
+    }
+  }
+
+  for (const [label, node] of installedNodes) {
+    if (!declaredNodes.has(label)) {
+      stale.push({
+        ...base,
+        name: label,
+        labelsOrTypes: [label],
+        properties: (node.properties ?? []).map((property) => property.name),
+        dropStatement: graphTypeDropStatement({ nodes: [{ label }], relationships: [] }),
+      })
+    }
+  }
+
+  const installedRelationships = new Map(
+    (installed.relationships ?? []).map((relationship) => [relationship.type, relationship]),
+  )
+  const declaredRelationships = new Map(
+    (declared.relationships ?? []).map((relationship) => [relationship.type, relationship]),
+  )
+
+  for (const [type, relationship] of declaredRelationships) {
+    const installedRelationship = installedRelationships.get(type)
+
+    if (installedRelationship === undefined) {
+      missing.push({
+        ...base,
+        name: type,
+        labelsOrTypes: [type],
+        properties: (relationship.properties ?? []).map((property) => property.name),
+        createStatement: graphTypeAddStatement({ nodes: [], relationships: [relationship] }),
+      })
+    } else if (!isSameRelationshipDefinition(relationship, installedRelationship)) {
+      mismatched.push({
+        ...base,
+        name: type,
+        labelsOrTypes: [type],
+        properties: (relationship.properties ?? []).map((property) => property.name),
+        createStatement: graphTypeAlterStatement({ nodes: [], relationships: [relationship] }),
+        dropStatement: graphTypeDropStatement({ nodes: [], relationships: [{ type }] }),
+      })
+    }
+  }
+
+  for (const [type, relationship] of installedRelationships) {
+    if (!declaredRelationships.has(type)) {
+      stale.push({
+        ...base,
+        name: type,
+        labelsOrTypes: [type],
+        properties: (relationship.properties ?? []).map((property) => property.name),
+        dropStatement: graphTypeDropStatement({ nodes: [], relationships: [{ type }] }),
+      })
+    }
+  }
+
+  const installedConstraints = installed.constraints ?? []
+  const declaredConstraints = declared.constraints ?? []
+
+  for (const constraint of declaredConstraints) {
+    const isAbsent = installedConstraints.every(
+      (installed_) => !isSameConstraintContent(constraint, installed_),
+    )
+
+    if (isAbsent) {
+      missing.push({
+        ...base,
+        name: constraint.name ?? graphTypeConstraintName(constraint),
+        labelsOrTypes: [constraint.labelOrType],
+        properties: constraint.properties,
+        createStatement: graphTypeAddStatement({
+          nodes: [],
+          relationships: [],
+          constraints: [constraint],
+        }),
+      })
+    }
+  }
+
+  for (const constraint of installedConstraints) {
+    const isUndeclared = declaredConstraints.every(
+      (declared_) => !isSameConstraintContent(declared_, constraint),
+    )
+
+    if (isUndeclared) {
+      stale.push({
+        ...base,
+        name: constraint.name ?? '',
+        labelsOrTypes: [constraint.labelOrType],
+        properties: constraint.properties,
+        dropStatement: graphTypeDropStatement({
+          nodes: [],
+          relationships: [],
+          constraints: [constraint],
+        }),
+      })
+    }
+  }
+
+  return {
+    installed: installedSpecification,
+    declaredStatement: graphTypeSetStatement(declared),
+    missing,
+    stale,
+    mismatched,
   }
 }

@@ -8,6 +8,15 @@ Package version: **1.0.0-next.1** (from package.json).
 > churns between versions — LLM training corpora mix neode v1, neode and
 > unrelated OGMs. Regenerate with `pnpm docs:agents`.
 
+> **Default to decorators (NTS-583).** When creating a new project or new models, define them as
+> decorated classes (`@NodeEntity()` + `@Property(...)`) using standard TC39 decorators — never
+> `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`. Use `defineModel` (the
+> map API) only when the user asks for it, or decorators are impossible (models built at runtime,
+> or a toolchain without standard TC39 decorator support).
+>
+> Tooling: TypeScript 5+ (or esbuild/SWC/tsdown with standard decorators), `target` ES2022 or later,
+> `"lib": ["ES2022", "ESNext.Decorators"]`, and leave `experimentalDecorators` unset.
+
 Decorators and the map-based defineModel API for declaring nodes, properties and relationships.
 
 ### `applyEntityMethods` (function)
@@ -34,7 +43,7 @@ _source: meta/schema-definition.interface.ts_
 
 ### `CreatedAt` (decorator)
 
-Stamp the property server-side with `datetime()` once on create (NTS-165): the database clock writes it, so clocks never drift across clients. Stack it with a type decorator (e.g. `@DateTime()`) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
+Stamp the property server-side with `datetime()` once on create (NTS-165): the database clock writes it, so clocks never drift across clients. `{ format: 'iso-string' }` stamps `toString(datetime())` instead — an ISO-8601 string that compares lexically against client-supplied timestamps (NTS-612). Stack it with a type decorator (e.g. `@Property({ type: 'string' })` for the iso-string form, `@DateTime()` for the temporal) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
 
 _source: decorators/node/created-at.decorator.ts_
 
@@ -58,7 +67,7 @@ _source: decorators/node/default.decorator.ts_
 
 ### `defineModel` (function)
 
-Register a model from a map-based schema definition (neode parity), returning the generated virtual class for the model.
+Register a model from a map-based schema definition (neode parity), returning the generated virtual class for the model. The registry is process-global and a model name registers once: a second `defineModel()` under the same name throws a descriptive error (the previous behaviour silently orphaned the first model's schema). Pass `{ idempotent: true }` to keep the existing registration instead — the idempotent form returns the already-registered class for the name.
 
 _source: meta/map-schema.ts_
 
@@ -116,15 +125,9 @@ _source: meta/map-schema.ts_
 
 ### `Filter` (decorator)
 
-Named global filter (NTS-162): declare a named read filter on the model and it applies to every standard read — find / get / all / paginate / search / knn / eager loads / projections / repository reads — composed in one central place in the query services. - Disable per query with `withoutFilters: ['name']` on the read options; each filter is independent. - Parameterise with `setFilterParams(name, value)`; the `where` fragment references the value as `$name`. - `where` is a Cypher predicate over the filtered node; `node` names that node (the read root, or the related node inside a filtered relation's pattern comprehension). Label-state filters (labels-as-state, NTS-128) are just label predicates: `where: 'NOT node:Archived'`. - Over relations, the target model's filters render inside the relation's pattern comprehension — a filtered-out target simply doesn't match, so the edge reads as absent and the parent row survives. Never OPTIONAL MATCH. Example — soft delete + tenancy as independent named filters: ```ts
+Named global filter (NTS-162): declare a named read filter on the model and it applies to every standard read — find / get / all / paginate / search / knn / eager loads / projections / repository reads — composed in one central place in the query services. - Disable per query with `withoutFilters: ['name']` on the read options; each filter is independent. - Parameterise with `withFilterParams({ name: value }, async () => ...)` (request-scoped, async-safe; NTS-575); the `where` fragment references the value as `$name`. `setFilterParams(name, value)` sets a process-wide default that the scope overrides — it is unsafe under concurrent requests. A filter whose `$name` has no value fails closed with a NeodeError. - `where` is a Cypher predicate over the filtered node; `node` names that node (the read root, or the related node inside a filtered relation's pattern comprehension). Label-state filters (labels-as-state, NTS-128) are just label predicates: `where: 'NOT node:Archived'`. - Over relations, the target model's filters render inside the relation's pattern comprehension — a filtered-out target simply doesn't match, so the edge reads as absent and the parent row survives. Never OPTIONAL MATCH. Example — soft delete + tenancy as independent named filters: ```ts
 
 _source: decorators/node/filter.decorator.ts_
-
-### `FilterDefinition` (interface)
-
-One named global filter (NTS-162), declared with
-
-_source: meta/entity/entity-schema.ts_
 
 ### `Float` (decorator)
 
@@ -141,10 +144,6 @@ _source: meta/index.ts_
 Get a previously defined model constructor by name
 
 _source: meta/map-schema.ts_
-
-### `getModels` (function)
-
-_source: meta/index.ts_
 
 ### `getModelsByName` (function)
 
@@ -173,12 +172,6 @@ _source: decorators/node/index.decorator.ts_
 The public API surface of the Neode facade, as implemented by both the facade (autocommit scope) and TransactionalService (one open transaction). Accept this type when a function should work over either scope.
 
 _source: neode.interface.ts_
-
-### `InstanceLoadLevel` (type)
-
-The per-instance load spec (NTS-498): relationship key -> request. A key's value is `true` (load all), a LoadOptions object (order / skip / limit / withoutFilters — the NTS-558 options), or a nested spec object one more level down the declared relationship graph (`person.load({ pets: { toys: true } })`). The four option keys are reserved at every level: a relationship named exactly `order`, `skip`, `limit` or `withoutFilters` cannot be nested-loaded through the spec — the single-key load(key) form still reaches it. shortcut: the NTS-154 model map drives the QUERY-level `with` spec (QueryLoadSpec) — this instance surface keeps the every-non-method-key domain, because the map hangs off the constructor and `this` here is the instance; a map-checked instance spec needs a constructor→instance type link (see docs/decisions/0002-typing-eager-loads.md).
-
-_source: entity-methods.ts_
 
 ### `InternalId` (decorator)
 
@@ -238,7 +231,7 @@ _source: decorators/node/on-create-set.decorator.ts_
 
 ### `OneToMany` (decorator)
 
-Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading, an agent-facing description, per-relationship cascade and a write-time cardinality (NTS-161 — 'many' by default; 'one' / 'zeroOrOne' restrict the relationship to a single edge, a second relate() throwing CardinalityViolationError).
+Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading, an agent-facing description, per-relationship cascade and a write-time cardinality (NTS-161 — 'many' by default; 'one' / 'zeroOrOne' restrict the relationship to a single edge, a second relate() throwing CardinalityViolationError). Config form (NTS-623, the README's documented shape — consistent with
 
 _source: decorators/node/one-to-many.decorator.ts_
 
@@ -298,7 +291,7 @@ _source: decorators/projection/projection-config.interface.ts_
 
 ### `Property` (decorator)
 
-Register a property with an explicit type and config, e.g. `@Property({ type: 'string', index: true })`. Prefer this over `@String` to avoid shadowing global types.
+Register a property with an explicit type and config, e.g. `@Property({ type: 'string', index: true })`.
 
 _source: decorators/property.decorator.ts_
 
@@ -313,6 +306,10 @@ _source: meta/schema-definition.interface.ts_
 One property of an entity, as exposed to LLM agents (NTS-445)
 
 _source: meta/ontology.ts_
+
+### `PropertySchema` (class)
+
+_source: meta/property-schema.ts_
 
 ### `PropertyTypeName` (type)
 
@@ -363,12 +360,6 @@ _source: decorators/projection/related-one.decorator.ts_
 Read-model projection definitions (NTS-135/136/137/138) — the map-based API for
 
 _source: meta/schema-definition.interface.ts_
-
-### `RelationshipCardinality` (type)
-
-How many edges a relationship may hold from one node (NTS-161): `one` (exactly one — enforced as at-most-one at write time), `zeroOrOne` (at most one, none is fine) or `many` (unrestricted — the default). Read paths are untouched: cardinality is a write-time guard.
-
-_source: meta/relationship-property-schema.ts_
 
 ### `RelationshipConfig` (interface)
 
@@ -470,12 +461,6 @@ On a relationship entity: the property holding the node at the relationship's st
 
 _source: decorators/relationship/start-node.decorator.ts_
 
-### `String` (decorator)
-
-Register a string property.
-
-_source: decorators/node/string.decorator.ts_
-
 ### `Time` (decorator)
 
 Register a time property.
@@ -496,7 +481,7 @@ _source: decorators/node/unique.decorator.ts_
 
 ### `UpdatedAt` (decorator)
 
-Stamp the property server-side with `datetime()` on create and on every write (NTS-165): the database clock writes it, so clocks never drift across clients. Stack it with a type decorator (e.g. `@DateTime()`) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
+Stamp the property server-side with `datetime()` on create and on every write (NTS-165): the database clock writes it, so clocks never drift across clients. `{ format: 'iso-string' }` stamps `toString(datetime())` instead — an ISO-8601 string that compares lexically against client-supplied timestamps (NTS-612). Stack it with a type decorator (e.g. `@Property({ type: 'string' })` for the iso-string form, `@DateTime()` for the temporal) for a declared type. Merges onto the existing property, so it can be stacked with a type decorator.
 
 _source: decorators/node/updated-at.decorator.ts_
 
@@ -505,12 +490,6 @@ _source: decorators/node/updated-at.decorator.ts_
 Register a UUID property: validated as a UUID string, defaulting to a random UUID v4 on create (an explicit `config.default` wins).
 
 _source: decorators/node/uuid.decorator.ts_
-
-### `ValidationRules` (interface)
-
-Validation rules accepted on a property definition (neode's Joi rule names, ported in src/validation/rule-table.ts). Every non-metamodel key of a map-schema property definition travels to the validator as a rule (mergeProperty persists it via PropertySchema#setRules), so these are the keys the published map API accepts alongside the structural options. Rules are applied on top of the property's base type: a rule the base type does not support throws at validation time (rule-table's failUnsupported), and boolean rules must be exactly `true`.
-
-_source: meta/schema-definition.interface.ts_
 
 ### `Vector` (decorator)
 

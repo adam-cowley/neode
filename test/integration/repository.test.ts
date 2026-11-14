@@ -1,5 +1,5 @@
 import { Repository } from '../../src/repository'
-import { NodeEntity, InternalId, Uuid, String, Number } from '../../src/decorators'
+import { NodeEntity, InternalId, Uuid, Property, Number } from '../../src/decorators'
 import { openBackend, TestBackend } from './support/backend'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
@@ -12,7 +12,7 @@ class Movie {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   title: string
 
   @Number()
@@ -186,11 +186,14 @@ describe('Repository', () => {
       expect(await movies.count({ released: 1997 })).toBe(0)
     })
 
-    it('deletes everything when called without params', async () => {
+    it('deletes everything when confirmed with { all: true }', async () => {
       await movies.save(Movie.create('Alien', 1979))
       await movies.save(Movie.create('Aliens', 1986))
 
-      const deleted = await movies.deleteAll()
+      // An unfiltered deleteAll is refused (NTS-595 destructive guard)
+      await expect(movies.deleteAll()).rejects.toThrow(/deleteAll\(\) refused/)
+
+      const deleted = await movies.deleteAll({ all: true })
 
       expect(deleted).toBe(2)
       expect(await movies.count()).toBe(0)
@@ -217,7 +220,7 @@ describe('Repository', () => {
       const tx = await backend.neode.openWriteTransaction()
 
       try {
-        const merged = await tx.merge(Movie, { title: 'Tx Alien', released: 1979 })
+        const merged = (await tx.merge(Movie, { title: 'Tx Alien', released: 1979 }))?.entity
 
         expect(merged).toBeInstanceOf(Movie)
       } finally {

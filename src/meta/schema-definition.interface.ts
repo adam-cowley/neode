@@ -1,6 +1,9 @@
-import type { DefaultValue } from './property-schema.js'
+import type { DefaultValue, TimestampFormat } from './property-schema.js'
 import type { FilterDefinition } from './entity/entity-schema.js'
-import type { RelationshipCardinality } from './relationship-property-schema.js'
+import type {
+  ClaimConflictPolicy,
+  RelationshipCardinality,
+} from './relationship-property-schema.js'
 
 /**
 neode-compatible property type names for map-based schema definitions.
@@ -225,6 +228,8 @@ export interface PropertyDefinition extends ValidationRules {
   boolean: single-property unique constraint.
   string[]: composite unique covering exactly the listed properties
   (NTS-140) — declared on one property, the array is the full composite.
+  Neo4j limits: uniqueness constraints are single-property — node key
+  constraints are the Enterprise composite analogue (NTS-650).
   */
   unique?: boolean | string[]
   onCreateSet?: boolean
@@ -241,6 +246,13 @@ export interface PropertyDefinition extends ValidationRules {
   */
   updatedAt?: boolean
   /**
+  Stamp form for a server-side timestamp (NTS-612): 'iso-string' renders
+  the stamp as `toString(datetime())` so the stored value compares
+  lexically against client ISO strings; the default stores the temporal —
+  the map-API form of the `@CreatedAt` / `@UpdatedAt` config option.
+  */
+  timestampFormat?: TimestampFormat
+  /**
   Optimistic locking (NTS-158): the integer property every write keeps in
   sync — stamped 0 on create, incremented by 1 on every write addressed to
   the node, and checked with `WHERE n.version = $expected` when the
@@ -254,7 +266,10 @@ export interface PropertyDefinition extends ValidationRules {
   readonly?: boolean
   /**
   boolean: single-property index.
-  string[]: composite index covering exactly the listed properties (NTS-140).
+  string[]: composite index covering exactly the listed properties
+  (NTS-140): one range index over all N properties, created by
+  `installSchema()` and drift-covered by `schemaDrift()` /
+  `applySchemaDrift()` (NTS-650).
   */
   index?: boolean | string[]
   exists?: boolean
@@ -323,7 +338,11 @@ export interface RelationshipDefinition {
   */
   target: string
   /**
-  shortcut: edge properties are parsed but not wired yet — needs a generated relationship entity; add when edge-property saves are needed
+  The edge-property schema (NTS-628): the allowed edge properties and
+  their types — runtime edge props on relate() / nested creates /
+  updateEdgeProperties validate against it (unknown property or wrong
+  type throws naming the key). Per-property defaults/transforms on edges
+  are a follow-up.
   */
   properties?: Record<string, PropertyTypeName | PropertyDefinition>
   eager?: boolean
@@ -341,6 +360,18 @@ export interface RelationshipDefinition {
   / 'node' declare one, 'relationships' / 'nodes' declare many.
   */
   cardinality?: RelationshipCardinality
+  /**
+  DB-enforced inverse cardinality (NTS-663): names a `@Unique` property on
+  the TARGET model that neode's write paths keep pointed at this node's
+  primary key. Requires cardinality 'one' / 'zeroOrOne'.
+  */
+  enforce?: string
+  /**
+  What relate() does when the target is already claimed by a different
+  source (NTS-663): 'refuse' (default), 'detach' (the claim moves) or
+  'throw'. Requires `enforce`.
+  */
+  claimConflict?: ClaimConflictPolicy
 }
 
 /**

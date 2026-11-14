@@ -5,7 +5,7 @@ import { openBackend, TestBackend } from './support/backend'
 import { search } from '../../src/services/query/search.service'
 import { toFulltextQuery } from '../../src/services/index-support/lucene'
 import { FulltextIndexService } from '../../src/services/schema/fulltext.service'
-import { NodeEntity, InternalId, String } from '../../src/decorators'
+import { NodeEntity, InternalId, Property } from '../../src/decorators'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
 
@@ -14,16 +14,16 @@ class Movie {
   @InternalId()
   _id: string
 
-  @String()
+  @Property({ type: 'string' })
   title: string
 
-  @String()
+  @Property({ type: 'string' })
   plot: string
 }
 
 // ---------------------------------------------------------------------------
 
-const INDEX = 'movie_title_plot_fulltext'
+const INDEX = 'movie_plot_title_fulltext_fb2ce53c'
 
 describe('full-text search', () => {
   let backend: TestBackend
@@ -117,7 +117,9 @@ describe('full-text search', () => {
 
     expect(results).toHaveLength(1)
     expect(results[0].action).toBe('DROP')
-    expect(results[0].statement).toBe('DROP FULLTEXT INDEX movie_title_plot_fulltext IF EXISTS')
+    expect(results[0].statement).toBe(
+      'DROP FULLTEXT INDEX movie_plot_title_fulltext_fb2ce53c IF EXISTS',
+    )
     // success is not asserted: dropping full-text indexes is not
     // supported on every backend (e.g. Relate), which the result
     // pattern reports per statement instead of throwing

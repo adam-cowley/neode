@@ -2,20 +2,32 @@ import type { ConnectionProvider, QueryOutput, Runner } from '../../driver/types
 import { rollbackAfterFailure } from '../../transaction/rollback.js'
 import { THIS_NODE } from '../../constants.js'
 import { hydrate } from '../../hydrate.js'
-import type { EntitySchema } from '../../meta/entity/entity-schema.js'
-import { PropertyType, isProjectedProperty } from '../../meta/property-schema.js'
+import { getModel } from '../../meta/index.js'
+import { EntitySchema, EntityType } from '../../meta/entity/entity-schema.js'
+import type { RelationshipPropertySchema } from '../../meta/relationship-property-schema.js'
+import {
+  PropertyType,
+  isProjectedProperty,
+  type PropertySchema,
+} from '../../meta/property-schema.js'
 import { convertPropertyValue, getValueOrDefault } from '../../utilities.js'
 import {
   versionBump,
   applyEmbeddings,
+  applyFakeValues,
   applyInTransforms,
   deriveProperties,
   modelPropertyValues,
   timestampProperty,
+  stampExpression,
   versionProperty,
 } from '../write-utilities.js'
+import { assertWritableDirection, convertEdgeProperties } from '../relationship-values.js'
+import { Direction } from '../../query/direction.js'
 import { validate } from '../../validation/index.js'
+import { ValidationError, type ValidationIssue } from '../../validation/validation-error.js'
 import { NeodeError } from '../../errors/index.js'
+import { quoteLabels, safeKey } from '../../query/quote.js'
 import { QueryService } from './query.service.js'
 import { getMergeFields } from './merge.service.js'
 
@@ -54,6 +66,101 @@ created/merged entities, in row order
 export interface BulkChunk<T> {
   count: number
   entities: T[]
+}
+
+const ERROR_BULK_CHUNK_FAILED = 'ERROR_BULK_CHUNK_FAILED'
+
+/**
+One failing row of a failed chunk (NTS-649): the row's zero-based index
+in the FULL input (not the chunk) and the error the row raised when
+re-run on its own
+*/
+export interface BulkRowFailure {
+  index: number
+  error: unknown
+}
+
+function rowErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/**
+Thrown by createMany() / mergeMany() when a chunk's UNWIND fails (NTS-649).
+The chunk's transaction rolled back: every row of the chunk is unwritten,
+valid rows included, while earlier chunks stay committed. `failedRows`
+names each failing row (its index in the full input) with its own error,
+found by re-running the chunk's rows one transaction per row with every
+diagnostic transaction rolled back — nothing the diagnosis touches
+commits. Rows that only fail together (e.g. duplicate unique values
+within the chunk), or a bulk write inside an open transaction scope (a
+rolled-back diagnosis is impossible there), report an empty `failedRows`
+with the reason in the message.
+*/
+export class BulkChunkError extends NeodeError {
+  /**
+  Zero-based index of the failed chunk
+  */
+  readonly chunkIndex: number
+
+  /**
+  The failing rows — empty when no single row fails on its own or the
+  per-row diagnosis was unavailable (the message says which)
+  */
+  readonly failedRows: BulkRowFailure[]
+
+  constructor(
+    chunkIndex: number,
+    firstRow: number,
+    rowCount: number,
+    failedRows: BulkRowFailure[] | undefined,
+    cause: unknown,
+  ) {
+    let detail: string
+
+    if (failedRows === undefined) {
+      detail =
+        'per-row diagnosis unavailable — the bulk write ran inside an open transaction scope (a rolled-back diagnosis is impossible there), or the diagnosis pass itself failed'
+    } else if (failedRows.length === 0) {
+      detail =
+        'no single row fails on its own — the rows fail together (e.g. duplicate unique values within the chunk)'
+    } else {
+      detail = `failing rows: ${failedRows
+        .map((failure) => `#${String(failure.index)} (${rowErrorMessage(failure.error)})`)
+        .join(', ')} — remove or fix them and re-run the import`
+    }
+
+    super(
+      `${ERROR_BULK_CHUNK_FAILED}: chunk ${String(chunkIndex)} ` +
+        `(rows ${String(firstRow)}-${String(firstRow + rowCount - 1)}) failed and rolled back — ` +
+        'every row of the chunk is unwritten (valid rows included), ' +
+        `earlier chunks stay committed. ${detail}`,
+      { cause },
+    )
+
+    this.name = 'BulkChunkError'
+
+    this.chunkIndex = chunkIndex
+    this.failedRows = failedRows ?? []
+  }
+}
+
+/**
+One row of relateMany(): the from- and to-node primary-key values plus
+optional edge properties
+*/
+export interface RelateManyRow {
+  from: unknown
+  to: unknown
+  properties?: Record<string, unknown>
+}
+
+/**
+The relateMany() aggregate: edges MERGE-matched-or-created and the
+number of chunks written
+*/
+export interface RelateManyResult {
+  related: number
+  chunks: number
 }
 
 /**
@@ -110,7 +217,19 @@ function isConnectionProvider(runner: Runner): runner is ConnectionProvider {
 `:Label:Label` node pattern suffix for a schema's labels
 */
 export function labelPattern(labels: string[]): string {
-  return labels.length > 0 ? `:${labels.join(':')}` : ''
+  return labels.length > 0 ? `:${quoteLabels(labels)}` : ''
+}
+
+/**
+Convert a value through the schema unless it targets an iso-string
+timestamp property and is already a string (NTS-638): those properties
+store and match the string form (NTS-612), and a temporal value would
+never equal it
+*/
+function convertValueForStorage(value: unknown, property: PropertySchema): unknown {
+  const isStoredString = property.getTimestampFormat() === 'iso-string' && typeof value === 'string'
+
+  return isStoredString ? value : convertPropertyValue(value, property)
 }
 
 /**
@@ -156,15 +275,35 @@ export function processCreateRow(
 }
 
 /**
+Properties a matched row must never overwrite (NTS-580): the same set
+update() guards — primary key, protected, readonly, @CreatedAt and the
+library-managed @Version. Their values apply on create only.
+*/
+function isMatchGuarded(property: PropertySchema): boolean {
+  return (
+    property.isPrimaryKey() ||
+    property.isProtected() ||
+    property.isReadonly() ||
+    property.isCreatedAt() ||
+    property.isVersion()
+  )
+}
+
+/**
 Validate a row and split it into the merge match (the merge fields —
 unique, indexed or primary key properties — the row explicitly sets,
-never default-resolved) and the remaining set values
-(the merge-field semantics of mergeOn)
+never default-resolved), the set values applied on every write, and the
+`create` values (guarded properties, NTS-580) applied to created nodes
+only. A supplied @Version is dropped: the library owns the counter.
 */
 export function processMergeRow(
   row: Record<string, unknown>,
   schema: EntitySchema,
-): { match: Record<string, unknown>; set: Record<string, unknown> } {
+): {
+  match: Record<string, unknown>
+  set: Record<string, unknown>
+  create: Record<string, unknown>
+} {
   const mergeFields = getMergeFields(schema)
   const mergeKeys = new Set(mergeFields.map((property) => property.getKey()))
 
@@ -176,7 +315,10 @@ export function processMergeRow(
     const key = property.getKey()
 
     if (Object.hasOwn(row, key) && row[key] !== undefined) {
-      match[key] = row[key]
+      // NTS-637: match keys go through the same conversion as set values —
+      // file sources (CSV/JSON) deliver strings, and a MERGE pattern value
+      // must equal the stored (converted) form to match at all
+      match[key] = convertValueForStorage(row[key], property)
     }
   }
 
@@ -190,6 +332,7 @@ export function processMergeRow(
   }
 
   const set: Record<string, unknown> = {}
+  const create: Record<string, unknown> = {}
 
   for (const property of schema.getProperties()) {
     if (
@@ -204,14 +347,22 @@ export function processMergeRow(
 
     const value = getValueOrDefault(row, property, schema)
 
-    if (value !== undefined) {
-      set[property.getKey()] = convertPropertyValue(value, property)
+    if (value === undefined || property.isVersion()) {
+      continue
+    }
+
+    const converted = convertPropertyValue(value, property)
+
+    if (isMatchGuarded(property)) {
+      create[property.getKey()] = converted
+    } else {
+      set[property.getKey()] = converted
     }
   }
 
-  validate({ ...match, ...set }, schema)
+  validate({ ...match, ...set, ...create }, schema)
 
-  return { match, set }
+  return { match, set, create }
 }
 
 /**
@@ -244,8 +395,58 @@ export function buildCreateQuery(
 
 /**
 UNWIND $rows AS row
+MATCH (from:`Jobpost` { id: row.from })
+MATCH (to:`Technology` { id: row.to })
+MERGE (from)-[rel:`REQUIRES`]->(to)
+ON CREATE SET rel = coalesce(row.properties, {})
+ON MATCH SET rel += coalesce(row.properties, {})
+RETURN count(rel) AS related
+
+An INCOMING declaration renders the MERGE pattern reversed
+(`MERGE (from)<-[rel:`T`]-(to)`). Edge properties ride the row map and
+apply whether the MERGE created the edge or matched it (NTS-628 at map
+granularity — the map form of relate()'s ON CREATE/ON MATCH SET).
+*/
+export function buildRelateQuery(
+  fromLabels: string[],
+  toLabels: string[],
+  type: string,
+  direction: Direction,
+  fromPk: string,
+  toPk: string,
+): string {
+  if (direction === Direction.BOTH) {
+    throw new NeodeError(
+      'relateMany cannot merge an undirected relationship — Neo4j has no undirected ' +
+        'relationships (NTS-483). Declare the relationship OUTGOING or INCOMING.',
+    )
+  }
+
+  const typePattern = quoteLabels([type])
+  // The endpoints are already MATCH-bound: the MERGE only creates the
+  // edge, and the embedded engine rejects re-declaring labels on bound
+  // variables (VariableAlreadyBound) — bare aliases for both endpoints.
+  const edge =
+    direction === Direction.INCOMING
+      ? `(from)<-[rel:${typePattern}]-(to)`
+      : `(from)-[rel:${typePattern}]->(to)`
+
+  return [
+    'UNWIND $rows AS row',
+    `MATCH (from${labelPattern(fromLabels)} { ${safeKey(fromPk)}: row.from })`,
+    `MATCH (to${labelPattern(toLabels)} { ${safeKey(toPk)}: row.to })`,
+    `MERGE ${edge}`,
+    'ON CREATE SET rel = coalesce(row.properties, {})',
+    'ON MATCH SET rel += coalesce(row.properties, {})',
+    'RETURN count(rel) AS related',
+  ].join('\n')
+}
+
+/**
+UNWIND $rows AS item
+WITH item.row AS row, item.create AS created
 MERGE (this:Label { key: row.key, ... })
-ON CREATE SET this.createdAt = coalesce(row.createdAt, datetime())
+ON CREATE SET this.createdAt = coalesce(created.createdAt, datetime())
 SET this += row
 SET this.updatedAt = coalesce(row.updatedAt, datetime())
 RETURN this
@@ -253,7 +454,10 @@ RETURN this
 `onCreateStamps` render in the ON CREATE SET clause, `stamps` in a plain
 SET that applies to created and matched rows alike (NTS-165), and
 `onMatchStamps` in an ON MATCH SET clause (NTS-158 — the version bump only
-applies to matched rows).
+applies to matched rows). Each input row is `{ row, create }` (NTS-580):
+`row` is the match + set map (`+=`), `create` holds the guarded values
+(createdAt, readonly, protected) that only a created node takes — so a
+matched node's version / createdAt / readonly values cannot be overridden.
 */
 export function buildMergeQuery(
   labels: string[],
@@ -270,7 +474,8 @@ export function buildMergeQuery(
   const pattern = matchKeys.map((key) => `${key}: row.${key}`).join(', ')
 
   const output = [
-    'UNWIND $rows AS row',
+    'UNWIND $rows AS item',
+    'WITH item.row AS row, item.create AS created',
     `MERGE (${THIS_NODE}${labelPattern(labels)} { ${pattern} })`,
     ...(onCreateStamps.length > 0 ? [`ON CREATE SET ${onCreateStamps.join(', ')}`] : []),
     ...(onMatchStamps.length > 0 ? [`ON MATCH SET ${onMatchStamps.join(', ')}`] : []),
@@ -289,7 +494,7 @@ export function buildMergeQuery(
 The server-side timestamp SET items for the bulk row alias (NTS-165): the
 row's explicit value wins, otherwise the database clock stamps it
 */
-function rowStamps(schema: EntitySchema, kind: 'createdAt' | 'updatedAt'): string[] {
+function rowStamps(schema: EntitySchema, kind: 'createdAt' | 'updatedAt', alias = 'row'): string[] {
   const property = timestampProperty(schema, kind)
 
   if (property === undefined) {
@@ -298,7 +503,7 @@ function rowStamps(schema: EntitySchema, kind: 'createdAt' | 'updatedAt'): strin
 
   const key = property.getKey()
 
-  return [`${THIS_NODE}.${key} = coalesce(row.${key}, datetime())`]
+  return [`${THIS_NODE}.${key} = coalesce(${alias}.${key}, ${stampExpression(property)})`]
 }
 
 /**
@@ -306,12 +511,36 @@ The version SET item for the bulk row alias (NTS-158): the row's explicit
 value wins, otherwise a created row starts at 0. Matched rows bump via the
 ON MATCH clause (rowVersionBump).
 */
-function rowVersionStamp(schema: EntitySchema): string[] {
+function rowVersionStamp(schema: EntitySchema, isExplicit = true): string[] {
   const property = versionProperty(schema)
 
-  return property === undefined
-    ? []
-    : [`${THIS_NODE}.${property.getKey()} = coalesce(row.${property.getKey()}, 0)`]
+  if (property === undefined) {
+    return []
+  }
+
+  // mergeMany drops a supplied version (NTS-580): a created row is always 0
+  return [
+    `${THIS_NODE}.${property.getKey()} = ${isExplicit ? `coalesce(row.${property.getKey()}, 0)` : '0'}`,
+  ]
+}
+
+/**
+ON CREATE SET items for the guarded properties other than the timestamp and
+version stamps (NTS-580): read off the row's `create` map, so a matched
+node never takes them
+*/
+function createOnlySets(schema: EntitySchema): string[] {
+  return schema
+    .getProperties()
+    .filter(
+      (property) =>
+        isMatchGuarded(property) &&
+        !property.isCreatedAt() &&
+        !property.isVersion() &&
+        !NON_WRITABLE_TYPES.has(property.getType()) &&
+        !isProjectedProperty(property),
+    )
+    .map((property) => `${THIS_NODE}.${property.getKey()} = created.${property.getKey()}`)
 }
 
 /**
@@ -330,45 +559,165 @@ function rowVersionBump(schema: EntitySchema): string[] {
 
 /**
 Bulk rows are transformed per row before the shared validate-and-reduce
-pass: embedding sugar first (NTS-449), then `in` transforms — the same
-order and semantics as the single create / merge paths. Each row is
-copied, so the caller's records are left untouched.
+pass: `fake` generators first (NTS-608 — the single-create order: fake
+runs before transforms and validation), then embedding sugar (NTS-449),
+then `in` transforms — the same order and semantics as the single create /
+merge paths. Each row is copied, so the caller's records are left
+untouched.
+
+Unlike the FactoryBuilder (NTS-444), each row's `fake` generator runs
+independently: unique + `fake` properties are NOT guaranteed distinct
+across rows — use fake generators that are DB-safe (e.g. random UUIDs).
+
+Rows run through a bounded-concurrency pass (NTS-597): an embedding
+provider is a remote service, and one call per row all at once would
+overwhelm it.
 */
-async function prepareRows(
+const MAX_BULK_CONCURRENCY = 8
+
+/**
+Map over items with at most MAX_BULK_CONCURRENCY tasks in flight,
+preserving item order in the results.
+*/
+async function mapWithConcurrency<T, R>(items: T[], task: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = []
+
+  let next = 0
+
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next
+
+      next += 1
+
+      const item = items[index]
+
+      if (item !== undefined) {
+        results[index] = await task(item)
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(MAX_BULK_CONCURRENCY, items.length) }, worker))
+
+  return results
+}
+
+export async function prepareRows(
   rows: Record<string, unknown>[],
   schema: EntitySchema,
 ): Promise<{ rows: Record<string, unknown>[]; derivedSets: string[] }> {
   const derivedKeys = new Map<string, string>()
 
-  const prepared = await Promise.all(
-    rows.map(async (row) => {
-      const copy = { ...row }
+  const prepared = await mapWithConcurrency(rows, async (row) => {
+    const copy = { ...row }
 
-      await applyEmbeddings(schema, copy)
+    // Resolve `fake` generators first (NTS-608), the single-create order:
+    // fake runs before transforms and validation, so validation and the
+    // write see the same value
+    applyFakeValues(schema, copy)
 
-      // Stored derived properties (NTS-569): compute-side values land on
-      // the row and flow through the reduce like hand-set values. A
-      // cypher-side set from any row becomes a statement-level SET item —
-      // the expression reads each row's node values, so it is correct per
-      // row; rows that kept an explicit value are protected by the
-      // coalesce on the row below.
-      const { cypherSets } = deriveProperties(schema, copy)
+    await applyEmbeddings(schema, copy)
 
-      for (const { key, cypher } of cypherSets) {
-        derivedKeys.set(key, cypher)
-      }
+    // Stored derived properties (NTS-569): compute-side values land on
+    // the row and flow through the reduce like hand-set values. A
+    // cypher-side set from any row becomes a statement-level SET item —
+    // the expression reads each row's node values, so it is correct per
+    // row; rows that kept an explicit value are protected by the
+    // coalesce on the row below.
+    const { cypherSets } = deriveProperties(schema, copy)
 
-      await applyInTransforms(schema, copy)
+    for (const { key, cypher } of cypherSets) {
+      derivedKeys.set(key, cypher)
+    }
 
-      return copy
-    }),
-  )
+    await applyInTransforms(schema, copy)
+
+    return copy
+  })
 
   const derivedSets = [...derivedKeys].map(
     ([key, cypher]) => `${THIS_NODE}.${key} = coalesce(row.${key}, ${cypher})`,
   )
 
   return { rows: prepared, derivedSets }
+}
+
+/**
+The result of mapping one source row (a CSV / JSON / NDJSON record)
+through the model's write pipeline
+*/
+export type RowPropertiesResult =
+  | { ok: true; properties: Record<string, unknown> }
+  | { ok: false; errors: ValidationIssue[] }
+
+export interface RowToPropertiesOptions {
+  /**
+  Source-key -> property-key renames (e.g. CSV headers that do not match
+  the model's property names), applied before the pipeline runs
+  */
+  map?: Record<string, string>
+}
+
+/**
+Map one source row to the property map createMany() / mergeMany() take —
+the batch-import row pipeline, non-throwing. Renames apply first, then the
+single-create order (fake -> embeddings -> derived -> transforms, NTS-608/
+449/569), then conversion through the schema BEFORE validation: file
+sources deliver strings (every CSV cell is one), and a numeric string must
+not fail its type rule. Unset properties resolve defaults and fakes
+exactly like create().
+
+Returns `{ ok: false, errors }` instead of throwing — a ValidationError
+carries every failing check; a value its type cannot absorb (nested
+relationship values, `age: "x"`) becomes one synthetic issue. The
+`properties` of an ok result feed createMany()/mergeMany() directly:
+already-converted driver values pass through those pipelines unchanged.
+*/
+export async function rowToProperties(
+  schema: EntitySchema,
+  row: Record<string, unknown>,
+  options: RowToPropertiesOptions = {},
+): Promise<RowPropertiesResult> {
+  const map = options.map
+
+  const source =
+    map === undefined
+      ? row
+      : Object.fromEntries(Object.entries(row).map(([key, value]) => [map[key] ?? key, value]))
+
+  try {
+    const { rows } = await prepareRows([source], schema)
+
+    const prepared = rows[0] ?? {}
+
+    // Conversion is idempotent (driver values pass through), so the
+    // validate-and-reduce below re-converts as a no-op
+    for (const property of schema.getProperties()) {
+      const key = property.getKey()
+
+      if (Object.hasOwn(prepared, key)) {
+        prepared[key] = convertValueForStorage(prepared[key], property)
+      }
+    }
+
+    return { ok: true, properties: processCreateRow(prepared, schema) }
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return { ok: false, errors: error.issues }
+    }
+
+    return {
+      ok: false,
+      errors: [
+        {
+          message: error instanceof Error ? error.message : String(error),
+          path: [],
+          rule: 'NeodeError',
+        },
+      ],
+    }
+  }
 }
 
 /**
@@ -401,7 +750,18 @@ async function inWriteTransaction(
 /**
 Bulk CREATE and MERGE via UNWIND: one managed write transaction per
 chunk, one UNWIND statement per transaction, rows validated and reduced
-to property maps exactly like the single-create / merge paths
+to property maps exactly like the single-create / merge paths — `fake`
+generators included (NTS-608), each row's run independently: unique +
+`fake` properties are NOT guaranteed distinct across rows (see
+prepareRows).
+
+Chunks commit SEPARATELY (NTS-597): a failure partway through leaves the
+earlier chunks committed — bulk writes are not atomic across chunks. A
+failed chunk throws a `BulkChunkError` (NTS-649) that names the failing
+rows with per-row errors, found by a rolled-back per-row diagnostic pass:
+every row of the failed chunk (valid rows included) is unwritten, earlier
+chunks stay committed. Row preparation bounds its embedding-provider
+calls at MAX_BULK_CONCURRENCY in flight.
 */
 export class BulkService extends QueryService {
   private async writeChunks<T>(
@@ -414,24 +774,116 @@ export class BulkService extends QueryService {
 
     const chunks: BulkChunk<T>[] = []
 
+    let firstRow = 0
+
     for (const rows of chunk(rowMaps, chunkSize)) {
-      const output = await inWriteTransaction(this.runner, options.database, async (tx) =>
-        tx.run(query, { rows }),
-      )
+      let output: QueryOutput
+
+      try {
+        output = await inWriteTransaction(this.runner, options.database, async (tx) =>
+          tx.run(query, { rows }),
+        )
+      } catch (error) {
+        // NTS-649: name the failing rows before the error escapes — the
+        // chunk itself stays rolled back (no commit-semantics change)
+        throw await this.chunkError(chunks.length, firstRow, rows, query, options.database, error)
+      }
 
       chunks.push({
         count: rows.length,
         entities: hydrate<T>(constructor, output, THIS_NODE),
       })
+
+      firstRow += rows.length
     }
 
     return chunks
   }
 
   /**
+  The NTS-649 error for a failed chunk: the failing rows are named by a
+  diagnostic pass — one transaction per row, every diagnostic transaction
+  rolled back — where the runner can open one
+  */
+  private async chunkError(
+    chunkIndex: number,
+    firstRow: number,
+    rows: Record<string, unknown>[],
+    query: string,
+    database: string | undefined,
+    cause: unknown,
+  ): Promise<BulkChunkError> {
+    return new BulkChunkError(
+      chunkIndex,
+      firstRow,
+      rows.length,
+      await this.diagnoseRows(rows, query, database, firstRow),
+      cause,
+    )
+  }
+
+  /**
+  Re-run each of the failed chunk's rows on its own — one WRITE transaction
+  per row, every diagnostic transaction rolled back (NTS-649): the valid
+  rows' fate stays "rolled back with the chunk", nothing the diagnosis
+  touches commits. Returns undefined when the diagnosis cannot run: the
+  runner is an open transaction scope (its writes could not be rolled
+  back), or the diagnosis itself failed
+  */
+  private async diagnoseRows(
+    rows: Record<string, unknown>[],
+    query: string,
+    database: string | undefined,
+    firstRow: number,
+  ): Promise<BulkRowFailure[] | undefined> {
+    if (!isConnectionProvider(this.runner)) {
+      return undefined
+    }
+
+    const runner: ConnectionProvider = this.runner
+
+    try {
+      const outcomes = await mapWithConcurrency(rows, async (row) => {
+        const tx = await runner.beginTransaction('WRITE', database)
+
+        try {
+          await tx.run(query, { rows: [row] })
+
+          await tx.rollback()
+
+          return
+        } catch (error) {
+          // A failed statement usually kills the transaction server-side;
+          // the rollback is a formality and must not mask the row's error
+          try {
+            await tx.rollback()
+          } catch {
+            // the row's own error is what the caller sees
+          }
+
+          return error
+        }
+      })
+
+      const failures: BulkRowFailure[] = []
+
+      for (const [index, error] of outcomes.entries()) {
+        if (error !== undefined) {
+          failures.push({ index: firstRow + index, error })
+        }
+      }
+
+      return failures
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
   CREATE every row in chunks. Rows are flat property records: nested
-  relationship targets are not supported (they throw), defaults and
-  validation behave exactly like create()
+  relationship targets are not supported (they throw), defaults, fakes
+  and validation behave exactly like create() — unique + `fake`
+  properties are not guaranteed distinct across rows
   */
   async createMany<T>(
     constructor: new (...arguments_: never[]) => T,
@@ -501,15 +953,129 @@ export class BulkService extends QueryService {
     const query = buildMergeQuery(
       schema.getLabels(),
       matchKeys,
-      [...rowStamps(schema, 'createdAt'), ...rowVersionStamp(schema)],
+      [
+        ...rowStamps(schema, 'createdAt', 'created'),
+        ...rowVersionStamp(schema, false),
+        ...createOnlySets(schema),
+      ],
       rowStamps(schema, 'updatedAt'),
       rowVersionBump(schema),
       derivedSets,
     )
 
     // The MERGE pattern reads the match values off the row map
-    const rowMaps = parts.map((part) => ({ ...part.set, ...part.match }))
+    const rowMaps = parts.map((part) => ({
+      row: { ...part.set, ...part.match },
+      create: part.create,
+    }))
 
     return this.writeChunks<T>(constructor, rowMaps, query, options)
+  }
+
+  /**
+  Bulk MERGE of relationships (NTS-637): one UNWIND statement per chunk
+  matches both endpoints by primary key and MERGEs the edge — re-running
+  the same rows never duplicates edges (relate()'s idempotency, per
+  pair). Edge properties apply whether the MERGE created or matched
+  (relate()'s ON CREATE SET / ON MATCH SET at map granularity).
+
+  Rows name the endpoints by PRIMARY-KEY VALUE, not entity instance —
+  the ingest shape (JobStash dumps, CSV imports, seeders). The
+  relationship is the from-model's DECLARED relationship key; the
+  to-model is that relationship's declared target. Restricted
+  cardinalities (`one` / `zeroOrOne`) are rejected: bulk cannot run
+  relate()'s per-row cardinality guard. Rows whose endpoints do not
+  match are skipped without error — the returned `related` count is how
+  a caller detects them (rows.length - related).
+  */
+  async relateMany(
+    schema: EntitySchema,
+    key: string,
+    rows: RelateManyRow[],
+    options: BulkOptions = {},
+  ): Promise<RelateManyResult> {
+    if (rows.length === 0) {
+      return { related: 0, chunks: 0 }
+    }
+
+    let relationship: RelationshipPropertySchema
+
+    try {
+      relationship = schema.getRelationship(key)
+    } catch (error) {
+      throw new NeodeError(
+        `relateMany needs a declared relationship to merge. ${String(error instanceof Error ? error.message : error)}`,
+      )
+    }
+
+    assertWritableDirection(relationship)
+
+    if (relationship.getCardinality() !== 'many') {
+      throw new NeodeError(
+        `relateMany only supports "many" relationships: relationship "${key}" on ` +
+          `"${schema.getLabels().join(':')}" declares "${relationship.getCardinality()}". ` +
+          'Use relate() per pair, or relax the cardinality.',
+      )
+    }
+
+    const targetConstructor = relationship.getTarget()
+    const targetSchema =
+      typeof targetConstructor === 'function' ? getModel(targetConstructor) : undefined
+
+    if (
+      !(targetSchema instanceof EntitySchema) ||
+      targetSchema.getType() === EntityType.RelationshipEntity
+    ) {
+      throw new NeodeError(
+        `relateMany couldn't resolve a node target for relationship "${key}" on ` +
+          `"${schema.getLabels().join(':')}" — relationship-entity targets (edge entities) are ` +
+          'not supported in bulk. Use relate() per pair for edge entities.',
+      )
+    }
+
+    const fromPk = schema.getPrimaryKey()?.getKey()
+    const toPk = targetSchema.getPrimaryKey()?.getKey()
+
+    if (fromPk === undefined || toPk === undefined) {
+      throw new NeodeError(
+        `relateMany matches endpoints by primary key: model "${schema.getLabels().join(':')}" or its ` +
+          `target "${targetSchema.getLabels().join(':')}" declares no primary key. Add @Primary/@Uuid.`,
+      )
+    }
+
+    // Edge properties convert + validate exactly like relate() (NTS-509):
+    // conversion first, rules on the stored values. Checked per row up
+    // front, so one bad row fails the call before any statement runs.
+    const rowMaps = rows.map((row) => ({
+      from: row.from,
+      to: row.to,
+      properties:
+        row.properties === undefined ? {} : convertEdgeProperties(relationship, row.properties),
+    }))
+
+    const query = buildRelateQuery(
+      schema.getLabels(),
+      targetSchema.getLabels(),
+      relationship.getType(),
+      relationship.getDirection(),
+      fromPk,
+      toPk,
+    )
+
+    const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE
+
+    let related = 0
+    let chunks = 0
+
+    for (const chunkRows of chunk(rowMaps, chunkSize)) {
+      const output = await inWriteTransaction(this.runner, options.database, async (tx) =>
+        tx.run(query, { rows: chunkRows }),
+      )
+
+      related += Number(output.records[0]?.get('related') ?? 0)
+      chunks += 1
+    }
+
+    return { related, chunks }
   }
 }

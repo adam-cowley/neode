@@ -1,6 +1,6 @@
 import { THIS_NODE } from '../constants.js'
 import type { QueryOutput } from '../driver/types.js'
-import { NeodeError, unknownPropertyError } from '../errors/index.js'
+import { NeodeError, GuardViolationError, unknownPropertyError } from '../errors/index.js'
 import type { EntitySchema } from '../meta/entity/entity-schema.js'
 import { getModel } from '../meta/index.js'
 import type { Newable } from '../meta/newable.js'
@@ -11,18 +11,31 @@ import type { LoadedEntity, QueryLoadSpec, ReadOptions, WithSpec } from '../quer
 import { quote } from '../query/quote.js'
 import { applyOrder, type OrderSpec } from '../query/order-spec.js'
 import { getMergeFields } from '../services/query/merge.service.js'
+import { requireLimit } from '../services/query/limits.js'
+import { assertDeleteAllScope } from '../services/query/delete.service.js'
 import type { DeleteOptions } from '../services/query/delete.service.js'
 import type { ScoredEntity } from '../services/query/search.service.js'
+import type { KnnMode } from '../services/query/knn.service.js'
 import { fulltextIndexName } from '../services/schema/fulltext.service.js'
-import { isRecord } from '../services/type-guards.js'
+import { vectorIndexName } from '../services/schema/vector.service.js'
+import { isGraphNode, isRecord } from '../services/type-guards.js'
+import {
+  stampExpression,
+  timestampProperty,
+  versionBump,
+  versionProperty,
+  deriveProperties,
+} from '../services/write-utilities.js'
 import { shapeNodeRows } from '../services/query/shape.js'
 import { hasProjectedProperties } from '../projection/index.js'
 import { projectionNode } from '../projection/projection.js'
 import {
   applyReadFilters,
-  WITHOUT_ALL_FILTERS,
+  assertPublicWithoutFilters,
   type ReadFilterOptions,
 } from '../services/query/filters.js'
+import { applyFilterBag } from '../services/query/filter-bag.js'
+import type { WhereFilterLevel } from '../query/where-filter.js'
 
 /**
 Ordering, paging, row-limit and load-spec options shared by findAll()
@@ -105,6 +118,30 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   /**
   Neo4j driver returns count() as an Integer instance, Relate as a number
   */
+  private static patchProtection(property: PropertySchema): string | undefined {
+    if (property.isPrimaryKey()) {
+      return 'the primary key'
+    }
+
+    if (property.isVersion()) {
+      return 'the @Version counter, which the library manages'
+    }
+
+    if (property.isCreatedAt()) {
+      return '@CreatedAt, which is stamped once on create'
+    }
+
+    if (property.isReadonly()) {
+      return 'readonly'
+    }
+
+    if (property.isProtected()) {
+      return 'protected'
+    }
+
+    return undefined
+  }
+
   private static toCount(value: unknown): number {
     return hasToNumber(value) ? value.toNumber() : Number(value)
   }
@@ -144,18 +181,23 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
 
   /**
   Match every node of the entity's labels, filtered on the schema's
-  declared properties only (GetService parity: unknown keys are ignored).
+  declared properties only (GetService parity: unknown keys are ignored;
+  NTS-646 operator objects render through the shared filter-bag helper).
   The named read filters apply (soft delete included) unless
   shouldBypassFilters is set — the bulk-write paths pass true: writes
   never read through filters (NTS-162).
+
+  The parameter union is every bag shape the callers hand over (the loose
+  record, the typed NTS-646 bag, the legacy Partial) — the Repository's
+  subclass-constructor relation (RepositoryConstructor wire format) needs
+  this member to relate across Entity instantiations, so spell it out
+  rather than narrowing to one shape.
   */
   private matchAll(
-    parameters: Partial<Entity> = {},
+    parameters: Partial<Entity> | WhereFilterLevel<Entity> | Record<string, unknown> = {},
     filters?: ReadFilterOptions,
     shouldBypassFilters = false,
   ): Builder {
-    const record = parameters as Record<string, unknown>
-
     const builder = new Builder()
 
     builder.match(THIS_NODE, this.schema.getLabels())
@@ -164,13 +206,7 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       applyReadFilters(builder, this.schema, filters)
     }
 
-    for (const property of this.schema.getProperties()) {
-      const key = property.getKey()
-
-      if (Object.hasOwn(record, key)) {
-        builder.where(`${THIS_NODE}.${key}`, record[key])
-      }
-    }
+    applyFilterBag(builder, this.schema, parameters)
 
     return builder
   }
@@ -269,16 +305,22 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     // runtime renders nested spec objects identically (NTS-154), and the
     // runtime validation is the checked edge for keys the compile-time
     // tiers cannot exclude.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the narrowed overload above carries the precise spec type; INeode keeps the legacy ReadOptions shape (docs/decisions/0002-typing-eager-loads.md)
-    const readOptions = options as ReadOptions<Entity>
 
-    return this.neode.find(this.entity, id, readOptions)
+    // the repository's pinned database applies unless the caller overrode
+    // it (NTS-607)
+    const readOptions =
+      options.database === undefined && this.database !== undefined
+        ? { ...options, database: this.database }
+        : options
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the narrowed overload above carries the precise spec type; INeode keeps the legacy ReadOptions shape (docs/decisions/0002-typing-eager-loads.md)
+    return this.neode.find(this.entity, id, readOptions as ReadOptions<Entity>)
   }
   /**
   The first entity matching the given properties (declared properties
   only), or undefined when nothing matches.
   */
-  async findBy(properties: Partial<Entity> = {}): Promise<Entity | undefined> {
+  async findBy(properties?: WhereFilterLevel<Entity>): Promise<Entity | undefined> {
     const results = await this.findAll(properties, { limit: 1 })
 
     return results[0]
@@ -301,7 +343,7 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   Plain models keep the local Builder path.
   */
   async findAll<const WithSpecT extends QueryLoadSpec<C>>(
-    parameters: Partial<Entity>,
+    parameters: Partial<Entity> | WhereFilterLevel<Entity>,
     options: {
       with: WithSpecT
       order?: OrderSpec
@@ -310,9 +352,12 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       withoutFilters?: string[] | undefined
     },
   ): Promise<LoadedEntity<Entity, WithSpecT>[]>
-  async findAll(parameters?: Partial<Entity>, options?: FindOptions<Entity, C>): Promise<Entity[]>
   async findAll(
-    parameters: Partial<Entity> = {},
+    parameters?: WhereFilterLevel<Entity>,
+    options?: FindOptions<Entity, C>,
+  ): Promise<Entity[]>
+  async findAll(
+    parameters: Partial<Entity> | WhereFilterLevel<Entity> | Record<string, unknown> = {},
     options: {
       with?: object
       order?: OrderSpec
@@ -322,6 +367,8 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       withoutFilters?: string[] | undefined
     } = {},
   ): Promise<Entity[]> {
+    assertPublicWithoutFilters(options.withoutFilters)
+
     const hasIncludeDeleted = options.includeDeleted === true
 
     const filters: ReadFilterOptions = {}
@@ -377,8 +424,8 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       builder.skip(options.skip)
     }
 
-    if (options.limit !== undefined && options.limit !== 0) {
-      builder.limit(options.limit)
+    if (options.limit !== undefined) {
+      builder.limit(requireLimit(options.limit))
     }
 
     const output = await this.read(builder)
@@ -389,7 +436,7 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   /**
   findAll() alias — every entity matching the given properties.
   */
-  async where(parameters: Partial<Entity> = {}): Promise<Entity[]> {
+  async where(parameters?: WhereFilterLevel<Entity>): Promise<Entity[]> {
     return this.findAll(parameters)
   }
 
@@ -397,8 +444,8 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   Count of entities matching the given properties (a Cypher count(), so
   no entities are hydrated). The named read filters apply.
   */
-  async count(parameters: Partial<Entity> = {}): Promise<number> {
-    const builder = this.matchAll(parameters)
+  async count(parameters?: WhereFilterLevel<Entity>): Promise<number> {
+    const builder = this.matchAll(parameters ?? {})
 
     builder.return(`count(${THIS_NODE}) AS count`)
 
@@ -442,6 +489,29 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   with the base signature (NTS-454/458/459).
   */
   async patch(entity: Entity & object, properties: Partial<Entity>): Promise<Entity> {
+    // Protected properties cannot be patched (NTS-580): a changed primary
+    // key would make save() MERGE a duplicate node, and @Version /
+    // @CreatedAt / readonly / protected values are library-managed or
+    // immutable after create
+    for (const schemaProperty of this.schema.getProperties()) {
+      const key = schemaProperty.getKey()
+
+      if (
+        !Object.hasOwn(properties, key) ||
+        (properties as Record<string, unknown>)[key] === undefined
+      ) {
+        continue
+      }
+
+      const reason = Repository.patchProtection(schemaProperty)
+
+      if (reason !== undefined) {
+        throw new NeodeError(
+          `Cannot patch ${this.getLabels().join(':')}.${key} — it is ${reason}. Remove "${key}" from the patch; to change a primary key, create a new node and delete the old one.`,
+        )
+      }
+    }
+
     Object.assign(entity, properties)
 
     return this.save(entity)
@@ -476,7 +546,9 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       )
     }
 
-    return this.neode.merge(this.entity, properties, this.database)
+    const merged = await this.neode.merge(this.entity, properties, this.database)
+
+    return merged?.entity
   }
 
   /**
@@ -497,9 +569,28 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     const primaryKey = this.getPrimaryKey().getKey()
     const id = isRecord(target) ? target[primaryKey] : target
 
-    const builder = new Builder().match(THIS_NODE, this.schema.getLabels(), { [primaryKey]: id })
+    // Gated on the label being there: restoring a live node matches zero
+    // rows — a no-op that never re-stamps or double-bumps (NTS-595
+    // symmetry with the delete path's not-labelled gate)
+    const builder = new Builder()
+      .match(THIS_NODE, this.schema.getLabels(), { [primaryKey]: id })
+      .whereLabel(THIS_NODE, soft.label, false)
 
     builder.remove(`${THIS_NODE}:${quote(soft.label)}`, `${THIS_NODE}.deletedAt`)
+
+    // NTS-604: restore is a write like every other — stamp updatedAt and
+    // bump the version, mirroring the soft-delete branch
+    const updatedAt = timestampProperty(this.schema, 'updatedAt')
+
+    if (updatedAt !== undefined) {
+      builder.setExpr(`${THIS_NODE}.${updatedAt.getKey()}`, stampExpression(updatedAt))
+    }
+
+    const version = versionProperty(this.schema)
+
+    if (version !== undefined) {
+      builder.setExpr(`${THIS_NODE}.${version.getKey()}`, versionBump(THIS_NODE, version.getKey()))
+    }
 
     const { query, params } = builder.build()
 
@@ -525,9 +616,19 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       return this.neode.delete(target, forwarded, this.database)
     }
 
-    // The lookup bypasses the read filters (WITHOUT_ALL_FILTERS): delete
-    // is a write — rows hidden by the current filter view stay deletable
-    const entity = await this.find(target, { withoutFilters: [WITHOUT_ALL_FILTERS] })
+    // The lookup bypasses the read filters directly (NTS-610: '*' is no
+    // longer accepted through the public find mappers): delete is a write —
+    // rows hidden by the current filter view stay deletable
+    const primaryKey = this.getPrimaryKey().getKey()
+    const id = isRecord(target) ? target[primaryKey] : target
+
+    const builder = new Builder().match(THIS_NODE, this.schema.getLabels(), { [primaryKey]: id })
+    builder.limit(1)
+    builder.return(THIS_NODE)
+
+    const output = await this.read(builder)
+
+    const [entity] = shapeNodeRows<Entity>(output.records, this.schema, this.entity, THIS_NODE)
 
     if (entity === undefined) {
       if (ifExists === true) {
@@ -550,7 +651,7 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   */
   async countBy(
     property: keyof Entity & string,
-    parameters: Partial<Entity> = {},
+    parameters?: WhereFilterLevel<Entity>,
   ): Promise<Record<string, number>> {
     const declared = this.schema
       .getProperties()
@@ -565,7 +666,7 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     }
 
     const key = declared.getKey().replaceAll('`', '``')
-    const builder = this.matchAll(parameters)
+    const builder = this.matchAll(parameters ?? {})
     builder.return(`${THIS_NODE}.\`${key}\` AS value, count(${THIS_NODE}) AS count`)
 
     const output = await this.read(builder)
@@ -583,14 +684,19 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   /**
   Delete every entity matching params and return the number deleted.
 
+  Guarded (NTS-595, NTS-578 destructive-guards precedent): a call with no
+  filters deletes every node carrying the model's labels and is refused —
+  pass at least one filter, or `{ all: true }` to confirm the wipe.
+
   shortcut: one DETACH DELETE statement rather than per-node deletes,
   so per-node delete events and cascade options do not apply — switch to
   a loop over delete() when cascading bulk deletes are needed. A bulk
-  write: named read filters do not apply (NTS-162), every node carrying
-  the model's labels is deleted.
+  write: named read filters do not apply (NTS-162).
   */
-  async deleteAll(parameters: Partial<Entity> = {}): Promise<number> {
-    const builder = this.matchAll(parameters, undefined, true)
+  async deleteAll(parameters?: WhereFilterLevel<Entity> & { all?: true }): Promise<number> {
+    assertDeleteAllScope(parameters ?? {}, this.getLabels())
+
+    const builder = this.matchAll(parameters ?? {}, undefined, true)
 
     builder.detachDelete(THIS_NODE)
     builder.return(`count(${THIS_NODE}) AS count`)
@@ -616,12 +722,27 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   The property must be a declared numeric property of the schema: its name
   is interpolated into the Cypher (property names cannot be parameters),
   so the declaration check is the injection guard.
+
+  With `min` (NTS-655) the statement carries a guard terminal —
+  `WITH this WHERE this.prop >= $min` — so the floor is checked in the
+  same statement, under the write lock: a post-write value below the
+  floor (inclusive — exactly `min` passes) filters the statement's only
+  row out, and the zero-row result throws `GuardViolationError` instead
+  of returning a value. The throw rolls a managed write transaction
+  (inWriteTransaction / ambient transaction) back — the write lock makes
+  the check-and-decrement atomic, so no interleaving writer can slip
+  between them; under autocommit the SET itself still commits, so wrap
+  guarded decrements in a transaction. The floor works for both signs of
+  `by` (on a positive increment it is a no-op: the value only grows).
+  `min` takes precedence over `ifExists`: a zero-row result always
+  throws, because a missing entity matches zero rows too and the two
+  cases cannot be told apart inside one statement.
   */
   async increment(
     target: Entity | string | number,
     property: keyof Entity & string,
     by = 1,
-    options: { ifExists?: boolean } = {},
+    options: { ifExists?: boolean; min?: number } = {},
   ): Promise<number> {
     const declared = this.schema
       .getProperties()
@@ -647,6 +768,13 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       throw new TypeError('Cannot increment: step must be a finite number')
     }
 
+    if (
+      options.min !== undefined &&
+      (typeof options.min !== 'number' || !Number.isFinite(options.min))
+    ) {
+      throw new TypeError('Cannot increment: min must be a finite number')
+    }
+
     // The property name is schema-validated and quoted (names cannot be
     // parameters); the step is bound as a query parameter
     const key = quote(declared.getKey())
@@ -655,7 +783,72 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
 
     const builder = new Builder().match(THIS_NODE, this.schema.getLabels(), { [primaryKey]: id })
     builder.setExpr(`${THIS_NODE}.${key}`, `coalesce(${THIS_NODE}.${key}, 0) + $by`, { by })
-    builder.return(`${THIS_NODE}.${key} AS value`)
+
+    // A write like any other (NTS-580): stamp @UpdatedAt and bump @Version
+    // (unless the counter is the version itself)
+    const updatedAt = timestampProperty(this.schema, 'updatedAt')
+    const version = versionProperty(this.schema)
+
+    if (updatedAt !== undefined && updatedAt.getKey() !== declared.getKey()) {
+      builder.setExpr(`${THIS_NODE}.${quote(updatedAt.getKey())}`, stampExpression(updatedAt))
+    }
+
+    if (version !== undefined && version.getKey() !== declared.getKey()) {
+      const versionKey = quote(version.getKey())
+
+      builder.setExpr(`${THIS_NODE}.${versionKey}`, versionBump(THIS_NODE, versionKey))
+    }
+
+    // NTS-597: a stored derived property with the counter among its sources
+    // recomputes on increment. Cypher-side derivations ride the same
+    // statement — sequential SET clauses read the bumped counter. Compute-
+    // side ones cannot run in the database: the statement also returns the
+    // post-write node, and the recomputed values follow in a second,
+    // targeted write.
+    const counterKey = declared.getKey()
+    const dirtyCounter = new Set([counterKey])
+
+    const derivedSets = deriveProperties(this.schema, {}, dirtyCounter).cypherSets
+
+    // NTS-597: the WITH boundary splits the derived SET into its own
+    // clause — SET items inside one clause do not observe each other's
+    // writes on every backend (the embedded Relate engine evaluates a
+    // clause against the pre-statement state), and the expressions must
+    // read the bumped counter
+    if (derivedSets.length > 0) {
+      builder.with(THIS_NODE)
+    }
+
+    for (const { key: derivedKey, cypher } of derivedSets) {
+      builder.setExpr(`${THIS_NODE}.${quote(derivedKey)}`, cypher)
+    }
+
+    // NTS-655: the min floor renders as a WITH … WHERE terminal in the
+    // decrement's own statement, under the write lock — a post-write
+    // value below the floor filters the statement's only row out and the
+    // zero-rows check below throws. The value is bound as a parameter.
+    if (options.min !== undefined) {
+      builder.with(THIS_NODE)
+      builder.param('min', options.min)
+      builder.whereRaw(`${THIS_NODE}.${key} >= $min`)
+    }
+
+    const shouldRecomputeFromCounter = this.schema.getProperties().some((property) => {
+      const derived = property.getDerived()
+
+      if (derived === undefined || typeof derived.compute !== 'function') {
+        return false
+      }
+
+      const sources = Array.isArray(derived.from) ? derived.from : []
+
+      return property.getKey() !== counterKey && sources.includes(counterKey)
+    })
+
+    builder.return(
+      `${THIS_NODE}.${key} AS value`,
+      ...(shouldRecomputeFromCounter ? [THIS_NODE] : []),
+    )
 
     const { query, params } = builder.build()
     const output = await this.neode.writeCypher(query, params, this.database)
@@ -663,6 +856,13 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     const firstRecord = output.records[0]
 
     if (firstRecord === undefined) {
+      // The guard cannot tell a violated floor from a missing entity —
+      // both match zero rows — so a set min always throws (fail-closed,
+      // taking precedence over ifExists)
+      if (options.min !== undefined) {
+        throw new GuardViolationError(this.getLabels().join(':') || 'entity', property, options.min)
+      }
+
       if (options.ifExists === true) {
         return 0
       }
@@ -670,7 +870,36 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       throw new NeodeError(`Cannot increment: entity not found for ${String(target)}`)
     }
 
-    return Repository.toCount(firstRecord.get('value'))
+    const value = Repository.toCount(firstRecord.get('value'))
+
+    if (shouldRecomputeFromCounter) {
+      const written: unknown = firstRecord.get(THIS_NODE)
+
+      if (isGraphNode(written)) {
+        const postState: Record<string, unknown> = { ...written.properties }
+
+        const post = deriveProperties(this.schema, postState, dirtyCounter)
+
+        if (post.recomputed.length > 0) {
+          const patch = Object.fromEntries(
+            post.recomputed.map((derivedKey): [string, unknown] => [
+              derivedKey,
+              postState[derivedKey],
+            ]),
+          )
+
+          const followUp = new Builder()
+            .match(THIS_NODE, this.schema.getLabels(), { [primaryKey]: id })
+            .set(THIS_NODE, patch, '+=')
+
+          const statement = followUp.build()
+
+          await this.neode.writeCypher(statement.query, statement.params, this.database)
+        }
+      }
+    }
+
+    return value
   }
 
   /**
@@ -717,6 +946,51 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     const indexName = fulltextIndexName({ label, properties: fields })
 
     return this.neode.search(this.entity, indexName, query, options.limit)
+  }
+
+  /**
+  k-nearest-neighbour search over the vector index `installSchema()`
+  created for this model's declared `@Vector` property — the kNN
+  counterpart of search(): the index name is derived from the model
+  declaration, so the caller passes just the property key and the query
+  vector. Hydrated entities with their similarity score, best match
+  first.
+  */
+  async knn(
+    property: string,
+    vector: number[],
+    k: number,
+    mode?: KnnMode,
+  ): Promise<ScoredEntity<Entity>[]> {
+    const label = this.getLabels()[0]
+
+    if (label === undefined) {
+      throw new NeodeError(
+        `Cannot run a kNN search on ${this.getLabels().join(':')}: the model has no labels`,
+      )
+    }
+
+    const schemaProperty = this.schema
+      .getProperties()
+      .find((candidate) => candidate.getKey() === property)
+
+    if (schemaProperty === undefined) {
+      throw new NeodeError(
+        `Cannot run a kNN search on ${label}: no property named "${property}" — declare it, or pass a property the model declares`,
+      )
+    }
+
+    const vectorConfig = schemaProperty.getVector()
+
+    if (vectorConfig === undefined) {
+      throw new NeodeError(
+        `Cannot run a kNN search on ${label}.${property} — the property is not declared with @Vector. Declare @Vector on it, or use neode.knn(entity, indexName, …) with an explicit index name`,
+      )
+    }
+
+    const indexName = vectorIndexName({ label, property, ...vectorConfig })
+
+    return this.neode.knn(this.entity, indexName, vector, k, mode)
   }
 
   /**
