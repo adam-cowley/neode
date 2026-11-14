@@ -366,6 +366,7 @@ describe('public export surface (NTS-600)', () => {
       | 'hydrateFirst'
       | 'hydrateProjection'
       | 'inspectSchema'
+      | 'inspectSchemaAndDrift'
       | 'instrumentConnectionProvider'
       | 'isTransientError'
       | 'jsonSafe'

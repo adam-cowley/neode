@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applySchemaDrift,
   formatSchemaDrift,
+  inspectSchemaAndDrift,
   schemaDrift,
   type SchemaDrift,
   type SchemaDriftEntry,
@@ -199,6 +200,31 @@ describe('schemaDrift (NTS-450)', () => {
     expect(drift.indexes.mismatched[0]?.dropStatement).toBe(
       'DROP FULLTEXT INDEX driftperson_bio_fulltext_073c7489 IF EXISTS',
     )
+  })
+
+  it('inspectSchemaAndDrift returns the inspection and the drift from one probe', async () => {
+    const { connection } = provider(database(), indexes())
+
+    let showConstraints = 0
+    const counting = {
+      ...connection,
+      run: (statement: string, ...rest: unknown[]) => {
+        if (statement === 'SHOW CONSTRAINTS') {
+          showConstraints += 1
+        }
+
+        return connection.run(statement, ...rest)
+      },
+    } as unknown as ConnectionProvider
+
+    const { inspection, drift } = await inspectSchemaAndDrift(counting)
+
+    // One inspection feeds both payloads — callers needing both no longer probe twice
+    expect(showConstraints).toBe(1)
+    expect(inspection.constraints.installed.map((object) => object.name)).toContain(
+      'driftperson_old_exists',
+    )
+    expect(drift.constraints.stale.map((entry) => entry.name)).toEqual(['driftperson_old_exists'])
   })
 
   it('derives fulltext indexes declared on model properties and builds missing constraint statements', async () => {
