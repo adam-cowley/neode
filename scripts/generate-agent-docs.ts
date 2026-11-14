@@ -300,7 +300,9 @@ export function extractDocs(srcDir: string): ExtractedDocs {
   const dedupe = (symbols: ExtractedSymbol[]): ExtractedSymbol[] => {
     const seen = new Map<string, ExtractedSymbol>()
     for (const symbol of symbols) if (!seen.has(symbol.name)) seen.set(symbol.name, symbol)
-    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
+    // code-unit order, not localeCompare: ICU collation differs across Node
+    // versions/platforms and made --check non-deterministic between dev and CI
+    return [...seen.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   }
 
   const areas = [...AREAS, CORE_DEF]

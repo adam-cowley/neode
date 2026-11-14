@@ -19,12 +19,6 @@ Package version: **1.0.0-next.2** (from package.json).
 
 Decorators and the map-based defineModel API for declaring nodes, properties and relationships.
 
-### `applyEntityMethods` (function)
-
-Wire the instance methods onto an entity class's PROTOTYPE (idempotent: applied once per constructor, at first hydration or by explicit call). Methods the user class already defines are left untouched.
-
-_source: entity-methods.ts_
-
 ### `Boolean` (decorator)
 
 Register a boolean property.
@@ -64,12 +58,6 @@ _source: decorators/node/date-time.decorator.ts_
 Set a default value (literal or factory function) for the property. Merges onto the existing property, so it can be stacked with a type decorator.
 
 _source: decorators/node/default.decorator.ts_
-
-### `defineModel` (function)
-
-Register a model from a map-based schema definition (neode parity), returning the generated virtual class for the model. The registry is process-global and a model name registers once: a second `defineModel()` under the same name throws a descriptive error (the previous behaviour silently orphaned the first model's schema). Pass `{ idempotent: true }` to keep the existing registration instead — the idempotent form returns the already-registered class for the name.
-
-_source: meta/map-schema.ts_
 
 ### `Derived` (decorator)
 
@@ -117,12 +105,6 @@ _source: decorators/projection/expression.decorator.ts_
 
 _source: meta/schema-definition.interface.ts_
 
-### `extendModel` (function)
-
-neode's extend(): register `as` as a clone of the model `name` with `as` added as an extra label and `schema` merged over the original definition.
-
-_source: meta/map-schema.ts_
-
 ### `Filter` (decorator)
 
 Named global filter (NTS-162): declare a named read filter on the model and it applies to every standard read — find / get / all / paginate / search / knn / eager loads / projections / repository reads — composed in one central place in the query services. - Disable per query with `withoutFilters: ['name']` on the read options; each filter is independent. - Parameterise with `withFilterParams({ name: value }, async () => ...)` (request-scoped, async-safe; NTS-575); the `where` fragment references the value as `$name`. `setFilterParams(name, value)` sets a process-wide default that the scope overrides — it is unsafe under concurrent requests. A filter whose `$name` has no value fails closed with a NeodeError. - `where` is a Cypher predicate over the filtered node; `node` names that node (the read root, or the related node inside a filtered relation's pattern comprehension). Label-state filters (labels-as-state, NTS-128) are just label predicates: `where: 'NOT node:Archived'`. - Over relations, the target model's filters render inside the relation's pattern comprehension — a filtered-out target simply doesn't match, so the edge reads as absent and the parent row survives. Never OPTIONAL MATCH. Example — soft delete + tenancy as independent named filters: ```ts
@@ -135,43 +117,23 @@ Register a float property.
 
 _source: decorators/node/float.decorator.ts_
 
-### `getModel` (function)
-
-_source: meta/index.ts_
-
-### `getModelByName` (function)
-
-Get a previously defined model constructor by name
-
-_source: meta/map-schema.ts_
-
-### `getModelsByName` (function)
-
-Get all defined model constructors, keyed by name
-
-_source: meta/map-schema.ts_
-
-### `getRepository` (function)
-
-_source: meta/repositories.ts_
-
 ### `Hidden` (decorator)
 
 Hide the property from the returned model. Merges onto the existing property, so it can be stacked with a type decorator.
 
 _source: decorators/node/hidden.decorator.ts_
 
-### `Index` (decorator)
-
-Mark the property as indexed. Merges onto the existing property, so it can be stacked with a type decorator.
-
-_source: decorators/node/index.decorator.ts_
-
 ### `INeode` (interface)
 
 The public API surface of the Neode facade, as implemented by both the facade (autocommit scope) and TransactionalService (one open transaction). Accept this type when a function should work over either scope.
 
 _source: neode.interface.ts_
+
+### `Index` (decorator)
+
+Mark the property as indexed. Merges onto the existing property, so it can be stacked with a type decorator.
+
+_source: decorators/node/index.decorator.ts_
 
 ### `InternalId` (decorator)
 
@@ -201,10 +163,6 @@ Register a local time property.
 
 _source: decorators/node/local-time.decorator.ts_
 
-### `mergeRelationshipProperty` (function)
-
-_source: meta/index.ts_
-
 ### `Neode` (class)
 
 The OGM facade: models, raw queries, transactions, schema management and the event emitter, over a ConnectionProvider (neo4j-driver or the embedded Relate engine). Construct via `forDriver` / `forRelate` / `fromEnv`, or directly with a ConnectionProvider.
@@ -229,6 +187,12 @@ Mark the property as set on create. Merges onto the existing property, so it can
 
 _source: decorators/node/on-create-set.decorator.ts_
 
+### `OnMatchSet` (decorator)
+
+Mark the property as set on match. Merges onto the existing property, so it can be stacked with a type decorator.
+
+_source: decorators/node/on-match-set.decorator.ts_
+
 ### `OneToMany` (decorator)
 
 Register a relationship property holding many related entities. Positional form: target entity (lazy reference), relationship type (omitted matches any type — the pattern renders type-less), direction (default BOTH), eager loading, an agent-facing description, per-relationship cascade and a write-time cardinality (NTS-161 — 'many' by default; 'one' / 'zeroOrOne' restrict the relationship to a single edge, a second relate() throwing CardinalityViolationError). Config form (NTS-623, the README's documented shape — consistent with
@@ -241,27 +205,9 @@ Register a relationship property holding one related entity. The target entity (
 
 _source: decorators/node/one-to-one.decorator.ts_
 
-### `OnMatchSet` (decorator)
-
-Mark the property as set on match. Merges onto the existing property, so it can be stacked with a type decorator.
-
-_source: decorators/node/on-match-set.decorator.ts_
-
-### `ontology` (function)
-
-Build an agent-readable ontology over ALL registered models (NTS-445): entities with their labels, descriptions, properties and relationships, pulled from the shared metadata registry the map API and decorators both write into. Purely synchronous, no database connection required.
-
-_source: meta/ontology.ts_
-
 ### `Ontology` (interface)
 
 The full ontology over every registered model (NTS-445)
-
-_source: meta/ontology.ts_
-
-### `ontologyMarkdown` (function)
-
-Render `ontology()` as prompt-ready markdown (NTS-445): a heading per entity, bullet lists per property and relationship, descriptions included where declared.
 
 _source: meta/ontology.ts_
 
@@ -328,10 +274,6 @@ _source: decorators/node/protected.decorator.ts_
 Mark the property as read only. Merges onto the existing property, so it can be stacked with a type decorator.
 
 _source: decorators/node/readonly.decorator.ts_
-
-### `registerRepository` (function)
-
-_source: meta/repositories.ts_
 
 ### `RelatedConfig` (interface)
 
@@ -427,12 +369,6 @@ Mark the property as required. Merges onto the existing property, so it can be s
 
 _source: decorators/node/required.decorator.ts_
 
-### `resolveRepository` (function)
-
-Resolution point for repositories: the custom repository registered for the entity (constructed with the given neode and entity), or the default Repository. Generic over the model CONSTRUCTOR (NTS-563): the resolved repository keeps the constructor type, so the `with` load spec of find / findAll is map-checked and the returns narrow — a plain-annotated `Repository<Entity>` keeps the fallback-tier spec.
-
-_source: meta/repositories.ts_
-
 ### `SchemaDefinition` (interface)
 
 Map-based schema definition for a model (neode parity). Every key except `labels` defines a property or relationship. Property values may be shorthand type names (`age: 'number'`) or full definitions.
@@ -442,12 +378,6 @@ _source: meta/schema-definition.interface.ts_
 ### `SchemaDefinitionEntry` (type)
 
 _source: meta/schema-definition.interface.ts_
-
-### `setDefaultNeode` (function)
-
-Set the Neode instance used by entity instance methods (`person.save()`, `person.relateTo(...)`, ...).
-
-_source: entity-methods.ts_
 
 ### `SoftDelete` (decorator)
 
@@ -512,5 +442,75 @@ _source: decorators/node/version.decorator.ts_
 ### `WithMethods` (type)
 
 Type helper for entity instances: `WithMethods<Person>` adds the instance methods to a user class. Runtime works on hydrated instances regardless — this is only for type-checking, since declaration merging onto arbitrary user classes is not possible.
+
+_source: entity-methods.ts_
+
+### `applyEntityMethods` (function)
+
+Wire the instance methods onto an entity class's PROTOTYPE (idempotent: applied once per constructor, at first hydration or by explicit call). Methods the user class already defines are left untouched.
+
+_source: entity-methods.ts_
+
+### `defineModel` (function)
+
+Register a model from a map-based schema definition (neode parity), returning the generated virtual class for the model. The registry is process-global and a model name registers once: a second `defineModel()` under the same name throws a descriptive error (the previous behaviour silently orphaned the first model's schema). Pass `{ idempotent: true }` to keep the existing registration instead — the idempotent form returns the already-registered class for the name.
+
+_source: meta/map-schema.ts_
+
+### `extendModel` (function)
+
+neode's extend(): register `as` as a clone of the model `name` with `as` added as an extra label and `schema` merged over the original definition.
+
+_source: meta/map-schema.ts_
+
+### `getModel` (function)
+
+_source: meta/index.ts_
+
+### `getModelByName` (function)
+
+Get a previously defined model constructor by name
+
+_source: meta/map-schema.ts_
+
+### `getModelsByName` (function)
+
+Get all defined model constructors, keyed by name
+
+_source: meta/map-schema.ts_
+
+### `getRepository` (function)
+
+_source: meta/repositories.ts_
+
+### `mergeRelationshipProperty` (function)
+
+_source: meta/index.ts_
+
+### `ontology` (function)
+
+Build an agent-readable ontology over ALL registered models (NTS-445): entities with their labels, descriptions, properties and relationships, pulled from the shared metadata registry the map API and decorators both write into. Purely synchronous, no database connection required.
+
+_source: meta/ontology.ts_
+
+### `ontologyMarkdown` (function)
+
+Render `ontology()` as prompt-ready markdown (NTS-445): a heading per entity, bullet lists per property and relationship, descriptions included where declared.
+
+_source: meta/ontology.ts_
+
+### `registerRepository` (function)
+
+_source: meta/repositories.ts_
+
+### `resolveRepository` (function)
+
+Resolution point for repositories: the custom repository registered for the entity (constructed with the given neode and entity), or the default Repository. Generic over the model CONSTRUCTOR (NTS-563): the resolved repository keeps the constructor type, so the `with` load spec of find / findAll is map-checked and the returns narrow — a plain-annotated `Repository<Entity>` keeps the fallback-tier spec.
+
+_source: meta/repositories.ts_
+
+### `setDefaultNeode` (function)
+
+Set the Neode instance used by entity instance methods (`person.save()`, `person.relateTo(...)`, ...).
 
 _source: entity-methods.ts_
