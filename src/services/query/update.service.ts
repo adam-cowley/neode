@@ -19,6 +19,17 @@ import {
 } from '../write-utilities.js'
 import { OptimisticLockError } from '../../errors/index.js'
 
+/**
+A compare-and-swap guard for the conditional update path (NTS-688):
+rendered verbatim as a WHERE predicate on the matched node — trusted-input
+only, the same class as `whereRaw()` / `@Expression`. Reference the node as
+`this`. Values go through `params`, bound as Cypher parameters.
+*/
+export interface UpdateGuard {
+  where: string
+  params?: Record<string, unknown>
+}
+
 export class UpdateService extends QueryService {
   /**
   Read the node's current properties (required-property refill source)
@@ -45,6 +56,10 @@ export class UpdateService extends QueryService {
   /**
   Update a node's properties, matched by the entity's primary key value.
 
+  With a `guard` (NTS-688) the write only lands when the predicate holds on
+  the matched node — zero matched rows means the guard failed (or the node
+  is gone); a version-guarded update still throws `OptimisticLockError`.
+
   `+=` semantics: only the provided keys are written. Primary key,
   protected, readonly and hidden properties are never overwritten, and
   neither are relationship / node / internal-id properties. Keys not
@@ -56,6 +71,7 @@ export class UpdateService extends QueryService {
     schema: EntitySchema,
     entity: object,
     properties: Record<string, unknown>,
+    guard?: UpdateGuard,
   ): Promise<QueryOutput> {
     const identityCriteria = matchCriteriaForEntity(schema, entity)
 
@@ -253,6 +269,20 @@ export class UpdateService extends QueryService {
 
       // Every real update write bumps the version by exactly 1
       builder.setExpr(`${THIS_NODE}.${versionKey}`, versionBump(THIS_NODE, versionKey))
+    }
+
+    // Conditional update (NTS-688): the guard composes with the version
+    // check — zero matched rows means the guard failed (or the node
+    // vanished), and the version-guarded case still reports the conflict
+    // as OptimisticLockError
+    if (guard !== undefined) {
+      if (guard.params !== undefined) {
+        for (const [key, value] of Object.entries(guard.params)) {
+          builder.param(key, value)
+        }
+      }
+
+      builder.whereRaw(guard.where)
     }
 
     if (Object.keys(plain).length > 0) {

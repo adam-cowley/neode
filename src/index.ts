@@ -61,6 +61,7 @@ export { MAX_CASCADE_DEPTH } from './services/query/delete.service.js'
 export type { DeleteOptions } from './services/query/delete.service.js'
 export type { ReplaceRelationshipOptions } from './services/query/replace-relationship.service.js'
 export type { CreateOptions } from './services/query/create.service.js'
+export type { UpdateGuard } from './services/query/update.service.js'
 
 // Map-based schema definitions
 export {
