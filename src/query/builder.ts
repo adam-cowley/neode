@@ -102,6 +102,19 @@ export class Builder {
   private subCount = 0
 
   /**
+  Set by return() / returnDistinct(), reset by union() — union() fails fast
+  when the preceding branch ended without a RETURN
+  */
+  private hasReturned = false
+
+  /**
+  Set by union() until the next branch's RETURN: a query that ends without
+  the final branch's RETURN is invalid Cypher (every UNION branch must end
+  in RETURN), caught in build() instead of reaching the database
+  */
+  private afterUnion = false
+
+  /**
   Whether the last opened segment ended in an updating clause
   (CREATE / MERGE) or a DELETE clause. Neo4j rejects a reading clause
   directly after either — "WITH is required between CREATE and MATCH",
@@ -283,6 +296,29 @@ export class Builder {
   private flush(): void {
     this.whereStatement('WHERE')
     this.statement()
+  }
+
+  /**
+  Shared tail of union() / unionAll() (NTS-687): close the preceding
+  branch, reset the scope-boundary state and emit the UNION keyword segment
+  */
+  private pushUnion(keyword: 'UNION' | 'UNION ALL'): this {
+    if (!this.hasReturned) {
+      throw new NeodeError(
+        'union() needs a RETURN in the branch before it — every UNION branch must end in RETURN',
+      )
+    }
+
+    this.flush()
+    // A branch boundary is a scope boundary: no write->read WITH bridge
+    this.afterWriteClause = false
+    this.afterDeleteClause = false
+    this.hasReturned = false
+    this.afterUnion = true
+
+    this.statements.push({ toString: () => keyword })
+
+    return this
   }
 
   /**
@@ -993,6 +1029,8 @@ export class Builder {
     }
 
     this.activeStatement.return(...values)
+    this.hasReturned = true
+    this.afterUnion = false
 
     return this
   }
@@ -1006,8 +1044,31 @@ export class Builder {
     }
 
     this.activeStatement.returnDistinct(...values)
+    this.hasReturned = true
+    this.afterUnion = false
 
     return this
+  }
+
+  /**
+  `UNION` — combine the rows of the branch built so far with the next one.
+  Every branch must end in a return() naming the SAME columns (a Cypher
+  requirement); orderBy / skip / limit chained after the FINAL branch's
+  return apply to the combined result, matching Neo4j's UNION semantics.
+
+  Branch variables and parameters are independent: a UNION branch is a
+  query scope boundary, so the next match() / create() / merge() starts a
+  fresh branch (no `WITH *` bridge is injected across the boundary).
+  */
+  union(): this {
+    return this.pushUnion('UNION')
+  }
+
+  /**
+  `UNION ALL` — union without de-duplication
+  */
+  unionAll(): this {
+    return this.pushUnion('UNION ALL')
   }
 
   /**
@@ -1475,6 +1536,12 @@ export class Builder {
   Build the query
   */
   build(): { query: string; params: BuilderParameters } {
+    if (this.afterUnion && !this.hasReturned) {
+      throw new NeodeError(
+        'UNION query ended without a final RETURN — every UNION branch must end in RETURN',
+      )
+    }
+
     this.whereStatement()
     this.statement()
 
