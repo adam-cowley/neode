@@ -1,12 +1,11 @@
-#!/usr/bin/env node
 /*
-neode-generate — generate neode model definitions from a live Neo4j
+neode generate — generate neode model definitions from a live Neo4j
 database (NTS-164). Wraps the neode.generateModels() facade method, which
-is the primary (agent-friendly) surface — this CLI only connects, prints
-and writes.
+is the primary (agent-friendly) surface — this command only connects,
+prints and writes.
 
 Usage:
-  neode-generate --uri bolt://localhost:7687 --username neo4j --password secret \
+  neode generate --uri bolt://localhost:7687 --username neo4j --password secret \
     [--database neo4j] [--sample 100] [--labels Person,Movie] [--out dir]
 
 Default (dry-run): prints the generated definitions to stdout.
@@ -18,11 +17,11 @@ import path from 'node:path'
 
 import { auth, driver as createDriver } from 'neo4j-driver'
 
-import Neode from '../index.js'
-import { parseGenerateArguments, usageText } from './arguments.js'
+import Neode from '../../index.js'
+import { parseGenerateArguments, usageText } from '../arguments.js'
 
-async function main(): Promise<number> {
-  const parsed = parseGenerateArguments(process.argv.slice(2))
+export async function runGenerate(argv: string[]): Promise<number> {
+  const parsed = parseGenerateArguments(argv)
 
   if (parsed.error !== undefined || parsed.arguments === undefined) {
     process.stderr.write(`${parsed.error ?? 'Invalid arguments'}\n\n${usageText()}\n`)
@@ -79,18 +78,3 @@ async function main(): Promise<number> {
     await driver.close()
   }
 }
-
-async function run(): Promise<void> {
-  try {
-    process.exitCode = await main()
-  } catch (error) {
-    process.stderr.write(
-      `neode-generate: ${error instanceof Error ? error.message : String(error)}\n`,
-    )
-    process.exitCode = 1
-  }
-}
-
-// run() never rejects (its catch sets the exit code); `void` marks the
-// deliberate fire-and-forget
-void run()
