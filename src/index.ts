@@ -11,12 +11,15 @@ export {
   ConstraintViolationError,
   RelationNotLoadedError,
   OptimisticLockError,
+  GuardViolationError,
   TransientError,
   classifyError,
   isTransientError,
 } from './errors/index.js'
 export { ValidationError } from './validation/validation-error.js'
-export type { ValidationDetail } from './validation/validation-error.js'
+// NTS-676 — neode-owned validation issue shape (path, rule, message); the
+// Zod-typed detail shape and the never-populated `zodError` field are gone
+export type { ValidationIssue } from './validation/validation-error.js'
 // NTS-601 — plain-payload validation against a model schema, the
 // plain-object companion to the documented write path
 export { validate } from './validation/index.js'
@@ -49,8 +52,6 @@ export type { EntityMethods, WithMethods } from './entity-methods.js'
 
 // Strict relation access (NTS-155)
 export { setStrictRelationAccess } from './strict-relation-access.js'
-// Deprecation warnings opt-out (NTS-599)
-export { setDeprecationWarnings } from './deprecate.js'
 export { TraverseBuilder, MAX_TRAVERSE_DEPTH, type Hop, type TraversalRow } from './traverse.js'
 
 // Delete-path cascade depth cap (NTS-595) — the write-side counterpart of
@@ -59,6 +60,9 @@ export { MAX_CASCADE_DEPTH } from './services/query/delete.service.js'
 // NTS-602 — delete()'s options type, named in the facade signature in the
 // API reference
 export type { DeleteOptions } from './services/query/delete.service.js'
+// NTS-648 — detachFrom()'s result type, named in the EntityMethods
+// interface in the API reference
+export type { DetachResult } from './services/query/detach.service.js'
 export type { ReplaceRelationshipOptions } from './services/query/replace-relationship.service.js'
 export type { CreateOptions } from './services/query/create.service.js'
 export type { UpdateGuard } from './services/query/update.service.js'
@@ -90,6 +94,8 @@ export {
   caseExpr,
   RawExpression,
 } from './query/index.js'
+export type { ComparisonOperator } from './query/index.js'
+export type { ShortestPathOptions } from './query/index.js'
 export type { INeode } from './neode.interface.js'
 
 // Merge outcome (NTS-630)
@@ -147,6 +153,13 @@ export type {
 // .withRelationship()` edge rows and the with-spec-narrowed read returns
 export type { RelationshipEdgeRead } from './services/query/load-relation.service.js'
 export type { LoadedEntity } from './query/load-spec.js'
+// NTS-646 — the typed where-filter bag keyed to the model's declared properties
+export type {
+  WhereFilter,
+  WhereFilterLevel,
+  FilterOperators,
+  FilterOperand,
+} from './query/where-filter.js'
 
 // Full-text + vector search (NTS-123/127)
 export { search } from './services/query/search.service.js'
@@ -174,10 +187,13 @@ export type {
 export type { SchemaResult } from './services/schema/schema-objects.js'
 
 // Bulk writes + pagination (NTS-125/126)
-export { BulkService, rowToProperties } from './services/query/bulk.service.js'
+export { BulkChunkError, BulkService, rowToProperties } from './services/query/bulk.service.js'
 export type {
   BulkChunk,
   BulkOptions,
+  BulkRowFailure,
+  RelateManyResult,
+  RelateManyRow,
   RowPropertiesResult,
   RowToPropertiesOptions,
 } from './services/query/bulk.service.js'
@@ -229,6 +245,7 @@ export { WhereNull, LabelPredicate } from './query/index.js'
 // Schema drift workflow (NTS-450)
 export {
   schemaDrift,
+  inspectSchemaAndDrift,
   formatSchemaDrift,
   applySchemaDrift,
 } from './services/schema/drift.service.js'
@@ -237,6 +254,7 @@ export type {
   SchemaDriftGroup,
   SchemaDriftEntry,
   ApplySchemaDiffOptions,
+  ApplySchemaDriftReport,
 } from './services/schema/drift.service.js'
 
 // Agent ontology (NTS-445)
@@ -247,6 +265,19 @@ export type {
   PropertyOntology,
   RelationshipOntology,
 } from './meta/ontology.js'
+
+// Ontology Graph Spec import (NTS-683): spec document → map schemas
+export { ontologySpecToSchemas } from './meta/ontology-spec.js'
+export type {
+  OntologySpecModel,
+  OntologySpecNode,
+  OntologySpecRelationship,
+  OntologySpecRelationshipTarget,
+  OntologySpecProperty,
+  OntologySpecConstraint,
+  OntologySpecIndex,
+  OntologySpecLabels,
+} from './meta/ontology-spec.js'
 
 // Factories & seeding (NTS-444)
 export { FactoryBuilder } from './services/factory.service.js'

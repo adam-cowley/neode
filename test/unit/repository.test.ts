@@ -1,13 +1,14 @@
 import { vi } from 'vitest'
 import { Repository } from '../../src/repository'
 import { NeodeError } from '../../src/errors/neode-error'
+import { GuardViolationError } from '../../src/errors/guard-violation'
 import type { INeode } from '../../src/neode.interface'
 import { GraphNode, QueryOutput, QueryRecord } from '../../src/driver/types'
 import {
   NodeEntity,
   InternalId,
   Uuid,
-  String,
+  Property,
   Number as NumberProperty,
 } from '../../src/decorators'
 import { fulltextIndexName } from '../../src/services/schema/fulltext.service'
@@ -22,7 +23,7 @@ class Movie {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   title: string
 
   @NumberProperty()
@@ -38,7 +39,7 @@ class Loose {
   @InternalId()
   _id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 }
 
@@ -576,6 +577,54 @@ describe('Repository', () => {
 
       expect(value).toBe(0)
     })
+
+    it('renders the min floor as a WITH … WHERE guard terminal (NTS-655)', async () => {
+      const { neode, mocks } = stubNeode({ records: [keyedRecord({ value: 3 })] })
+
+      const repo = new Repository<Movie>(neode, Movie)
+      const value = await repo.increment('u1', 'released', -2, { min: 0 })
+
+      const [query, params] = mocks.writeCypher.mock.calls[0]
+
+      // The guard is a terminal between the SETs and the RETURN — the
+      // floor is checked in the same statement, under the write lock
+      expect(query).toMatch(
+        /WITH this\nWHERE \(this\.`released` >= \$min\)\nRETURN this\.`released` AS value/,
+      )
+      expect(params.min).toBe(0)
+      expect(params.by).toBe(-2)
+      expect(value).toBe(3)
+    })
+
+    it('throws GuardViolationError when the guard filters the row (NTS-655)', async () => {
+      const { neode } = stubNeode()
+
+      const repo = new Repository<Movie>(neode, Movie)
+
+      await expect(repo.increment('u1', 'released', -2, { min: 0 })).rejects.toThrow(
+        GuardViolationError,
+      )
+    })
+
+    it('min takes precedence over ifExists — a zero-row result always throws (fail-closed)', async () => {
+      const { neode } = stubNeode()
+
+      const repo = new Repository<Movie>(neode, Movie)
+
+      await expect(
+        repo.increment('u1', 'released', -2, { min: 0, ifExists: true }),
+      ).rejects.toThrow(GuardViolationError)
+    })
+
+    it('rejects a non-finite min', async () => {
+      const { neode } = stubNeode()
+
+      const repo = new Repository<Movie>(neode, Movie)
+
+      await expect(repo.increment('u1', 'released', -2, { min: Number.NaN })).rejects.toThrow(
+        'min must be a finite number',
+      )
+    })
   })
 
   describe('countBy', () => {
@@ -616,13 +665,13 @@ describe('Repository', () => {
       @Uuid({ primary: true })
       id: string
 
-      @String()
+      @Property({ type: 'string' })
       title: string
 
-      @String({ fulltext: true })
+      @Property({ type: 'string', fulltext: true })
       plot: string
 
-      @String({ fulltext: true })
+      @Property({ type: 'string', fulltext: true })
       summary: string
 
       static build(values: Record<string, unknown>): Searchable {

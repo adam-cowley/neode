@@ -20,6 +20,7 @@ import type { RelationshipPropertySchema } from '../meta/relationship-property-s
 import type { INeode } from '../neode.interface.js'
 import type { Builder } from '../query/index.js'
 import type { LoadedEntity, QueryLoadSpec, ReadOptions, WithSpec } from '../query/load-spec.js'
+import type { WhereFilter, WhereFilterLevel } from '../query/where-filter.js'
 import { BoundBuilder } from '../query/bound-builder.js'
 import { NeodeError } from '../errors/index.js'
 import { DeleteService, type DeleteOptions } from '../services/query/delete.service.js'
@@ -50,6 +51,7 @@ import {
 import { UpdateService, type UpdateGuard } from '../services/query/update.service.js'
 import { WithinDistanceService } from '../services/query/within-distance.service.js'
 import { search, type ScoredEntity } from '../services/query/search.service.js'
+import { knn, type KnnMode } from '../services/query/knn.service.js'
 import { globalObservers, type ObserverRegistry } from '../observers.js'
 import { EffectBuffer } from './effects.js'
 import { isConstructorOf, isRecord } from '../services/type-guards.js'
@@ -477,6 +479,13 @@ export class TransactionalService implements INeode {
     return service.find<T>(constructor, schema, id)
   }
 
+  async get<C extends Newable>(
+    constructor: C,
+    parameters: WhereFilter<C>,
+    limit?: number,
+    skip?: number,
+    databaseOrOptions?: string | { withoutFilters?: string[] | undefined },
+  ): Promise<InstanceType<C>[]>
   async get<T>(
     constructor: new (...arguments_: never[]) => T,
     parameters: Record<string, unknown>,
@@ -504,12 +513,17 @@ export class TransactionalService implements INeode {
     return service.get<T>(constructor, schema, parameters, limit, skip, undefined, filters)
   }
 
-  async getFirst<T>(
-    constructor: new (...arguments_: never[]) => T,
+  async getFirst<C extends Newable>(
+    constructor: C,
+    parameters: WhereFilter<C>,
+    database?: string,
+  ): Promise<InstanceType<C> | undefined>
+  async getFirst(
+    constructor: Newable,
     parameters: Record<string, unknown>,
     database?: string,
-  ): Promise<T | undefined> {
-    const records = await this.get<T>(constructor, parameters, 1, 0, database)
+  ): Promise<unknown> {
+    const records = await this.get(constructor, parameters, 1, 0, database)
 
     return records[0]
   }
@@ -852,7 +866,7 @@ export class TransactionalService implements INeode {
   */
   async all<C extends Newable, const WithSpecT extends QueryLoadSpec<C> = never>(
     constructor: C,
-    parameters?: Record<string, unknown>,
+    parameters?: WhereFilter<C>,
     order?: OrderSpec,
     limit?: number,
     skip?: number,
@@ -861,7 +875,7 @@ export class TransactionalService implements INeode {
   ): Promise<LoadedEntity<InstanceType<C>, WithSpecT>[]>
   async all<T>(
     constructor: new (...arguments_: never[]) => T,
-    parameters?: Record<string, unknown>,
+    parameters?: WhereFilterLevel<T>,
     order?: OrderSpec,
     limit?: number,
     skip?: number,
@@ -921,16 +935,44 @@ export class TransactionalService implements INeode {
     query: string,
     limit?: number,
     filters?: { withoutFilters?: string[] | undefined },
+    database?: string,
   ): Promise<ScoredEntity<T>[]> {
+    this.ignoreDatabaseOverride(database)
+
     assertPublicWithoutFilters(filters?.withoutFilters)
 
     return search<T>(this.handle, constructor, indexName, query, limit, filters)
+  }
+
+  async knn<T>(
+    constructor: new (...arguments_: never[]) => T,
+    indexName: string,
+    vector: number[],
+    k: number,
+    mode?: KnnMode,
+    filters?: { withoutFilters?: string[] | undefined },
+  ): Promise<ScoredEntity<T>[]> {
+    assertPublicWithoutFilters(filters?.withoutFilters)
+
+    return knn<T>(this.handle, constructor, indexName, vector, k, mode, filters)
   }
 
   /**
   Nodes of the given constructor within `distance` of the given point —
   mirror of the facade's withinDistance
   */
+  async withinDistance<C extends Newable>(
+    constructor: C,
+    locationProperty: string,
+    point: unknown,
+    distance: number,
+    parameters?: WhereFilter<C>,
+    order?: OrderSpec,
+    limit?: number,
+    skip?: number,
+    database?: string,
+    filters?: { withoutFilters?: string[] | undefined },
+  ): Promise<InstanceType<C>[]>
   async withinDistance<T>(
     constructor: new (...arguments_: never[]) => T,
     locationProperty: string,

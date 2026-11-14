@@ -148,9 +148,19 @@ describe('projection nested filters / sort (NTS-145)', () => {
     expect(normalise(query)).not.toContain('_filter')
   })
 
-  it('throws a clear error for an object filter on a non-related property', async () => {
+  it('treats an object filter on a non-related property as an operator object (NTS-646)', async () => {
+    // was: a nested-filter rejection — operator objects are the NTS-646 tier
+    const { query, params } = await compile({ lessonCount: { gte: 2 } })
+
+    const cypher = normalise(query)
+
+    expect(cypher).toContain('WHERE (this.lessonCount >= $where_this_lessonCount)')
+    expect(params['where_this_lessonCount']).toBe(2)
+  })
+
+  it('throws a clear error for an unknown operator key (NTS-646)', async () => {
     await expect(compile({ lessonCount: { minimum: 2 } })).rejects.toThrow(
-      /lessonCount.*@RelatedOne.*@RelatedMany/s,
+      /Unknown where-filter operator "minimum" on property "lessonCount"/s,
     )
   })
 

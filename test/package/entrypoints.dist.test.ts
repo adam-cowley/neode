@@ -5,7 +5,7 @@
  * not src — and exercise the entry points that differ between formats.
  */
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -68,17 +68,90 @@ describe('built dist: entry point shape', () => {
   })
 })
 
-describe('built dist: neode-generate bin', () => {
+describe('built dist: neode/express subpath', () => {
+  it('exposes the router factory in the ESM build', async () => {
+    const expressEntry = await import('../../dist/express/index.mjs')
+
+    expect(typeof expressEntry.router).toBe('function')
+  })
+
+  it('exposes the router factory in the CJS build', () => {
+    const expressEntry = require('../../dist/express/index.cjs') as {
+      router: unknown
+    }
+
+    expect(typeof expressEntry.router).toBe('function')
+  })
+})
+
+describe('built dist: neode bin', () => {
   for (const extension of ['mjs', 'cjs']) {
-    it(`prints usage and exits 1 without arguments (${extension})`, () => {
+    it(`prints top-level usage and exits 1 without arguments (${extension})`, () => {
       const result = spawnSync(
         process.execPath,
-        [path.join(distDirectory, `bin/neode-generate.${extension}`)],
+        [path.join(distDirectory, `bin/neode.${extension}`)],
+        {
+          encoding: 'utf8',
+        },
+      )
+
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain('Usage: neode')
+    })
+
+    it(`prints the generate usage and exits 1 when generate has no arguments (${extension})`, () => {
+      const result = spawnSync(
+        process.execPath,
+        [path.join(distDirectory, `bin/neode.${extension}`), 'generate'],
         { encoding: 'utf8' },
       )
 
       expect(result.status).toBe(1)
-      expect(result.stderr).toContain('Usage: neode-generate')
+      expect(result.stderr).toContain('Usage: neode generate')
+    })
+
+    it(`rejects unknown commands (${extension})`, () => {
+      const result = spawnSync(
+        process.execPath,
+        [path.join(distDirectory, `bin/neode.${extension}`), 'bogus'],
+        { encoding: 'utf8' },
+      )
+
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain('Unknown command: bogus')
+      expect(result.stderr).toContain('Usage: neode')
+    })
+
+    it(`lists the shipped skills (${extension})`, () => {
+      const result = spawnSync(
+        process.execPath,
+        [path.join(distDirectory, `bin/neode.${extension}`), 'skills', 'list'],
+        { encoding: 'utf8' },
+      )
+
+      expect(result.status).toBe(0)
+      expect(result.stdout).toContain('Available: neode, neode-audit, neode-model')
+    })
+
+    it(`installs a skill into --target (${extension})`, () => {
+      const target = mkdtempSync(path.join(tmpdir(), 'neode-bin-skills-'))
+      const result = spawnSync(
+        process.execPath,
+        [
+          path.join(distDirectory, `bin/neode.${extension}`),
+          'skills',
+          'add',
+          'neode-model',
+          '--target',
+          target,
+        ],
+        { encoding: 'utf8' },
+      )
+
+      expect(result.status).toBe(0)
+      expect(existsSync(path.join(target, 'neode-model', 'SKILL.md'))).toBe(true)
+
+      rmSync(target, { recursive: true, force: true })
     })
   }
 })

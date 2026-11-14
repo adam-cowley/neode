@@ -288,6 +288,8 @@ function wireRelationshipModel(
     definition.description,
     definition.cascade,
     definition.cardinality,
+    definition.enforce,
+    definition.claimConflict,
   )
 
   // NTS-628: the declared `properties` key is the edge-property schema —
@@ -349,10 +351,48 @@ function flushPendingProjections(): void {
 }
 
 /**
+Options for defineModel
+*/
+export interface DefineModelOptions {
+  /**
+  Idempotent re-registration for environments that re-evaluate the defining
+  module (Nest HMR, Vitest watch mode): when `name` is already registered,
+  return the existing model unchanged instead of throwing. The existing
+  definition wins — schema changes need a process restart.
+  */
+  idempotent?: boolean
+}
+
+/**
 Register a model from a map-based schema definition (neode parity),
 returning the generated virtual class for the model.
+
+The registry is process-global and a model name registers once: a second
+`defineModel()` under the same name throws a descriptive error (the previous
+behaviour silently orphaned the first model's schema). Pass
+`{ idempotent: true }` to keep the existing registration instead — the
+idempotent form returns the already-registered class for the name.
 */
-export function defineModel(name: string, schema: SchemaDefinition): Newable {
+export function defineModel(
+  name: string,
+  schema: SchemaDefinition,
+  options: DefineModelOptions = {},
+): Newable {
+  // NTS-652: the name index is last-wins by assignment, so a second
+  // registration used to silently orphan the first model's schema in the
+  // process-global metamodel
+  const existing = modelsByName.get(name)
+
+  if (existing !== undefined) {
+    if (options.idempotent === true) {
+      return existing
+    }
+
+    throw new NeodeError(
+      `A model named "${name}" is already registered — the registry is process-global, and re-registering a name silently orphans the first model's schema. Call defineModel("${name}", schema, { idempotent: true }) to return the existing model instead (module re-evaluation: Nest HMR, Vitest watch mode), or register the new definition under a different name.`,
+    )
+  }
+
   const constructor = virtualConstructor(name)
 
   const model = mergeModel(constructor)

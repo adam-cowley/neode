@@ -1,5 +1,5 @@
 import { Repository } from '../../src/repository'
-import { NodeEntity, InternalId, Uuid, String, Number } from '../../src/decorators'
+import { NodeEntity, InternalId, Uuid, Property, Number } from '../../src/decorators'
 import { openBackend, TestBackend } from './support/backend'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
@@ -12,7 +12,7 @@ class Movie {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   title: string
 
   @Number()
@@ -170,6 +170,61 @@ describe('Repository', () => {
       expect(await movies.count()).toBe(3)
       expect(await movies.count({ released: 1986 })).toBe(1)
       expect(await movies.count({ released: 2000 })).toBe(0)
+    })
+  })
+
+  describe('exists', () => {
+    it('answers existence by primary key without hydrating', async () => {
+      const saved = await movies.save(Movie.create('Alien', 1979))
+
+      expect(await movies.exists(saved.id)).toBe(true)
+      expect(await movies.exists('no-such-id')).toBe(false)
+    })
+
+    it('rejects a non-string/number id', async () => {
+      await expect(movies.exists({})).rejects.toBeInstanceOf(TypeError)
+    })
+  })
+
+  describe('findAllByIds', () => {
+    it('returns every matching entity in one read, deduping ids', async () => {
+      const alien = await movies.save(Movie.create('Alien', 1979))
+      const blade = await movies.save(Movie.create('Blade Runner', 1982))
+      await movies.save(Movie.create('The Thing', 1982))
+
+      const found = await movies.findAllByIds([alien.id, blade.id, alien.id])
+
+      expect(found.map((movie) => movie.title).sort()).toEqual(['Alien', 'Blade Runner'])
+    })
+
+    it('returns [] for an empty id list', async () => {
+      expect(await movies.findAllByIds([])).toEqual([])
+    })
+
+    it('honours the read filters and order option', async () => {
+      const alien = await movies.save(Movie.create('Alien', 1979))
+      const blade = await movies.save(Movie.create('Blade Runner', 1982))
+
+      const found = await movies.findAllByIds([alien.id, blade.id], { order: { title: 'DESC' } })
+
+      expect(found.map((movie) => movie.title)).toEqual(['Blade Runner', 'Alien'])
+    })
+  })
+
+  describe('findAndCount', () => {
+    it('returns the trimmed items and the full filter count', async () => {
+      await movies.save(Movie.create('Alien', 1979))
+      await movies.save(Movie.create('Blade Runner', 1982))
+      await movies.save(Movie.create('The Thing', 1982))
+
+      const { items, total } = await movies.findAndCount(
+        { released: 1982 },
+        { order: 'title', limit: 1 },
+      )
+
+      expect(total).toBe(2)
+      expect(items).toHaveLength(1)
+      expect(items[0]?.title).toBe('Blade Runner')
     })
   })
 

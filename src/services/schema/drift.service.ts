@@ -34,6 +34,7 @@ export type { GraphTypeDrift, SchemaDriftEntry } from './graph-type.service.js'
 import {
   type InspectOptions,
   type SchemaDiff,
+  type SchemaInspection,
   type SchemaObject,
   inspectSchema,
 } from './inspect.service.js'
@@ -72,12 +73,27 @@ export interface SchemaDrift {
 /**
 Options for applySchemaDrift.
 */
-export interface ApplySchemaDiffOptions {
+export interface ApplySchemaDiffOptions extends InspectOptions {
   /**
   Also drop stale objects (installed but not declared). Off by default:
   dropping is destructive
   */
   dropStale?: boolean
+  /**
+  NTS-659 — re-probe once after applying and return the post-apply
+  drift, so one call serves apply + verification. Off by default
+  */
+  returnDriftAfter?: boolean
+}
+
+/**
+NTS-659 — the result of applySchemaDrift with `returnDriftAfter: true`:
+the applied statements plus the drift of a single post-apply inspection
+pass, so one probe serves apply + verification
+*/
+export interface ApplySchemaDriftReport {
+  statements: SchemaResult[]
+  driftAfter: SchemaDrift
 }
 
 /**
@@ -330,6 +346,22 @@ export async function schemaDrift(
   connection: ConnectionProvider,
   options: InspectOptions = {},
 ): Promise<SchemaDrift> {
+  const { drift } = await inspectSchemaAndDrift(connection, options)
+
+  return drift
+}
+
+/**
+The inspection schemaDrift() computes internally, returned alongside the
+drift (NTS-450): schemaDrift() already inspects the installed schema to
+diff it, so a caller needing both payloads (an ops page showing the
+installed objects AND the drift report) would otherwise inspect twice.
+One probe, both results.
+*/
+export async function inspectSchemaAndDrift(
+  connection: ConnectionProvider,
+  options: InspectOptions = {},
+): Promise<{ inspection: SchemaInspection; drift: SchemaDrift }> {
   const declaredVectors = [...declaredVectorDefinitions(), ...(options.vector ?? [])]
 
   const inspection = await inspectSchema(connection, {
@@ -374,9 +406,12 @@ export async function schemaDrift(
     : undefined
 
   return {
-    constraints: driftGroup(inspection.constraints, vectors, types),
-    indexes: driftGroup(inspection.indexes, vectors, types),
-    ...(graphType !== undefined && { graphType }),
+    inspection,
+    drift: {
+      constraints: driftGroup(inspection.constraints, vectors, types),
+      indexes: driftGroup(inspection.indexes, vectors, types),
+      ...(graphType !== undefined && { graphType }),
+    },
   }
 }
 
@@ -456,12 +491,27 @@ objects may belong to other applications — review the drift first).
 Mismatched objects are
 never applied automatically. Each statement is reported with a
 SchemaResult, following the SchemaService pattern (NTS-450).
+
+With `returnDriftAfter: true` (NTS-659) one extra inspection pass runs
+after the statements and the call returns `{ statements, driftAfter }`
+instead — the caller's verification probe, applied and reported in one
+round trip.
 */
 export async function applySchemaDrift(
   connection: ConnectionProvider,
   drift: SchemaDrift,
+  options: ApplySchemaDiffOptions & { returnDriftAfter: true },
+): Promise<ApplySchemaDriftReport>
+export async function applySchemaDrift(
+  connection: ConnectionProvider,
+  drift: SchemaDrift,
+  options?: ApplySchemaDiffOptions,
+): Promise<SchemaResult[]>
+export async function applySchemaDrift(
+  connection: ConnectionProvider,
+  drift: SchemaDrift,
   options: ApplySchemaDiffOptions = {},
-): Promise<SchemaResult[]> {
+): Promise<SchemaResult[] | ApplySchemaDriftReport> {
   const targets: { action: ConstraintAction; entry: SchemaDriftEntry; statement: string }[] = []
 
   for (const group of [drift.constraints, drift.indexes]) {
@@ -512,5 +562,9 @@ export async function applySchemaDrift(
     results.push(result)
   }
 
-  return results
+  // NTS-659 — one inspection pass; the InspectOptions the caller
+  // passed flow through, so the re-probe diffs the same declared set
+  return options.returnDriftAfter === true
+    ? { statements: results, driftAfter: await schemaDrift(connection, options) }
+    : results
 }

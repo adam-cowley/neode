@@ -7,6 +7,7 @@ import { matchCriteriaForEntity } from '../../utilities.js'
 import {
   assertCardinality,
   assertWritableDirection,
+  resolveEnforceClaim,
   setRelationshipEntityProperties,
 } from '../write-utilities.js'
 import { QueryService } from './query.service.js'
@@ -184,6 +185,13 @@ export class SyncService extends QueryService {
 
     const fromMatch = matchCriteriaForEntity(schema, fromEntity)
 
+    // NTS-663: the sync re-claims the enforce property — REMOVE it from
+    // the detached targets, SET it on the new ones
+    const declaredTarget = relationship.getTarget()
+    const declaredTargetSchema =
+      typeof declaredTarget === 'function' ? getModel(declaredTarget) : undefined
+    const claim = resolveEnforceClaim(relationship, schema, fromEntity, declaredTargetSchema)
+
     // Resolve every target to its stored node BEFORE anything is written
     // (NTS-579): a target missing from the database would otherwise match
     // zero rows on relate, after the stale edges were already detached.
@@ -244,16 +252,28 @@ export class SyncService extends QueryService {
       const detach = new Builder()
 
       // Anchored on the from-node: only its own edges are scanned
-      detach
+      const oldEdge = detach
         .matchEntity('from', schema, fromMatch)
         .relationship(relationship.getType(), relationship.getDirection(), 'rel')
-        .toAnything()
+
+      if (claim === undefined) {
+        oldEdge.toAnything()
+      } else {
+        oldEdge.to('old_target')
+      }
+
+      oldEdge
         .whereRaw('elementId(rel) IN $relIds')
         .param(
           'relIds',
           toDetach.map((edge) => edge.relId),
         )
         .delete('rel')
+
+      // NTS-663: release the claim — REMOVE on a null old_target is a no-op
+      if (claim !== undefined) {
+        detach.remove(`old_target.${quote(claim.property)}`)
+      }
 
       const detachQuery = detach.build()
 
@@ -278,6 +298,11 @@ export class SyncService extends QueryService {
       const properties = target === undefined ? {} : (options.properties?.(target, index) ?? {})
 
       setEdgeProperties(relate, relationship, properties)
+
+      // NTS-663: claim the newly related target
+      if (claim !== undefined) {
+        relate.set(`to.${quote(claim.property)}`, claim.value)
+      }
 
       relate.return('elementId(rel) AS relId')
 

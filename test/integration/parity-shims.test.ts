@@ -3,7 +3,7 @@ import {
   NodeEntity,
   Number as NumberProperty,
   OneToMany,
-  String as StringProperty,
+  Property as StringProperty,
   Uuid,
 } from '../../src/decorators'
 import { Direction } from '../../src/query'

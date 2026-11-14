@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applySchemaDrift,
   formatSchemaDrift,
+  inspectSchemaAndDrift,
   schemaDrift,
   type SchemaDrift,
   type SchemaDriftEntry,
@@ -65,6 +66,9 @@ function registerDriftModel(): void {
   schema.getProperty('score').setIndex()
   schema.addProperty('bio')
   schema.getProperty('bio').setFulltext()
+  // composite index (NTS-650): one declaration, one index over both properties
+  schema.addProperty('city')
+  schema.getProperty('city').setCompositeIndex(['city', 'region'])
 }
 
 const VECTOR_OPTION = { label: 'DriftPerson', property: 'emb', dimensions: 1536 }
@@ -132,8 +136,9 @@ describe('schemaDrift (NTS-450)', () => {
     const drift = await schemaDrift(connection, { vector: [VECTOR_OPTION] })
 
     // missing: the vector index is declared via options AND via DriftDoc
-    // model metadata (NTS-447 wiring) — two missing vector indexes
-    expect(drift.indexes.missing).toHaveLength(2)
+    // model metadata (NTS-447 wiring) — two missing vector indexes — plus
+    // the composite index over DriftPerson (NTS-650)
+    expect(drift.indexes.missing).toHaveLength(3)
     const declaredVector = drift.indexes.missing.find(
       (entry) => entry.name === 'driftperson_emb_vector_0ce7d056',
     )
@@ -144,6 +149,27 @@ describe('schemaDrift (NTS-450)', () => {
     expect(declaredVector?.createStatement).toBe(
       'CREATE VECTOR INDEX driftperson_emb_vector_0ce7d056 IF NOT EXISTS ' +
         "FOR (n:`DriftPerson`) ON (n.`emb`) OPTIONS { indexConfig: { `vector.dimensions`: 1536, `vector.similarity_function`: 'cosine' } }",
+    )
+
+    // NTS-650 — the composite index drifts as ONE object over both
+    // properties, repaired by the same CREATE INDEX statement the
+    // install path uses
+    expect(
+      drift.indexes.missing.find(
+        (entry) => entry.name === 'driftperson_city_region_index_6e8d6d7e',
+      ),
+    ).toMatchObject({
+      name: 'driftperson_city_region_index_6e8d6d7e',
+      type: 'INDEX',
+      labelsOrTypes: ['DriftPerson'],
+      properties: ['city', 'region'],
+    })
+    expect(
+      drift.indexes.missing.find((entry) => entry.name === 'driftperson_city_region_index_6e8d6d7e')
+        ?.createStatement,
+    ).toBe(
+      'CREATE INDEX driftperson_city_region_index_6e8d6d7e IF NOT EXISTS ' +
+        'FOR (n:`DriftPerson`) ON (n.`city`, n.`region`)',
     )
 
     // clean: UNIQUE constraint and the RANGE spelling of the declared INDEX
@@ -174,6 +200,31 @@ describe('schemaDrift (NTS-450)', () => {
     expect(drift.indexes.mismatched[0]?.dropStatement).toBe(
       'DROP FULLTEXT INDEX driftperson_bio_fulltext_073c7489 IF EXISTS',
     )
+  })
+
+  it('inspectSchemaAndDrift returns the inspection and the drift from one probe', async () => {
+    const { connection } = provider(database(), indexes())
+
+    let showConstraints = 0
+    const counting = {
+      ...connection,
+      run: (statement: string, ...rest: unknown[]) => {
+        if (statement === 'SHOW CONSTRAINTS') {
+          showConstraints += 1
+        }
+
+        return connection.run(statement, ...rest)
+      },
+    } as unknown as ConnectionProvider
+
+    const { inspection, drift } = await inspectSchemaAndDrift(counting)
+
+    // One inspection feeds both payloads — callers needing both no longer probe twice
+    expect(showConstraints).toBe(1)
+    expect(inspection.constraints.installed.map((object) => object.name)).toContain(
+      'driftperson_old_exists',
+    )
+    expect(drift.constraints.stale.map((entry) => entry.name)).toEqual(['driftperson_old_exists'])
   })
 
   it('derives fulltext indexes declared on model properties and builds missing constraint statements', async () => {
@@ -225,6 +276,14 @@ describe('schemaDrift (NTS-450)', () => {
             labelsOrTypes: ['DriftPerson'],
             properties: ['emb'],
           }),
+          // NTS-650 — the composite index installed as RANGE over both
+          // properties is the declared index, not drift
+          record({
+            name: 'driftperson_city_region_index_6e8d6d7e',
+            type: 'RANGE',
+            labelsOrTypes: ['DriftPerson'],
+            properties: ['city', 'region'],
+          }),
         ],
       ).connection,
       { vector: [VECTOR_OPTION] },
@@ -233,6 +292,9 @@ describe('schemaDrift (NTS-450)', () => {
     expect(drift.constraints.missing).toHaveLength(1)
     expect(clean.indexes.stale).toHaveLength(0)
     expect(clean.constraints.stale).toHaveLength(0)
+    expect(clean.indexes.missing.map((entry) => entry.name)).not.toContain(
+      'driftperson_city_region_index_6e8d6d7e',
+    )
   })
 
   it('derives vector indexes from model metadata without options (NTS-447 + NTS-450 wiring)', async () => {
@@ -396,6 +458,16 @@ describe('applySchemaDiff (NTS-450)', () => {
           createStatement:
             'CREATE VECTOR INDEX movie_emb_vector IF NOT EXISTS FOR (n:`Movie`) ON (n.`emb`)',
         },
+        {
+          // NTS-650 — a missing composite index is repaired by apply
+          name: 'driftperson_city_region_index_6e8d6d7e',
+          type: 'INDEX',
+          labelsOrTypes: ['DriftPerson'],
+          properties: ['city', 'region'],
+          createStatement:
+            'CREATE INDEX driftperson_city_region_index_6e8d6d7e IF NOT EXISTS ' +
+            'FOR (n:`DriftPerson`) ON (n.`city`, n.`region`)',
+        },
       ],
       stale: [
         {
@@ -410,6 +482,40 @@ describe('applySchemaDiff (NTS-450)', () => {
     },
   })
 
+  it('returns only the statements without returnDriftAfter (NTS-659 shape unchanged)', async () => {
+    const { connection, statements } = provider([], [])
+
+    const results = await applySchemaDrift(connection, drift(), { dropStale: false })
+
+    expect(Array.isArray(results)).toBe(true)
+    expect(results).toHaveLength(3)
+    expect(results.every((result) => result.success && result.action === 'CREATE')).toBe(true)
+    expect(statements).toEqual([
+      'CREATE CONSTRAINT person_email_unique IF NOT EXISTS FOR (n:`Person`) REQUIRE n.`email` IS UNIQUE',
+      'CREATE VECTOR INDEX movie_emb_vector IF NOT EXISTS FOR (n:`Movie`) ON (n.`emb`)',
+      'CREATE INDEX driftperson_city_region_index_6e8d6d7e IF NOT EXISTS FOR (n:`DriftPerson`) ON (n.`city`, n.`region`)',
+    ])
+  })
+
+  it('returns the post-apply drift with returnDriftAfter: true (NTS-659)', async () => {
+    const { connection } = provider([], [])
+
+    const report = await applySchemaDrift(connection, drift(), {
+      dropStale: false,
+      returnDriftAfter: true,
+    })
+
+    expect(report.statements).toHaveLength(3)
+    expect(report.statements.every((result) => result.success)).toBe(true)
+    // the re-probe ran a fresh inspection against the mock's empty
+    // database: every declared object of the registered models is
+    // missing again (e.g. the model-declared score index)
+    expect(report.driftAfter.indexes.missing.map((entry) => entry.name)).toContain(
+      'driftperson_score_index_d7e8455b',
+    )
+    expect(report.driftAfter.constraints.missing.length).toBeGreaterThan(0)
+  })
+
   it('applies only missing objects by default — stale and mismatched are left alone', async () => {
     const { connection, statements } = provider([], [])
 
@@ -418,6 +524,7 @@ describe('applySchemaDiff (NTS-450)', () => {
     expect(statements).toEqual([
       'CREATE CONSTRAINT person_email_unique IF NOT EXISTS FOR (n:`Person`) REQUIRE n.`email` IS UNIQUE',
       'CREATE VECTOR INDEX movie_emb_vector IF NOT EXISTS FOR (n:`Movie`) ON (n.`emb`)',
+      'CREATE INDEX driftperson_city_region_index_6e8d6d7e IF NOT EXISTS FOR (n:`DriftPerson`) ON (n.`city`, n.`region`)',
     ])
     expect(results.every((result) => result.success && result.action === 'CREATE')).toBe(true)
   })
@@ -450,7 +557,7 @@ describe('applySchemaDiff (NTS-450)', () => {
 
     const results = await applySchemaDrift(connection, drift())
 
-    expect(results).toHaveLength(2)
+    expect(results).toHaveLength(3)
     const vector = results.find((result) => result.type === 'VECTOR')
 
     expect(vector?.success).toBe(false)

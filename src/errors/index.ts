@@ -5,6 +5,7 @@
 export { classifyError, isRetryableError, isTransientError } from './classify.js'
 export { CardinalityViolationError } from './cardinality-violation.js'
 export { ConstraintViolationError } from './constraint-violation.js'
+export { GuardViolationError } from './guard-violation.js'
 export { NeodeError } from './neode-error.js'
 export { OptimisticLockError } from './optimistic-lock.js'
 export { RelationNotLoadedError } from './relation-not-loaded.js'

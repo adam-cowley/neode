@@ -10,6 +10,7 @@ import type { DeleteOptions } from './services/query/delete.service.js'
 import type { OrderSpec } from './services/query/get.service.js'
 import type { Builder } from './query/index.js'
 import type { ScoredEntity } from './services/query/search.service.js'
+import type { KnnMode } from './services/query/knn.service.js'
 import type { MergeResult } from './services/query/merge.service.js'
 import type { ReplaceRelationshipOptions } from './services/query/replace-relationship.service.js'
 
@@ -73,7 +74,8 @@ export interface INeode {
   All nodes of the given constructor, optionally filtered/ordered/paged —
   the projection-aware read: models declaring read-model decorators
   (@RelatedOne/@RelationshipCount/…) come back hydrated with their
-  projected values (NTS-501)
+  projected values (NTS-501). The filter bag is typed against the model's
+  declared properties (NTS-646).
   */
   all<T>(
     constructor: new (...arguments_: never[]) => T,
@@ -168,6 +170,15 @@ export interface INeode {
     indexName: string,
     query: string,
     limit?: number,
+    filters?: { withoutFilters?: string[] | undefined },
+    database?: string,
+  ): Promise<ScoredEntity<T>[]>
+  knn<T>(
+    constructor: new (...arguments_: never[]) => T,
+    indexName: string,
+    vector: number[],
+    k: number,
+    mode?: KnnMode,
     filters?: { withoutFilters?: string[] | undefined },
   ): Promise<ScoredEntity<T>[]>
   cypher(

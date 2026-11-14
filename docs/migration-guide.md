@@ -307,7 +307,7 @@ const output = await new Builder()
   .execute(neode.getConnection(), 'READ')
 ```
 
-The fluent surface you know carries over — `match()`, `optionalMatch()`, `where()` (and `whereId`, `whereRaw`, `whereBetween`, `whereNot`, `or`), `create()`, `merge()`, `set()`, `onCreateSet()`, `onMatchSet()`, `delete()`, `detachDelete()`, `remove()`, `return()`, `orderBy()`, `limit()`, `skip()`, `with()`, `relationship()` — plus new predicates (`whereIn`, `whereContains`, `whereStartsWith`, `whereEndsWith`, `whereNull`, `whereExists`, `whereLabel`, `whereGroup`). All values are passed as query parameters — the generated query contains only aliases.
+The fluent surface you know carries over — `match()`, `optionalMatch()`, `where()` (and `whereId`, `whereRaw`, `whereBetween`, `whereNot`, `or`), `create()`, `merge()`, `set()`, `onCreateSet()`, `onMatchSet()`, `delete()`, `detachDelete()`, `remove()`, `return()`, `orderBy()`, `limit()`, `skip()`, `with()`, `relationship()` — plus new predicates (`whereIn`, `whereContains`, `whereStartsWith`, `whereEndsWith`, `whereNull`, `whereExists`, `whereNotPattern`, `whereLabel`, `whereGroup`). All values are passed as query parameters — the generated query contains only aliases.
 
 What moved:
 
@@ -364,7 +364,7 @@ The same keys are accepted in map-based definitions (`neode.model('Person', { em
 
 The complete rule list is in the [API reference](api-reference.md#validation-rules) — `min`, `max`, `length`, `regex`, `email`, `ip`, `uri`, `alphanum`, `allow`, `valid`, `invalid`, `positive`, `precision`, `before`/`after`, `lowercase`/`uppercase`, `truncate`, … Unknown rule names throw neode's familiar `Not sure how to validate <rule> on <key>`.
 
-Validation runs automatically on every write path (`save`, `create`, `update`) and throws a `ValidationError` — the port of neode's error, with the same `.details` / `.input` shape:
+Validation runs automatically on every write path (`save`, `create`, `update`) and throws a `ValidationError` — the port of neode's error, with neode's own `.issues` / `.input` shape:
 
 ```typescript
 import { ValidationError } from 'neode'
@@ -373,8 +373,8 @@ try {
   await neode.create(Person, { name: 'A', email: 'not-an-email' })
 } catch (error) {
   if (error instanceof ValidationError) {
-    // error.details — one { path, message, type } entry per failed check
-    // error.input   — the object that failed
+    // error.issues — one { path, rule, message } entry per failed check
+    // error.input  — the object that failed
     console.warn(error.message)
   }
 }
@@ -488,7 +488,7 @@ Method notes for neode users:
 
 - **`patch(entity, properties)`**, not `update` — `update()` on the facade and on entity instances keeps neode's `+=` semantics, but the repository method is named `patch` so subclasses can define their own `update(id, input)`.
 - **`delete(entityOrId, { ifExists: true })`** — accepts an entity instance or a primary key value; the default throws when the id is missing, `ifExists` silently no-ops.
-- **`increment(entityOrId, property, by?, { ifExists? })`** — one server-side `SET n.prop = coalesce(n.prop, 0) + by`, safe under concurrency; returns the new value.
+- **`increment(entityOrId, property, by?, { ifExists?, min? })`** — one server-side `SET n.prop = coalesce(n.prop, 0) + by`, safe under concurrency; returns the new value. `min` (NTS-655) checks a floor in the same statement, under the write lock — a post-write value below it throws `GuardViolationError` (run guarded decrements inside a managed transaction so the violation rolls back).
 - **`countBy(property, params?)`** — grouped counts over one declared property.
 - `find(id)`, `findBy(params)`, `findAll(params, { order, limit, skip })`, `where(params)`, `count(params)`, `save(entity)`, `saveAll(entities)` round out the surface.
 
@@ -547,7 +547,7 @@ Available: `NODE_CREATED`, `NODE_UPDATED`, `NODE_DELETED`, `RELATIONSHIP_CREATED
 - When a model declares no primary key, neode 1.0 falls back to `<first label lowercased>_id` — the same default as neode.
 - Labels are always sorted and merged on write (`extend()` adds an extra label).
 - The query builder (`Builder`) is bundled in-tree — no separate package, and no `neo4j.Integer` coupling.
-- `@String` still exists for parity but is deprecated and shadows the global `String` type — prefer `@Property({ type: 'string' })`.
+- `@String` was removed in 1.0 (NTS-670) — use `@Property({ type: 'string' })`.
 - Error messages are richer: missing-model errors name the registered models; hydration failures name the model and property.
 - Integer values beyond `Number.MAX_SAFE_INTEGER` are rejected instead of silently losing precision.
 - Out-transforms are sync-only: an async `out` transform is rejected at hydration.

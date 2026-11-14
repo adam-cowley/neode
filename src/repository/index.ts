@@ -1,6 +1,6 @@
 import { THIS_NODE } from '../constants.js'
 import type { QueryOutput } from '../driver/types.js'
-import { NeodeError, unknownPropertyError } from '../errors/index.js'
+import { NeodeError, GuardViolationError, unknownPropertyError } from '../errors/index.js'
 import type { EntitySchema } from '../meta/entity/entity-schema.js'
 import { getModel } from '../meta/index.js'
 import type { Newable } from '../meta/newable.js'
@@ -15,7 +15,9 @@ import { requireLimit } from '../services/query/limits.js'
 import { assertDeleteAllScope } from '../services/query/delete.service.js'
 import type { DeleteOptions } from '../services/query/delete.service.js'
 import type { ScoredEntity } from '../services/query/search.service.js'
+import type { KnnMode } from '../services/query/knn.service.js'
 import { fulltextIndexName } from '../services/schema/fulltext.service.js'
+import { vectorIndexName } from '../services/schema/vector.service.js'
 import { isGraphNode, isRecord } from '../services/type-guards.js'
 import {
   stampExpression,
@@ -24,7 +26,8 @@ import {
   versionProperty,
   deriveProperties,
 } from '../services/write-utilities.js'
-import { shapeNodeRows } from '../services/query/shape.js'
+import { shapeNodeRows, shapeProjectionRows } from '../services/query/shape.js'
+import type { ManyAndCount } from '../services/query/paginate.service.js'
 import { hasProjectedProperties } from '../projection/index.js'
 import { projectionNode } from '../projection/projection.js'
 import {
@@ -32,6 +35,8 @@ import {
   assertPublicWithoutFilters,
   type ReadFilterOptions,
 } from '../services/query/filters.js'
+import { applyFilterBag } from '../services/query/filter-bag.js'
+import type { WhereFilterLevel } from '../query/where-filter.js'
 
 /**
 Ordering, paging, row-limit and load-spec options shared by findAll()
@@ -177,18 +182,23 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
 
   /**
   Match every node of the entity's labels, filtered on the schema's
-  declared properties only (GetService parity: unknown keys are ignored).
+  declared properties only (GetService parity: unknown keys are ignored;
+  NTS-646 operator objects render through the shared filter-bag helper).
   The named read filters apply (soft delete included) unless
   shouldBypassFilters is set — the bulk-write paths pass true: writes
   never read through filters (NTS-162).
+
+  The parameter union is every bag shape the callers hand over (the loose
+  record, the typed NTS-646 bag, the legacy Partial) — the Repository's
+  subclass-constructor relation (RepositoryConstructor wire format) needs
+  this member to relate across Entity instantiations, so spell it out
+  rather than narrowing to one shape.
   */
   private matchAll(
-    parameters: Partial<Entity> = {},
+    parameters: Partial<Entity> | WhereFilterLevel<Entity> | Record<string, unknown> = {},
     filters?: ReadFilterOptions,
     shouldBypassFilters = false,
   ): Builder {
-    const record = parameters as Record<string, unknown>
-
     const builder = new Builder()
 
     builder.match(THIS_NODE, this.schema.getLabels())
@@ -197,13 +207,7 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       applyReadFilters(builder, this.schema, filters)
     }
 
-    for (const property of this.schema.getProperties()) {
-      const key = property.getKey()
-
-      if (Object.hasOwn(record, key)) {
-        builder.where(`${THIS_NODE}.${key}`, record[key])
-      }
-    }
+    applyFilterBag(builder, this.schema, parameters)
 
     return builder
   }
@@ -317,7 +321,7 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   The first entity matching the given properties (declared properties
   only), or undefined when nothing matches.
   */
-  async findBy(properties: Partial<Entity> = {}): Promise<Entity | undefined> {
+  async findBy(properties?: WhereFilterLevel<Entity>): Promise<Entity | undefined> {
     const results = await this.findAll(properties, { limit: 1 })
 
     return results[0]
@@ -340,7 +344,7 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   Plain models keep the local Builder path.
   */
   async findAll<const WithSpecT extends QueryLoadSpec<C>>(
-    parameters: Partial<Entity>,
+    parameters: Partial<Entity> | WhereFilterLevel<Entity>,
     options: {
       with: WithSpecT
       order?: OrderSpec
@@ -349,9 +353,12 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       withoutFilters?: string[] | undefined
     },
   ): Promise<LoadedEntity<Entity, WithSpecT>[]>
-  async findAll(parameters?: Partial<Entity>, options?: FindOptions<Entity, C>): Promise<Entity[]>
   async findAll(
-    parameters: Partial<Entity> = {},
+    parameters?: WhereFilterLevel<Entity>,
+    options?: FindOptions<Entity, C>,
+  ): Promise<Entity[]>
+  async findAll(
+    parameters: Partial<Entity> | WhereFilterLevel<Entity> | Record<string, unknown> = {},
     options: {
       with?: object
       order?: OrderSpec
@@ -430,7 +437,7 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   /**
   findAll() alias — every entity matching the given properties.
   */
-  async where(parameters: Partial<Entity> = {}): Promise<Entity[]> {
+  async where(parameters?: WhereFilterLevel<Entity>): Promise<Entity[]> {
     return this.findAll(parameters)
   }
 
@@ -438,8 +445,8 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   Count of entities matching the given properties (a Cypher count(), so
   no entities are hydrated). The named read filters apply.
   */
-  async count(parameters: Partial<Entity> = {}): Promise<number> {
-    const builder = this.matchAll(parameters)
+  async count(parameters?: WhereFilterLevel<Entity>): Promise<number> {
+    const builder = this.matchAll(parameters ?? {})
 
     builder.return(`count(${THIS_NODE}) AS count`)
 
@@ -452,6 +459,120 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     }
 
     return Repository.toCount(firstRecord.get('count'))
+  }
+
+  /**
+  Existence check by primary key — one `RETURN 1 LIMIT 1`, no projection,
+  no hydration: the cheap answer to "does this id exist", where find()
+  would hydrate the full projected read-model (eager @RelatedMany
+  included) only to be thrown away. The named read filters apply, so a
+  soft-deleted node reads as absent. Accepts string and number keys only.
+  */
+  async exists(id: unknown, options?: { withoutFilters?: string[] | undefined }): Promise<boolean> {
+    if (typeof id !== 'string' && typeof id !== 'number') {
+      throw new TypeError(`Repository.exists expects a string or number id, received ${typeof id}`)
+    }
+
+    assertPublicWithoutFilters(options?.withoutFilters)
+
+    const filters: ReadFilterOptions = {}
+
+    if (options?.withoutFilters !== undefined) {
+      filters.withoutFilters = options.withoutFilters
+    }
+
+    const primaryKey = this.getPrimaryKey().getKey()
+
+    const builder = new Builder()
+
+    builder.match(THIS_NODE, this.schema.getLabels())
+    applyReadFilters(builder, this.schema, filters)
+    builder.where(`${THIS_NODE}.${primaryKey}`, id)
+
+    builder.return('1 AS one')
+    builder.limit(1)
+
+    const output = await this.read(builder)
+
+    return output.records.length > 0
+  }
+
+  /**
+  All entities whose primary key is in `ids` — one `WHERE this.pk IN $ids`
+  read instead of one find() per id. Models declaring read-model
+  decorators read through the same RETURN map projection as findAll()
+  (ProjectionService parity); the named read filters apply. Row order
+  follows the database — pass options.order when the caller needs one.
+  */
+  async findAllByIds(
+    ids: (string | number)[],
+    options: {
+      order?: OrderSpec
+      limit?: number
+      withoutFilters?: string[] | undefined
+    } = {},
+  ): Promise<Entity[]> {
+    assertPublicWithoutFilters(options.withoutFilters)
+
+    if (ids.length === 0) {
+      return []
+    }
+
+    const filters: ReadFilterOptions = {}
+
+    if (options.withoutFilters !== undefined) {
+      filters.withoutFilters = options.withoutFilters
+    }
+
+    const primaryKey = this.getPrimaryKey().getKey()
+
+    const builder = this.matchAll({}, filters)
+
+    builder.where(`${THIS_NODE}.${primaryKey}`, 'IN', [...new Set(ids)])
+
+    if (options.order !== undefined) {
+      applyOrder(builder, options.order)
+    }
+
+    const isProjected = hasProjectedProperties(this.schema)
+
+    if (isProjected) {
+      // ProjectionService.run() parity: the RETURN map projection
+      // hydrates through shapeProjectionRows
+      builder.return(
+        `${projectionNode(THIS_NODE, this.schema, undefined, { builder, filters })} AS ${THIS_NODE}`,
+      )
+    } else {
+      this.returnNodes(builder, filters)
+    }
+
+    if (options.limit !== undefined) {
+      builder.limit(requireLimit(options.limit))
+    }
+
+    const output = await this.read(builder)
+
+    return isProjected
+      ? shapeProjectionRows<Entity>(output.records, this.schema, this.entity, THIS_NODE)
+      : shapeNodeRows<Entity>(output.records, this.schema, this.entity, THIS_NODE)
+  }
+
+  /**
+  findAll() + count() as one call (TypeORM's findAndCount, the
+  repository form of the facade's findManyAndCount): `items` trimmed by
+  options.order/limit/skip, `total` the full filter count. On a
+  transaction-scoped Repository both reads share the transaction's
+  snapshot. The two statements run sequentially so single-transaction
+  connections (the embedded engine) are safe.
+  */
+  async findAndCount(
+    parameters: WhereFilterLevel<Entity> = {},
+    options: FindOptions<Entity, C> = {},
+  ): Promise<ManyAndCount<Entity>> {
+    const items = await this.findAll(parameters, options)
+    const total = await this.count(parameters)
+
+    return { items, total }
   }
 
   /**
@@ -645,7 +766,7 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   */
   async countBy(
     property: keyof Entity & string,
-    parameters: Partial<Entity> = {},
+    parameters?: WhereFilterLevel<Entity>,
   ): Promise<Record<string, number>> {
     const declared = this.schema
       .getProperties()
@@ -660,7 +781,7 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     }
 
     const key = declared.getKey().replaceAll('`', '``')
-    const builder = this.matchAll(parameters)
+    const builder = this.matchAll(parameters ?? {})
     builder.return(`${THIS_NODE}.\`${key}\` AS value, count(${THIS_NODE}) AS count`)
 
     const output = await this.read(builder)
@@ -687,10 +808,10 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   a loop over delete() when cascading bulk deletes are needed. A bulk
   write: named read filters do not apply (NTS-162).
   */
-  async deleteAll(parameters: Partial<Entity> & { all?: true } = {}): Promise<number> {
-    assertDeleteAllScope(parameters, this.getLabels())
+  async deleteAll(parameters?: WhereFilterLevel<Entity> & { all?: true }): Promise<number> {
+    assertDeleteAllScope(parameters ?? {}, this.getLabels())
 
-    const builder = this.matchAll(parameters, undefined, true)
+    const builder = this.matchAll(parameters ?? {}, undefined, true)
 
     builder.detachDelete(THIS_NODE)
     builder.return(`count(${THIS_NODE}) AS count`)
@@ -716,12 +837,27 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
   The property must be a declared numeric property of the schema: its name
   is interpolated into the Cypher (property names cannot be parameters),
   so the declaration check is the injection guard.
+
+  With `min` (NTS-655) the statement carries a guard terminal —
+  `WITH this WHERE this.prop >= $min` — so the floor is checked in the
+  same statement, under the write lock: a post-write value below the
+  floor (inclusive — exactly `min` passes) filters the statement's only
+  row out, and the zero-row result throws `GuardViolationError` instead
+  of returning a value. The throw rolls a managed write transaction
+  (inWriteTransaction / ambient transaction) back — the write lock makes
+  the check-and-decrement atomic, so no interleaving writer can slip
+  between them; under autocommit the SET itself still commits, so wrap
+  guarded decrements in a transaction. The floor works for both signs of
+  `by` (on a positive increment it is a no-op: the value only grows).
+  `min` takes precedence over `ifExists`: a zero-row result always
+  throws, because a missing entity matches zero rows too and the two
+  cases cannot be told apart inside one statement.
   */
   async increment(
     target: Entity | string | number,
     property: keyof Entity & string,
     by = 1,
-    options: { ifExists?: boolean } = {},
+    options: { ifExists?: boolean; min?: number } = {},
   ): Promise<number> {
     const declared = this.schema
       .getProperties()
@@ -745,6 +881,13 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
 
     if (typeof by !== 'number' || !Number.isFinite(by)) {
       throw new TypeError('Cannot increment: step must be a finite number')
+    }
+
+    if (
+      options.min !== undefined &&
+      (typeof options.min !== 'number' || !Number.isFinite(options.min))
+    ) {
+      throw new TypeError('Cannot increment: min must be a finite number')
     }
 
     // The property name is schema-validated and quoted (names cannot be
@@ -795,6 +938,16 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
       builder.setExpr(`${THIS_NODE}.${quote(derivedKey)}`, cypher)
     }
 
+    // NTS-655: the min floor renders as a WITH … WHERE terminal in the
+    // decrement's own statement, under the write lock — a post-write
+    // value below the floor filters the statement's only row out and the
+    // zero-rows check below throws. The value is bound as a parameter.
+    if (options.min !== undefined) {
+      builder.with(THIS_NODE)
+      builder.param('min', options.min)
+      builder.whereRaw(`${THIS_NODE}.${key} >= $min`)
+    }
+
     const shouldRecomputeFromCounter = this.schema.getProperties().some((property) => {
       const derived = property.getDerived()
 
@@ -818,6 +971,13 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     const firstRecord = output.records[0]
 
     if (firstRecord === undefined) {
+      // The guard cannot tell a violated floor from a missing entity —
+      // both match zero rows — so a set min always throws (fail-closed,
+      // taking precedence over ifExists)
+      if (options.min !== undefined) {
+        throw new GuardViolationError(this.getLabels().join(':') || 'entity', property, options.min)
+      }
+
       if (options.ifExists === true) {
         return 0
       }
@@ -901,6 +1061,51 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     const indexName = fulltextIndexName({ label, properties: fields })
 
     return this.neode.search(this.entity, indexName, query, options.limit)
+  }
+
+  /**
+  k-nearest-neighbour search over the vector index `installSchema()`
+  created for this model's declared `@Vector` property — the kNN
+  counterpart of search(): the index name is derived from the model
+  declaration, so the caller passes just the property key and the query
+  vector. Hydrated entities with their similarity score, best match
+  first.
+  */
+  async knn(
+    property: string,
+    vector: number[],
+    k: number,
+    mode?: KnnMode,
+  ): Promise<ScoredEntity<Entity>[]> {
+    const label = this.getLabels()[0]
+
+    if (label === undefined) {
+      throw new NeodeError(
+        `Cannot run a kNN search on ${this.getLabels().join(':')}: the model has no labels`,
+      )
+    }
+
+    const schemaProperty = this.schema
+      .getProperties()
+      .find((candidate) => candidate.getKey() === property)
+
+    if (schemaProperty === undefined) {
+      throw new NeodeError(
+        `Cannot run a kNN search on ${label}: no property named "${property}" — declare it, or pass a property the model declares`,
+      )
+    }
+
+    const vectorConfig = schemaProperty.getVector()
+
+    if (vectorConfig === undefined) {
+      throw new NeodeError(
+        `Cannot run a kNN search on ${label}.${property} — the property is not declared with @Vector. Declare @Vector on it, or use neode.knn(entity, indexName, …) with an explicit index name`,
+      )
+    }
+
+    const indexName = vectorIndexName({ label, property, ...vectorConfig })
+
+    return this.neode.knn(this.entity, indexName, vector, k, mode)
   }
 
   /**

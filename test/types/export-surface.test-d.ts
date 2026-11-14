@@ -3,26 +3,41 @@
  * exports exactly the value set asserted below (plus the type surface
  * asserted further down). A symbol added to the root export must be added
  * to this list deliberately — that is the curation contract.
+ *
+ * NTS-669 — the surface is FROZEN for 1.0: the value names are pinned by the
+ * exact `keyof Root` assertion, and the type-only names by the compiler-counted
+ * runtime assertion below (type exports are erased at runtime, so they cannot
+ * show up in `keyof`). Any post-freeze addition or deletion — value or type —
+ * must land here as a reviewable diff.
  */
-import { describe, expectTypeOf, it } from 'vitest'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import type {
   AccessMode,
   ApplySchemaDiffOptions,
+  ApplySchemaDriftReport,
   BatchStatementError,
   BulkChunk,
   BulkOptions,
+  BulkRowFailure,
   ComputedDefinition,
   ConnectionOptions,
   ConnectionProvider,
   ConnectivityConfig,
+  CreateOptions,
   CursorPage,
   CursorPaginateOptions,
   CypherOptions,
   DeleteOptions,
+  DetachResult,
   EntityMethods,
   EntityOntology,
   ExpressionDefinition,
   FactoryWithSpec,
+  FilterOperand,
+  FilterOperators,
   FulltextIndexDefinition,
   GraphNode,
   GraphRelationship,
@@ -38,6 +53,14 @@ import type {
   MergeResult,
   OffsetPaginateOptions,
   Ontology,
+  OntologySpecConstraint,
+  OntologySpecIndex,
+  OntologySpecLabels,
+  OntologySpecModel,
+  OntologySpecNode,
+  OntologySpecProperty,
+  OntologySpecRelationship,
+  OntologySpecRelationshipTarget,
   OrderSpec,
   Page,
   PaginateOptions,
@@ -71,6 +94,8 @@ import type {
   RelationshipOntology,
   ReplaceRelationshipOptions,
   RepositoryConstructor,
+  RowPropertiesResult,
+  RowToPropertiesOptions,
   RunCypherScriptOptions,
   Runner,
   SchemaDefinition,
@@ -89,17 +114,169 @@ import type {
   TransformConfig,
   TransformedQueryOutput,
   TraversalRow,
-  ValidationDetail,
+  ValidationIssue,
   VectorConfig,
   VectorIndexDefinition,
   WaitUntilReachableOptions,
+  WhereFilter,
+  WhereFilterLevel,
   WipeReport,
   WipeTarget,
   WithMethods,
 } from '../../src/index.js'
-import { getModel, requireRelateClient, validate, vectorIndexName } from '../../src/index.js'
+import {
+  getModel,
+  requireRelateClient,
+  validate,
+  ValidationError,
+  vectorIndexName,
+} from '../../src/index.js'
 
 type Root = typeof import('../../src/index.js')
+
+/**
+ * The compiler's view of the package root's exports — every name a consumer
+ * can import, values AND types (the type tests above only see the value side
+ * through `keyof Root`). Ground truth for the frozen type-only surface below.
+ */
+function publicExportNames(): string[] {
+  const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
+  const config = ts.readConfigFile(path.join(repoRoot, 'tsconfig.json'), ts.sys.readFile)
+  const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, repoRoot)
+  const indexPath = path.join(repoRoot, 'src/index.ts')
+  const program = ts.createProgram([indexPath], parsed.options)
+  const source = program.getSourceFile(indexPath)
+  if (source === undefined) throw new Error('src/index.ts did not resolve into the program')
+  const moduleSymbol = program.getTypeChecker().getSymbolAtLocation(source)
+  if (moduleSymbol === undefined) throw new Error('src/index.ts is not a module')
+  return program
+    .getTypeChecker()
+    .getExportsOfModule(moduleSymbol)
+    .map((s) => s.name)
+    .sort()
+}
+
+/**
+ * NTS-669 — the FROZEN type-only export surface (112 names): every export of
+ * src/index.ts that is not a runtime value. The runtime values are pinned
+ * exactly by the `keyof Root` assertion above; a name appearing here that
+ * becomes (or stops being) a value export fails both assertions, so the
+ * value/type split cannot rot silently either.
+ */
+const FROZEN_TYPE_SURFACE = [
+  'AccessMode',
+  'ApplySchemaDiffOptions',
+  'ApplySchemaDriftReport',
+  'BatchStatementError',
+  'BulkChunk',
+  'BulkOptions',
+  'BulkRowFailure',
+  'ComparisonOperator',
+  'ComputedDefinition',
+  'ConnectionOptions',
+  'ConnectionProvider',
+  'ConnectivityConfig',
+  'CreateOptions',
+  'CursorPage',
+  'CursorPaginateOptions',
+  'CypherOptions',
+  'DeleteOptions',
+  'DetachResult',
+  'EntityMethods',
+  'EntityOntology',
+  'ExpressionDefinition',
+  'FactoryWithSpec',
+  'FilterOperand',
+  'FilterOperators',
+  'FulltextIndexDefinition',
+  'GraphNode',
+  'GraphRelationship',
+  'Hop',
+  'INeode',
+  'InspectOptions',
+  'KnnMode',
+  'LabelPresentDefinition',
+  'LoadedEntity',
+  'ManyAndCount',
+  'MergeCounts',
+  'MergeOutcome',
+  'MergeResult',
+  'OffsetPaginateOptions',
+  'Ontology',
+  'OntologySpecConstraint',
+  'OntologySpecIndex',
+  'OntologySpecLabels',
+  'OntologySpecModel',
+  'OntologySpecNode',
+  'OntologySpecProperty',
+  'OntologySpecRelationship',
+  'OntologySpecRelationshipTarget',
+  'OrderSpec',
+  'Page',
+  'PaginateOptions',
+  'ParallelBody',
+  'ParallelMode',
+  'ParallelOperationError',
+  'ParallelOptions',
+  'ParallelRollbackReport',
+  'ParallelScope',
+  'ProjectionDirection',
+  'PropertyDefinition',
+  'PropertyOntology',
+  'PropertySchema',
+  'PropertyTypeName',
+  'QueryExecutedEvent',
+  'QueryOutput',
+  'QueryParams',
+  'QueryRecord',
+  'QuerySummary',
+  'ReadFilterOptions',
+  'RelateManyResult',
+  'RelateManyRow',
+  'RelatedConfig',
+  'RelatedManyDefinition',
+  'RelatedOneDefinition',
+  'RelationshipConfig',
+  'RelationshipCountConfig',
+  'RelationshipCountDefinition',
+  'RelationshipDefinition',
+  'RelationshipEdgeRead',
+  'RelationshipExistsConfig',
+  'RelationshipExistsDefinition',
+  'RelationshipOntology',
+  'ReplaceRelationshipOptions',
+  'RepositoryConstructor',
+  'RowPropertiesResult',
+  'RowToPropertiesOptions',
+  'RunCypherScriptOptions',
+  'Runner',
+  'SchemaDefinition',
+  'SchemaDefinitionEntry',
+  'SchemaDiff',
+  'SchemaDrift',
+  'SchemaDriftEntry',
+  'SchemaDriftGroup',
+  'SchemaInspection',
+  'SchemaObject',
+  'SchemaResult',
+  'ScoredEntity',
+  'ShortestPathOptions',
+  'SyncEdgesOptions',
+  'SyncEdgesResult',
+  'TransactionHandle',
+  'TransformConfig',
+  'TransformedQueryOutput',
+  'TraversalRow',
+  'ValidationIssue',
+  'VectorConfig',
+  'VectorIndexDefinition',
+  'WaitUntilReachableOptions',
+  'WhereFilter',
+  'WhereFilterLevel',
+  'WipeReport',
+  'WipeTarget',
+  'WithMethods',
+] as const
 
 describe('public export surface (NTS-600)', () => {
   it('exports exactly the documented value surface', () => {
@@ -107,6 +284,7 @@ describe('public export surface (NTS-600)', () => {
       | 'Boolean'
       | 'BoundBuilder'
       | 'Builder'
+      | 'BulkChunkError'
       | 'BulkService'
       | 'CardinalityViolationError'
       | 'Collection'
@@ -128,6 +306,7 @@ describe('public export surface (NTS-600)', () => {
       | 'Filter'
       | 'Float'
       | 'FulltextIndexService'
+      | 'GuardViolationError'
       | 'Hidden'
       | 'Index'
       | 'InternalId'
@@ -169,7 +348,6 @@ describe('public export surface (NTS-600)', () => {
       | 'Seeder'
       | 'SoftDelete'
       | 'StartNode'
-      | 'String'
       | 'Time'
       | 'TransactionError'
       | 'TransactionalService'
@@ -204,6 +382,7 @@ describe('public export surface (NTS-600)', () => {
       | 'hydrateFirst'
       | 'hydrateProjection'
       | 'inspectSchema'
+      | 'inspectSchemaAndDrift'
       | 'instrumentConnectionProvider'
       | 'isTransientError'
       | 'jsonSafe'
@@ -214,6 +393,7 @@ describe('public export surface (NTS-600)', () => {
       | 'mergeResultFromSave'
       | 'ontology'
       | 'ontologyMarkdown'
+      | 'ontologySpecToSchemas'
       | 'projectionNode'
       | 'readFilterFragment'
       | 'registerRepository'
@@ -227,7 +407,6 @@ describe('public export surface (NTS-600)', () => {
       | 'search'
       | 'seededRandom'
       | 'setDefaultNeode'
-      | 'setDeprecationWarnings'
       | 'setFilterParams'
       | 'setStrictRelationAccess'
       | 'splitCypherStatements'
@@ -251,21 +430,27 @@ describe('public export surface (NTS-600)', () => {
       [
         AccessMode,
         ApplySchemaDiffOptions,
+        ApplySchemaDriftReport,
         BatchStatementError,
         BulkChunk<unknown>,
         BulkOptions,
+        BulkRowFailure,
         ComputedDefinition,
         ConnectionOptions,
         ConnectionProvider,
         ConnectivityConfig,
+        CreateOptions,
         CursorPage<unknown>,
         CursorPaginateOptions,
         CypherOptions,
         DeleteOptions,
+        DetachResult<unknown, unknown>,
         EntityMethods,
         EntityOntology,
         ExpressionDefinition,
         FactoryWithSpec,
+        FilterOperand<unknown, never>,
+        FilterOperators<unknown>,
         FulltextIndexDefinition,
         GraphNode,
         GraphRelationship,
@@ -281,6 +466,14 @@ describe('public export surface (NTS-600)', () => {
         MergeResult<unknown>,
         OffsetPaginateOptions,
         Ontology,
+        OntologySpecConstraint,
+        OntologySpecIndex,
+        OntologySpecLabels,
+        OntologySpecModel,
+        OntologySpecNode,
+        OntologySpecProperty,
+        OntologySpecRelationship,
+        OntologySpecRelationshipTarget,
         OrderSpec,
         Page<unknown>,
         PaginateOptions,
@@ -314,6 +507,8 @@ describe('public export surface (NTS-600)', () => {
         RelationshipOntology,
         ReplaceRelationshipOptions,
         RepositoryConstructor,
+        RowPropertiesResult,
+        RowToPropertiesOptions,
         RunCypherScriptOptions,
         Runner,
         SchemaDefinition,
@@ -332,10 +527,12 @@ describe('public export surface (NTS-600)', () => {
         TransformConfig,
         TransformedQueryOutput,
         TraversalRow,
-        ValidationDetail,
+        ValidationIssue,
         VectorConfig,
         VectorIndexDefinition,
         WaitUntilReachableOptions,
+        WhereFilter<new (...arguments_: never[]) => unknown>,
+        WhereFilterLevel<unknown>,
         WipeReport,
         WipeTarget,
         WithMethods<unknown>,
@@ -370,5 +567,28 @@ describe('public export surface (NTS-600)', () => {
     expectTypeOf<SchemaResult['statement']>().toEqualTypeOf<string>()
     expectTypeOf<SchemaResult['success']>().toEqualTypeOf<boolean>()
     expectTypeOf<DeleteOptions['mode']>().toEqualTypeOf<'delete' | 'detach' | undefined>()
+  })
+
+  it('exposes the neode-owned validation shape — no Zod on the surface (NTS-676)', () => {
+    // ValidationError.issues is neode's own shape: path, rule, message —
+    // the rules are named in neode's vocabulary (required / type / format
+    // / the failing config rule), never Zod's issue codes
+    expectTypeOf<ValidationError['issues']>().toEqualTypeOf<ValidationIssue[]>()
+    expectTypeOf<ValidationIssue>().toEqualTypeOf<{
+      message: string
+      path: (string | number)[]
+      rule: string
+    }>()
+    // the never-populated Zod-typed `zodError` field is removed
+    // @ts-expect-error NTS-676 — removed: Zod stays an implementation detail
+    expectTypeOf<ValidationError['zodError']>().toBeUnknown()
+  })
+
+  it('freezes the complete export set — additions and deletions are reviewable diffs (NTS-669)', async () => {
+    const values = new Set(Object.keys(await import('../../src/index.js')))
+    const typeOnly = publicExportNames().filter((name) => !values.has(name))
+    // Every export the compiler sees is exactly: the runtime value surface
+    // (pinned by the keyof assertion above) plus this frozen type-only list.
+    expect(typeOnly).toEqual(FROZEN_TYPE_SURFACE)
   })
 })

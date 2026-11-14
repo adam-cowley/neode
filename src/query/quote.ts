@@ -19,10 +19,13 @@ const DIRECTIONS = new Set(['ASC', 'ASCENDING', 'DESC', 'DESCENDING'])
 /**
 Quote a property key only when it is not already a plain identifier, so
 declared keys keep their readable `n.name` rendering while hostile ones
-(`name} DETACH DELETE x //`) are escaped.
+(`name} DETACH DELETE x //`) are escaped. Idempotent (NTS-675): a fully
+backtick-quoted key (`` `my key` ``) passes through unchanged, so callers
+may hand a pre-quoted reference through safeKey twice without it being
+double-quoted.
 */
 export function safeKey(key: string): string {
-  return IDENTIFIER.test(key) ? key : quote(key)
+  return IDENTIFIER.test(key) || PRE_QUOTED_LABEL.test(key) ? key : quote(key)
 }
 
 const PRE_QUOTED_LABEL = /^`(?:[^`]|``)*`$/
@@ -35,6 +38,26 @@ labels without them being double-quoted.
 */
 export function quoteLabel(label: string): string {
   return IDENTIFIER.test(label) || PRE_QUOTED_LABEL.test(label) ? label : quote(label)
+}
+
+/**
+`alias` or `alias.property` reference for a ref-to-ref predicate (NTS-656):
+every dot-segment must be a non-empty identifier and is quoted only when
+not plain (safeKey) — plain aliases keep their readable rendering while
+hostile text (`a; DETACH DELETE x`) is escaped into a single identifier,
+injection-safe.
+*/
+export function quoteReference(reference: string, where: string): string {
+  const segments = reference.split('.')
+
+  if (segments.includes('')) {
+    throw new NeodeError(
+      `Invalid reference ${JSON.stringify(reference)} in ${where} — expected an alias or ` +
+        'alias.property made of plain identifiers. Pass e.g. "other" or "p.unitsInStock".',
+    )
+  }
+
+  return segments.map((segment) => safeKey(segment)).join('.')
 }
 
 /**
@@ -142,6 +165,67 @@ export function assertDirection(direction: string, where = 'orderBy'): string {
   }
 
   return normalised
+}
+
+/**
+The operators a three-argument where() accepts. The operator renders into
+the statement (it cannot be bound), so anything outside this set is
+rejected — whereRaw() is the escape hatch for anything else (NTS-675).
+*/
+const WHERE_OPERATORS = new Set([
+  '=',
+  '<>',
+  '<',
+  '<=',
+  '>',
+  '>=',
+  'IN',
+  'NOT IN',
+  'CONTAINS',
+  'STARTS WITH',
+  'ENDS WITH',
+  '=~',
+])
+
+/**
+Validate the operator parameter of a three-argument where(): one of the
+comparison / membership / string / regex operators, any case. Unknown
+operators throw naming whereRaw() — a hostile operator would otherwise
+render straight into the predicate.
+*/
+export function assertWhereOperator(operator: string): string {
+  const normalised = operator.trim().toUpperCase()
+
+  if (!WHERE_OPERATORS.has(normalised)) {
+    throw new NeodeError(
+      `Invalid where operator ${JSON.stringify(operator)} — supported operators are ` +
+        `${[...WHERE_OPERATORS].join(', ')}. Pass one of those, or whereRaw() for anything else.`,
+    )
+  }
+
+  return normalised
+}
+
+/**
+The operators a parameterised set() accepts (Cypher's SET operators; the
+label-set spelling flows through the same slot). Rendered into the
+statement, so anything else is rejected — setExpr() is the escape hatch
+(NTS-675).
+*/
+const SET_OPERATORS = new Set(['=', '+=', '-='])
+
+/**
+Validate the operator parameter of set() / onCreateSet() / onMatchSet().
+*/
+export function assertSetOperator(operator: string): string {
+  if (!SET_OPERATORS.has(operator)) {
+    throw new NeodeError(
+      `Invalid set operator ${JSON.stringify(operator)} — supported operators are ` +
+        `${[...SET_OPERATORS].join(', ')}. Pass one of those, or setExpr() for expressions.`,
+    )
+  }
+
+  return operator
 }
 
 /**

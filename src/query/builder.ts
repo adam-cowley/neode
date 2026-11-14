@@ -1,12 +1,21 @@
 import { Match } from './match.js'
 import { NeodeError } from '../errors/index.js'
 import { Order } from './order.js'
+import { PathPattern } from './path.js'
 import { Property } from './property.js'
 import { RawExpression } from './expressions.js'
 import { Relationship } from './relationship.js'
 import { Statement } from './statement.js'
-import { Where, OPERATOR_EQUALS } from './where.js'
-import { quote } from './quote.js'
+import { Where, OPERATOR_EQUALS, assertComparisonOperator } from './where.js'
+import type { ComparisonOperator } from './where.js'
+import {
+  quote,
+  quoteReference,
+  assertAlias,
+  assertDegrees,
+  assertSetOperator,
+  assertWhereOperator,
+} from './quote.js'
 import { LabelPredicate } from './label-predicate.js'
 import { WhereBetween } from './where-between.js'
 import { WhereId } from './where-id.js'
@@ -46,6 +55,27 @@ export interface EntityMatchCriteria {
 }
 
 export type BuilderParameters = Record<string, unknown>
+
+/**
+Options for Builder.shortestPath() (NTS-658)
+*/
+export interface ShortestPathOptions {
+  /**
+  Relationship type (or types) the path may traverse
+  */
+  relationship?: string | string[]
+  /**
+  Direction of the relationship pattern — defaults to BOTH (undirected)
+  */
+  direction?: string
+  /**
+  Number of traversals — Neo4j rejects a minimum length other than 0 or
+  1 inside shortestPath, so multi-hop bounds are `'..2'` / `'1..2'` forms
+  (an exact length like `2` throws naming the fix; pin an exact edge
+  chain with match()/relationship()/to()/asPath() instead)
+  */
+  degrees?: number | string
+}
 
 /**
 Scan compiled query text for `$name` parameter references (NTS-478).
@@ -266,7 +296,9 @@ export class Builder {
   private whereStringOperator(property: string, value: string, operator: string): this {
     const variable = this.addParameter(property, value)
 
-    this.activeWhereClause.append(new Where(property, operator, `$${variable}`))
+    this.activeWhereClause.append(
+      new Where(quoteReference(property, 'where()'), operator, `$${variable}`),
+    )
 
     return this
   }
@@ -474,6 +506,13 @@ export class Builder {
     this.statement()
     this.bridgeWriteToRead()
 
+    // NTS-675 — aliases render verbatim into the pattern (they cannot be
+    // escaped without changing meaning), so every pattern method asserts
+    // its alias is a plain identifier
+    if (alias !== undefined && alias !== '') {
+      assertAlias(alias, 'match()')
+    }
+
     this.activeStatement.match(new Match(alias, labels, this.convertPropertyMap(alias, properties)))
 
     return this
@@ -484,6 +523,62 @@ export class Builder {
   `MATCH <variable> = <pattern>` on the segment's MATCH keyword (NTS-593)
   */
   asPath(variable: string): this {
+    this.activeStatement.asPath(assertAlias(variable, 'asPath()'))
+
+    return this
+  }
+
+  /**
+  `MATCH <variable> = shortestPath((from)-[:TYPE]-(to))` (NTS-658): a
+  shortest-path match over its own segment, bound to a path variable a
+  RETURN can reference (`expr.nodes(variable)`, `expr.relationships(variable)`).
+  `direction` defaults to BOTH — shortestPath's common form; `degrees`
+  bounds the traversal count — Neo4j rejects a minimum length other than
+  0 or 1 inside shortestPath, so bounded forms (`'..2'`, `'1..2'`) are the
+  multi-hop spellings and an exact length (`2`) throws naming the fix.
+  The variable, from and to arguments are plain variable names (validated
+  like aliases — structure, never data). A pinned multi-hop pattern (an
+  exact chain of typed edges, where a multi-type shortestPath could return
+  a wrong-shaped path) stays with match() / relationship() / to() / asPath().
+  */
+  shortestPath(
+    variable: string,
+    from: string,
+    to: string,
+    options: ShortestPathOptions = {},
+  ): this {
+    this.whereStatement('WHERE')
+    this.statement()
+    this.bridgeWriteToRead()
+
+    assertAlias(variable, 'shortestPath()')
+    assertAlias(from, 'shortestPath()')
+    assertAlias(to, 'shortestPath()')
+
+    const degrees = options.degrees === undefined ? undefined : assertDegrees(options.degrees)
+
+    if (degrees !== undefined) {
+      const [minimum] = degrees.split('..', 1)
+
+      if (minimum !== '' && Number(minimum) > 1) {
+        throw new NeodeError(
+          `Invalid shortestPath degrees "${degrees}" — shortestPath does not support a ` +
+            'minimum length other than 0 or 1. Pass a bounded form such as "..2" or "1..2", ' +
+            'or pin an exact edge chain with match()/relationship()/to()/asPath().',
+        )
+      }
+    }
+
+    const relationship = new Relationship(
+      options.relationship,
+      options.direction,
+      undefined,
+      degrees,
+    )
+
+    this.activeStatement.match(
+      new PathPattern(`shortestPath((${from})${relationship.toString()}(${to}))`),
+    )
     this.activeStatement.asPath(variable)
 
     return this
@@ -496,6 +591,10 @@ export class Builder {
     this.whereStatement('WHERE')
     this.statement('OPTIONAL MATCH')
     this.bridgeWriteToRead()
+
+    if (alias !== undefined && alias !== '') {
+      assertAlias(alias, 'optionalMatch()')
+    }
 
     this.activeStatement.match(new Match(alias, labels))
 
@@ -593,6 +692,12 @@ export class Builder {
   - `where({ name: 'Adam' })` - object map
   - `where([['name', 'Adam'], ['age', '>', 30]])` - array of clauses
   - `where('n.name =~ ".*"')` - raw string
+
+  The property is an identifier — it backtick-escapes like every other
+  identifier (plain `n.name` references keep their readable rendering,
+  NTS-675). The operator validates against the known set (comparison,
+  membership, string, regex); use whereRaw() for anything else. Values
+  always bind as parameters.
   */
   where(...arguments_: unknown[]): this {
     const first = arguments_[0]
@@ -644,11 +749,16 @@ export class Builder {
         )
       }
 
+      // NTS-675 — the property is an identifier rendered into the
+      // predicate (never bindable), so it escapes like every other
+      // identifier; plain `n.name`-style references keep their rendering
+      const property = quoteReference(first, 'where()')
+
       if (arguments_.length === 2) {
         // Two arguments: property / value equality
         const variable = this.addParameter(first, arguments_[1])
 
-        this.activeWhereClause.append(new Where(first, OPERATOR_EQUALS, `$${variable}`))
+        this.activeWhereClause.append(new Where(property, OPERATOR_EQUALS, `$${variable}`))
       } else {
         const operator = arguments_[1]
 
@@ -658,9 +768,35 @@ export class Builder {
 
         const variable = this.addParameter(first, arguments_[2])
 
-        this.activeWhereClause.append(new Where(first, operator, `$${variable}`))
+        // NTS-675 — the operator renders into the predicate too: validate
+        // it against the known set (whereRaw() is the escape hatch)
+        this.activeWhereClause.append(
+          new Where(property, assertWhereOperator(operator), `$${variable}`),
+        )
       }
     }
+
+    return this
+  }
+
+  /**
+  Property-to-property comparison (NTS-656): both sides are references —
+  an alias or `alias.property` — comparing two variables, which where()
+  cannot express (every where() value binds as a parameter). Reference
+  sides render as quoted identifiers, never parameters; the operator is
+  validated against the same set the Where clause renders. Composes with
+  or() / whereGroup() like any where clause.
+  */
+  whereProps(left: string, operator: ComparisonOperator, right: string): this {
+    assertComparisonOperator(operator)
+
+    this.activeWhereClause.append(
+      new Where(
+        quoteReference(left, 'whereProps()'),
+        operator,
+        quoteReference(right, 'whereProps()'),
+      ),
+    )
 
     return this
   }
@@ -671,13 +807,15 @@ export class Builder {
   whereId(alias: string, value: string | number): this {
     const variable = this.addParameter(`${alias}_id`, value)
 
-    this.activeWhereClause.append(new WhereId(alias, variable))
+    this.activeWhereClause.append(new WhereId(assertAlias(alias, 'whereId()'), variable))
 
     return this
   }
 
   /**
-  Add a raw where clause
+  Add a raw where clause. Trusted-input only: the clause renders verbatim
+  into the statement — never pass user-supplied text here; bind values as
+  parameters (`param(name, value)`) and reference them as `$name`.
   */
   whereRaw(clause: string): this {
     this.activeWhereClause.append(new WhereRaw(clause))
@@ -707,7 +845,9 @@ export class Builder {
     const floorVariable = this.addParameter(`${alias}_floor`, floor)
     const ceilingVariable = this.addParameter(`${alias}_ceiling`, ceiling)
 
-    this.activeWhereClause.append(new WhereBetween(alias, floorVariable, ceilingVariable))
+    this.activeWhereClause.append(
+      new WhereBetween(quoteReference(alias, 'whereBetween()'), floorVariable, ceilingVariable),
+    )
 
     return this
   }
@@ -733,9 +873,21 @@ export class Builder {
   whereIn(property: string, values: unknown[]): this {
     const variable = this.addParameter(property, values)
 
-    this.activeWhereClause.append(new Where(property, 'IN', `$${variable}`))
+    this.activeWhereClause.append(
+      new Where(quoteReference(property, 'whereIn()'), 'IN', `$${variable}`),
+    )
 
     return this
+  }
+
+  /**
+  Membership test against a reference list (NTS-656): `property IN listRef`,
+  where `listRef` is an alias holding a collected list — the reference-side
+  counterpart of whereIn (whose values bind as a parameter). Both sides
+  render as quoted identifiers.
+  */
+  whereInRefs(property: string, listReference: string): this {
+    return this.whereProps(property, 'IN', listReference)
   }
 
   /**
@@ -763,7 +915,7 @@ export class Builder {
   `property IS NULL`
   */
   whereNull(property: string): this {
-    this.activeWhereClause.append(new WhereNull(property))
+    this.activeWhereClause.append(new WhereNull(quoteReference(property, 'whereNull()')))
 
     return this
   }
@@ -790,6 +942,19 @@ export class Builder {
   */
   whereExists(pattern: string): this {
     return this.whereRaw(`EXISTS { ${pattern} }`)
+  }
+
+  /**
+  Negative pattern predicate (NTS-657): `WHERE NOT (alias)<-[:TYPE]-()` —
+  "node with no such relationship" as a pattern predicate. The supported
+  form for negative graph patterns: the OPTIONAL MATCH + IS NULL idiom
+  silently mis-filters on the embedded engine. No user values flow into
+  the pattern, so nothing needs parameterising.
+  */
+  whereNotPattern(alias: string, type: string, direction?: string): this {
+    const relationship = new Relationship(type, direction)
+
+    return this.whereRaw(`NOT (${alias})${relationship.toString()}()`)
   }
 
   /**
@@ -856,6 +1021,8 @@ export class Builder {
     this.afterWriteClause = true
     this.afterDeleteClause = false
 
+    assertAlias(alias, 'create()')
+
     this.activeStatement.match(new Match(alias, labels, this.convertPropertyMap(alias, properties)))
 
     return this
@@ -872,6 +1039,8 @@ export class Builder {
     this.statement('MERGE')
     this.afterWriteClause = true
     this.afterDeleteClause = false
+
+    assertAlias(alias, 'merge()')
 
     this.activeStatement.match(new Match(alias, labels, this.convertPropertyMap(alias, properties)))
 
@@ -903,7 +1072,9 @@ export class Builder {
         this.params[alias] = value
         this.parameterCount++
 
-        this.activeStatement.set(property, alias, operator)
+        // NTS-675 — the operator renders into the SET clause: validate it
+        // (setExpr() is the escape hatch for anything else)
+        this.activeStatement.set(property, alias, assertSetOperator(operator))
       }
     }
 
@@ -927,7 +1098,7 @@ export class Builder {
       this.params[alias] = value
       this.parameterCount++
 
-      this.activeStatement.onCreateSet(property, alias, operator)
+      this.activeStatement.onCreateSet(property, alias, assertSetOperator(operator))
     }
 
     return this
@@ -950,7 +1121,7 @@ export class Builder {
       this.params[alias] = value
       this.parameterCount++
 
-      this.activeStatement.onMatchSet(property, alias, operator)
+      this.activeStatement.onMatchSet(property, alias, assertSetOperator(operator))
     }
 
     return this
@@ -1037,6 +1208,13 @@ export class Builder {
   - `orderBy({ 'n.name': 'DESC' })`
   - `orderBy({ field: 'n.name', order: 'DESC' })`
   - `orderBy([{ field: 'n.name', order: 'ASC' }, { field: 'n.other', order: 'DESC' }])`
+
+  The direction validates against ASC / DESC (NTS-675). The field is a raw
+  ORDER BY term — it may be any expression (`n.name`, `elementId(n)`,
+  `n:Label`), so it cannot be escaped without changing meaning: trusted
+  input only. The model-read services escape user-supplied order keys via
+  orderTerms() before they reach this; a Builder-level caller passing user
+  input must quote it itself (propertyReference()).
   */
   orderBy(...arguments_: unknown[]): this {
     this.addOrder(
@@ -1103,6 +1281,10 @@ export class Builder {
     degrees?: number | string,
     properties?: BuilderParameters,
   ): this {
+    if (alias !== undefined && alias !== '') {
+      assertAlias(alias, 'relationship()')
+    }
+
     this.activeStatement.match(
       new Relationship(type, direction, alias, degrees, this.convertPropertyMap(alias, properties)),
     )
@@ -1387,6 +1569,8 @@ export class Builder {
   Complete a relationship with a target node pattern
   */
   to(alias: string, labels?: string | string[] | false, properties?: BuilderParameters): this {
+    assertAlias(alias, 'to()')
+
     this.activeStatement.match(new Match(alias, labels, this.convertPropertyMap(alias, properties)))
 
     return this

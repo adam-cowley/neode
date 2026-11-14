@@ -2,7 +2,7 @@ import {
   NodeEntity,
   Protected,
   Uuid,
-  String,
+  Property,
   InternalId,
   Date,
   DateTime,
@@ -28,7 +28,7 @@ class Place {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @Date()
@@ -43,7 +43,7 @@ class Place {
   @Point()
   location: { x: number; y: number }
 
-  @String({ hidden: true })
+  @Property({ type: 'string', hidden: true })
   secret: string
 
   @OneToMany(() => Place, 'NEAR', Direction.OUTGOING, true)
@@ -62,7 +62,7 @@ class Landmark {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToMany(() => Landmark, 'NEARBY', Direction.OUTGOING)
@@ -88,10 +88,10 @@ class Gate {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
-  @String()
+  @Property({ type: 'string' })
   tenant: string
 
   static build(values: Partial<Gate>): Gate {
@@ -107,7 +107,7 @@ class GuardedSite {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToMany(() => Gate, 'GATE_OF', Direction.INCOMING, true)
@@ -127,10 +127,10 @@ class Guarded597Place {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
-  @String()
+  @Property({ type: 'string' })
   @Protected()
   password: string
 

@@ -8,7 +8,7 @@
 import { describe, expectTypeOf, it } from 'vitest'
 import { toJson, type ToJsonOptions } from '../../src/serialise.js'
 import { applyEntityMethods, type WithMethods } from '../../src/entity-methods.js'
-import { NodeEntity, OneToMany, String, Uuid, InternalId } from '../../src/decorators/index.js'
+import { NodeEntity, OneToMany, Property, Uuid, InternalId } from '../../src/decorators/index.js'
 import { Direction } from '../../src/query/index.js'
 
 @NodeEntity()
@@ -19,7 +19,7 @@ class NTS564Landmark {
   @Uuid({ primary: true })
   id!: string
 
-  @String()
+  @Property({ type: 'string' })
   name!: string
 
   @OneToMany(() => NTS564Landmark, 'NEARBY', Direction.OUTGOING)

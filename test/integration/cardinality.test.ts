@@ -5,11 +5,11 @@
 // NTS-483 assertWritableDirection precedent) and syncEdges is an
 // explicit edge-write API (Eloquent `sync` precedent).
 import { openBackend, TestBackend } from './support/backend'
-import { InternalId, NodeEntity, OneToMany, OneToOne, String, Uuid } from '../../src/decorators'
+import { InternalId, NodeEntity, OneToMany, OneToOne, Property, Uuid } from '../../src/decorators'
 import { Direction } from '../../src/query'
 import { defineModel } from '../../src/meta/map-schema'
 import type { Newable } from '../../src/meta/newable'
-import { CardinalityViolationError, NeodeError } from '../../src/errors'
+import { CardinalityViolationError, ConstraintViolationError, NeodeError } from '../../src/errors'
 import { EventType } from '../../src/common/events'
 import type { QueryExecutedEvent } from '../../src/common/events'
 import type { WithMethods } from '../../src/entity-methods'
@@ -24,7 +24,7 @@ class Role {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   static create(name: string): Role {
@@ -43,7 +43,7 @@ class Subscriber {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   // 'one' derived from the OneToOne declaration — no explicit cardinality
@@ -502,5 +502,292 @@ describe('replaceRelationship cardinality (NTS-643)', () => {
     await backend.neode.replaceRelationship(person, 'tags', [roleA, roleB, roleC])
 
     expect(await countEdgesFor('TAGS')).toBe(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// NTS-663 — DB-enforced inverse cardinality: `enforce` names a @Unique
+// property on the TARGET model that the write paths keep pointed at the
+// source's primary-key value ("relate = claim"). The target's uniqueness
+// constraint turns the inverse side into a database-level guarantee.
+
+@NodeEntity()
+class N663Address {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @Property({ type: 'string' })
+  line: string
+
+  @Property({ type: 'string', unique: true })
+  currentOccupantId: string | undefined
+}
+
+@NodeEntity()
+class N663Person {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @Property({ type: 'string', unique: true })
+  name: string
+
+  @OneToOne({
+    type: 'ENFORCE_LIVES_AT',
+    target: () => N663Address,
+    direction: Direction.OUTGOING,
+    cardinality: 'one',
+    enforce: 'currentOccupantId',
+  })
+  address: N663Address | undefined
+}
+
+// refuse → undefined is the default; these two fixtures flip the policy
+@NodeEntity()
+class N663ThrowPerson {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @Property({ type: 'string', unique: true })
+  name: string
+
+  @OneToOne({
+    type: 'ENFORCE_THROW_LIVES_AT',
+    target: () => N663Address,
+    direction: Direction.OUTGOING,
+    cardinality: 'one',
+    enforce: 'currentOccupantId',
+    claimConflict: 'throw',
+  })
+  address: N663Address | undefined
+}
+
+@NodeEntity()
+class N663DetachPerson {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @Property({ type: 'string', unique: true })
+  name: string
+
+  @OneToOne({
+    type: 'ENFORCE_DETACH_LIVES_AT',
+    target: () => N663Address,
+    direction: Direction.OUTGOING,
+    cardinality: 'one',
+    enforce: 'currentOccupantId',
+    claimConflict: 'detach',
+  })
+  address: N663Address | undefined
+}
+
+const MapEnforceAddress = defineModel('Nts663MapAddress', {
+  id: { type: 'uuid', primary: true },
+  currentOccupantId: { type: 'string', unique: true },
+})
+
+const MapEnforcePerson = defineModel('Nts663MapPerson', {
+  id: { type: 'uuid', primary: true },
+  address: {
+    type: 'relationship',
+    relationship: 'MAP_ENFORCE_LIVES_AT',
+    direction: 'out',
+    target: 'Nts663MapAddress',
+    cardinality: 'one',
+    enforce: 'currentOccupantId',
+  },
+})
+
+describe('enforce: DB-claimed one-cardinality (NTS-663)', () => {
+  let backend: TestBackend
+
+  const saved = async (constructor: Newable, values: Record<string, unknown>): Promise<object> => {
+    const entity = instance(constructor)
+
+    for (const [key, value] of Object.entries(values)) {
+      Reflect.set(entity, key, value)
+    }
+
+    return backend.neode.save(entity)
+  }
+
+  const claimOf = async (line: string): Promise<string | null> => {
+    const result = await backend.neode.readCypher(
+      'MATCH (a:N663Address { line: $line }) RETURN a.currentOccupantId AS claim',
+      { line },
+    )
+
+    // NB: the @String decorator shadows the global String() in this file —
+    // return the driver value untouched
+    const value: unknown = result.records[0]?.get('claim')
+
+    return value === null || value === undefined ? null : (value as string)
+  }
+
+  beforeAll(async () => {
+    backend = await openBackend()
+
+    // The enforcement rides on the target's uniqueness constraint
+    await backend.neode.installSchema()
+  })
+
+  afterEach(async () => {
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  it('relate() claims the target with the source primary key', async () => {
+    const person = await saved(N663Person, { name: 'Adam' })
+    const address = await saved(N663Address, { line: '1 Main St' })
+
+    await backend.neode.relate(N663Person, person, address, 'address')
+
+    expect(await claimOf('1 Main St')).toBe(person.id)
+  })
+
+  it('a target claimed by another source is refused, not stolen', async () => {
+    const personA = await saved(N663Person, { name: 'A' })
+    const personB = await saved(N663Person, { name: 'B' })
+    const address = await saved(N663Address, { line: '1 Main St' })
+
+    await backend.neode.relate(N663Person, personA, address, 'address')
+
+    // B relates the SAME address — the claim would have to be stolen. The
+    // statement refuses it (zero rows) and resolve()s undefined.
+    const stolen = await backend.neode.relate(N663Person, personB, address, 'address')
+
+    expect(stolen).toBeUndefined()
+    expect(await claimOf('1 Main St')).toBe(personA.id)
+  })
+
+  it('claimConflict: throw fails loudly naming the current claimant', async () => {
+    const personA = await saved(N663ThrowPerson, { name: 'A' })
+    const personB = await saved(N663ThrowPerson, { name: 'B' })
+    const address = await saved(N663Address, { line: '3 Throw St' })
+
+    await backend.neode.relate(N663ThrowPerson, personA, address, 'address')
+
+    const attempt = backend.neode.relate(N663ThrowPerson, personB, address, 'address')
+
+    await expect(attempt).rejects.toBeInstanceOf(NeodeError)
+    await expect(attempt).rejects.toThrow(/already claimed/)
+    expect(await claimOf('3 Throw St')).toBe(personA.id)
+  })
+
+  it('claimConflict: detach moves the claim and releases the other source', async () => {
+    const personA = await saved(N663DetachPerson, { name: 'A' })
+    const personB = await saved(N663DetachPerson, { name: 'B' })
+    const address = await saved(N663Address, { line: '4 Detach St' })
+
+    await backend.neode.relate(N663DetachPerson, personA, address, 'address')
+
+    // B takes the address — A's edge is detached in the same statement
+    await backend.neode.relate(N663DetachPerson, personB, address, 'address')
+
+    expect(await claimOf('4 Detach St')).toBe(personB.id)
+
+    const holders = await backend.neode.readCypher(
+      'MATCH (:N663DetachPerson)-[:ENFORCE_DETACH_LIVES_AT]->(a:N663Address { line: "4 Detach St" }) RETURN count(*) AS c',
+    )
+
+    expect(Number(holders.records[0].get('c'))).toBe(1)
+  })
+
+  it('a second address claiming the same person is rejected by the database', async () => {
+    const person = await saved(N663Person, { name: 'Adam' })
+    const first = await saved(N663Address, { line: '1 Main St' })
+    const second = await saved(N663Address, { line: '2 High St' })
+
+    await backend.neode.relate(N663Person, person, first, 'address')
+
+    // Any writer — raw Cypher included — claiming person for a SECOND
+    // address violates the target's uniqueness constraint
+    const attempt = backend.neode.writeCypher(
+      'MATCH (a:N663Address { line: $line }) SET a.currentOccupantId = $pid',
+      { line: '2 High St', pid: Reflect.get(person, 'id') },
+    )
+
+    await expect(attempt).rejects.toBeInstanceOf(ConstraintViolationError)
+    expect(await claimOf('2 High St')).toBeNull()
+  })
+
+  it('replaceRelationship moves the claim in its one statement', async () => {
+    const person = await saved(N663Person, { name: 'Adam' })
+    const first = await saved(N663Address, { line: '1 Main St' })
+    const second = await saved(N663Address, { line: '2 High St' })
+
+    await backend.neode.relate(N663Person, person, first, 'address')
+
+    await backend.neode.replaceRelationship(person, 'address', [second])
+
+    expect(await claimOf('1 Main St')).toBeNull()
+    expect(await claimOf('2 High St')).toBe(person.id)
+  })
+
+  it('syncEdges releases the detached claim and claims the new target', async () => {
+    const person = await saved(N663Person, { name: 'Adam' })
+    const first = await saved(N663Address, { line: '1 Main St' })
+    const second = await saved(N663Address, { line: '2 High St' })
+
+    await backend.neode.relate(N663Person, person, first, 'address')
+
+    await backend.neode.syncEdges(N663Person, person, 'address', [second])
+
+    expect(await claimOf('1 Main St')).toBeNull()
+    expect(await claimOf('2 High St')).toBe(person.id)
+  })
+
+  it('a freed address can be claimed again (the claim is released, not leaked)', async () => {
+    const personA = await saved(N663Person, { name: 'A' })
+    const personB = await saved(N663Person, { name: 'B' })
+    const address = await saved(N663Address, { line: '1 Main St' })
+
+    await backend.neode.relate(N663Person, personA, address, 'address')
+
+    // A moves out — sync to a different address releases the claim
+    await backend.neode.syncEdges(N663Person, personA, 'address', [])
+
+    // B moves in — the DB constraint no longer holds a stale A.id against B
+    await backend.neode.relate(N663Person, personB, address, 'address')
+
+    expect(await claimOf('1 Main St')).toBe(personB.id)
+  })
+
+  it('deleting the source releases the claim', async () => {
+    const person = await saved(N663Person, { name: 'Adam' })
+    const address = await saved(N663Address, { line: '1 Main St' })
+
+    await backend.neode.relate(N663Person, person, address, 'address')
+
+    await backend.neode.delete(person)
+
+    expect(await claimOf('1 Main St')).toBeNull()
+  })
+
+  it('the map API claims through the same write paths', async () => {
+    const address = await saved(MapEnforceAddress as Newable, {})
+    const person = await saved(MapEnforcePerson as Newable, {})
+
+    await backend.neode.relate(MapEnforcePerson as Newable, person, address, 'address')
+
+    const result = await backend.neode.readCypher(
+      'MATCH (p:Nts663MapPerson), (a:Nts663MapAddress) RETURN a.currentOccupantId AS claim, p.id AS personId',
+    )
+
+    expect(result.records[0].get('claim')).toBe(result.records[0].get('personId'))
   })
 })

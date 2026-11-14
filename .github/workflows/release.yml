@@ -1,0 +1,74 @@
+name: Release
+
+# Two ways in (NTS-581 / NTS-684):
+# 1. The Version PR (changeset-release/*) is merged — the version bump lands
+#    on main and this publishes to npm and stamps the matching tag + GitHub
+#    release, so a Version PR merge needs no manual step.
+# 2. A v* tag is pushed — release exactly that commit (manual escape hatch).0b98d75ef8bc516db2c7cc635a8c70f45
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'changeset-release/') &&
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Tag push: the tagged commit. Version PR merge: the squash-merge
+          # commit that carries the bumped package.json.
+          ref: ${{ github.event_name == 'push' && github.ref || github.event.pull_request.merge_commit_sha }}
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      # registry-url makes setup-node write the .npmrc npm authenticates from
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      # A tag can point at any local commit, so gate like CI before releasing
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test:unit
+
+      # Publishes every version missing from the registry (pre mode → the
+      # `next` dist-tag) and skips versions already published. Fails while
+      # the NPM_TOKEN repo secret is not set — expected until it lands.
+      - name: Publish to npm
+        run: pnpm changeset publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create tag and GitHub release
+        # The tag points at the checked-out commit: the squash-merge commit
+        # (Version PR) or the pushed tag's commit. `changeset publish` tags
+        # fresh publishes locally; cover every other path so the local ref
+        # always exists for --verify-tag, and push it when the remote lacks it.
+        run: |
+          TAG="v$(node -p "require('./package.json').version")"
+          git tag --force "$TAG"
+          if ! git ls-remote --exit-code origin "refs/tags/$TAG" >/dev/null; then
+            git push origin "$TAG"
+          fi
+          case "$TAG" in *-*) FLAGS="--prerelease" ;; esac
+          gh release create "$TAG" --verify-tag --generate-notes $FLAGS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

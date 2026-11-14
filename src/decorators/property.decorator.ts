@@ -25,8 +25,6 @@ const TYPE_ALIASES: Record<string, PropertyType> = {
 /**
 Register a property with an explicit type and config, e.g.
 `@Property({ type: 'string', index: true })`.
-
-Prefer this over `@String` to avoid shadowing global types.
 */
 export function Property(
   config: PropertyConfig = {},

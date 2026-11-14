@@ -75,7 +75,7 @@ neode
     console.log(JSON.stringify(adulthood.toJson(), null, 2)) // eslint-disable-line no-console
   })
   .catch((error) => {
-    console.log('Error :(', error.message, error.details) // eslint-disable-line no-console
+    console.log('Error :(', error.message, error.issues) // eslint-disable-line no-console
   })
   .then(() => {
     // Close all connections to the graph

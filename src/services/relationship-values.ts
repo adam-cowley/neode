@@ -2,10 +2,23 @@ import { NeodeError } from '../errors/index.js'
 import { getModel } from '../meta/index.js'
 import { EntitySchema, EntityType } from '../meta/entity/entity-schema.js'
 import type { PropertySchema } from '../meta/property-schema.js'
+import { PropertyType } from '../meta/property-schema.js'
 import type { RelationshipPropertySchema } from '../meta/relationship-property-schema.js'
 import { Direction } from '../query/direction.js'
 import { buildPropertySchema } from '../validation/rule-table.js'
+import { validate } from '../validation/index.js'
+import { convertPropertyValue } from '../utilities.js'
 import { isRecord } from './type-guards.js'
+
+/**
+Property types describing relationship internals, never set on the edge
+*/
+export const INTERNAL_PROPERTY_TYPES = new Set<PropertyType>([
+  PropertyType.INTERNAL_ID,
+  PropertyType.START_NODE,
+  PropertyType.END_NODE,
+  PropertyType.OTHER_NODE,
+])
 
 /**
 Relationship-value resolution for the write paths (NTS-627/628): the
@@ -71,6 +84,51 @@ export function validateEdgeProperties(
       )
     }
   }
+}
+
+/**
+Edge-property writes are writes like any other (NTS-509): validate the
+raw values against the relationship's declared `properties` schema, then
+convert to the stored form through the edge entity's property schemas
+when the relationship's target IS an edge entity. Internal node /
+relationship references never convert. Shared by relate() and the bulk
+paths.
+*/
+export function convertEdgeProperties(
+  relationship: RelationshipPropertySchema,
+  values: Record<string, unknown>,
+): Record<string, unknown> {
+  validateEdgeProperties(relationship, values)
+
+  const edgeTarget = relationship.getTarget()
+  const edgeSchema = typeof edgeTarget === 'function' ? getModel(edgeTarget) : undefined
+
+  if (
+    !(edgeSchema instanceof EntitySchema) ||
+    edgeSchema.getType() !== EntityType.RelationshipEntity
+  ) {
+    return values
+  }
+
+  const converted: Record<string, unknown> = {}
+
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined) {
+      continue
+    }
+
+    const property = edgeSchema.getProperties().find((candidate) => candidate.getKey() === key)
+
+    if (property !== undefined && INTERNAL_PROPERTY_TYPES.has(property.getType())) {
+      continue
+    }
+
+    converted[key] = property === undefined ? value : convertPropertyValue(value, property)
+  }
+
+  validate(converted, edgeSchema)
+
+  return converted
 }
 
 /**

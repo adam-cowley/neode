@@ -135,10 +135,11 @@ describe('skills pack (NTS-163)', () => {
     }
   })
 
-  it('version-pins, warns off training data, and names the @String replacement', () => {
+  it('version-pins, warns off training data, and teaches the string property form', () => {
     expect(skill).toContain('v0.0.0-test')
     expect(skill).toContain('not training data')
-    expect(skill).toContain("@Property({ type: 'string' })")
+    // NTS-670: the deprecated @String is removed — the skill must not teach it
+    expect(skill).not.toContain('@String')
   })
 })
 

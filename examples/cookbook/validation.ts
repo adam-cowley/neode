@@ -33,11 +33,11 @@ async function main(): Promise<void> {
       await neode.create(User, { name: 'A', email: 'not-an-email', age: 900 })
     } catch (error) {
       if (error instanceof Error && error.name === 'ValidationError') {
-        const details = (error as { details?: Array<{ message: string }> }).details ?? []
+        const issues = (error as { issues?: Array<{ message: string }> }).issues ?? []
 
-        console.error(`Rejected: ${details.length} failing checks`)
-        for (const detail of details) {
-          console.error(`- ${detail.message}`)
+        console.error(`Rejected: ${issues.length} failing checks`)
+        for (const issue of issues) {
+          console.error(`- ${issue.message}`)
         }
       } else {
         throw error

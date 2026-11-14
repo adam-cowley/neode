@@ -3,7 +3,6 @@ import {
   NodeEntity,
   Uuid,
   Version,
-  String,
   Number,
   InternalId,
   DateTime,
@@ -17,6 +16,8 @@ import {
 import { Direction } from '../../src/query'
 import { getModel } from '../../src/meta'
 import { ValidationError } from '../../src/validation'
+import { NeodeError } from '../../src/errors'
+import { BulkService, BulkChunkError } from '../../src/services/query/bulk.service'
 import { BulkService } from '../../src/services/query/bulk.service'
 import { PaginateService } from '../../src/services/query/paginate.service'
 
@@ -30,7 +31,7 @@ class BulkPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String({ min: 2 })
+  @Property({ type: 'string', min: 2 })
   name: string
 
   @Number()
@@ -111,7 +112,7 @@ class BulkAccount {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @Number()
@@ -126,11 +127,28 @@ class BulkPost {
   @Uuid({ primary: true })
   id: string
 
-  @String({ min: 2 })
+  @Property({ type: 'string', min: 2 })
   title: string
 
   @OneToMany(() => BulkPerson, 'WROTE', Direction.OUTGOING)
   author: BulkPerson[]
+}
+
+// NTS-649: the poison-row fixture — `code` carries a server-side unique
+// constraint installed (and dropped) by the failure-reporting describe below
+@NodeEntity()
+class BulkUniqueRow {
+  @InternalId()
+  _id: string
+
+  @Uuid({ primary: true })
+  id: string
+
+  @Property({ type: 'string', unique: true })
+  code: string
+
+  @Property({ type: 'string' })
+  name: string
 }
 
 // ---------------------------------------------------------------------------
@@ -272,6 +290,273 @@ describe('bulk (createMany / mergeMany)', () => {
     await expect(
       bulk.createMany(BulkPerson, schema, [{ name: 'Adam' }], { chunkSize: 0 }),
     ).rejects.toThrow(/chunkSize/i)
+  })
+})
+
+describe('relateMany', () => {
+  let backend: TestBackend
+  let bulk: BulkService
+
+  beforeAll(async () => {
+    backend = await openBackend()
+    bulk = new BulkService(backend.connection)
+  })
+
+  afterEach(async () => {
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    await backend.close()
+  })
+
+  async function edgeCount(): Promise<number> {
+    const output = await backend.connection.run(
+      'MATCH (:`BulkPost`)-[r:WROTE]->(:`BulkPerson`) RETURN count(r) AS n',
+      {},
+    )
+    return +output.records[0]!.get('n')
+  }
+
+  it('merges every row by primary-key value and reports the count', async () => {
+    const schema = getModel(BulkPerson)!
+    const people = (
+      await bulk.createMany(BulkPerson, schema, [
+        { id: '11111111-1111-4111-8111-111111111111', name: 'adam' },
+        { id: '22222222-2222-4222-8222-222222222222', name: 'grace' },
+      ])
+    ).flatMap((chunk) => chunk.entities)
+    const posts = (
+      await bulk.createMany(BulkPost, getModel(BulkPost)!, [
+        { id: '33333333-3333-4333-8333-333333333333', title: 'graphs' },
+        { id: '44444444-4444-4444-8444-444444444444', title: 'cypher' },
+      ])
+    ).flatMap((chunk) => chunk.entities)
+
+    const result = await bulk.relateMany(getModel(BulkPost)!, 'author', [
+      { from: posts[0]!.id, to: people[0]!.id, properties: { weight: 1 } },
+      { from: posts[1]!.id, to: people[1]!.id },
+      { from: posts[0]!.id, to: people[1]!.id },
+    ])
+
+    expect(result).toEqual({ related: 3, chunks: 1 })
+    expect(await edgeCount()).toBe(3)
+  })
+
+  it('is idempotent: re-running the same rows never duplicates edges', async () => {
+    await bulk.createMany(BulkPerson, getModel(BulkPerson)!, [
+      { id: '11111111-1111-4111-8111-111111111111', name: 'adam' },
+    ])
+    await bulk.createMany(BulkPost, getModel(BulkPost)!, [
+      { id: '33333333-3333-4333-8333-333333333333', title: 'graphs' },
+    ])
+
+    const rows = [
+      { from: '33333333-3333-4333-8333-333333333333', to: '11111111-1111-4111-8111-111111111111' },
+    ]
+    await bulk.relateMany(getModel(BulkPost)!, 'author', rows)
+    const second = await bulk.relateMany(getModel(BulkPost)!, 'author', rows)
+
+    expect(second.related).toBe(1)
+    expect(await edgeCount()).toBe(1)
+  })
+
+  it('applies edge properties to created and matched edges alike', async () => {
+    await bulk.createMany(BulkPerson, getModel(BulkPerson)!, [
+      { id: '11111111-1111-4111-8111-111111111111', name: 'adam' },
+    ])
+    await bulk.createMany(BulkPost, getModel(BulkPost)!, [
+      { id: '33333333-3333-4333-8333-333333333333', title: 'graphs' },
+    ])
+
+    const rows = [
+      {
+        from: '33333333-3333-4333-8333-333333333333',
+        to: '11111111-1111-4111-8111-111111111111',
+        properties: { weight: 2 },
+      },
+    ]
+    await bulk.relateMany(getModel(BulkPost)!, 'author', rows)
+    await bulk.relateMany(getModel(BulkPost)!, 'author', [
+      { ...rows[0]!, properties: { weight: 9 } },
+    ])
+
+    const output = await backend.connection.run(
+      'MATCH (:`BulkPost`)-[r:WROTE]->(:`BulkPerson`) RETURN r.weight AS w',
+      {},
+    )
+    expect(+output.records[0]!.get('w')).toBe(9)
+    expect(await edgeCount()).toBe(1)
+  })
+
+  it('skips rows whose endpoints do not match, without error', async () => {
+    await bulk.createMany(BulkPerson, getModel(BulkPerson)!, [
+      { id: '11111111-1111-4111-8111-111111111111', name: 'adam' },
+    ])
+    await bulk.createMany(BulkPost, getModel(BulkPost)!, [
+      { id: '33333333-3333-4333-8333-333333333333', title: 'graphs' },
+    ])
+
+    const result = await bulk.relateMany(getModel(BulkPost)!, 'author', [
+      { from: '33333333-3333-4333-8333-333333333333', to: '11111111-1111-4111-8111-111111111111' },
+      { from: '99999999-9999-4999-8999-999999999999', to: '11111111-1111-4111-8111-111111111111' },
+    ])
+
+    expect(result.related).toBe(1)
+    expect(await edgeCount()).toBe(1)
+  })
+
+  it('chunks large row sets across statements', async () => {
+    const schema = getModel(BulkPerson)!
+    const people = (
+      await bulk.createMany(
+        BulkPerson,
+        schema,
+        Array.from({ length: 5 }, (_, index) => ({
+          id: `55555555-5555-4555-8555-${index.toString().padStart(12, '0')}`,
+          name: `person-${index}`,
+        })),
+      )
+    ).flatMap((chunk) => chunk.entities)
+    const posts = (
+      await bulk.createMany(
+        BulkPost,
+        getModel(BulkPost)!,
+        Array.from({ length: 5 }, (_, index) => ({
+          id: `66666666-6666-4666-8666-${index.toString().padStart(12, '0')}`,
+          title: `post-${index}`,
+        })),
+      )
+    ).flatMap((chunk) => chunk.entities)
+
+    const rows = people.flatMap((person, index) =>
+      posts.map((post) => ({ from: post.id, to: person.id })),
+    )
+
+    const result = await bulk.relateMany(getModel(BulkPost)!, 'author', rows, { chunkSize: 10 })
+
+    expect(result.related).toBe(25)
+    expect(result.chunks).toBe(3)
+    expect(await edgeCount()).toBe(25)
+  })
+
+  it('rejects a relationship the model does not declare', async () => {
+    await expect(
+      bulk.relateMany(getModel(BulkPost)!, 'notDeclared', [{ from: 'a', to: 'b' }]),
+    ).rejects.toThrow(NeodeError)
+  })
+})
+
+// ---- NTS-649: a failed chunk names its failing rows; its valid rows roll back with it ----
+
+describe('bulk chunk failure reporting (NTS-649)', () => {
+  let backend: TestBackend
+  let bulk: BulkService
+
+  const schema = () => getModel(BulkUniqueRow)!
+
+  beforeAll(async () => {
+    backend = await openBackend()
+    bulk = new BulkService(backend.connection)
+
+    if (backend.capabilities.constraints) {
+      await backend.connection.run(
+        'CREATE CONSTRAINT bulk_nts649_code IF NOT EXISTS FOR (n:BulkUniqueRow) REQUIRE n.code IS UNIQUE',
+      )
+    }
+  })
+
+  afterEach(async () => {
+    await backend.clearGraph()
+  })
+
+  afterAll(async () => {
+    if (backend.capabilities.constraints) {
+      try {
+        await backend.connection.run('DROP CONSTRAINT bulk_nts649_code IF EXISTS')
+      } catch {
+        // not all backends support dropping constraints
+      }
+    }
+
+    await backend.close()
+  })
+
+  it('reports the failing row of a mid-import chunk and rolls the chunk back', async () => {
+    if (!backend.capabilities.constraints) {
+      return
+    }
+
+    // The poison target: a node the batch's third row collides with
+    await backend.connection.run(
+      "CREATE (:BulkUniqueRow { code: 'taken-1', name: 'pre-existing' })",
+    )
+
+    const error = await bulk
+      .createMany(
+        BulkUniqueRow,
+        schema(),
+        [
+          { code: 'row-0', name: 'Ok 0' },
+          { code: 'row-1', name: 'Ok 1' },
+          { code: 'taken-1', name: 'Poison' },
+          { code: 'row-3', name: 'Ok 3' },
+        ],
+        { chunkSize: 2 },
+      )
+      .then(
+        () => null,
+        (thrown) => thrown,
+      )
+
+    expect(error).toBeInstanceOf(BulkChunkError)
+    expect(error?.chunkIndex).toBe(1)
+    expect(error?.failedRows.map((failure) => failure.index)).toEqual([2])
+    expect(error?.message).toContain('earlier chunks stay committed')
+
+    // Fate: the first chunk committed; the failed chunk's valid row
+    // (index 3) rolled back with it, and the pre-existing node survives
+    const stored = await backend.neode.readCypher(
+      'MATCH (n:BulkUniqueRow) RETURN n.code AS code ORDER BY n.code',
+    )
+
+    expect(stored.records.map((record) => record.get('code'))).toEqual([
+      'row-0',
+      'row-1',
+      'taken-1',
+    ])
+  })
+
+  it('reports every failing row of a chunk together', async () => {
+    if (!backend.capabilities.constraints) {
+      return
+    }
+
+    await backend.connection.run(
+      "UNWIND $targets AS target CREATE (:BulkUniqueRow { code: target, name: 'pre-existing' })",
+      { targets: ['taken-1', 'taken-2'] },
+    )
+
+    const error = await bulk
+      .createMany(
+        BulkUniqueRow,
+        schema(),
+        [
+          { code: 'row-0', name: 'Ok 0' },
+          { code: 'taken-1', name: 'Poison 1' },
+          { code: 'row-2', name: 'Ok 2' },
+          { code: 'taken-2', name: 'Poison 2' },
+        ],
+        { chunkSize: 4 },
+      )
+      .then(
+        () => null,
+        (thrown) => thrown,
+      )
+
+    expect(error).toBeInstanceOf(BulkChunkError)
+    expect(error?.chunkIndex).toBe(0)
+    expect(error?.failedRows.map((failure) => failure.index)).toEqual([1, 3])
   })
 })
 

@@ -10,7 +10,7 @@ import {
   Number,
   Readonly,
   Required,
-  String,
+  Property,
   Uuid,
   Version,
 } from '../../src/decorators'
@@ -28,11 +28,11 @@ class GuardedDoc {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   @Required()
   title: string
 
-  @String()
+  @Property({ type: 'string' })
   @Readonly()
   species: string
 

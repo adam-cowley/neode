@@ -3,11 +3,15 @@ import type { Direction } from '../query/index.js'
 import { PropertyType, type PropertySchema } from './property-schema.js'
 
 import type {
+  ClaimConflictPolicy,
   RelationshipCardinality,
   RelationshipPropertySchema,
 } from './relationship-property-schema.js'
 
-export type { RelationshipCardinality } from './relationship-property-schema.js'
+export type {
+  ClaimConflictPolicy,
+  RelationshipCardinality,
+} from './relationship-property-schema.js'
 
 import { EntitySchema, EntityType } from './entity/entity-schema.js'
 import type { PropertyConfig } from '../decorators/property-config.interface.js'
@@ -297,6 +301,8 @@ export function mergeRelationshipProperty(
   description?: string,
   isCascade = false,
   cardinality?: RelationshipCardinality,
+  enforce?: string,
+  claimConflict?: ClaimConflictPolicy,
 ): RelationshipPropertySchema {
   const model = mergeModel(constructor)
 
@@ -316,6 +322,16 @@ export function mergeRelationshipProperty(
   // Write-time cardinality (NTS-161): undefined derives from the many flag
   if (cardinality !== undefined) {
     relationship.setCardinality(cardinality)
+  }
+
+  // DB-enforced inverse cardinality (NTS-663)
+  if (enforce !== undefined) {
+    relationship.setEnforce(enforce)
+  }
+
+  // Claim-conflict policy (NTS-663)
+  if (claimConflict !== undefined) {
+    relationship.setClaimConflict(claimConflict)
   }
 
   // Agent-facing relationship explanation (NTS-445)

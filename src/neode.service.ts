@@ -57,6 +57,7 @@ import type {
   ReadOptions,
   WithSpec,
 } from './query/load-spec.js'
+import type { WhereFilter, WhereFilterLevel } from './query/where-filter.js'
 import { quote } from './query/quote.js'
 import type { Repository } from './repository/index.js'
 import { FactoryBuilder } from './services/factory.service.js'
@@ -64,6 +65,8 @@ import { assertPublicWithoutFilters, WITHOUT_ALL_FILTERS } from './services/quer
 import {
   type BulkChunk,
   type BulkOptions,
+  type RelateManyResult,
+  type RelateManyRow,
   BulkService,
   type RowPropertiesResult,
   type RowToPropertiesOptions,
@@ -98,7 +101,7 @@ import {
   type ReplaceRelationshipOptions,
   ReplaceRelationshipService,
 } from './services/query/replace-relationship.service.js'
-import { hydrateWrittenNode } from './services/write-utilities.js'
+import { addEnforceClaimRemoval, hydrateWrittenNode } from './services/write-utilities.js'
 import { type ParallelBody, type ParallelOptions, runParallel } from './transaction/parallel.js'
 import { rollbackAfterFailure } from './transaction/rollback.js'
 import {
@@ -117,6 +120,7 @@ import { UpdateService, type UpdateGuard } from './services/query/update.service
 import { WithinDistanceService } from './services/query/within-distance.service.js'
 import {
   type ApplySchemaDiffOptions,
+  type ApplySchemaDriftReport,
   applySchemaDrift,
   formatSchemaDrift,
   type SchemaDrift,
@@ -167,6 +171,17 @@ envelope.
 */
 function isSchemaDefinition(value: unknown): value is SchemaDefinition {
   return isRecord(value)
+}
+
+/**
+Per-call database override (NTS-644, NTS-645), intersected onto the option
+bags of the facade's paginate() / findManyAndCount() / search() and the
+schema-management methods: wins over the setDatabase() default. The
+service-level bags stay free of it — those services run on the runner /
+connection they are given, and its scope fixes the database.
+*/
+interface PerCallDatabaseOption {
+  database?: string | undefined
 }
 
 /* eslint-disable unicorn/prefer-event-target -- the event emitter is shared with TransactionalService (its constructor takes it and calls on/emit), which an EventTarget adapter would break */
@@ -346,6 +361,54 @@ export class Neode implements INeode {
     return (
       ambient?.runner ?? (await this.connection.beginTransaction(mode, database ?? this.database))
     )
+  }
+
+  /**
+  The runner the per-call-`database` reads run on (NTS-644): with a
+  target — the per-call argument, else the setDatabase() default — the
+  instance connection with it threaded to the port (the query services
+  take a bare Runner, which cannot name a database); without a target, or
+  inside an ambient transaction (bound to one database at open time —
+  NTS-156), getRunner().
+  */
+  private runnerOn(database?: string): Runner {
+    const target = database ?? this.database
+
+    if (target === undefined || ambientTransaction()) {
+      return this.getRunner()
+    }
+
+    return {
+      run: async (statement, parameters) =>
+        this.connection.run(statement, parameters, undefined, target),
+    }
+  }
+
+  /**
+  The connection the schema-management statements run on (NTS-645): the
+  ConnectionProvider counterpart of runnerOn() — the schema services take
+  the whole port (they probe its edition), so the per-call `database`
+  threads as a view of the instance connection whose every statement
+  (DDL, SHOW, edition probe forwards) lands in the target. Without a
+  target, the instance connection itself — exactly today's behaviour,
+  edition-probe cache included. Schema DDL never joins the ambient
+  transaction (it ran autocommit before per-call databases existed), so
+  no ambientTransaction() check here.
+  */
+  private connectionOn(database?: string): ConnectionProvider {
+    const target = database ?? this.database
+
+    if (target === undefined) {
+      return this.connection
+    }
+
+    return {
+      run: async (statement, parameters, mode) =>
+        this.connection.run(statement, parameters, mode, target),
+      beginTransaction: async (mode) => this.connection.beginTransaction(mode, target),
+      edition: async () => this.connection.edition(),
+      close: async () => this.connection.close(),
+    }
   }
 
   /**
@@ -1203,12 +1266,13 @@ export class Neode implements INeode {
   }
 
   /**
-  Run statements to create the schema
+  Run statements to create the schema. A `database` option installs into
+  that database per call (NTS-645), winning over the setDatabase() default.
   */
-  async installSchema(): Promise<SchemaResult[]> {
+  async installSchema(options: PerCallDatabaseOption = {}): Promise<SchemaResult[]> {
     // NTS-598 — EXISTS / property-type constraints follow the edition
     // detected from the connection, not the manual flag
-    const service = new SchemaService(this.connection)
+    const service = new SchemaService(this.connectionOn(options.database))
 
     return service.create()
   }
@@ -1218,9 +1282,11 @@ export class Neode implements INeode {
   index the registered models declare on the connected database (by
   deterministic name, so objects other applications created under other
   names are untouched) — never run it against a database you do not own.
+  A `database` option drops from that database per call (NTS-645), winning
+  over the setDatabase() default.
   */
-  async dropSchema(): Promise<SchemaResult[]> {
-    const service = new SchemaService(this.connection)
+  async dropSchema(options: PerCallDatabaseOption = {}): Promise<SchemaResult[]> {
+    const service = new SchemaService(this.connectionOn(options.database))
 
     return service.drop()
   }
@@ -1326,6 +1392,13 @@ export class Neode implements INeode {
     }
   }
 
+  async get<C extends Newable>(
+    constructor: C,
+    parameters: WhereFilter<C>,
+    limit?: number,
+    skip?: number,
+    databaseOrOptions?: string | { withoutFilters?: string[] | undefined },
+  ): Promise<InstanceType<C>[]>
   async get<T>(
     constructor: new (...arguments_: never[]) => T,
     parameters: Record<string, unknown>,
@@ -1378,12 +1451,17 @@ export class Neode implements INeode {
     }
   }
 
-  async getFirst<T>(
-    constructor: new (...arguments_: never[]) => T,
+  async getFirst<C extends Newable>(
+    constructor: C,
+    parameters: WhereFilter<C>,
+    database?: string,
+  ): Promise<InstanceType<C> | undefined>
+  async getFirst(
+    constructor: Newable,
     parameters: Record<string, unknown>,
     database?: string,
-  ): Promise<T | undefined> {
-    const records = await this.get<T>(constructor, parameters, 1, 0, database)
+  ): Promise<unknown> {
+    const records = await this.get(constructor, parameters, 1, 0, database)
 
     return records[0]
   }
@@ -1392,15 +1470,21 @@ export class Neode implements INeode {
   Find the first node matching a key / value pair (or a property map),
   neode's Model.first(): sugar over getFirst()
   */
-  async first<T>(
-    constructor: new (...arguments_: never[]) => T,
+  async first<C extends Newable>(
+    constructor: C,
+    key: string | WhereFilter<C>,
+    value?: unknown,
+    database?: string,
+  ): Promise<InstanceType<C> | undefined>
+  async first(
+    constructor: Newable,
     key: string | Record<string, unknown>,
     value?: unknown,
     database?: string,
-  ): Promise<T | undefined> {
+  ): Promise<unknown> {
     const parameters = typeof key === 'object' ? key : { [key]: value }
 
-    return this.getFirst<T>(constructor, parameters, database)
+    return this.getFirst(constructor, parameters, database)
   }
 
   async save<T>(entity: T, database?: string): Promise<T> {
@@ -1954,10 +2038,11 @@ export class Neode implements INeode {
     query: string,
     limit?: number,
     filters?: { withoutFilters?: string[] | undefined },
+    database?: string,
   ): Promise<ScoredEntity<T>[]> {
     assertPublicWithoutFilters(filters?.withoutFilters)
 
-    return search<T>(this.getRunner(), constructor, indexName, query, limit, filters)
+    return search<T>(this.runnerOn(database), constructor, indexName, query, limit, filters)
   }
 
   /**
@@ -1997,10 +2082,13 @@ export class Neode implements INeode {
   /**
   Read the installed database schema (SHOW CONSTRAINTS / SHOW INDEXES)
   and diff it against the declared schema of the registered models
-  (NTS-142)
+  (NTS-142). A `database` option inspects that database per call
+  (NTS-645), winning over the setDatabase() default.
   */
-  async inspectSchema(options: InspectOptions = {}): Promise<SchemaInspection> {
-    return inspectSchema(this.connection, options)
+  async inspectSchema(
+    options: InspectOptions & PerCallDatabaseOption = {},
+  ): Promise<SchemaInspection> {
+    return inspectSchema(this.connectionOn(options.database), options)
   }
 
   /**
@@ -2021,10 +2109,11 @@ export class Neode implements INeode {
   every index kind (range/text/fulltext/vector), each entry carrying
   the exact fix statement (NTS-450). Drift is data, not an error —
   this never throws on drift; failing a CI run on a non-empty diff is
-  the caller's job.
+  the caller's job. A `database` option inspects that database per call
+  (NTS-645), winning over the setDatabase() default.
   */
-  async schemaDiff(options: InspectOptions = {}): Promise<SchemaDrift> {
-    return schemaDrift(this.connection, options)
+  async schemaDiff(options: InspectOptions & PerCallDatabaseOption = {}): Promise<SchemaDrift> {
+    return schemaDrift(this.connectionOn(options.database), options)
   }
 
   /**
@@ -2039,13 +2128,25 @@ export class Neode implements INeode {
   Apply the missing objects of a schema drift idempotently; stale
   objects are only dropped with `dropStale: true` (dropping is
   destructive: they are installed on the connected database, which on a
-  shared one may belong to other applications). Reports each statement like installSchema (NTS-450)
+  shared one may belong to other applications). Reports each statement like installSchema (NTS-450).
+  A `database` option applies against that database per call (NTS-645),
+  winning over the setDatabase() default. `returnDriftAfter: true`
+  (NTS-659) runs one post-apply inspection pass and returns
+  `{ statements, driftAfter }` — one probe serves apply + verification.
   */
   async applySchemaDiff(
     diff: SchemaDrift,
-    options: ApplySchemaDiffOptions = {},
-  ): Promise<SchemaResult[]> {
-    return applySchemaDrift(this.connection, diff, options)
+    options: ApplySchemaDiffOptions & PerCallDatabaseOption & { returnDriftAfter: true },
+  ): Promise<ApplySchemaDriftReport>
+  async applySchemaDiff(
+    diff: SchemaDrift,
+    options?: ApplySchemaDiffOptions & PerCallDatabaseOption,
+  ): Promise<SchemaResult[]>
+  async applySchemaDiff(
+    diff: SchemaDrift,
+    options: ApplySchemaDiffOptions & PerCallDatabaseOption = {},
+  ): Promise<SchemaResult[] | ApplySchemaDriftReport> {
+    return applySchemaDrift(this.connectionOn(options.database), diff, options)
   }
 
   /**
@@ -2207,6 +2308,28 @@ export class Neode implements INeode {
   }
 
   /**
+  Bulk MERGE of relationships (NTS-637): rows name the from- and to-nodes
+  by primary-key value, one UNWIND statement per chunk matches both
+  endpoints and MERGEs the edge — re-running the same rows never
+  duplicates an edge (relate()'s idempotency, per pair). The relationship
+  is the from-model's DECLARED relationship key; the to-model is its
+  declared target; restricted cardinalities and edge-entity (relationship
+  entity) targets are rejected — use relate() for those.
+  */
+  async relateMany(
+    constructor: new (...arguments_: never[]) => unknown,
+    key: string,
+    rows: RelateManyRow[] = [],
+    options: BulkOptions = {},
+    database?: string,
+  ): Promise<RelateManyResult> {
+    return new BulkService(this.getRunner()).relateMany(this.getSchema(constructor), key, rows, {
+      ...options,
+      database,
+    })
+  }
+
+  /**
   Map one import row (a CSV / JSON / NDJSON record) to the property map
   createMany() / mergeMany() take: header renames, defaults, fakes,
   transforms, validation and type conversion through the model schema —
@@ -2225,26 +2348,28 @@ export class Neode implements INeode {
   Pagination helper (NTS-125). Offset mode — `{ page, limit, order? }` —
   returns `{ items, total, page, limit, totalPages }`; keyset mode —
   `{ limit, orderBy?, after?/before? }` — walks a temporal property and
-  returns `{ items, nextCursor, hasMore }`
+  returns `{ items, nextCursor, hasMore }`. A `database` option on either
+  shape targets a database per call (NTS-644), winning over the
+  setDatabase() default.
   */
-  async paginate<T>(
-    constructor: new (...arguments_: never[]) => T,
-    filter: Record<string, unknown>,
-    options: OffsetPaginateOptions,
-  ): Promise<Page<T>>
-  async paginate<T>(
-    constructor: new (...arguments_: never[]) => T,
-    filter: Record<string, unknown>,
-    options: CursorPaginateOptions,
-  ): Promise<CursorPage<T>>
+  async paginate<C extends Newable>(
+    constructor: C,
+    filter: WhereFilter<C>,
+    options: OffsetPaginateOptions & PerCallDatabaseOption,
+  ): Promise<Page<InstanceType<C>>>
+  async paginate<C extends Newable>(
+    constructor: C,
+    filter: WhereFilter<C>,
+    options: CursorPaginateOptions & PerCallDatabaseOption,
+  ): Promise<CursorPage<InstanceType<C>>>
   async paginate<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown> = {},
-    options?: OffsetPaginateOptions | CursorPaginateOptions,
+    options?: (OffsetPaginateOptions | CursorPaginateOptions) & PerCallDatabaseOption,
   ): Promise<Page<T> | CursorPage<T>> {
     assertPublicWithoutFilters(options?.withoutFilters)
 
-    return new PaginateService(this.getRunner()).paginate<T>(
+    return new PaginateService(this.runnerOn(options?.database)).paginate<T>(
       constructor,
       this.getSchema(constructor),
       filter,
@@ -2255,16 +2380,23 @@ export class Neode implements INeode {
   /**
   Non-paginated `{ items, total }` read (NTS-166): every entity matching
   the filter plus its total in one call. Options trim the data read
-  only — `total` is always the full filter count.
+  only — `total` is always the full filter count. A `database` option
+  targets a database per call (NTS-644), winning over the setDatabase()
+  default.
   */
+  async findManyAndCount<C extends Newable>(
+    constructor: C,
+    filter?: WhereFilter<C>,
+    options?: FindManyAndCountOptions & PerCallDatabaseOption,
+  ): Promise<ManyAndCount<InstanceType<C>>>
   async findManyAndCount<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown> = {},
-    options: FindManyAndCountOptions = {},
+    options: FindManyAndCountOptions & PerCallDatabaseOption = {},
   ): Promise<ManyAndCount<T>> {
     assertPublicWithoutFilters(options.withoutFilters)
 
-    return new PaginateService(this.getRunner()).findManyAndCount<T>(
+    return new PaginateService(this.runnerOn(options.database)).findManyAndCount<T>(
       constructor,
       this.getSchema(constructor),
       filter,
@@ -2278,6 +2410,13 @@ export class Neode implements INeode {
   order; return false to stop early. Resolves to the number of items
   delivered.
   */
+  async chunk<C extends Newable>(
+    constructor: C,
+    filter: WhereFilter<C>,
+    size: number,
+    callback: (items: InstanceType<C>[]) => unknown,
+    options?: { orderBy?: string; withoutFilters?: string[] | undefined },
+  ): Promise<number>
   async chunk<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown>,
@@ -2303,6 +2442,11 @@ export class Neode implements INeode {
   out of the for-await loop stops the walk cleanly — each page is its
   own autocommit read, so no session is left open.
   */
+  lazy<C extends Newable>(
+    constructor: C,
+    filter?: WhereFilter<C>,
+    options?: StreamOptions,
+  ): AsyncGenerator<InstanceType<C>>
   async *lazy<T>(
     constructor: new (...arguments_: never[]) => T,
     filter: Record<string, unknown> = {},
@@ -2339,7 +2483,7 @@ export class Neode implements INeode {
   */
   async all<C extends Newable, const WithSpecT extends QueryLoadSpec<C> = never>(
     constructor: C,
-    parameters?: Record<string, unknown>,
+    parameters?: WhereFilter<C>,
     order?: OrderSpec,
     limit?: number,
     skip?: number,
@@ -2348,7 +2492,7 @@ export class Neode implements INeode {
   ): Promise<LoadedEntity<InstanceType<C>, WithSpecT>[]>
   async all<T>(
     constructor: new (...arguments_: never[]) => T,
-    parameters?: Record<string, unknown>,
+    parameters?: WhereFilterLevel<T>,
     order?: OrderSpec,
     limit?: number,
     skip?: number,
@@ -2416,6 +2560,18 @@ export class Neode implements INeode {
   (neode's FindWithinDistance). The model's named read filters apply;
   `filters.withoutFilters` opts names out (NTS-574).
   */
+  async withinDistance<C extends Newable>(
+    constructor: C,
+    locationProperty: string,
+    point: unknown,
+    distance: number,
+    parameters?: WhereFilter<C>,
+    order?: OrderSpec,
+    limit?: number,
+    skip?: number,
+    database?: string,
+    filters?: { withoutFilters?: string[] | undefined },
+  ): Promise<InstanceType<C>[]>
   async withinDistance<T>(
     constructor: new (...arguments_: never[]) => T,
     locationProperty: string,
@@ -2521,6 +2677,21 @@ export class Neode implements INeode {
           : loaded
 
       if (!isSchemaDefinition(candidate)) {
+        // NTS-665: a class default export self-registers on import when it
+        // carries decorators (or is a defineModel virtual class) — decorators
+        // are the house default, so that side-effect registration wins and
+        // the scan skips the file rather than re-registering the constructor
+        // under the file name. An unregistered class is still a mistake.
+        if (typeof candidate === 'function') {
+          if (getModel(candidate) instanceof EntitySchema) {
+            continue
+          }
+
+          throw new NeodeError(
+            `Cannot register model "${name}" from ${file}: the module default-exports a class, and withDirectory() registers map-schema modules only. A decorated class self-registers on import — import it explicitly instead of scanning it, or default-export a plain schema definition from the file.`,
+          )
+        }
+
         throw new TypeError(
           `Cannot register model "${name}" from ${file}: the module did not export a schema definition`,
         )
@@ -2676,7 +2847,13 @@ export class Neode implements INeode {
       })
     }
 
-    const { query, params: parameters } = matchBuilder()
+    // NTS-663: release the enforce claims the deleted nodes hold before
+    // the edges go — the bulk statement bypasses DeleteService
+    const removalBuilder = matchBuilder()
+
+    addEnforceClaimRemoval(removalBuilder, schema, 'n')
+
+    const { query, params: parameters } = removalBuilder
       .detachDelete('n')
       .return('count(n) AS count')
       .build()

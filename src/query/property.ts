@@ -29,13 +29,13 @@ export class Property {
   toString(): string {
     // Keys arrive as composed references (`alias.key` from the write
     // services, a bare alias with `+=`) — quote only the trailing
-    // property-key segment; a caller-pre-quoted segment passes through
-    // (NTS-605)
+    // property-key segment; a pre-quoted segment passes through
+    // (safeKey is idempotent, NTS-675)
     const dot = this.key.indexOf('.')
     const reference = dot === -1 ? '' : this.key.slice(0, dot + 1)
     const tail = dot === -1 ? this.key : this.key.slice(dot + 1)
 
-    return `${reference}${tail.includes('`') ? tail : safeKey(tail)} ${this.operator} ${this.param}`.trim()
+    return `${reference}${safeKey(tail)} ${this.operator} ${this.param}`.trim()
   }
 
   toInlineString(): string {

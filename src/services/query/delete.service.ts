@@ -12,6 +12,7 @@ import { NeodeError } from '../../errors/neode-error.js'
 // eslint-disable-next-line unicorn/name-replacements -- `QueryParams` is the documented public API name (driver/types.ts), imported by name in the test suites
 import type { QueryParams } from '../../driver/types.js'
 import {
+  addEnforceClaimRemoval,
   stampExpression,
   timestampProperty,
   versionBump,
@@ -32,10 +33,16 @@ destructive-guards precedent): a call with no filters deletes EVERY node
 carrying the model's labels, so it is refused unless confirmed with
 `all: true` — a filtered call proceeds as the fast bulk wipe.
 */
-export function assertDeleteAllScope(parameters: Record<string, unknown>, labels: string[]): void {
-  const filters = Object.keys(parameters).filter((key) => key !== 'all')
+export function assertDeleteAllScope(parameters: object, labels: string[]): void {
+  // Entries avoid a record cast — the typed WhereFilter bags (NTS-646) are
+  // not index-signatured, so the guard reads key/value pairs instead
+  const entries = Object.entries(parameters)
 
-  if (filters.length === 0 && parameters['all'] !== true) {
+  const filters = entries.filter(([key]) => key !== 'all')
+
+  const hasAllConfirmation = entries.find(([key]) => key === 'all')?.[1] === true
+
+  if (!hasAllConfirmation && filters.length === 0) {
     throw new NeodeError(
       `deleteAll() refused on ${labels.join(':') || 'model'} — with no filters it deletes ` +
         'every node carrying the model’s labels, including nodes your filters would ' +
@@ -157,6 +164,13 @@ export class DeleteService extends QueryService {
       .relationship(relationship.getType(), relationship.getDirection(), relationshipAlias)
       .to(nodeAlias, targetSchema instanceof EntitySchema ? targetSchema.getLabels() : false)
 
+    // NTS-663: the node about to be cascade-deleted may hold claims of its
+    // own — release them before its DETACH DELETE, at every depth (the
+    // deletion is recursive, so the stale-claim hazard is too)
+    if (targetSchema instanceof EntitySchema) {
+      addEnforceClaimRemoval(builder, targetSchema, nodeAlias)
+    }
+
     if (targetSchema instanceof EntitySchema) {
       for (const targetRelationship of targetSchema.getRelationships()) {
         this.addCascadeDelete(
@@ -234,6 +248,12 @@ export class DeleteService extends QueryService {
         if (isAll && options.mode === 'detach') {
           // Delete the relationships to related nodes first, then the node
           // itself: related nodes survive (neode DeleteNode.js addDetachNode)
+
+          // NTS-663: release every enforce claim the deleted node holds
+          // before the edges go. Subqueries keep the row fan-out flat —
+          // the cascade frames' alias chains are untouched.
+          addEnforceClaimRemoval(builder, schema, THIS_NODE)
+
           for (const [index, relationship] of schema.getRelationships().entries()) {
             // A previous segment deleted its relationships — carry `this` over
             if (index > 0) {
@@ -251,11 +271,18 @@ export class DeleteService extends QueryService {
 
           builder.detachDelete(THIS_NODE)
         } else if (options?.cascade === false) {
+          addEnforceClaimRemoval(builder, schema, THIS_NODE)
+
           builder.detachDelete(THIS_NODE)
         } else {
           // Recursively match and delete related nodes, bounded by depth
           // (neode DeleteNode.js addCascadeDeleteNode) — 'annotated' selection
           // walks only the relationships declared `cascade: true`
+
+          // NTS-663: release the claims before the edges go — cascade
+          // frames match on the edges, so this runs first
+          addEnforceClaimRemoval(builder, schema, THIS_NODE)
+
           for (const relationship of schema.getRelationships()) {
             this.addCascadeDelete(
               builder,

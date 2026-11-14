@@ -300,7 +300,9 @@ export function extractDocs(srcDir: string): ExtractedDocs {
   const dedupe = (symbols: ExtractedSymbol[]): ExtractedSymbol[] => {
     const seen = new Map<string, ExtractedSymbol>()
     for (const symbol of symbols) if (!seen.has(symbol.name)) seen.set(symbol.name, symbol)
-    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
+    // code-unit order, not localeCompare: ICU collation differs across Node
+    // versions/platforms and made --check non-deterministic between dev and CI
+    return [...seen.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   }
 
   const areas = [...AREAS, CORE_DEF]
@@ -647,6 +649,7 @@ export function renderAgentsMd(docs: ExtractedDocs, version: string): string {
     '```',
     '',
     ...renderSymbolList(area('Schema management'), 'Schema management API'),
+    ...codegenRecipeSection(),
     '## Query',
     '',
     '```ts',
@@ -718,10 +721,13 @@ export function renderPages(docs: ExtractedDocs, version: string): DocPage[] {
       area.name,
       area.blurb,
       // NTS-632: the raw-rows recipe rides the Querying page, below the
-      // generated symbol reference
+      // generated symbol reference. NTS-682: the adopt-an-existing-graph
+      // recipe rides the Schema management page the same way.
       area.name === 'Querying'
-        ? [...symbolSections(area.symbols), ...queryingRecipeSection()]
-        : symbolSections(area.symbols),
+        ? [...symbolSections(area.symbols), ...queryingRecipeSection(), ...trustBoundarySection()]
+        : area.name === 'Schema management'
+          ? [...symbolSections(area.symbols), ...codegenRecipeSection()]
+          : symbolSections(area.symbols),
     ),
   )
 
@@ -809,6 +815,190 @@ const people = await neode.getRepository(Person).findAll({}, { with: { orders: t
 
 function queryingRecipeSection(): string[] {
   return QUERYING_RECIPE.split('\n')
+}
+
+/**
+The trust boundary (NTS-675): which arguments are safe for user input and
+which are trusted-only. Appended to the Querying page, below the symbol
+reference and the raw-rows recipe.
+*/
+const TRUST_BOUNDARY = `## Trust boundary — what is safe for user input
+
+Every VALUE a query carries binds as a parameter: filters, properties,
+full-text query strings, vectors — user input is safe there. Identifiers
+(labels, relationship types, property keys, order directions, limits,
+skips, degrees) cannot be bound: the library backtick-escapes or validates
+them, so schema-declared and semi-trusted strings are safe too
+(\`safeKey\` / \`quote\` / \`assertDirection\` / \`assertCount\`, all
+idempotent on already-quoted input).
+
+Raw-expression channels render VERBATIM into the statement and are
+TRUSTED-INPUT ONLY — never pass user-supplied text:
+
+- \`RawExpression\` property values, \`@Expression\` projections and the
+  \`cypher\` option of \`@Derived\` — the expression must never interpolate
+  data; bind values it references via \`param(name, value)\` and reference
+  them as \`$name\`.
+- \`expr()\` / \`caseExpr()\` compose single expressions from fragments —
+  same rule for every fragment.
+- \`whereRaw()\`, \`whereExists(pattern)\`, \`whereAny()\`, \`return()\`,
+  \`unwind()\`, \`setExpr()\` / \`onCreateSetExpr()\` / \`onMatchSetExpr()\`,
+  \`callProcedure()\`, \`call\` / \`forEach\` sub-builders, \`remove()\`,
+  \`delete()\` / \`detachDelete()\` and \`orderBy()\` FIELD terms (the field
+  may be any expression, so it cannot be escaped — the model-read services
+  escape user order keys via \`orderTerms()\` before reaching it).
+- Aliases and path variables must be plain identifiers
+  (\`match\` / \`create\` / \`merge\` / \`to\` / \`relationship\` /
+  \`asPath\` / \`whereId\` assert this — they cannot be escaped without
+  changing meaning).
+- \`runCypherScript()\` / \`splitCypherStatements()\` — the script IS
+  Cypher by definition; a .cypher file on disk is trusted input.
+- Schema DDL (\`createUniqueConstraint\` and friends) — labels, properties
+  and index names come from the model definitions; the SchemaService
+  composers backtick-quote them, the Builder DDL composes them unquoted.
+
+Model-defined named filters (\`@Filter where\`) and \`setFilterParams\`
+values are developer-declared; filter VALUES bind as parameters, and
+\`withoutFilters: ['*']\` is rejected on every public read (NTS-610) — a
+user-supplied string can never switch off tenancy or soft delete. The
+\`neode/express\` router is a write-open surface (mount auth in front of
+it) but an injection-closed one: query keys map onto DECLARED property
+filters as parameters, unknown keys are dropped, \`order\` / \`sort\`
+travel as OrderSpec data through the escaping order renderer, and nothing
+on a request can reach \`withoutFilters\`, \`wipe()\` or any destructive
+call.
+`
+
+function trustBoundarySection(): string[] {
+  return TRUST_BOUNDARY.split('\n')
+}
+
+/**
+The adopting-an-existing-graph recipe (NTS-682): the neode-generate CLI,
+both output styles, the scaffold-then-verify workflow and the fidelity
+limits of the introspector. Hand-maintained in this script (the bin and
+generateModels() are not public exports the symbol walk could pick up) and
+appended to the Schema management page and AGENTS.md.
+*/
+const CODEGEN_RECIPE = `## Adopting an existing graph
+
+Adopting neode on a database that already holds data does not start with
+hand-writing every model: introspect the live graph once, take the output
+as a scaffold, hand-correct it, and verify the models against the database
+from then on.
+
+### Generate
+
+The \`neode-generate\` CLI ships with the package (the \`bin/neode-generate\`
+entry of package.json):
+
+\`\`\`sh
+neode-generate --uri bolt://localhost:7687 --username neo4j --password secret \\
+  [--database neo4j] [--sample 100] [--labels Person,Movie] [--out ./src/models]
+\`\`\`
+
+| Flag | Meaning |
+| --- | --- |
+| \`--uri\` / \`--username\` / \`--password\` | required connection settings — \`NEO4J_URI\` / \`NEO4J_USERNAME\` / \`NEO4J_PASSWORD\` are read as fallbacks |
+| \`--database\` | target database (optional) |
+| \`--sample\` | nodes sampled per label for property-type inference, default 100 |
+| \`--labels\` | comma-separated allow-list — scope generation to a subgraph |
+| \`--out\` | write \`models.ts\` + \`schema.ts\` into the directory; without it both render to stdout |
+
+Warnings print to stderr: conflicting members (a property whose sampled
+values have mixed types, clashing relationship keys, undeclarable keys) are
+LEFT OUT and reported, not fatal. A label without data produces no model.
+
+The same walk is available in code as \`neode.generateModels({ sampleSize, labels })\`
+on an instance — it is not a named export of the package root.
+
+### The two output styles
+
+\`models.ts\` — decorated classes:
+
+\`\`\`ts
+// Generated by neode-generate — entity models introspected from a live graph.
+import { NodeEntity, Property, RelatedMany } from 'neode'
+
+@NodeEntity()
+export class Person {
+  @Property({ type: 'string', primary: true }) id?: string
+  @Property({ type: 'string' }) name?: string
+  @RelatedMany({ type: 'ACTED_IN', direction: 'out', target: () => Movie }) actedIn?: Movie[]
+}
+\`\`\`
+
+\`schema.ts\` — map schemas, the same registry and behaviour via \`defineModel()\`:
+
+\`\`\`ts
+// Generated by neode-generate — map-schema definitions introspected from a live graph.
+import { defineModel } from 'neode'
+
+defineModel('Person', {
+  id: { type: 'string', primary: true },
+  name: { type: 'string' },
+  ACTED_IN: { type: 'relatedMany', relationship: 'ACTED_IN', direction: 'out', target: 'Movie' },
+})
+\`\`\`
+
+### What the scaffold gets wrong on purpose — hand-correct these
+
+Introspection samples data; it cannot read intent:
+
+- **Relationships emit as read-only projections.** \`@RelatedOne\` /
+  \`@RelatedMany\` (map: \`relatedOne\` / \`relatedMany\`) are eager READ
+  projections — the walk cannot know which relationships a consumer writes
+  through. Swap to \`@OneToOne\` / \`@OneToMany\` where the property takes writes.
+- **Direction is always \`'out'\`.** The walk captures every relationship once,
+  from its source label — an incoming edge appears on the other label's model.
+- **Cardinality is inferred from the sampled degree** — when the sample holds
+  more relationships than source nodes for a (type, target), it renders as
+  many; a sparsely populated one-to-many can come out \`relatedOne\`.
+- **Every property is optional.** Sampling cannot prove NOT NULL — tighten
+  with \`@Required\` / \`required: true\` where the model demands it.
+- **Temporal and spatial types render \`unknown\`** in the generated classes'
+  TS field types. The schema-side type is precise (\`date\`, \`datetime\`,
+  \`point\`, …) — declare the TS type by stacking the type decorator
+  (\`@DateTime()\`, \`@Date()\`, \`@Point()\`) on the property.
+- **Properties absent from the sample are missed.** A property set only on
+  nodes the sample did not read does not exist in the output — raise
+  \`--sample\`, or declare it by hand.
+
+The primary key is suggested from the property of the label's uniqueness
+constraint (\`primary: true\`), and constraints/indexes are deliberately NOT
+re-declared — \`installSchema()\` manages them from the models, so
+generate → register → \`installSchema()\` round-trips with no drift.
+
+### Verify in CI: generate once, drift-check forever
+
+The generated files are hand-maintained source from that first generate on —
+re-running \`neode-generate\` OVERWRITES them (one-shot scaffold, no merge with
+existing definitions). The ongoing verification is drift checking, not
+regeneration:
+
+\`\`\`ts
+import { formatSchemaDrift } from 'neode'
+
+const drift = await neode.schemaDiff() // the facade form of schemaDrift()
+const entries = [drift.constraints, drift.indexes].flatMap((group) => [
+  ...group.missing,
+  ...group.stale,
+  ...group.mismatched,
+])
+
+if (entries.length > 0) {
+  console.error(formatSchemaDrift(drift))
+  process.exitCode = 1 // drift is data, not an error — failing the run is the caller's job
+}
+\`\`\`
+
+Run it in CI against a representative database: when a hand-edit to the
+models or a migration on the database leaves the two disagreeing, the run
+fails with the exact fix statement per entry.
+`
+
+function codegenRecipeSection(): string[] {
+  return CODEGEN_RECIPE.split('\n')
 }
 
 /**
@@ -902,7 +1092,6 @@ export function renderSkillMd(version: string): string {
     '## Common mistakes',
     '',
     "- Relationship keys are not relationship types: `relate(from, to, 'pets')` takes the declared field key; the Cypher pattern uses the TYPE (`:OWNS`). The projection decorators take types.",
-    "- `@String` is deprecated — it shadows the global `String` type and logs a runtime warning. Use `@Property({ type: 'string' })`.",
     '- Errors name the fix: on `OptimisticLockError` reload the entity and retry; on `RelationNotLoadedError` add the named key to the `with` load spec.',
     '- Pass user text through `toFulltextQuery()` before `search()` — parameter binding stops Cypher injection, not Lucene parse errors.',
     '- Standard TC39 decorators only — never `experimentalDecorators`, `emitDecoratorMetadata` or `reflect-metadata`.',
