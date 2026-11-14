@@ -264,6 +264,19 @@ export type {
   RelationshipOntology,
 } from './meta/ontology.js'
 
+// Ontology Graph Spec import (NTS-683): spec document → map schemas
+export { ontologySpecToSchemas } from './meta/ontology-spec.js'
+export type {
+  OntologySpecModel,
+  OntologySpecNode,
+  OntologySpecRelationship,
+  OntologySpecRelationshipTarget,
+  OntologySpecProperty,
+  OntologySpecConstraint,
+  OntologySpecIndex,
+  OntologySpecLabels,
+} from './meta/ontology-spec.js'
+
 // Factories & seeding (NTS-444)
 export { FactoryBuilder } from './services/factory.service.js'
 export type { FactoryWithSpec } from './services/factory.service.js'
