@@ -267,6 +267,7 @@ const FROZEN_TYPE_SURFACE = [
   'TransformConfig',
   'TransformedQueryOutput',
   'TraversalRow',
+  'UpdateGuard',
   'ValidationIssue',
   'VectorConfig',
   'VectorIndexDefinition',

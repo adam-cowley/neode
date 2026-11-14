@@ -48,7 +48,7 @@ import {
   ReplaceRelationshipService,
   type ReplaceRelationshipOptions,
 } from '../services/query/replace-relationship.service.js'
-import { UpdateService } from '../services/query/update.service.js'
+import { UpdateService, type UpdateGuard } from '../services/query/update.service.js'
 import { WithinDistanceService } from '../services/query/within-distance.service.js'
 import { search, type ScoredEntity } from '../services/query/search.service.js'
 import { knn, type KnnMode } from '../services/query/knn.service.js'
@@ -226,6 +226,69 @@ export class TransactionalService implements INeode {
     })
 
     return { saved, created, summary }
+  }
+
+  /**
+  The shared body of update() / updateWhere() (NTS-688): the guard, when
+  given, renders into the statement as a WHERE predicate and turns a
+  zero-row outcome into a clean "not written" result.
+  */
+  private async updateInternal<T>(
+    entity: T,
+    properties: Record<string, unknown> = {},
+    guard?: UpdateGuard,
+    database?: string,
+  ): Promise<T | undefined> {
+    this.ignoreDatabaseOverride(database)
+
+    if (!isRecord(entity)) {
+      throw new TypeError('update requires an entity object')
+    }
+
+    const schema = this.getSchema(entity.constructor)
+
+    // NTS-596: beforeSave before the statement — errors fail the write
+    await this.observers.run(entity.constructor, 'beforeSave', properties, {
+      isNew: false,
+      database: undefined,
+    })
+
+    // NTS-633: the update statement's RETURN carries the mutated node —
+    // hydrate it directly; FindByIdService stays as the fallback
+    // (write-path re-hydration bypasses the read filters —
+    // WITHOUT_ALL_FILTERS)
+    const output = await new UpdateService(this.handle).update(schema, entity, properties, guard)
+
+    const elementId = elementIdOfEntity(schema, entity)
+
+    const constructor: unknown = entity.constructor
+
+    if (!isConstructorOf<T>(constructor)) {
+      throw new TypeError('The updated entity has no model constructor')
+    }
+
+    const saved = await hydrateWrittenNode<T>(constructor, schema, this.handle, output, elementId)
+
+    // NTS-688: a guarded update that matched zero rows wrote nothing —
+    // resolve undefined instead of the hydration fallback re-reading the
+    // unchanged node
+    if (guard !== undefined && output.records.length === 0) {
+      return undefined
+    }
+
+    if (saved !== undefined) {
+      // NTS-582: event + afterSave fire after the transaction commits
+      this.effects.defer(async () => {
+        this.eventEmitter.emit(EventType.NODE_UPDATED, saved)
+
+        await this.observers.run(constructor, 'afterSave', saved, {
+          isNew: false,
+          database: undefined,
+        })
+      })
+    }
+
+    return saved
   }
 
   getRunner(): Runner {
@@ -648,49 +711,22 @@ export class TransactionalService implements INeode {
     properties: Record<string, unknown> = {},
     database?: string,
   ): Promise<T | undefined> {
-    this.ignoreDatabaseOverride(database)
+    return await this.updateInternal(entity, properties, undefined, database)
+  }
 
-    if (!isRecord(entity)) {
-      throw new TypeError('update requires an entity object')
-    }
-
-    const schema = this.getSchema(entity.constructor)
-
-    // NTS-596: beforeSave before the statement — errors fail the write
-    await this.observers.run(entity.constructor, 'beforeSave', properties, {
-      isNew: false,
-      database: undefined,
-    })
-
-    // NTS-633: the update statement's RETURN carries the mutated node —
-    // hydrate it directly; FindByIdService stays as the fallback
-    // (write-path re-hydration bypasses the read filters —
-    // WITHOUT_ALL_FILTERS)
-    const output = await new UpdateService(this.handle).update(schema, entity, properties)
-
-    const elementId = elementIdOfEntity(schema, entity)
-
-    const constructor: unknown = entity.constructor
-
-    if (!isConstructorOf<T>(constructor)) {
-      throw new TypeError('The updated entity has no model constructor')
-    }
-
-    const saved = await hydrateWrittenNode<T>(constructor, schema, this.handle, output, elementId)
-
-    if (saved !== undefined) {
-      // NTS-582: event + afterSave fire after the transaction commits
-      this.effects.defer(async () => {
-        this.eventEmitter.emit(EventType.NODE_UPDATED, saved)
-
-        await this.observers.run(constructor, 'afterSave', saved, {
-          isNew: false,
-          database: undefined,
-        })
-      })
-    }
-
-    return saved
+  /**
+  UPDATE the given properties only when a guard predicate holds on the
+  matched node (NTS-688) — mirror of the facade's updateWhere. The guard is
+  trusted-input Cypher referencing the node as `this`; resolves `undefined`
+  when it failed (zero matched rows), with no lifecycle events, and a stale
+  @Version still throws `OptimisticLockError`.
+  */
+  async updateWhere<T>(
+    entity: T,
+    guard: UpdateGuard,
+    properties: Record<string, unknown> = {},
+  ): Promise<T | undefined> {
+    return await this.updateInternal(entity, properties, guard)
   }
 
   /**

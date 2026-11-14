@@ -437,6 +437,12 @@ A query result whose rows were mapped by a `recordTransformer` — the row shape
 
 _source: driver/types.ts_
 
+### `UpdateGuard` (interface)
+
+A compare-and-swap guard for the conditional update path (NTS-688): rendered verbatim as a WHERE predicate on the matched node — trusted-input only, the same class as `whereRaw()` / `@Expression`. Reference the node as `this`. Values go through `params`, bound as Cypher parameters.
+
+_source: services/query/update.service.ts_
+
 ### `WITHOUT_ALL_FILTERS` (const)
 
 The reserved withoutFilters entry that disables EVERY named filter for the query — the write paths' internal re-hydration (save / create / merge / update hydrate the row their own RETURN carries, falling back to a FindByIdService re-read where RETURN cannot serve) must find rows the current filter view hides. Filters are a read policy; writes never read through them. Internal service call sites pass it directly to the query services; the public read option bags (facade, TransactionalService, Repository, load specs, traverse) reject it through assertPublicWithoutFilters (NTS-610) — without that gate one user-supplied string switches off tenancy AND soft delete on any read.

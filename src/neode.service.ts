@@ -116,7 +116,7 @@ import {
 } from './services/query/paginate.service.js'
 import { RelateService } from './services/query/relate.service.js'
 import { type ScoredEntity, search } from './services/query/search.service.js'
-import { UpdateService } from './services/query/update.service.js'
+import { UpdateService, type UpdateGuard } from './services/query/update.service.js'
 import { WithinDistanceService } from './services/query/within-distance.service.js'
 import {
   type ApplySchemaDiffOptions,
@@ -553,6 +553,83 @@ export class Neode implements INeode {
     })
 
     return { saved, created, summary }
+  }
+
+  /**
+  The shared body of update() / updateWhere() (NTS-688): the guard, when
+  given, renders into the statement as a WHERE predicate and turns a
+  zero-row outcome into a clean "not written" result.
+  */
+  private async updateInternal<T>(
+    entity: T,
+    properties: Record<string, unknown> = {},
+    guard?: UpdateGuard,
+    options?: CreateOptions | string,
+    database?: string,
+  ): Promise<T | undefined> {
+    if (!isRecord(entity)) {
+      throw new TypeError('Cannot update a value that is not an entity object')
+    }
+
+    const entityConstructor: unknown = entity.constructor
+
+    if (!isConstructorOf<T>(entityConstructor)) {
+      throw new TypeError('Cannot update a value whose constructor is not a class')
+    }
+
+    const schema = this.getSchema(entityConstructor)
+
+    const relate = typeof options === 'string' ? undefined : options?.relate
+
+    const databaseArg = typeof options === 'string' ? options : database
+
+    // NTS-596: beforeSave before the statement — errors fail the write
+    await this.observers.run(entityConstructor, 'beforeSave', properties, {
+      isNew: false,
+      database: databaseArg,
+    })
+
+    const tx = await this.beginWorkTransaction('WRITE', databaseArg)
+
+    try {
+      // NTS-633: the update statement's RETURN carries the mutated node —
+      // hydrate it directly; FindByIdService stays as the fallback
+      // (write-path re-hydration bypasses the read filters —
+      // WITHOUT_ALL_FILTERS)
+      const output = await new UpdateService(tx).update(schema, entity, properties, guard)
+
+      // NTS-615: eager relationships — same transaction as the update;
+      // the entity is hydrated, so RelateService matches it by identity
+      await this.eagerRelate(schema, entity, undefined, relate, tx)
+
+      const elementId = elementIdOfEntity(schema, entity)
+
+      const hydrated = await hydrateWrittenNode<T>(entityConstructor, schema, tx, output, elementId)
+
+      await tx.commit()
+
+      // NTS-688: a guarded update that matched zero rows wrote nothing —
+      // resolve undefined instead of re-hydrating the unchanged node (the
+      // hydrateWrittenNode fallback re-reads the node, which would paper
+      // over a failed guard). Nothing written — no lifecycle fires,
+      // mirroring save()'s clean-instance no-op
+      if (hydrated === undefined || (guard !== undefined && output.records.length === 0)) {
+        return undefined
+      }
+
+      await this.afterCommit(ambientTransaction(), async () => {
+        this.eventEmitter.emit(EventType.NODE_UPDATED, hydrated)
+
+        await this.observers.run(entityConstructor, 'afterSave', hydrated, {
+          isNew: false,
+          database: databaseArg,
+        })
+      })
+
+      return hydrated
+    } catch (error) {
+      return await rollbackAfterFailure(tx, error)
+    }
   }
 
   getConnection(): ConnectionProvider {
@@ -1646,66 +1723,25 @@ export class Neode implements INeode {
     options?: CreateOptions | string,
     database?: string,
   ): Promise<T | undefined> {
-    if (!isRecord(entity)) {
-      throw new TypeError('Cannot update a value that is not an entity object')
-    }
+    return await this.updateInternal(entity, properties, undefined, options, database)
+  }
 
-    const entityConstructor: unknown = entity.constructor
-
-    if (!isConstructorOf<T>(entityConstructor)) {
-      throw new TypeError('Cannot update a value whose constructor is not a class')
-    }
-
-    const schema = this.getSchema(entityConstructor)
-
-    const relate = typeof options === 'string' ? undefined : options?.relate
-
-    const databaseArg = typeof options === 'string' ? options : database
-
-    // NTS-596: beforeSave before the statement — errors fail the write
-    await this.observers.run(entityConstructor, 'beforeSave', properties, {
-      isNew: false,
-      database: databaseArg,
-    })
-
-    const tx = await this.beginWorkTransaction('WRITE', databaseArg)
-
-    try {
-      // NTS-633: the update statement's RETURN carries the mutated node —
-      // hydrate it directly; FindByIdService stays as the fallback
-      // (write-path re-hydration bypasses the read filters —
-      // WITHOUT_ALL_FILTERS)
-      const output = await new UpdateService(tx).update(schema, entity, properties)
-
-      // NTS-615: eager relationships — same transaction as the update;
-      // the entity is hydrated, so RelateService matches it by identity
-      await this.eagerRelate(schema, entity, undefined, relate, tx)
-
-      const elementId = elementIdOfEntity(schema, entity)
-
-      const hydrated = await hydrateWrittenNode<T>(entityConstructor, schema, tx, output, elementId)
-
-      await tx.commit()
-
-      // Nothing written (the entity carries no identity) — no lifecycle
-      // fires, mirroring save()'s clean-instance no-op
-      if (hydrated === undefined) {
-        return undefined
-      }
-
-      await this.afterCommit(ambientTransaction(), async () => {
-        this.eventEmitter.emit(EventType.NODE_UPDATED, hydrated)
-
-        await this.observers.run(entityConstructor, 'afterSave', hydrated, {
-          isNew: false,
-          database: databaseArg,
-        })
-      })
-
-      return hydrated
-    } catch (error) {
-      return await rollbackAfterFailure(tx, error)
-    }
+  /**
+  Update the given properties only when a guard predicate holds on the
+  matched node (NTS-688) — the compare-and-swap write for
+  "reserve/claim/transition only if still in state X" flows. The guard is
+  trusted-input Cypher referencing the node as `this`; its values bind as
+  parameters. Resolves `undefined` when the guard failed (zero matched
+  rows) — nothing written, no lifecycle events — and composes with @Version:
+  a stale version still throws `OptimisticLockError`.
+  */
+  async updateWhere<T>(
+    entity: T,
+    guard: UpdateGuard,
+    properties: Record<string, unknown> = {},
+    database?: string,
+  ): Promise<T | undefined> {
+    return await this.updateInternal(entity, properties, guard, undefined, database)
   }
 
   /**
