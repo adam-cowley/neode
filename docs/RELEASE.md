@@ -88,11 +88,11 @@ duplicate it.
   the changesets bot regenerates it unformatted.
 - **Merging the Version PR releases automatically** (NTS-684): the `release`
   job in `.github/workflows/release.yml` gates the merge commit (`pnpm lint`
-  + `pnpm typecheck` + `pnpm test:unit`), publishes to npm with
-  `changeset publish` (pre mode → the `next` npm dist-tag; already-published
-  versions are skipped) and then creates the `v<version>` tag and the GitHub
-  release with generated notes — pre-release versions are marked as GitHub
-  prereleases. Pushing a `v*` tag by hand releases that commit the same way.
+  - `pnpm typecheck` + `pnpm test:unit`), publishes to npm with
+    `changeset publish` (pre mode → the `next` npm dist-tag; already-published
+    versions are skipped) and then creates the `v<version>` tag and the GitHub
+    release with generated notes — pre-release versions are marked as GitHub
+    prereleases. Pushing a `v*` tag by hand releases that commit the same way.
 - **npm auth comes from the `NPM_TOKEN` repo secret** (setup-node's
   `registry-url` writes the `.npmrc` npm reads). Publishing is wired but
   gated on that secret: until it lands, the publish step fails after the
