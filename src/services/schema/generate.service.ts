@@ -13,10 +13,17 @@ out-degree — more than one relationship per source node renders as a
 "many").
 
 The unique constraint's property is suggested as the model's primary key
-(`primary: true`). Constraints and indexes are deliberately NOT re-declared:
-`installSchema()` manages them from the models, and the generated set must
-round-trip — generate → register → installSchema → no drift — without
-shadowing the database's installed schema under a second name.
+(`primary: true` + `unique: true`). Constraint flags are emitted ONLY under
+the name guard (NTS-681): a schema object whose name equals the neode-managed
+`schemaObjectName(label, [key], type)` is one `installSchema()` itself
+created, so re-declaring it round-trips — generate → register →
+installSchema → no drift — and a fresh database bootstrapped from the
+generated models keeps the source graph's guarantees. Hand-named constraints
+and indexes emit nothing: a second constraint over the same label+property
+would fail at apply time — the shadowing the generator was designed to avoid.
+Range indexes named by neode emit `index: true`; on an Enterprise connection
+a neode-named EXISTS constraint emits `exists: true` (Community emits
+nothing).
 
 Two output styles, both exactly the shapes the agent docs teach: decorated
 TypeScript classes (`@NodeEntity()` / `@Property()` / `@RelatedOne()`) and
@@ -44,6 +51,7 @@ import type {
 } from '../../meta/schema-definition.interface.js'
 import { quote } from '../../query/quote.js'
 import { isRecord } from '../type-guards.js'
+import { ConstraintType, isEnterpriseConnection, schemaObjectName } from './schema-objects.js'
 
 /**
 Options for generateModels.
@@ -515,11 +523,34 @@ function relationshipKey(type: string): string {
 }
 
 /**
+SHOW's type spellings for the kinds the generator emits flags for (mirrors
+the drift service's normaliseType): SHOW CONSTRAINTS reports uniqueness as
+UNIQUE (also UNIQUENESS, NODE_KEY — uniqueness plus existence) and
+existence as EXISTENCE; SHOW INDEXES reports range indexes as RANGE. The
+embedded Relate engine spells NODE_PROPERTY_UNIQUENESS /
+NODE_PROPERTY_EXISTENCE.
+*/
+function isUniqueKind(type: string): boolean {
+  const upper = type.replaceAll('_', ' ').toUpperCase()
+
+  return upper === 'NODE KEY' || upper.includes('UNIQUE')
+}
+
+function isExistsKind(type: string): boolean {
+  const upper = type.toUpperCase()
+
+  return upper === 'EXISTENCE' || upper === 'NODE_PROPERTY_EXISTENCE'
+}
+
+/**
 The uniqueness constraint backing one label's primary key: the first
-single-property uniqueness constraint on exactly that label. SHOW
-CONSTRAINTS spells the kind per server: UNIQUE (Neo4j), NODE_KEY
-(uniqueness plus existence), NODE_PROPERTY_UNIQUENESS (the embedded
-Relate engine).
+single-property uniqueness constraint on exactly that label whose NAME is
+the neode-managed `schemaObjectName(label, [key], UNIQUE)` (NTS-681). A
+hand-named constraint suggests nothing — `primary: true` would install a
+second constraint over the same label+property under neode's name and fail
+at apply time. SHOW CONSTRAINTS spells the kind per server: UNIQUE (Neo4j),
+NODE_KEY (uniqueness plus existence), NODE_PROPERTY_UNIQUENESS (the
+embedded Relate engine).
 */
 function primaryKeyFor(label: string, constraints: SchemaObjectRow[]): string | undefined {
   for (const constraint of constraints) {
@@ -532,10 +563,13 @@ function primaryKeyFor(label: string, constraints: SchemaObjectRow[]): string | 
       continue
     }
 
-    const type = constraint.type.replaceAll('_', ' ').toUpperCase()
+    const key = constraint.properties[0] ?? ''
 
-    if (type === 'NODE KEY' || type.includes('UNIQUE')) {
-      return constraint.properties[0]
+    if (
+      isUniqueKind(constraint.type) &&
+      constraint.name === schemaObjectName(label, [key], ConstraintType.UNIQUE)
+    ) {
+      return key
     }
   }
 
@@ -543,12 +577,142 @@ function primaryKeyFor(label: string, constraints: SchemaObjectRow[]): string | 
 }
 
 /**
-The SHOW CONSTRAINTS columns generateModels reads (the SchemaObject shape)
+The constraint flags one generated property may carry (NTS-681)
+*/
+interface ConstraintFlags {
+  unique?: boolean
+  index?: boolean
+  exists?: boolean
+}
+
+/**
+Name-guarded constraint flags for one label (NTS-681): only schema objects
+neode itself named — `schemaObjectName(label, [key], type)` — emit flags,
+because they are the re-declarations that round-trip (installSchema()
+creates every generated flag under the same name, so applying the generated
+models over the introspected database is a no-op, not a shadowing second
+constraint). Neode-named uniqueness → `unique: true` (the primary key is
+suggested under the same guard), range indexes → `index: true`, and —
+Enterprise connections only, the gate inspectSchema uses (NTS-598) —
+neode-named EXISTS constraints → `exists: true`.
+*/
+function constraintFlagsFor(
+  label: string,
+  constraints: SchemaObjectRow[],
+  indexes: SchemaObjectRow[],
+  isEnterprise: boolean,
+): Map<string, ConstraintFlags> {
+  const flags = new Map<string, ConstraintFlags>()
+  const for_ = (key: string): ConstraintFlags => {
+    const existing = flags.get(key)
+
+    if (existing !== undefined) {
+      return existing
+    }
+
+    const created: ConstraintFlags = {}
+
+    flags.set(key, created)
+
+    return created
+  }
+
+  const singlePropertyKeyOnLabel = (object: SchemaObjectRow): string | undefined => {
+    if (object.labelsOrTypes.length !== 1 || object.labelsOrTypes[0] !== label) {
+      return undefined
+    }
+
+    const key = object.properties[0] ?? ''
+
+    return key !== '' && object.properties.length === 1 ? key : undefined
+  }
+
+  for (const constraint of constraints) {
+    const key = singlePropertyKeyOnLabel(constraint)
+
+    if (key === undefined) {
+      continue
+    }
+
+    if (
+      isUniqueKind(constraint.type) &&
+      constraint.name === schemaObjectName(label, [key], ConstraintType.UNIQUE)
+    ) {
+      for_(key).unique = true
+    }
+
+    if (
+      isEnterprise &&
+      isExistsKind(constraint.type) &&
+      constraint.name === schemaObjectName(label, [key], ConstraintType.EXISTS)
+    ) {
+      for_(key).exists = true
+    }
+  }
+
+  for (const index of indexes) {
+    // A unique constraint's backing index reports the owning constraint —
+    // it is not an independent declaration
+    if (index.owningConstraint !== null || index.type.toUpperCase() !== 'RANGE') {
+      continue
+    }
+
+    const key = singlePropertyKeyOnLabel(index)
+
+    if (key !== undefined && index.name === schemaObjectName(label, [key], ConstraintType.INDEX)) {
+      for_(key).index = true
+    }
+  }
+
+  return flags
+}
+
+/**
+Merge the name-guarded constraint flags into a built model's property
+definitions and schema entries (NTS-681). Properties the walk dropped
+(sampling conflicts) keep no flags — there is nothing to flag.
+*/
+function applyConstraintFlags(model: GeneratedModel, flags: Map<string, ConstraintFlags>): void {
+  for (const [key, flag] of flags) {
+    const definition = model.properties[key]
+
+    if (definition === undefined) {
+      continue
+    }
+
+    if (flag.unique === true) {
+      definition.unique = true
+    }
+
+    if (flag.index === true) {
+      definition.index = true
+    }
+
+    if (flag.exists === true) {
+      definition.exists = true
+    }
+
+    // buildModel spread the primary key's schema entry over the (pre-flag)
+    // definition — rebuild it so the flagged definition renders. The name
+    // guard grants primary and unique together (the same constraint).
+    if (key === model.primaryKey) {
+      model.schema[key] = { ...definition, primary: true }
+    }
+  }
+}
+
+/**
+The SHOW CONSTRAINTS / SHOW INDEXES columns generateModels reads (the
+SchemaObject shape). `owningConstraint` is a SHOW INDEXES column: the
+constraint a constraint-backed index serves — such an index is not an
+independent declaration.
 */
 interface SchemaObjectRow {
+  name: string
   type: string
   labelsOrTypes: string[]
   properties: string[]
+  owningConstraint: string | null
 }
 
 function schemaObjectRow(row: QueryRecord): SchemaObjectRow {
@@ -560,12 +724,21 @@ function schemaObjectRow(row: QueryRecord): SchemaObjectRow {
       : []
   }
 
-  const type = row.has('type') ? row.get('type') : undefined
+  const string = (key: string): string => {
+    const value = row.has(key) ? row.get(key) : undefined
+
+    return typeof value === 'string' ? value : ''
+  }
+
+  const owningConstraint = row.has('owningConstraint') ? row.get('owningConstraint') : undefined
 
   return {
-    type: typeof type === 'string' ? type : '',
+    name: string('name'),
+    type: string('type'),
     labelsOrTypes: stringList('labelsOrTypes'),
     properties: stringList('properties'),
+    owningConstraint:
+      typeof owningConstraint === 'string' && owningConstraint !== '' ? owningConstraint : null,
   }
 }
 
@@ -811,6 +984,18 @@ function propertyConfig(definition: PropertyDefinition, isPrimaryKey: boolean): 
     parts.push('primary: true')
   }
 
+  if (definition.unique === true) {
+    parts.push('unique: true')
+  }
+
+  if (definition.index === true) {
+    parts.push('index: true')
+  }
+
+  if (definition.exists === true) {
+    parts.push('exists: true')
+  }
+
   return `{ ${parts.join(', ')} }`
 }
 
@@ -948,6 +1133,18 @@ export function renderMapModels(models: GeneratedModel[], warnings: string[] = [
         parts.push('primary: true')
       }
 
+      if (definition.unique === true) {
+        parts.push('unique: true')
+      }
+
+      if (definition.index === true) {
+        parts.push('index: true')
+      }
+
+      if (definition.exists === true) {
+        parts.push('exists: true')
+      }
+
       entries.push(`  ${memberName(key)}: { ${parts.join(', ')} },`)
     }
 
@@ -975,9 +1172,11 @@ export async function generateModels(
   const requested = Math.floor(options.sampleSize ?? DEFAULT_SAMPLE_SIZE)
   const sampleSize = Number.isFinite(requested) ? Math.max(1, requested) : DEFAULT_SAMPLE_SIZE
 
-  const [labelRows, constraintRows] = await Promise.all([
+  const [labelRows, constraintRows, indexRows, isEnterprise] = await Promise.all([
     connection.run('CALL db.labels()', {}, 'READ'),
     connection.run('SHOW CONSTRAINTS', {}, 'READ'),
+    connection.run('SHOW INDEXES', {}, 'READ'),
+    isEnterpriseConnection(connection),
   ])
 
   const wanted = options.labels
@@ -987,6 +1186,7 @@ export async function generateModels(
     .filter((label) => wanted === undefined || wanted.includes(label))
 
   const constraints = constraintRows.records.map((row) => schemaObjectRow(row))
+  const indexes = indexRows.records.map((row) => schemaObjectRow(row))
   const generatedLabels = new Set(labels)
 
   const classNames = assignClassNames(labels)
@@ -1036,6 +1236,10 @@ export async function generateModels(
       labelWarnings,
       classNames,
     )
+
+    if (model !== undefined) {
+      applyConstraintFlags(model, constraintFlagsFor(label, constraints, indexes, isEnterprise))
+    }
 
     return { model, labelWarnings }
   })
