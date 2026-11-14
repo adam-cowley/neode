@@ -244,6 +244,7 @@ export { WhereNull, LabelPredicate } from './query/index.js'
 // Schema drift workflow (NTS-450)
 export {
   schemaDrift,
+  inspectSchemaAndDrift,
   formatSchemaDrift,
   applySchemaDrift,
 } from './services/schema/drift.service.js'
