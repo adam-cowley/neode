@@ -203,7 +203,7 @@ import { NodeEntity, Property, RelatedMany } from 'neode'
 
 @NodeEntity()
 export class Person {
-  @Property({ type: 'string', primary: true }) id?: string
+  @Property({ type: 'string', primary: true, unique: true }) id?: string
   @Property({ type: 'string' }) name?: string
   @RelatedMany({ type: 'ACTED_IN', direction: 'out', target: () => Movie }) actedIn?: Movie[]
 }
@@ -216,7 +216,7 @@ export class Person {
 import { defineModel } from 'neode'
 
 defineModel('Person', {
-  id: { type: 'string', primary: true },
+  id: { type: 'string', primary: true, unique: true },
   name: { type: 'string' },
   ACTED_IN: { type: 'relatedMany', relationship: 'ACTED_IN', direction: 'out', target: 'Movie' },
 })
@@ -246,9 +246,17 @@ Introspection samples data; it cannot read intent:
   `--sample`, or declare it by hand.
 
 The primary key is suggested from the property of the label's uniqueness
-constraint (`primary: true`), and constraints/indexes are deliberately NOT
-re-declared — `installSchema()` manages them from the models, so
-generate → register → `installSchema()` round-trips with no drift.
+constraint (`primary: true` + `unique: true`), and constraint flags are
+emitted under a name guard: a constraint or index whose NAME is the
+neode-managed `schemaObjectName(label, [key], type)` is one
+`installSchema()` itself created, so the generated models re-declare
+exactly it — range indexes emit `index: true`, and on Enterprise a
+neode-named EXISTS constraint emits `exists: true` (Community emits
+nothing). Hand-named constraints and indexes emit nothing — a second
+constraint over the same label+property would fail at apply time. Under the
+guard, generate → register → `installSchema()` round-trips with no drift,
+and a fresh database bootstrapped from the generated models keeps the source
+graph's constraints.
 
 ### Verify in CI: generate once, drift-check forever
 

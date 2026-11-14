@@ -3,6 +3,7 @@
 // when this file's service imports are evaluated first.
 import { openBackend, TestBackend } from './support/backend'
 import { defineModel } from '../../src'
+import { ConstraintType, schemaObjectName } from '../../src/services/schema/schema-objects'
 
 /**
  * Database introspector round-trip (NTS-164): seed a small graph →
@@ -33,7 +34,9 @@ describe('generateModels round-trip', () => {
       `MATCH (n) WHERE n:\`Nts164Person\` OR n:\`Nts164Movie\` OR n:\`Nts164Mixed\` DETACH DELETE n`,
     )
     await backend.connection
-      .run('DROP CONSTRAINT nts164person_id_unique_fbcdeb32 IF EXISTS')
+      .run(
+        `DROP CONSTRAINT ${schemaObjectName('Nts164Person', ['id'], ConstraintType.UNIQUE)} IF EXISTS`,
+      )
       .catch(() => undefined)
 
     await backend.close()
@@ -43,7 +46,9 @@ describe('generateModels round-trip', () => {
     const createdAt = backend.capabilities.temporals ? ', createdAt: datetime()' : ''
 
     await backend.connection.run(
-      'CREATE CONSTRAINT nts164person_id_unique_fbcdeb32 IF NOT EXISTS ' +
+      'CREATE CONSTRAINT ' +
+        schemaObjectName('Nts164Person', ['id'], ConstraintType.UNIQUE) +
+        ' IF NOT EXISTS ' +
         'FOR (n:`Nts164Person`) REQUIRE n.id IS UNIQUE',
     )
     await backend.connection.run(
@@ -65,7 +70,7 @@ describe('generateModels round-trip', () => {
     const person = result.models.find((model) => model.label === 'Nts164Person')
 
     expect(person?.primaryKey).toBe('id')
-    expect(person?.schema['id']).toEqual({ type: 'string', primary: true })
+    expect(person?.schema['id']).toEqual({ type: 'string', primary: true, unique: true })
     expect(person?.schema['name']).toEqual({ type: 'string' })
     expect(person?.schema['age']).toEqual({ type: 'number' })
     expect(person?.schema['active']).toEqual({ type: 'boolean' })
@@ -88,7 +93,9 @@ describe('generateModels round-trip', () => {
 
     // The decorated output teaches the documented shapes
     expect(result.typescript).toContain('@NodeEntity()')
-    expect(result.typescript).toContain("@Property({ type: 'string', primary: true }) id?: string")
+    expect(result.typescript).toContain(
+      "@Property({ type: 'string', primary: true, unique: true }) id?: string",
+    )
     expect(result.typescript).toContain(
       "@RelatedMany({ type: 'NTS164_ACTED_IN', direction: 'out', target: () => Nts164Movie }) NTS164_ACTED_IN?: Nts164Movie[]",
     )
@@ -122,6 +129,89 @@ describe('generateModels round-trip', () => {
     expect(drift.indexes.stale.filter((entry) => onGeneratedLabels(entry.labelsOrTypes))).toEqual(
       [],
     )
+  })
+
+  it('bootstraps a fresh database: neode-named objects are re-declared, hand-named are not (NTS-681)', async () => {
+    if (!backend.capabilities.constraints) {
+      return
+    }
+
+    const uniqueName = schemaObjectName('Nts681Person', ['id'], ConstraintType.UNIQUE)
+    const indexName = schemaObjectName('Nts681Person', ['score'], ConstraintType.INDEX)
+    const HAND_NAMED = 'nts681_hand_named_unique'
+
+    await backend.connection.run(
+      `CREATE CONSTRAINT ${uniqueName} IF NOT EXISTS FOR (n:\`Nts681Person\`) REQUIRE n.id IS UNIQUE`,
+    )
+    await backend.connection.run(
+      `CREATE INDEX ${indexName} IF NOT EXISTS FOR (n:\`Nts681Person\`) ON (n.\`score\`)`,
+    )
+    await backend.connection.run(
+      `CREATE CONSTRAINT ${HAND_NAMED} IF NOT EXISTS FOR (n:\`Nts681Person\`) REQUIRE n.hand IS UNIQUE`,
+    )
+    await backend.connection.run(
+      "CREATE (:Nts681Person {id: 'p1', score: 1, hand: 'h1'}) " +
+        "CREATE (:Nts681Person {id: 'p2', score: 2, hand: 'h2'})",
+    )
+
+    try {
+      const result = await backend.neode.generateModels({ labels: ['Nts681Person'] })
+
+      const schema = result.models[0]?.schema
+
+      // neode-named objects emit their flags, the hand-named one nothing —
+      // a second constraint over the same label+property would fail at apply
+      expect(schema?.['id']).toEqual({ type: 'string', primary: true, unique: true })
+      expect(schema?.['score']).toEqual({ type: 'number', index: true })
+      expect(schema?.['hand']).toEqual({ type: 'string' })
+
+      // Fresh-database bootstrap: drop the neode-named objects, install the
+      // schema from the generated models, and they come back under the same
+      // names — while the hand-named constraint is neither duplicated nor
+      // shadowed
+      await backend.connection.run(`DROP CONSTRAINT ${uniqueName} IF EXISTS`)
+      await backend.connection.run(`DROP INDEX ${indexName} IF EXISTS`)
+
+      const model = result.models[0]
+
+      if (model !== undefined) {
+        defineModel('Nts681Person', model.schema)
+      }
+
+      const installed = await backend.neode.installSchema()
+
+      expect(installed.every((entry) => entry.success)).toBe(true)
+
+      const [constraintRows, indexRows] = await Promise.all([
+        backend.connection.run('SHOW CONSTRAINTS', {}, 'READ'),
+        backend.connection.run('SHOW INDEXES', {}, 'READ'),
+      ])
+      const constraintNames = constraintRows.records.map((row) => row.get('name'))
+      const indexNames = indexRows.records.map((row) => row.get('name'))
+
+      expect(constraintNames).toContain(uniqueName)
+      expect(indexNames).toContain(indexName)
+      expect(constraintNames.filter((name) => name === HAND_NAMED)).toHaveLength(1)
+
+      // The generated label's round-trip stays drift-free
+      const drift = await backend.neode.schemaDiff()
+
+      expect(
+        drift.constraints.missing.filter((entry) =>
+          entry.labelsOrTypes.some((label) => label === 'Nts681Person'),
+        ),
+      ).toEqual([])
+      expect(
+        drift.indexes.missing.filter((entry) =>
+          entry.labelsOrTypes.some((label) => label === 'Nts681Person'),
+        ),
+      ).toEqual([])
+    } finally {
+      await backend.connection.run('MATCH (n) WHERE n:`Nts681Person` DETACH DELETE n')
+      await backend.connection.run(`DROP CONSTRAINT ${uniqueName} IF EXISTS`)
+      await backend.connection.run(`DROP INDEX ${indexName} IF EXISTS`)
+      await backend.connection.run(`DROP CONSTRAINT ${HAND_NAMED} IF EXISTS`)
+    }
   })
 
   it('reports sampled type conflicts as warnings instead of aborting generation', async () => {

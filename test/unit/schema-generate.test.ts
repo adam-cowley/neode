@@ -13,6 +13,7 @@ import {
   renderDecoratedModels,
   renderMapModels,
 } from '../../src/services/schema/generate.service'
+import { ConstraintType, schemaObjectName } from '../../src/services/schema/schema-objects'
 
 /**
  * Model generation from an existing graph (NTS-164): type inference from
@@ -32,12 +33,14 @@ const record = (values: Record<string, unknown>): QueryRecord => ({
   has: (key) => key in values,
 })
 
-/** Provider answering the labels / constraints / sample / walk statements */
+/** Provider answering the labels / constraints / indexes / sample / walk statements */
 function provider(fixtures: {
   labels: string[]
   constraints?: QueryRecord[]
+  indexes?: QueryRecord[]
   samples: Record<string, unknown[]> // label -> node property maps
   walks?: Record<string, Record<string, unknown>[]>
+  edition?: 'enterprise' | 'community' | 'unknown'
 }): ConnectionProvider {
   return {
     run: async (statement: string) => {
@@ -49,6 +52,10 @@ function provider(fixtures: {
         return { records: fixtures.constraints ?? [] }
       }
 
+      if (statement === 'SHOW INDEXES') {
+        return { records: fixtures.indexes ?? [] }
+      }
+
       const label = /MATCH \(n:`([^`]+)`\)/.exec(statement)?.[1] ?? ''
       const rows = fixtures.samples[label] ?? []
 
@@ -58,6 +65,7 @@ function provider(fixtures: {
 
       return { records: rows.map(sample) }
     },
+    ...(fixtures.edition === undefined ? {} : { edition: async () => fixtures.edition }),
   } as unknown as ConnectionProvider
 }
 
@@ -233,7 +241,7 @@ describe('generateModels (fake provider)', () => {
       labels: ['Person', 'Empty'],
       constraints: [
         record({
-          name: 'person_id_unique',
+          name: schemaObjectName('Person', ['id'], ConstraintType.UNIQUE),
           type: 'UNIQUE',
           labelsOrTypes: ['Person'],
           properties: ['id'],
@@ -252,9 +260,146 @@ describe('generateModels (fake provider)', () => {
 
     expect(result.models.map((model) => model.label)).toEqual(['Person'])
     expect(result.models[0]?.primaryKey).toBe('id')
+    // The neode-named constraint emits primary + unique together (NTS-681)
+    expect(result.models[0]?.schema['id']).toEqual({
+      type: 'string',
+      primary: true,
+      unique: true,
+    })
     expect(result.models[0]?.schema['KNOWS']).toMatchObject({ target: 'Person' })
     expect(result.typescript).toContain('export class Person')
+    expect(result.typescript).toContain(
+      "@Property({ type: 'string', primary: true, unique: true }) id?: string",
+    )
     expect(result.mapSchema).toContain("defineModel('Person'")
+    expect(result.mapSchema).toContain("id: { type: 'string', primary: true, unique: true },")
+  })
+
+  it('emits no flags for hand-named constraints and indexes (NTS-681)', async () => {
+    const connection = provider({
+      labels: ['Person'],
+      constraints: [
+        record({
+          name: 'my_own_unique_name',
+          type: 'UNIQUE',
+          labelsOrTypes: ['Person'],
+          properties: ['id'],
+        }),
+      ],
+      indexes: [
+        record({
+          name: 'my_own_index_name',
+          type: 'RANGE',
+          labelsOrTypes: ['Person'],
+          properties: ['age'],
+          owningConstraint: null,
+        }),
+      ],
+      samples: { Person: [{ id: '1', age: 36 }] },
+    })
+
+    const result = await generateModels(connection)
+
+    // Hand-named: no primary suggestion (primary would install a second
+    // constraint over the same label+property) and no flags
+    expect(result.models[0]?.primaryKey).toBeUndefined()
+    expect(result.models[0]?.schema['id']).toEqual({ type: 'string' })
+    expect(result.models[0]?.schema['age']).toEqual({ type: 'number' })
+    expect(JSON.stringify(result.models[0]?.schema)).not.toContain('unique')
+    expect(JSON.stringify(result.models[0]?.schema)).not.toContain('index')
+  })
+
+  it('emits index: true from neode-named range indexes (NTS-681)', async () => {
+    const connection = provider({
+      labels: ['Person'],
+      indexes: [
+        record({
+          name: schemaObjectName('Person', ['age'], ConstraintType.INDEX),
+          type: 'RANGE',
+          labelsOrTypes: ['Person'],
+          properties: ['age'],
+          owningConstraint: null,
+        }),
+        // A unique constraint's backing index is not an independent declaration
+        record({
+          name: schemaObjectName('Person', ['id'], ConstraintType.INDEX),
+          type: 'RANGE',
+          labelsOrTypes: ['Person'],
+          properties: ['id'],
+          owningConstraint: schemaObjectName('Person', ['id'], ConstraintType.UNIQUE),
+        }),
+        // A full-text index is never a range-index flag
+        record({
+          name: 'person_plot_fulltext_abcdef01',
+          type: 'FULLTEXT',
+          labelsOrTypes: ['Person'],
+          properties: ['plot'],
+          owningConstraint: null,
+        }),
+      ],
+      samples: { Person: [{ id: '1', age: 36, plot: 'x' }] },
+    })
+
+    const result = await generateModels(connection)
+
+    expect(result.models[0]?.schema['age']).toEqual({ type: 'number', index: true })
+    expect(result.models[0]?.schema['id']).toEqual({ type: 'string' })
+    expect(result.models[0]?.schema['plot']).toEqual({ type: 'string' })
+    expect(result.mapSchema).toContain("age: { type: 'number', index: true },")
+  })
+
+  it('emits exists: true from neode-named EXISTS constraints on Enterprise only (NTS-681)', async () => {
+    const constraint = record({
+      name: schemaObjectName('Person', ['id'], ConstraintType.EXISTS),
+      type: 'EXISTENCE',
+      labelsOrTypes: ['Person'],
+      properties: ['id'],
+    })
+    const samples = { Person: [{ id: '1' }] }
+
+    const enterprise = await generateModels(
+      provider({ labels: ['Person'], constraints: [constraint], samples, edition: 'enterprise' }),
+    )
+
+    expect(enterprise.models[0]?.schema['id']).toEqual({ type: 'string', exists: true })
+
+    // Community: the same constraint emits nothing
+    const community = await generateModels(
+      provider({ labels: ['Person'], constraints: [constraint], samples, edition: 'community' }),
+    )
+
+    expect(community.models[0]?.schema['id']).toEqual({ type: 'string' })
+  })
+
+  it('keeps primary + unique + exists on one property when the graph carries both (NTS-681)', async () => {
+    const connection = provider({
+      labels: ['Person'],
+      constraints: [
+        record({
+          name: schemaObjectName('Person', ['id'], ConstraintType.UNIQUE),
+          type: 'UNIQUE',
+          labelsOrTypes: ['Person'],
+          properties: ['id'],
+        }),
+        record({
+          name: schemaObjectName('Person', ['id'], ConstraintType.EXISTS),
+          type: 'EXISTENCE',
+          labelsOrTypes: ['Person'],
+          properties: ['id'],
+        }),
+      ],
+      samples: { Person: [{ id: '1' }] },
+      edition: 'enterprise',
+    })
+
+    const result = await generateModels(connection)
+
+    expect(result.models[0]?.schema['id']).toEqual({
+      type: 'string',
+      primary: true,
+      unique: true,
+      exists: true,
+    })
   })
 })
 
@@ -337,7 +482,14 @@ describe('parseGenerateArgs', () => {
 const NEODE_STUB = `
 type Field = (value: undefined, context: ClassFieldDecoratorContext) => void
 export function NodeEntity(config?: { labels?: string[] }): (value: Function, context: ClassDecoratorContext) => void
-export function Property(config: { type: string; array?: boolean; primary?: boolean }): Field
+export function Property(config: {
+  type: string
+  array?: boolean
+  primary?: boolean
+  unique?: boolean
+  index?: boolean
+  exists?: boolean
+}): Field
 export function RelatedOne(config: { type: string; direction: string; target: () => unknown }): Field
 export function RelatedMany(config: { type: string; direction: string; target: () => unknown }): Field
 `
