@@ -53,6 +53,14 @@ import type {
   MergeResult,
   OffsetPaginateOptions,
   Ontology,
+  OntologySpecConstraint,
+  OntologySpecIndex,
+  OntologySpecLabels,
+  OntologySpecModel,
+  OntologySpecNode,
+  OntologySpecProperty,
+  OntologySpecRelationship,
+  OntologySpecRelationshipTarget,
   OrderSpec,
   Page,
   PaginateOptions,
@@ -149,7 +157,7 @@ function publicExportNames(): string[] {
 }
 
 /**
- * NTS-669 — the FROZEN type-only export surface (104 names): every export of
+ * NTS-669 — the FROZEN type-only export surface (112 names): every export of
  * src/index.ts that is not a runtime value. The runtime values are pinned
  * exactly by the `keyof Root` assertion above; a name appearing here that
  * becomes (or stops being) a value export fails both assertions, so the
@@ -195,6 +203,14 @@ const FROZEN_TYPE_SURFACE = [
   'MergeResult',
   'OffsetPaginateOptions',
   'Ontology',
+  'OntologySpecConstraint',
+  'OntologySpecIndex',
+  'OntologySpecLabels',
+  'OntologySpecModel',
+  'OntologySpecNode',
+  'OntologySpecProperty',
+  'OntologySpecRelationship',
+  'OntologySpecRelationshipTarget',
   'OrderSpec',
   'Page',
   'PaginateOptions',
@@ -377,6 +393,7 @@ describe('public export surface (NTS-600)', () => {
       | 'mergeResultFromSave'
       | 'ontology'
       | 'ontologyMarkdown'
+      | 'ontologySpecToSchemas'
       | 'projectionNode'
       | 'readFilterFragment'
       | 'registerRepository'
@@ -449,6 +466,14 @@ describe('public export surface (NTS-600)', () => {
         MergeResult<unknown>,
         OffsetPaginateOptions,
         Ontology,
+        OntologySpecConstraint,
+        OntologySpecIndex,
+        OntologySpecLabels,
+        OntologySpecModel,
+        OntologySpecNode,
+        OntologySpecProperty,
+        OntologySpecRelationship,
+        OntologySpecRelationshipTarget,
         OrderSpec,
         Page<unknown>,
         PaginateOptions,
