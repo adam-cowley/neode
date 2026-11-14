@@ -212,6 +212,19 @@ describe('renderers', () => {
     )
     expect(mapSchema).toContain("title: { type: 'string' }")
   })
+
+  it('omits reserved-key properties from map schemas and warns', () => {
+    const models: GeneratedModel[] = [
+      buildModel('Course', [{ description: 'd', title: 't' }], [], 'id', new Set(['Course'])),
+    ].filter((model) => model !== undefined)
+
+    const warnings: string[] = []
+    const mapSchema = renderMapModels(models, warnings)
+
+    expect(mapSchema).not.toContain('description')
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('Property "description" on Course')
+  })
 })
 
 describe('generateModels (fake provider)', () => {
