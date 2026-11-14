@@ -227,6 +227,54 @@ The full ontology over every registered model (NTS-445)
 
 _source: meta/ontology.ts_
 
+### `OntologySpecConstraint` (interface)
+
+One spec constraint (`NodeConstraintJs` / `RelationshipConstraintJs`).
+
+_source: meta/ontology-spec.ts_
+
+### `OntologySpecIndex` (interface)
+
+One spec index (`NodeIndexJs` / `RelationshipIndexJs`).
+
+_source: meta/ontology-spec.ts_
+
+### `OntologySpecLabels` (interface)
+
+The labels of a spec node (`LabelsJs`).
+
+_source: meta/ontology-spec.ts_
+
+### `OntologySpecModel` (interface)
+
+The plain-JS view of a decoded spec model (`GraphModelJs`, structurally typed — this module never imports the SDK).
+
+_source: meta/ontology-spec.ts_
+
+### `OntologySpecNode` (interface)
+
+One spec node (`NodeJs`), keyed by its id in `OntologySpecModel.nodes`.
+
+_source: meta/ontology-spec.ts_
+
+### `OntologySpecProperty` (interface)
+
+Map a Neo4j Ontology Graph Specification document (v1.1) to neode map schemas (NTS-683). The spec (https://neo4j.com/docs/ontology-graph-spec/) is Neo4j's official, versioned YAML/JSON format for graph models. Parsing and validation stay with the spec's own SDK — decode a document with `@neo4j/ontology-graph-spec` (a devDependency used in tests only; neode's runtime never imports it), then hand the decoded model to this mapper through the SDK's plain-JS bridge: import { GraphSpec, GraphModelEditor } from '@neo4j/ontology-graph-spec' const model = GraphSpec.Json.decodeFromString(document) // or GraphSpec.Yaml const schemas = ontologySpecToSchemas(GraphModelEditor.plain(model)) for (const [name, schema] of Object.entries(schemas)) { defineModel(name, schema) } `GraphModelEditor.plain()` is the SDK's documented bridge from the decoded `GraphModel` to its plain-JS `GraphModelJs` shape — typed here structurally (`OntologySpecModel`), so this module imports nothing from the SDK. The output registers through `defineModel()` and composes with `withDirectory()` as-is; CLI ingestion is out of scope (NTS-683). Mapping table (spec field → neode field): | Spec field | neode field | |-----------------------------------------|-----------------------------------------------| | `nodes[key]` | one `SchemaDefinition`, keyed by the node id | | `nodes[key].labels.identifier` | `labels[0]` — the model's identity label | | `nodes[key].labels.implied` | appended to `labels` | | `nodes[key].description` | `description` | | `properties[name].type` | `type` (table below); `LIST<X>` adds `array: true` | | `properties[name].description` | `description` | | `properties[name].must_exist` | `required` | | `properties[name].unique` | `unique` | | `properties[name].key` | `unique` + `required` (node key = unique + exists) | | `constraints[type=UNIQUE]` | `unique` on every covered property | | `constraints[type=EXISTS]` | `required` on every covered property | | `constraints[type=KEY]` | `unique` + `required` on every covered property | | `constraints[type=PROPERTY_TYPE]` | `typed` (`REQUIRE n.prop IS :: T`) | | `extensions.indexes[type=RANGE]` | `index` — `true` for one property, the composite `string[]` otherwise | | `extensions.indexes[type=FULLTEXT]` | `fulltext` on every covered property | | `relationships[key]` | a relationship entry on BOTH endpoint models — `direction: 'out'` on the from-model, `'in'` on the to-model | | `relationships[key].type` | the entry key and `relationship` | | `relationships[key].from/to` counts | `max_count: 1` → `'relationship'` type (`'zeroOrOne'` when `min_count: 0`), otherwise `'relationships'` | | `relationships[key].properties[name]` | entry `properties` (type / array / description) | Dropped, with reasons: - `aliases` (node / property / relationship) — alternative names, not graph structure. - `nodes[key].labels.optional` — conditionally-present labels; neode's `labels` write and match every declared label. - `reference`, `properties[name].pattern`, `properties[name].dimension` — spec-side metadata with no neode field. - `properties[name].oneOf` — declare neode's `valid` rule by hand where the vocabulary matters. - `extensions` (`custom`, `display`, `data_source_tables`, `data_source_mappings`) — tooling metadata, not model structure. - `extensions.indexes[TEXT / POINT / VECTOR / LOOKUP]` — neode's map API declares range indexes, model full-text membership and vector-with-config only; TEXT/POINT have no map declaration, VECTOR needs the embedding model's dimensions, LOOKUP is built-in. - relationship `constraints` — neode installs constraints on node labels only. - a relationship endpoint naming no node of the model — that end's entry has nothing to anchor to. - a spec property named `labels`, `description` or `filters` — neode's map schema reserves those keys for the metamodel (a property under a reserved name cannot be expressed; rename it by hand after mapping). Spec type → neode type: `STRING`→`string`, `BOOLEAN`→`boolean`, `INTEGER`/`INTEGER8/16/32`→`integer`, `FLOAT`/`FLOAT32`→`float`, `DATE`→`date`, `ZONED DATETIME`→`datetime`, `LOCAL DATETIME`→`localdatetime`, `ZONED TIME`→`time`, `LOCAL TIME`→`localtime`, `DURATION`→`duration`, `POINT`→`point`, `UUID`→`uuid`, `ANY`→`any`, `LIST<X>`→`X` + `array: true`, `VECTOR<FLOAT*>`/`VECTOR FLOAT*`→`float` + `array: true`, `VECTOR<INTEGER*>`/`VECTOR INTEGER*`→`integer` + `array: true`, anything else→`any`.
+
+_source: meta/ontology-spec.ts_
+
+### `OntologySpecRelationship` (interface)
+
+One spec relationship (`RelationshipJs`), keyed by its id in `OntologySpecModel.relationships`.
+
+_source: meta/ontology-spec.ts_
+
+### `OntologySpecRelationshipTarget` (interface)
+
+One endpoint of a spec relationship (`RelationshipTargetJs`).
+
+_source: meta/ontology-spec.ts_
+
 ### `OtherNode` (decorator)
 
 On a relationship entity: the property holding the node at the far end of the relationship — the end node for an outgoing relationship, the start node for an incoming one (the direction-agnostic alternative to
@@ -514,6 +562,12 @@ _source: meta/ontology.ts_
 Render `ontology()` as prompt-ready markdown (NTS-445): a heading per entity, bullet lists per property and relationship, descriptions included where declared.
 
 _source: meta/ontology.ts_
+
+### `ontologySpecToSchemas` (function)
+
+Map a decoded Ontology Graph Spec model to neode map schemas, keyed by the spec's node ids. See the module header for the full mapping table.
+
+_source: meta/ontology-spec.ts_
 
 ### `registerRepository` (function)
 
@@ -1228,6 +1282,12 @@ _source: services/schema/drift.service.ts_
 Read the installed schema (SHOW CONSTRAINTS / SHOW INDEXES) and diff it against the declared schema
 
 _source: services/schema/inspect.service.ts_
+
+### `inspectSchemaAndDrift` (function)
+
+The inspection schemaDrift() computes internally, returned alongside the drift (NTS-450): schemaDrift() already inspects the installed schema to diff it, so a caller needing both payloads (an ops page showing the installed objects AND the drift report) would otherwise inspect twice. One probe, both results.
+
+_source: services/schema/drift.service.ts_
 
 ### `schemaDrift` (function)
 
