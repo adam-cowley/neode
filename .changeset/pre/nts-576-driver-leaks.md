@@ -1,5 +1,0 @@
----
-'neode': patch
----
-
-Fixes driver resource leaks and a self-deadlock (NTS-576). The Bolt provider now closes its session when `commit()`, `rollback()` or `beginTransaction()` fails, and a failing `session.close()` no longer masks a successful result or the original error. The embedded Relate provider releases its transaction-queue slot (idempotently) when `begin()`, `commit()` or `rollback()` throws, so one failed commit no longer hangs every later query, and waiting for the slot is bounded by a new `queueTimeoutMs` option (default 30s) whose error names the usual cause: a call inside an open transaction that does not join it. `search()`, `knn()`, `paginate()` / `findManyAndCount()` / `chunk()` / `lazy()`, `createMany()` / `mergeMany()` and `explain()` / `profile()` now join the ambient `neode.transaction()` instead of queueing behind it. Schema-management methods still do not join: run them outside `transaction()`. A throwing `query:executed` listener no longer turns a successful statement into a rejection.
