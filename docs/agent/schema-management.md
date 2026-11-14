@@ -25,21 +25,9 @@ Options for applySchemaDrift.
 
 _source: services/schema/drift.service.ts_
 
-### `applySchemaDrift` (function)
-
-Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive: on a shared database "stale" objects may belong to other applications — review the drift first). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450). With `returnDriftAfter: true` (NTS-659) one extra inspection pass runs after the statements and the call returns `{ statements, driftAfter }` instead — the caller's verification probe, applied and reported in one round trip.
-
-_source: services/schema/drift.service.ts_
-
 ### `ApplySchemaDriftReport` (interface)
 
 NTS-659 — the result of applySchemaDrift with `returnDriftAfter: true`: the applied statements plus the drift of a single post-apply inspection pass, so one probe serves apply + verification
-
-_source: services/schema/drift.service.ts_
-
-### `formatSchemaDrift` (function)
-
-Human-readable multi-line drift report, grouped by action (missing / stale / mismatched), one line per object plus its fix statement. Pure function — no database access (NTS-450).
 
 _source: services/schema/drift.service.ts_
 
@@ -61,23 +49,11 @@ Which objects count as "declared" for the inspection: pass the full-text/vector 
 
 _source: services/schema/inspect.service.ts_
 
-### `inspectSchema` (function)
-
-Read the installed schema (SHOW CONSTRAINTS / SHOW INDEXES) and diff it against the declared schema
-
-_source: services/schema/inspect.service.ts_
-
 ### `SchemaDiff` (interface)
 
 The declared-vs-installed diff for one schema family (constraints or indexes): the raw object lists plus the names that only appear on one side.
 
 _source: services/schema/inspect.service.ts_
-
-### `schemaDrift` (function)
-
-Structured schema drift (NTS-450): the declared-vs-installed inspection of constraints and every index kind (range/text/fulltext/vector), with the exact fix statement per entry. Cheap and drift-never-throws: drift is data, not an error — failing a CI run on a non-empty diff is the caller's job.
-
-_source: services/schema/drift.service.ts_
 
 ### `SchemaDrift` (interface)
 
@@ -117,13 +93,43 @@ A vector index to keep installed on the database
 
 _source: services/schema/vector.service.ts_
 
-### `vectorIndexName` (function)
-
-_source: services/schema/vector.service.ts_
-
 ### `VectorIndexService` (class)
 
 Installs/drops the given vector index definitions, following the same result-reporting pattern as SchemaService
+
+_source: services/schema/vector.service.ts_
+
+### `applySchemaDrift` (function)
+
+Apply the missing objects of a drift idempotently — every CREATE carries IF NOT EXISTS. Stale objects are only dropped with `dropStale: true` (dropping is destructive: on a shared database "stale" objects may belong to other applications — review the drift first). Mismatched objects are never applied automatically. Each statement is reported with a SchemaResult, following the SchemaService pattern (NTS-450). With `returnDriftAfter: true` (NTS-659) one extra inspection pass runs after the statements and the call returns `{ statements, driftAfter }` instead — the caller's verification probe, applied and reported in one round trip.
+
+_source: services/schema/drift.service.ts_
+
+### `formatSchemaDrift` (function)
+
+Human-readable multi-line drift report, grouped by action (missing / stale / mismatched), one line per object plus its fix statement. Pure function — no database access (NTS-450).
+
+_source: services/schema/drift.service.ts_
+
+### `inspectSchema` (function)
+
+Read the installed schema (SHOW CONSTRAINTS / SHOW INDEXES) and diff it against the declared schema
+
+_source: services/schema/inspect.service.ts_
+
+### `inspectSchemaAndDrift` (function)
+
+The inspection schemaDrift() computes internally, returned alongside the drift (NTS-450): schemaDrift() already inspects the installed schema to diff it, so a caller needing both payloads (an ops page showing the installed objects AND the drift report) would otherwise inspect twice. One probe, both results.
+
+_source: services/schema/drift.service.ts_
+
+### `schemaDrift` (function)
+
+Structured schema drift (NTS-450): the declared-vs-installed inspection of constraints and every index kind (range/text/fulltext/vector), with the exact fix statement per entry. Cheap and drift-never-throws: drift is data, not an error — failing a CI run on a non-empty diff is the caller's job.
+
+_source: services/schema/drift.service.ts_
+
+### `vectorIndexName` (function)
 
 _source: services/schema/vector.service.ts_
 
