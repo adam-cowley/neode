@@ -42,14 +42,14 @@ FOR (c:Course) ON EACH [c.title, c.overview];
 
 ### Seeding volume (rough targets)
 
-| Node / rel | Rows | Notes |
-|---|---|---|
-| `User` | ~100k | ~10% paired with a `LINKED_TO` edge (identity traversal) |
-| `Enrolment` | ~1M | ~30% carry `CompletedEnrolment`; `lastSeenAt`/`reminderSentAt` spread over 90 days |
-| `Course` / `Module` / `Lesson` | ~300 / ~1.5k / ~10k | plus ~10k `Question` + ~40k `Answer` |
-| `COMPLETED_LESSON` | ~5M | the fan-out that dominates the progress COUNTs |
-| `HAS_MODULE` / `HAS_LESSON` | ~1.5k / ~10k | content tree for `HAS_MODULE\|HAS_LESSON*2` |
-| `Movie`/`Person` sandbox | ~170 / ~1k rels | Movies-style lesson graph — only needed if you add the teaching-material queries; seed with the shape of `packages/instance`'s `movies` seeder |
+| Node / rel                     | Rows                | Notes                                                                                                                                          |
+| ------------------------------ | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `User`                         | ~100k               | ~10% paired with a `LINKED_TO` edge (identity traversal)                                                                                       |
+| `Enrolment`                    | ~1M                 | ~30% carry `CompletedEnrolment`; `lastSeenAt`/`reminderSentAt` spread over 90 days                                                             |
+| `Course` / `Module` / `Lesson` | ~300 / ~1.5k / ~10k | plus ~10k `Question` + ~40k `Answer`                                                                                                           |
+| `COMPLETED_LESSON`             | ~5M                 | the fan-out that dominates the progress COUNTs                                                                                                 |
+| `HAS_MODULE` / `HAS_LESSON`    | ~1.5k / ~10k        | content tree for `HAS_MODULE\|HAS_LESSON*2`                                                                                                    |
+| `Movie`/`Person` sandbox       | ~170 / ~1k rels     | Movies-style lesson graph — only needed if you add the teaching-material queries; seed with the shape of `packages/instance`'s `movies` seeder |
 
 Seed through the bulk path (matches what neode's `createMany`/`mergeMany` emit — one `UNWIND` per batch):
 
