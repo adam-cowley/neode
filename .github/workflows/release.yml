@@ -4,7 +4,7 @@ name: Release
 # 1. The Version PR (changeset-release/*) is merged — the version bump lands
 #    on main and this publishes to npm and stamps the matching tag + GitHub
 #    release, so a Version PR merge needs no manual step.
-# 2. A v* tag is pushed — release exactly that commit (manual escape hatch).
+# 2. A v* tag is pushed — release exactly that commit (manual escape hatch).0b98d75ef8bc516db2c7cc635a8c70f45
 on:
   push:
     tags: ["v*"]
