@@ -244,6 +244,7 @@ export { WhereNull, LabelPredicate } from './query/index.js'
 // Schema drift workflow (NTS-450)
 export {
   schemaDrift,
+  inspectSchemaAndDrift,
   formatSchemaDrift,
   applySchemaDrift,
 } from './services/schema/drift.service.js'
@@ -263,6 +264,19 @@ export type {
   PropertyOntology,
   RelationshipOntology,
 } from './meta/ontology.js'
+
+// Ontology Graph Spec import (NTS-683): spec document → map schemas
+export { ontologySpecToSchemas } from './meta/ontology-spec.js'
+export type {
+  OntologySpecModel,
+  OntologySpecNode,
+  OntologySpecRelationship,
+  OntologySpecRelationshipTarget,
+  OntologySpecProperty,
+  OntologySpecConstraint,
+  OntologySpecIndex,
+  OntologySpecLabels,
+} from './meta/ontology-spec.js'
 
 // Factories & seeding (NTS-444)
 export { FactoryBuilder } from './services/factory.service.js'

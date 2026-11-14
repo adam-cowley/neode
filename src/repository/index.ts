@@ -26,7 +26,8 @@ import {
   versionProperty,
   deriveProperties,
 } from '../services/write-utilities.js'
-import { shapeNodeRows } from '../services/query/shape.js'
+import { shapeNodeRows, shapeProjectionRows } from '../services/query/shape.js'
+import type { ManyAndCount } from '../services/query/paginate.service.js'
 import { hasProjectedProperties } from '../projection/index.js'
 import { projectionNode } from '../projection/projection.js'
 import {
@@ -458,6 +459,120 @@ export class Repository<Entity, C extends Newable = new (...arguments_: never[])
     }
 
     return Repository.toCount(firstRecord.get('count'))
+  }
+
+  /**
+  Existence check by primary key — one `RETURN 1 LIMIT 1`, no projection,
+  no hydration: the cheap answer to "does this id exist", where find()
+  would hydrate the full projected read-model (eager @RelatedMany
+  included) only to be thrown away. The named read filters apply, so a
+  soft-deleted node reads as absent. Accepts string and number keys only.
+  */
+  async exists(id: unknown, options?: { withoutFilters?: string[] | undefined }): Promise<boolean> {
+    if (typeof id !== 'string' && typeof id !== 'number') {
+      throw new TypeError(`Repository.exists expects a string or number id, received ${typeof id}`)
+    }
+
+    assertPublicWithoutFilters(options?.withoutFilters)
+
+    const filters: ReadFilterOptions = {}
+
+    if (options?.withoutFilters !== undefined) {
+      filters.withoutFilters = options.withoutFilters
+    }
+
+    const primaryKey = this.getPrimaryKey().getKey()
+
+    const builder = new Builder()
+
+    builder.match(THIS_NODE, this.schema.getLabels())
+    applyReadFilters(builder, this.schema, filters)
+    builder.where(`${THIS_NODE}.${primaryKey}`, id)
+
+    builder.return('1 AS one')
+    builder.limit(1)
+
+    const output = await this.read(builder)
+
+    return output.records.length > 0
+  }
+
+  /**
+  All entities whose primary key is in `ids` — one `WHERE this.pk IN $ids`
+  read instead of one find() per id. Models declaring read-model
+  decorators read through the same RETURN map projection as findAll()
+  (ProjectionService parity); the named read filters apply. Row order
+  follows the database — pass options.order when the caller needs one.
+  */
+  async findAllByIds(
+    ids: (string | number)[],
+    options: {
+      order?: OrderSpec
+      limit?: number
+      withoutFilters?: string[] | undefined
+    } = {},
+  ): Promise<Entity[]> {
+    assertPublicWithoutFilters(options.withoutFilters)
+
+    if (ids.length === 0) {
+      return []
+    }
+
+    const filters: ReadFilterOptions = {}
+
+    if (options.withoutFilters !== undefined) {
+      filters.withoutFilters = options.withoutFilters
+    }
+
+    const primaryKey = this.getPrimaryKey().getKey()
+
+    const builder = this.matchAll({}, filters)
+
+    builder.where(`${THIS_NODE}.${primaryKey}`, 'IN', [...new Set(ids)])
+
+    if (options.order !== undefined) {
+      applyOrder(builder, options.order)
+    }
+
+    const isProjected = hasProjectedProperties(this.schema)
+
+    if (isProjected) {
+      // ProjectionService.run() parity: the RETURN map projection
+      // hydrates through shapeProjectionRows
+      builder.return(
+        `${projectionNode(THIS_NODE, this.schema, undefined, { builder, filters })} AS ${THIS_NODE}`,
+      )
+    } else {
+      this.returnNodes(builder, filters)
+    }
+
+    if (options.limit !== undefined) {
+      builder.limit(requireLimit(options.limit))
+    }
+
+    const output = await this.read(builder)
+
+    return isProjected
+      ? shapeProjectionRows<Entity>(output.records, this.schema, this.entity, THIS_NODE)
+      : shapeNodeRows<Entity>(output.records, this.schema, this.entity, THIS_NODE)
+  }
+
+  /**
+  findAll() + count() as one call (TypeORM's findAndCount, the
+  repository form of the facade's findManyAndCount): `items` trimmed by
+  options.order/limit/skip, `total` the full filter count. On a
+  transaction-scoped Repository both reads share the transaction's
+  snapshot. The two statements run sequentially so single-transaction
+  connections (the embedded engine) are safe.
+  */
+  async findAndCount(
+    parameters: WhereFilterLevel<Entity> = {},
+    options: FindOptions<Entity, C> = {},
+  ): Promise<ManyAndCount<Entity>> {
+    const items = await this.findAll(parameters, options)
+    const total = await this.count(parameters)
+
+    return { items, total }
   }
 
   /**
