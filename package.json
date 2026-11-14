@@ -1,6 +1,6 @@
 {
   "name": "neode",
-  "version": "1.0.0-next.1",
+  "version": "1.0.0-next.2",
   "description": "Decorator-based Object Graph Mapper for Neo4j and Cypher-compatible graph databases",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -71,7 +71,6 @@
     "graph",
     "cypher",
     "orm",
-    "memgraph",
     "decorators"
   ],
   "author": "Adam Cowley",
@@ -97,6 +96,7 @@
     "@changesets/cli": "^3.0.3",
     "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
     "@eslint/js": "^9.0.0",
+    "@neo4j/ontology-graph-spec": "^0.11.0",
     "@testcontainers/neo4j": "^12.2.1",
     "@types/express": "^5.0.6",
     "@types/node": "^22.10.0",

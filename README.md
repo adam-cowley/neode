@@ -2,7 +2,7 @@
 
 neode is a Neo4j OGM for Node.js designed to take care of the CRUD boilerplate involved with setting up a graph database project. Just install, define your models and go.
 
-It runs against any Cypher-compatible engine: **Neo4j** (Community, Enterprise, Aura) and **Memgraph** over Bolt, or the embedded [Relate](https://github.com/relateapp/relate) engine in-process.
+It runs against any Cypher-compatible engine: **Neo4j** (Community, Enterprise, Aura) over Bolt, or the embedded [Relate](https://github.com/relateapp/relate) engine in-process. Memgraph speaks Bolt and connects, but its Cypher does not yet parse the library's core read paths (sorted subquery loads, keyset pagination), so it is not a supported target.
 
 Coming from [neode](https://github.com/adam-cowley/neode) 0.4.9? Your existing map-based schemas keep working — read the [migration guide](docs/migration-guide.md).
 
@@ -128,6 +128,17 @@ await neode.dropSchema() // reverses installSchema() exactly
 That's the whole loop. Everything else the library does is in the matrix below.
 
 > **Model definitions are process-global.** Models registered through decorators, `defineModel()` or `neode.model()` / `with()` live in one shared registry, so every `Neode` instance in a process sees them. One set of models per process is the intended shape; run separate processes for separate schemas. A model name registers once: `defineModel()` throws a descriptive error on a second registration of the same name (the previous silent overwrite orphaned the first model's schema), and `defineModel(name, schema, { idempotent: true })` returns the existing registration unchanged — the form to use where the defining module is re-evaluated (Nest HMR, Vitest watch mode).
+
+## Adopting an existing graph
+
+The database already holds the data and the constraints? Generate the model definitions from the live graph instead of hand-writing them. The `neode-generate` binary ships with the package:
+
+```bash
+npm install neode@next
+neode-generate --uri bolt://localhost:7687 --username neo4j --password secret --out ./src/models
+```
+
+It samples the graph and writes `models.ts` (decorated classes) and `schema.ts` (map schemas). The output is a scaffold with known fidelity limits — relationships emit read-only, every property is optional — that you hand-correct once, then keep the models and the database in step with `schemaDrift()` in CI. The full workflow, CLI flags and limits: [Adopting an existing graph](docs/agent/schema-management.md#adopting-an-existing-graph).
 
 ## REST API from the model definitions
 

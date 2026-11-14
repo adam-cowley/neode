@@ -34,6 +34,7 @@ export type { GraphTypeDrift, SchemaDriftEntry } from './graph-type.service.js'
 import {
   type InspectOptions,
   type SchemaDiff,
+  type SchemaInspection,
   type SchemaObject,
   inspectSchema,
 } from './inspect.service.js'
@@ -345,6 +346,22 @@ export async function schemaDrift(
   connection: ConnectionProvider,
   options: InspectOptions = {},
 ): Promise<SchemaDrift> {
+  const { drift } = await inspectSchemaAndDrift(connection, options)
+
+  return drift
+}
+
+/**
+The inspection schemaDrift() computes internally, returned alongside the
+drift (NTS-450): schemaDrift() already inspects the installed schema to
+diff it, so a caller needing both payloads (an ops page showing the
+installed objects AND the drift report) would otherwise inspect twice.
+One probe, both results.
+*/
+export async function inspectSchemaAndDrift(
+  connection: ConnectionProvider,
+  options: InspectOptions = {},
+): Promise<{ inspection: SchemaInspection; drift: SchemaDrift }> {
   const declaredVectors = [...declaredVectorDefinitions(), ...(options.vector ?? [])]
 
   const inspection = await inspectSchema(connection, {
@@ -389,9 +406,12 @@ export async function schemaDrift(
     : undefined
 
   return {
-    constraints: driftGroup(inspection.constraints, vectors, types),
-    indexes: driftGroup(inspection.indexes, vectors, types),
-    ...(graphType !== undefined && { graphType }),
+    inspection,
+    drift: {
+      constraints: driftGroup(inspection.constraints, vectors, types),
+      indexes: driftGroup(inspection.indexes, vectors, types),
+      ...(graphType !== undefined && { graphType }),
+    },
   }
 }
 

@@ -265,7 +265,10 @@ async function openBoltBackend(name: string, config?: BoltBackendConfig): Promis
   // Fail fast if the server is unreachable
   await driver.getServerInfo()
 
-  const database = config?.database ?? (process.env.NEO4J_DATABASE || 'neo4j')
+  // An empty/unset NEO4J_DATABASE sends no database hint — the driver uses
+  // the server's default database. Required for single-database servers,
+  // which reject a named database hint.
+  const database = config?.database ?? (process.env.NEO4J_DATABASE || undefined)
   const connection = new Neo4jConnectionProvider(driver, database)
   const neode = new Neode(connection)
 
