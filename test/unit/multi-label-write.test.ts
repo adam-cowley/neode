@@ -1,5 +1,5 @@
 import { Neode } from '../../src/neode.service'
-import { NodeEntity, String } from '../../src/decorators'
+import { NodeEntity, Property } from '../../src/decorators'
 import {
   ConnectionProvider,
   QueryOutput,
@@ -14,7 +14,7 @@ import {
 // them sorted (:Alpha:Beta)
 @NodeEntity({ labels: ['Beta', 'Alpha'] })
 class MultiLabelPerson {
-  @String()
+  @Property({ type: 'string' })
   name!: string
 }
 

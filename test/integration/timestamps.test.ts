@@ -4,7 +4,7 @@
 import { openBackend, TestBackend } from './support/backend'
 import { setDefaultNeode } from '../../src/entity-methods'
 import { EventType, QueryExecutedEvent } from '../../src/common/events'
-import { CreatedAt, InternalId, NodeEntity, String, UpdatedAt, Uuid } from '../../src/decorators'
+import { CreatedAt, InternalId, NodeEntity, Property, UpdatedAt, Uuid } from '../../src/decorators'
 import { BulkService } from '../../src/services/query/bulk.service'
 import { getModel } from '../../src/meta'
 
@@ -18,7 +18,7 @@ class TimestampedPage {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   title: string
 
   @CreatedAt()
@@ -36,7 +36,7 @@ class IsoStampedPage {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   title: string
 
   @CreatedAt({ format: 'iso-string' })

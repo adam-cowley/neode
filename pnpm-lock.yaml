@@ -188,6 +188,9 @@ importers:
       '@eslint/js':
         specifier: ^9.0.0
         version: 9.39.5
+      '@neo4j/ontology-graph-spec':
+        specifier: ^0.11.0
+        version: 0.11.0
       '@testcontainers/neo4j':
         specifier: ^12.2.1
         version: 12.2.1(bare-buffer@3.7.1)(supports-color@7.2.0)
@@ -753,6 +756,9 @@ packages:
     peerDependencies:
       '@emnapi/core': ^1.7.1 || 2.0.0-beta.2 || 2.0.0-beta.3
       '@emnapi/runtime': ^1.7.1 || 2.0.0-beta.2 || 2.0.0-beta.3
+
+  '@neo4j/ontology-graph-spec@0.11.0':
+    resolution: {integrity: sha512-c8W2M0tZUYZSceJ5kJv3hfw+g9TgviwZNM/pfKZQwRI32X3tQZpL/TFiHHs1PH3CX8K2rRVVOvFvt//D/K9G4A==}
 
   '@noble/hashes@1.8.0':
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
@@ -4021,6 +4027,8 @@ snapshots:
       '@emnapi/runtime': 1.11.2
       '@tybys/wasm-util': 0.10.4
     optional: true
+
+  '@neo4j/ontology-graph-spec@0.11.0': {}
 
   '@noble/hashes@1.8.0': {}
 

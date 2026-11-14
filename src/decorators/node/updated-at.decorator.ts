@@ -8,8 +8,9 @@ Stamp the property server-side with `datetime()` on create and on every
 write (NTS-165): the database clock writes it, so clocks never drift across
 clients. `{ format: 'iso-string' }` stamps `toString(datetime())` instead —
 an ISO-8601 string that compares lexically against client-supplied
-timestamps (NTS-612). Stack it with a type decorator (e.g. `@String()` for
-the iso-string form, `@DateTime()` for the temporal) for a declared type.
+timestamps (NTS-612). Stack it with a type decorator (e.g.
+`@Property({ type: 'string' })` for the iso-string form, `@DateTime()` for
+the temporal) for a declared type.
 Merges onto the existing property, so it can be stacked with a type decorator.
 */
 export function UpdatedAt(

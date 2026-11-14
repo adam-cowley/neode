@@ -10,9 +10,9 @@ import {
   NodeEntity,
   OneToMany,
   OneToOne,
+  Property,
   RelationshipEntity,
   StartNode,
-  String,
   Unique,
   Uuid,
 } from '../../src/decorators'
@@ -27,11 +27,11 @@ class N663Address {
   id: string
 
   // the claimed property — MUST be unique for the enforcement to ride on
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   currentOccupantId: string | undefined
 
   // exists but not unique — an enforce target that cannot back the claim
-  @String()
+  @Property({ type: 'string' })
   plain: string | undefined
 }
 
@@ -40,7 +40,7 @@ class N663Person {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToOne({
@@ -90,7 +90,7 @@ class N663Person {
 @NodeEntity()
 class N663NoPk {
   // no @Primary/@Uuid({ primary: true }) — nothing to claim with
-  @String()
+  @Property({ type: 'string' })
   name: string | undefined
 
   @OneToOne({
@@ -120,7 +120,7 @@ class N663EdgePerson {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToOne({

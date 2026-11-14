@@ -1,17 +1,17 @@
 import { getModel, mergeProperty } from '../../../src/meta'
 import { defineModel } from '../../../src/meta/map-schema'
 import { PropertyType } from '../../../src/meta/property-schema'
-import { Required, String } from '../../../src/decorators'
+import { Required, Property } from '../../../src/decorators'
 import { validate } from '../../../src/validation'
 import { ValidationError } from '../../../src/validation/validation-error'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
 
 class WiringUnitUser {
-  @String({ min: 2, email: true })
+  @Property({ type: 'string', min: 2, email: true })
   email: string
 
-  @String()
+  @Property({ type: 'string' })
   @Required()
   name: string
 }

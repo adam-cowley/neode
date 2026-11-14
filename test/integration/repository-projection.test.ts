@@ -80,4 +80,18 @@ describe('Repository reads project read-model decorators (NTS-501)', () => {
     expect(found?.postID).toBe(post.postID)
     expect(found?.tagCount).toBe(0)
   })
+
+  it('findAllByIds returns the projected relationship count', async () => {
+    const post = await posts.save(Object.assign(new Post(), { postID: 'p3', title: 'Hello' }))
+    await posts.save(Object.assign(new Post(), { postID: 'p4', title: 'Other' }))
+    const tag = await tags.save(Object.assign(new Tag(), { tagID: 't2', name: 'graph' }))
+
+    await backend.neode.relate(Tag, tag, post, 'TAGGED', {}, true)
+
+    const found = await posts.findAllByIds(['p3', 'p4'], { order: 'postID' })
+
+    expect(found).toHaveLength(2)
+    expect(found[0]?.tagCount).toBe(1)
+    expect(found[1]?.tagCount).toBe(0)
+  })
 })

@@ -6,7 +6,7 @@ import { inspectSchema } from '../../src/services/schema/inspect.service'
 import { SchemaService } from '../../src/services/schema/schema.service'
 import { FulltextIndexService } from '../../src/services/schema/fulltext.service'
 import { VectorIndexService } from '../../src/services/schema/vector.service'
-import { NodeEntity, Uuid, String } from '../../src/decorators'
+import { NodeEntity, Uuid, Property } from '../../src/decorators'
 import { getModel } from '../../src/meta'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
@@ -16,10 +16,10 @@ class InspectPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
-  @String({ index: true })
+  @Property({ type: 'string', index: true })
   email: string
 }
 

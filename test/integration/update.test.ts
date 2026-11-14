@@ -1,7 +1,7 @@
 import {
   NodeEntity,
   Uuid,
-  String,
+  Property,
   Number,
   InternalId,
   Required,
@@ -27,22 +27,22 @@ class Person {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   @Required()
   name: string
 
   @Number()
   age: number
 
-  @String()
+  @Property({ type: 'string' })
   @Readonly()
   species: string
 
-  @String()
+  @Property({ type: 'string' })
   @Protected()
   password: string
 
-  @String()
+  @Property({ type: 'string' })
   @Hidden()
   secret: string
 
@@ -66,7 +66,7 @@ class NoInternalId {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   @Required()
   name: string
 

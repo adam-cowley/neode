@@ -7,7 +7,7 @@ import request from 'supertest'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { defineModel } from '../../src'
-import { NodeEntity, String, Number, Property, Uuid } from '../../src/decorators'
+import { NodeEntity, Number, Property, Uuid } from '../../src/decorators'
 import type { ExpressRouterOptions } from '../../src/express/index.js'
 import { router } from '../../src/express/index.js'
 import { openBackend, TestBackend } from './support/backend'
@@ -19,13 +19,13 @@ class RestPerson {
   @Uuid({ primary: true })
   id!: string
 
-  @String()
+  @Property({ type: 'string' })
   name!: string
 
   @Number()
   age!: number
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   email!: string
 }
 
@@ -34,7 +34,7 @@ class RestGauge {
   @Property({ type: 'number', primary: true })
   id!: number
 
-  @String()
+  @Property({ type: 'string' })
   name!: string
 }
 

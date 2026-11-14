@@ -1,7 +1,6 @@
 import {
   NodeEntity,
   Uuid,
-  String,
   Number,
   InternalId,
   Property,
@@ -26,7 +25,7 @@ class Post {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   title: string
 }
 
@@ -38,7 +37,7 @@ class Team {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 }
 
@@ -50,7 +49,7 @@ class Person {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @Number()
@@ -105,7 +104,7 @@ class BrokenPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
   @OneToMany(() => BrokenMembership, 'BROKEN', Direction.OUTGOING)

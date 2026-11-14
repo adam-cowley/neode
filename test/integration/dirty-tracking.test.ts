@@ -14,7 +14,6 @@ import {
   Property,
   Protected,
   Readonly,
-  String,
   Uuid,
 } from '../../src/decorators'
 import { Direction } from '../../src/query'
@@ -29,7 +28,7 @@ class DirtyPet {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 }
 
@@ -41,25 +40,25 @@ class DirtyPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
   @Number()
   age: number
 
-  @String()
+  @Property({ type: 'string' })
   @Readonly()
   species: string
 
-  @String()
+  @Property({ type: 'string' })
   @Protected()
   password: string
 
-  @String()
+  @Property({ type: 'string' })
   @Hidden()
   secret: string
 
-  @String()
+  @Property({ type: 'string' })
   @OnMatchSet()
   seen: string
 

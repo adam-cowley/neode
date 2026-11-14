@@ -8,7 +8,7 @@ import {
   Primary,
   Property,
   SoftDelete,
-  String as StringProperty,
+  Property as StringProperty,
 } from '../../src/decorators'
 import type { Runner } from '../../src/driver/types'
 

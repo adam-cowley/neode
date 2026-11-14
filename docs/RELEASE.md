@@ -28,7 +28,8 @@ written by the Version PR, not by hand.
 | Full test suite       | `pnpm test`          |
 | Coverage thresholds   | `pnpm test:coverage` |
 
-CI runs these in three jobs: `lint` (`pnpm lint` + `pnpm knip`), `check`
+CI runs these in three jobs: `lint` (`pnpm lint` + `pnpm knip` + a stale
+`AGENTS.md` check via `pnpm docs:agents --check`), `check`
 (`pnpm typecheck` + unit coverage + build/package checks over Node 22 and 24)
 and `integration` (Testcontainers Neo4j). Run `pnpm lint && pnpm typecheck
 && pnpm test` before every commit (house rule).
@@ -78,18 +79,27 @@ duplicate it.
 
 ## 8. Release flow
 
-- **Changesets in pre mode** (tag `next`), automated on CI: the `release`
-  job in `.github/workflows/ci.yml` runs `changesets/action` on `main`
-  after the lint/check/integration jobs pass. It opens and updates the
-  **Version PR** that folds all accumulated changesets; merging it bumps
-  the version and creates a GitHub release.
-- **npm publish is intentionally disabled** (user policy — nothing on npm
-  yet): the action is called without `publish-script`. Re-adding
-  `publish-script: pnpm release` to the `release` job goes live — publishing
-  uses OIDC trusted publishing, so no `NPM_TOKEN` secret is needed.
+- **Changesets in pre mode** (tag `next`). Version bumps fold into a
+  **Version PR** (`changeset-release/main`): run `pnpm changeset version` on
+  that branch and open the PR (the CI-side Version PR job was removed with
+  the release rework — NTS-581). CI skips the `changeset-status` job on
+  `changeset-release/*` branches — "no changesets left" is the Version PR's
+  normal state — and `CHANGELOG.md` is excluded from `biome format` because
+  the changesets bot regenerates it unformatted.
+- **Merging the Version PR releases automatically** (NTS-684): the `release`
+  job in `.github/workflows/release.yml` gates the merge commit (`pnpm lint`
+  - `pnpm typecheck` + `pnpm test:unit`), publishes to npm with
+    `changeset publish` (pre mode → the `next` npm dist-tag; already-published
+    versions are skipped) and then creates the `v<version>` tag and the GitHub
+    release with generated notes — pre-release versions are marked as GitHub
+    prereleases. Pushing a `v*` tag by hand releases that commit the same way.
+- **npm auth comes from the `NPM_TOKEN` repo secret** (setup-node's
+  `registry-url` writes the `.npmrc` npm reads). Publishing is wired but
+  gated on that secret: until it lands, the publish step fails after the
+  gates and the tag + GitHub release do not go out.
 - `pnpm release` (`pnpm build && changeset publish`) is the local publish
-  path; it exists for when publishing is switched on — do not run it before
-  then. Any manual `npm publish` is guarded locally by `prepublishOnly`
+  path for when a manual publish is needed. Any manual `npm publish` is
+  guarded locally by `prepublishOnly`
   (`npm run build && npm run test:unit`).
 - **Exiting pre for 1.0**: run `pnpm changeset exit pre`, then merge the
   next Version PR — it folds every accumulated `next` pre-release into the
