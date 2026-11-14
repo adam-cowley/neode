@@ -8,7 +8,7 @@
 // replace claim moves, and the two claimConflict policies at depth.
 import { describe, expect, it } from 'vitest'
 import { openBackend, TestBackend } from './support/backend'
-import { InternalId, NodeEntity, OneToOne, String, Uuid } from '../../src/decorators'
+import { InternalId, NodeEntity, OneToOne, Property, Uuid } from '../../src/decorators'
 import { Direction } from '../../src/query'
 import { NeodeError } from '../../src/errors'
 import { ConstraintViolationError } from '../../src/errors'
@@ -23,10 +23,10 @@ class ChainCity {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   claimedBy: string | undefined
 }
 
@@ -38,10 +38,10 @@ class ChainStreet {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   claimedBy: string | undefined
 
   @OneToOne({
@@ -62,10 +62,10 @@ class ChainBuilding {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   claimedBy: string | undefined
 
   @OneToOne({
@@ -86,10 +86,10 @@ class ChainAddress {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   claimedBy: string | undefined
 
   @OneToOne({
@@ -110,7 +110,7 @@ class ChainPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @OneToOne({
@@ -132,10 +132,10 @@ class ChainThrowAddress {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   claimedBy: string | undefined
 
   @OneToOne({
@@ -157,10 +157,10 @@ class ChainDetachAddress {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   claimedBy: string | undefined
 
   @OneToOne({

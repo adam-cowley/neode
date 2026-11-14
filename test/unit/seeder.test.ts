@@ -1,6 +1,6 @@
 import { Neode } from '../../src/neode.service'
 import { Seeder, runSeeders } from '../../src/testing/seeder'
-import { NodeEntity, InternalId, Uuid, String } from '../../src/decorators'
+import { NodeEntity, InternalId, Uuid, Property } from '../../src/decorators'
 import {
   AccessMode,
   ConnectionProvider,
@@ -20,10 +20,10 @@ class SeederPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   email: string
 
-  @String({ default: 'Springfield' })
+  @Property({ type: 'string', default: 'Springfield' })
   city: string
 }
 

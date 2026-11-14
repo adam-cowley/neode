@@ -52,8 +52,6 @@ export type { EntityMethods, WithMethods } from './entity-methods.js'
 
 // Strict relation access (NTS-155)
 export { setStrictRelationAccess } from './strict-relation-access.js'
-// Deprecation warnings opt-out (NTS-599)
-export { setDeprecationWarnings } from './deprecate.js'
 export { TraverseBuilder, MAX_TRAVERSE_DEPTH, type Hop, type TraversalRow } from './traverse.js'
 
 // Delete-path cascade depth cap (NTS-595) — the write-side counterpart of
@@ -246,6 +244,7 @@ export { WhereNull, LabelPredicate } from './query/index.js'
 // Schema drift workflow (NTS-450)
 export {
   schemaDrift,
+  inspectSchemaAndDrift,
   formatSchemaDrift,
   applySchemaDrift,
 } from './services/schema/drift.service.js'
@@ -265,6 +264,19 @@ export type {
   PropertyOntology,
   RelationshipOntology,
 } from './meta/ontology.js'
+
+// Ontology Graph Spec import (NTS-683): spec document → map schemas
+export { ontologySpecToSchemas } from './meta/ontology-spec.js'
+export type {
+  OntologySpecModel,
+  OntologySpecNode,
+  OntologySpecRelationship,
+  OntologySpecRelationshipTarget,
+  OntologySpecProperty,
+  OntologySpecConstraint,
+  OntologySpecIndex,
+  OntologySpecLabels,
+} from './meta/ontology-spec.js'
 
 // Factories & seeding (NTS-444)
 export { FactoryBuilder } from './services/factory.service.js'

@@ -1,7 +1,6 @@
 import {
   NodeEntity,
   Uuid,
-  String,
   Number,
   InternalId,
   OneToMany,
@@ -43,7 +42,7 @@ class BulkPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String({ min: 2 })
+  @Property({ type: 'string', min: 2 })
   name: string
 
   @Number()
@@ -58,10 +57,10 @@ class BulkAccount {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
-  @String({ index: true })
+  @Property({ type: 'string', index: true })
   slug: string
 
   @Number()

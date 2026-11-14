@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DateTime, Filter, NodeEntity, OneToMany, String } from '../../src/decorators'
+import { DateTime, Filter, NodeEntity, OneToMany, Property } from '../../src/decorators'
 import type { QueryOutput, QueryRecord, Runner } from '../../src/driver/types'
 import { NeodeError } from '../../src/errors'
 import { getModel } from '../../src/meta'
@@ -40,7 +40,7 @@ const node = (properties: Record<string, unknown>, elementId = '4:a'): unknown =
 
 @NodeEntity()
 class Nts592Event {
-  @String()
+  @Property({ type: 'string' })
   name?: string
 
   @DateTime()
@@ -49,13 +49,13 @@ class Nts592Event {
 
 @NodeEntity()
 class Nts592Post {
-  @String()
+  @Property({ type: 'string' })
   title?: string
 }
 
 @NodeEntity()
 class Nts592Author {
-  @String()
+  @Property({ type: 'string' })
   name?: string
 
   @DateTime()
@@ -250,7 +250,7 @@ describe('reserved filter names (NTS-592)', () => {
       @NodeEntity()
       @Filter({ name: 'cursor', where: 'node.tenant = $cursor' })
       class Nts592Reserved {
-        @String()
+        @Property({ type: 'string' })
         id?: string
       }
 

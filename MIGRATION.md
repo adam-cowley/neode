@@ -54,6 +54,14 @@ and any other Neo4j library share one driver instance:
 npm i neo4j-driver@^6
 ```
 
+**APOC is a server requirement you opt into, never a library one.** neode
+never emits an `apoc.*` call itself — the only source is your own
+expressions through the `expr` helpers (`expr.apocCollToSet(...)` /
+`expr.apocBase64Encode(...)` compose `apoc.coll.toSet(...)` /
+`apoc.text.base64Encode(...)`). Statements using them need the APOC plugin
+installed on the connected server; a plain `neo4j:5-community` container
+fails those writes with `Unknown function 'apoc.coll.toSet'`.
+
 ## 4. Toolchain requirements
 
 - Node ≥ 20
@@ -65,6 +73,16 @@ npm i neo4j-driver@^6
 
 ## 5. Smaller behavior changes
 
+- **`batch()` is `runAll()` (NTS-624).** `Neode#batch()` is renamed
+  `runAll()` — same arguments (statements with optional params, optional
+  database), still ONE transaction: every statement commits, or the
+  transaction rolls back and the thrown `TransactionError` carries the
+  per-statement errors, the partial results and the failed statements.
+  For throughput batching, `createMany()` / `mergeMany()` (UNWIND per
+  chunk) replace the batch loop.
+- **`@String` is removed (NTS-670).** Use `@Property({ type: 'string' })` —
+  the deprecated decorator shadowed the global `String` type. `setDeprecationWarnings()`
+  went with it: with `@String` gone there are no deprecated surfaces left to warn about.
 - **Schema DDL names changed — ONE-TIME RENAME CHURN (NTS-598).** Generated
   constraint/index names now carry a deterministic hash suffix
   (`person_email_unique_b37312eb`) that makes them injective: `User` and
@@ -137,6 +155,48 @@ at `MAX_CASCADE_DEPTH = 10` hops (exported from the package root,
 overridable per call with the `depth` option of `delete()`), and
 `@SoftDelete` deletes are idempotent — a repeat soft delete is a no-op
 that never re-stamps `deletedAt`.
+
+## 7. Builder: aliases are plain identifiers (no pattern fragments)
+
+Every pattern method — `match()`, `merge()`, `relationship()` / `to()`,
+`shortestPath()`, … — takes its alias as a plain identifier
+(`[A-Za-z_][A-Za-z0-9_]*`): aliases render verbatim into the pattern and
+cannot be escaped without changing meaning. Pre-formed pattern fragments
+are rejected with a `NeodeError`:
+
+```ts
+// before (0.2): hand-written pattern strings
+builder.match('cl:Claim { eventId: ev.id, email: email }')
+// now throws: Invalid alias "cl:Claim { … }" in match()
+
+// after (1.0): compose the pattern from the builder
+builder.match('cl', 'Claim').whereProps('cl.eventId', '=', 'ev.id')
+```
+
+- **Reference predicates** are `whereProps(left, operator, right)` over
+  `alias.property` references — operators `=`, `<>`, `<`, `<=`, `>`, `>=`,
+  `IN` (`whereRaw()` for anything else).
+- **A MERGE keyed on a reference** passes the reference as a
+  `RawExpression` property value —
+  `merge('cl', 'Claim', { eventId: new RawExpression('ev.id') })` renders
+  `MERGE (cl:Claim { eventId: ev.id })`.
+- **Anonymous relationship targets are rejected too**: `.to('', 'Label')`
+  throws `Invalid alias ""` — pass a named alias
+  (`.to('other', 'Label')`).
+
+## 8. `neode/express` REST contract (NTS-664)
+
+`router(neode)` from `neode/express` mounts CRUD over the registered
+models:
+
+- **Node models only.** Relationship-entity models are not exposed — the
+  node CRUD paths do not apply to edges. `GET /` (the ontology) reports
+  what is mounted.
+- **Error bodies are `{ error, message, issues }`** — the error's `name`
+  and `message`, plus `issues` for a `ValidationError` (HTTP 422). The
+  key is `issues`, not `details`. 409 for constraint violations and
+  optimistic-lock races, 400 for other `NeodeError`s, 404 for unknown
+  routes.
 
 ## Questions
 

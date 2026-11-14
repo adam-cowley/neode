@@ -9,7 +9,7 @@
  */
 import { openBackend, TestBackend } from './support/backend'
 
-import { NodeEntity, InternalId, String } from '../../src/decorators'
+import { NodeEntity, InternalId, Property } from '../../src/decorators'
 import { classifyError, ConstraintViolationError } from '../../src/errors'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
@@ -19,7 +19,7 @@ class TypedErrorMovie {
   @InternalId()
   _id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   title: string
 }
 

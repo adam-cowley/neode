@@ -1,6 +1,6 @@
 import { Neode } from '../../src/neode.service'
 import { defineModel } from '../../src/meta/map-schema'
-import { NodeEntity, InternalId, Uuid, String, OneToMany } from '../../src/decorators'
+import { NodeEntity, InternalId, Uuid, Property, OneToMany } from '../../src/decorators'
 import { Direction } from '../../src/query'
 import { ValidationError } from '../../src/validation'
 import {
@@ -29,7 +29,7 @@ class SeedPost {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   title: string
 }
 
@@ -41,13 +41,13 @@ class SeedPerson {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true, fake: () => emailFake() })
+  @Property({ type: 'string', unique: true, fake: () => emailFake() })
   email: string
 
-  @String({ default: 'Springfield', fake: () => 'Shelbyville' })
+  @Property({ type: 'string', default: 'Springfield', fake: () => 'Shelbyville' })
   city: string
 
-  @String({ min: 4, fake: () => nicknameValue })
+  @Property({ type: 'string', min: 4, fake: () => nicknameValue })
   nickname: string
 
   @OneToMany(() => SeedPost, 'WROTE', Direction.OUTGOING)

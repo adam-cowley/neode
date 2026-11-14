@@ -2,7 +2,7 @@
 // utils <-> neode.service circular init that would otherwise surface
 // when this file's service imports are evaluated first.
 import { openBackend, TestBackend } from './support/backend'
-import { NodeEntity, Uuid, String, InternalId, Number } from '../../src/decorators'
+import { NodeEntity, Uuid, Property, InternalId, Number } from '../../src/decorators'
 import { getModel } from '../../src/meta'
 import { GetService, type OrderSpec } from '../../src/services/query/get.service'
 
@@ -16,7 +16,7 @@ class Person {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 
   @Number()

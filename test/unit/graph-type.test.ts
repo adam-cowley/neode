@@ -8,7 +8,6 @@ import {
   Property,
   RelationshipEntity,
   StartNode,
-  String,
   Uuid,
 } from '../../src/decorators'
 import { defineModel } from '../../src/meta/map-schema'
@@ -40,7 +39,7 @@ import {
 
 @NodeEntity()
 class GtMovie {
-  @String()
+  @Property({ type: 'string' })
   title!: string
 }
 
@@ -61,10 +60,10 @@ class GtPerson {
   @Uuid({ primary: true })
   id!: string
 
-  @String({ required: true })
+  @Property({ type: 'string', required: true })
   name!: string
 
-  @String({ array: true })
+  @Property({ type: 'string', array: true })
   aliases!: string[]
 
   // NUMBER has no single Cypher type (spans INTEGER + FLOAT) — skipped
@@ -83,7 +82,7 @@ class GtPerson {
 
 @NodeEntity({ labels: ['GtEmployee', 'GtResident'] })
 class GtEmployee {
-  @String({ required: true })
+  @Property({ type: 'string', required: true })
   email!: string
 }
 

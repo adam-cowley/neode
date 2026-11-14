@@ -1,7 +1,7 @@
 import neo4j from 'neo4j-driver'
 import { Neode } from '../../src/neode.service'
 import { EventType, QueryExecutedEvent } from '../../src/common/events'
-import { NodeEntity, InternalId, Uuid, String } from '../../src/decorators'
+import { NodeEntity, InternalId, Uuid, Property } from '../../src/decorators'
 import {
   AccessMode,
   ConnectionProvider,
@@ -21,7 +21,7 @@ class Person {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   name: string
 }
 

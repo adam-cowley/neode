@@ -547,7 +547,7 @@ Available: `NODE_CREATED`, `NODE_UPDATED`, `NODE_DELETED`, `RELATIONSHIP_CREATED
 - When a model declares no primary key, neode 1.0 falls back to `<first label lowercased>_id` — the same default as neode.
 - Labels are always sorted and merged on write (`extend()` adds an extra label).
 - The query builder (`Builder`) is bundled in-tree — no separate package, and no `neo4j.Integer` coupling.
-- `@String` still exists for parity but is deprecated and shadows the global `String` type — prefer `@Property({ type: 'string' })`.
+- `@String` was removed in 1.0 (NTS-670) — use `@Property({ type: 'string' })`.
 - Error messages are richer: missing-model errors name the registered models; hydration failures name the model and property.
 - Integer values beyond `Number.MAX_SAFE_INTEGER` are rejected instead of silently losing precision.
 - Out-transforms are sync-only: an async `out` transform is rejected at hydration.

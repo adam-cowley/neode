@@ -1,4 +1,4 @@
-import { NodeEntity, Uuid, String, InternalId, Number } from '../../src/decorators'
+import { NodeEntity, Uuid, Property, InternalId, Number } from '../../src/decorators'
 import { openBackend, TestBackend } from './support/backend'
 
 // ---- Fixtures (per-file: decorator registry is global per module registry) --
@@ -11,7 +11,7 @@ class Person {
   @Uuid({ primary: true })
   id: string
 
-  @String({ unique: true })
+  @Property({ type: 'string', unique: true })
   name: string
 
   @Number()

@@ -1,4 +1,4 @@
-import { NodeEntity, Uuid, String, InternalId } from '../../src/decorators'
+import { NodeEntity, Uuid, Property, InternalId } from '../../src/decorators'
 import { Neode } from '../../src/neode.service'
 import { ConstraintAction, ConstraintType } from '../../src/services/schema/schema.service'
 import { openBackend, TestBackend } from './support/backend'
@@ -15,10 +15,10 @@ class SchemaPerson {
   @Uuid({ primary: true })
   id!: string
 
-  @String({ index: true })
+  @Property({ type: 'string', index: true })
   email!: string
 
-  @String({ exists: true })
+  @Property({ type: 'string', exists: true })
   title!: string
 }
 
