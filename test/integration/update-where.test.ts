@@ -1,4 +1,4 @@
-import { NodeEntity, Uuid, String, Number, InternalId, Version } from '../../src/decorators'
+import { NodeEntity, Uuid, Property, Number, InternalId, Version } from '../../src/decorators'
 import { getModel } from '../../src/meta'
 import { EntitySchema } from '../../src/meta/entity/entity-schema'
 // Import the backend before the service: it initialises the module chain
@@ -18,7 +18,7 @@ class Enrolment {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   status: string
 
   @Number()
@@ -38,7 +38,7 @@ class VersionedDoc {
   @Uuid({ primary: true })
   id: string
 
-  @String()
+  @Property({ type: 'string' })
   title: string
 
   @Number()
