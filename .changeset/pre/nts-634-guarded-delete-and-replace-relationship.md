@@ -1,5 +1,0 @@
----
-'neode': minor
----
-
-One-statement guarded delete and edge replace (NTS-634). `delete()` composes the guard MATCH, the cascade walk and `DETACH DELETE` into a single statement ending `RETURN count(this) AS deleted` — zero matched rows now throw the missing-entity error (`Cannot delete: entity not found for ID <id>`, the contract the Repository's pre-read used to raise) unless `{ ifExists: true }` resolves the call silently. `DeleteOptions` gains `where` — guard predicates (tenant/ownership filters) as a parameterised Cypher fragment over the node variable `this`, applied to the statement's MATCH, so guarded deletes need no pre-read and no TOCTOU window. New `replaceRelationship(entity, key, targets, props?, options?)` on `Neode`, `TransactionalService` and `INeode`: deletes a declared relationship's existing edges and creates the new set (entity instances or primary-key values, `props` applied to every created edge) in one statement, with `{ merge: true }` MERGE semantics optional. Cypher mixes SET and DELETE in one statement, so stamp-and-delete fusions (update + edge delete under one guard) stay single-statement too.

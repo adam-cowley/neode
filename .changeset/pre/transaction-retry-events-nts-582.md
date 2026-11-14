@@ -1,4 +1,0 @@
----
-'neode': patch
----
-Ambient transactions hardening (NTS-582): `transaction()` no longer retries `Transaction.Terminated` / `LockClientStopped` and adds jitter to its backoff; a failure during commit is not retried unless `retryCommit: true` (the default `retries: 2` for statement failures is unchanged — pass `retries: 0` to disable); lifecycle events and afterSave/afterDelete observers fire only after the commit (buffered, dropped on rollback or retry; a transaction handle flushes them on `commit()`); a nested `transaction()` / `inReadTransaction()` / `inWriteTransaction()` with an option conflicting with the outer transaction throws; running through a finished scope (detached async work) throws; integers outside the safe range now throw instead of silently losing precision; observer docs corrected (beforeSave on the facade runs before the transaction opens).

@@ -1,4 +1,0 @@
----
-'neode': minor
----
-Facade methods called inside the managed `inReadTransaction()` / `inWriteTransaction()` callbacks now JOIN the unit's transaction (NTS-642) — `neode.cypher()`, `neode.create()`, `neode.save()` and friends run on the same transaction and commit or roll back with it, on every backend. Previously they fell through to autocommit: silently outside the unit on Bolt, and a deadlock (or a 30s queue timeout, NTS-576) on the embedded Relate engine's single transaction slot. A statement that failed on the driver and was swallowed inside the callback now refuses the unit's commit with a descriptive `NeodeError` (the NTS-589 rollback-only marker, applied to the managed units too) instead of surfacing the server's commit refusal. The managed units still never retry; the close endpoints and nested-join semantics of the callback's `tx` are unchanged.

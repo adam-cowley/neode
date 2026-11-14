@@ -1,4 +1,0 @@
----
-'neode': minor
----
-Conditional updates (compare-and-swap): `neode.updateWhere(entity, guard, properties)` and its `TransactionalService` mirror write the patch only when a guard predicate holds on the matched node — `WHERE` composed into the UPDATE statement, one round trip. The guard is trusted-input Cypher referencing the node as `this` (same class as `whereRaw`), with its values bound as parameters (`{ where: 'this.status = $status', params: { status: 'active' } }`). A failed guard (zero matched rows) resolves `undefined` with no lifecycle events — the statement's RETURN plus the guard means no re-hydration fallback papering over the miss — and it composes with `@Version`: a stale version still throws `OptimisticLockError`. The full update pipeline (validation, derived properties, `updatedAt` stamp, vector split, version bump) applies unchanged.
